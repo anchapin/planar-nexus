@@ -76,6 +76,17 @@ export default defineConfig({
 
   // Configure projects for major browsers
   // Firefox and WebKit now installed for cross-browser testing
+  //
+  // #1705: a project's *name* does NOT select the browser engine — the
+  // engine comes from `use.browserName` (or a `devices[...]` descriptor),
+  // and it defaults to "chromium". These projects previously had empty
+  // `use` blocks, so the nightly Cross-Browser E2E job
+  // (`--project=firefox --project=webkit`) was actually launching
+  // headless chromium — i.e. `chromium_headless_shell-<rev>` — which that
+  // job deliberately does not install (`npx playwright install firefox
+  // webkit`), failing every test with `browserType.launch: Executable
+  // doesn't exist`. The explicit `browserName` below makes each project
+  // launch the engine it is named after.
   projects: [
     {
       name: "chromium",
@@ -88,12 +99,14 @@ export default defineConfig({
       name: "firefox",
       use: {
         // Test against Firefox - don't specify channel for installed browsers
+        browserName: "firefox",
       },
     },
     {
       name: "webkit",
       use: {
         // Test against WebKit - don't specify channel for installed browsers
+        browserName: "webkit",
       },
     },
   ],

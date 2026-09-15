@@ -203,12 +203,15 @@ jobs:
     # PRs, so per-PR CI keeps running ONLY --project=chromium (#1595
     # acceptance criterion 4: keeps PR CI under budget).
     #
-    # Tolerance note (#1625): the E2E dev-server boot is currently broken in
-    # CI, so this job is expected to fail until #1625 lands. Per #1595's
-    # acceptance criterion 3 the run must exit non-zero on any firefox/webkit
-    # spec failure, so there is deliberately NO continue-on-error here: the
-    # job is nightly/manual-only and is not in the `build` job's needs list,
-    # so the red run is a signal, not a merge blocker.
+    # Tolerance note: the E2E dev-server boot breakage tracked by #1625 is
+    # resolved, and the #1705 engine mix-up (firefox/webkit projects
+    # defaulting to chromium and demanding `chromium_headless_shell`, which
+    # this job does not install) is fixed via `browserName` in
+    # playwright.config.ts. Per #1595's acceptance criterion 3 the run must
+    # exit non-zero on any firefox/webkit spec failure, so there is
+    # deliberately NO continue-on-error here: the job is nightly/manual-only
+    # and is not in the `build` job's needs list, so a red run is a signal,
+    # not a merge blocker.
     name: Cross-Browser E2E (firefox + webkit)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
@@ -246,6 +249,14 @@ jobs:
 
       - name: Install Playwright browsers
         if: steps.playwright-cache.outputs.cache-hit != 'true'
+        # #1705: this run executes ONLY the firefox and webkit projects
+        # (playwright.config.ts pins their `browserName`), so firefox +
+        # webkit + ffmpeg (auto-included for any browser argument) is the
+        # complete binary set. chromium and chromium_headless_shell are
+        # deliberately NOT installed: if a future config/fixture regresses
+        # to the default chromium engine, the run must fail loudly here
+        # with `Executable doesn't exist ... chromium_headless_shell`
+        # instead of silently testing chromium a second time.
         run: npx playwright install --with-deps firefox webkit
 
       - name: Install Playwright OS dependencies
