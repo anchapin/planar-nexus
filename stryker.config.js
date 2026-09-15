@@ -77,6 +77,12 @@ module.exports = {
   // Issue #1725: spell-casting.ts was decomposed into per-family files
   // (cast / resolve / targeting / choices / board-sweepers); the mutate
   // entry is the family-dir glob so the same code stays mutation-covered.
+  // Issue #1711: every allowlisted module now has a targeted
+  // `*.mutation.test.ts` suite in src/lib/game-state/__tests__/ — the two
+  // weakest baselines got theirs here (layer-system: layer-ordering
+  // boundaries, timestamp dependence, sublayer pipeline; spell-casting:
+  // cost-arithmetic edges — X values, multikicker scaling, replacement-cost
+  // deltas, convoke pip order, delve floor).
   mutate: [
     "src/lib/game-state/layer-system.ts",
     "src/lib/game-state/replacement-effects.ts",
@@ -100,10 +106,23 @@ module.exports = {
   // documented TESTING.md target. Measured baselines (single-module runs):
   //   • replacement-effects.ts : 77.78% (293 killed / 441 mutants)
   //   • layer-system.ts        : 56.65% (measured in PR #1297 / CI run
-  //                              28489517797). Test improvements tracked
-  //                              separately; raising this to 70%+ will
-  //                              allow `break` to be raised back to 70.
-  //   • spell-casting.ts       : measured separately
+  //                              28489517797). Issue #1711 added the
+  //                              targeted `layer-system.mutation.test.ts`
+  //                              (layer-ordering boundaries, timestamp
+  //                              dependence, sublayer pipeline math) to lift
+  //                              this toward the 70% target; the new
+  //                              baseline is recorded by the next nightly
+  //                              run, then the floor in
+  //                              scripts/mutation-floor.config.js is
+  //                              ratcheted to floor(measured − 1).
+  //   • spell-casting.ts       : no recorded measurement yet. Issue #1711
+  //                              added the targeted
+  //                              `spell-casting.mutation.test.ts` (X-cost
+  //                              arithmetic, multikicker ×n scaling,
+  //                              blitz/foretell-style replacement deltas,
+  //                              convoke pip order, delve generic floor);
+  //                              the first nightly run after it lands
+  //                              records the baseline.
   //   • trigger-system.ts      : PENDING measurement (issue #1395). Targeted
   //                              `trigger-system.mutation.test.ts` added;
   //                              covers CR 603.4 intervening-if gating, untap

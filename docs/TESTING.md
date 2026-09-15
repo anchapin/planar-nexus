@@ -588,6 +588,13 @@ threshold:
 the module into `cast` / `resolve` / `targeting` / `choices` /
 `board-sweepers`; per-family floors live in `scripts/mutation-floor.config.js`.)
 
+Every allowlisted module has a targeted `*.mutation.test.ts` suite in
+`src/lib/game-state/__tests__/` pinning the mutant classes Stryker reports as
+surviving (layer-ordering boundaries, timestamp dependence, cost arithmetic).
+`layer-system.mutation.test.ts` and `spell-casting.mutation.test.ts` — the two
+weakest baselines — were added in issue #1711; `tests/mutation-floor.test.ts`
+asserts the suites stay in place for every allowlisted entry.
+
 Adding a new module:
 
 1. Run `npm run mutate -- src/lib/game-state/<new-file>.ts` locally.
@@ -596,15 +603,19 @@ Adding a new module:
 
 #### Threshold (CI-enforced floor)
 
-`stryker.config.js` sets `thresholds.break: 70` so Stryker exits non-zero when
-the aggregate score drops below 70% — the same floor as the Jest coverage
-ratchet (`scripts/ratchet-coverage.js`, issue #1099) and the documented project
-target. `thresholds.high: 80` / `thresholds.low: 60` only affect report
-coloring (green / yellow / red bands).
+`stryker.config.js` sets `thresholds.break: 50` so Stryker exits non-zero when
+the aggregate score drops below 50% — deliberately ~6.5pts under the weakest
+measured module baseline (layer-system at 56.65%) until every allowlisted
+module clears the **70%** project target (the same floor as the Jest coverage
+ratchet, `scripts/ratchet-coverage.js`, issue #1099). `thresholds.high: 80` /
+`thresholds.low: 55` only affect report coloring (green / yellow / red bands).
+Issue #1711 is the remediation track lifting the two weakest baselines
+(layer-system + spell-casting) toward 70%; `break` is raised to 70 in a
+follow-up only after the nightly run confirms every module clears it.
 
-| Metric         | Project target | CI-enforced floor (Stryker `thresholds.break`) |
-| -------------- | -------------- | ---------------------------------------------- |
-| Mutation score | **70%**        | **70%**                                        |
+| Metric         | Project target | CI-enforced floor (Stryker `thresholds.break`)      |
+| -------------- | -------------- | --------------------------------------------------- |
+| Mutation score | **70%**        | **50%** (ratcheted to 70 once all modules clear it) |
 
 #### Running locally
 
@@ -618,6 +629,7 @@ npm run mutate:replacement-effects
 npm run mutate:spell-casting
 npm run mutate:trigger-system
 npm run mutate:state-based-actions
+npm run mutate:combat
 
 # Generic single-module escape hatch:
 npm run mutate -- --mutate src/lib/game-state/<file>.ts
@@ -658,8 +670,17 @@ Stryker/runner variance entirely.
 
 - `replacement-effects.ts`: **77.78%** — 293 killed, 85 survived, 50 timed out,
   13 no-coverage of 441 mutants.
-- `layer-system.ts`, `spell-casting.ts`: measured on each nightly run; the
-  latest numbers are in the `mutation-report` workflow artifact.
+- `layer-system.ts`: **56.65%** (PR #1297, CI run 28489517797). Issue #1711
+  added the targeted `layer-system.mutation.test.ts` (layer-ordering
+  boundaries, timestamp dependence, sublayer pipeline math); the next nightly
+  run re-measures the baseline and the floor is ratcheted to
+  `floor(measured − 1)` per the derivation rule.
+- `spell-casting.ts`: no recorded measurement yet. Issue #1711 added the
+  targeted `spell-casting.mutation.test.ts` (X-cost arithmetic, multikicker ×n
+  scaling, blitz-style replacement-cost deltas, convoke pip order, delve
+  generic floor); the first nightly run after it lands records the baseline.
+- Other modules: measured on each nightly run; the latest numbers are in the
+  `mutation-report` workflow artifact.
 
 Most survivors are equivalent or non-behavioural (description strings, generated
 ids, empty-array initializers); the actionable ones are tracked as follow-up

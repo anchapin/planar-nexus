@@ -271,6 +271,39 @@ describe("floor config sanity", () => {
       floorConfigSource.floors["src/lib/game-state/replacement-effects.ts"],
     ).toBe(Math.floor(77.78 - 1)); // 76
   });
+
+  it("every allowlisted module has a targeted *.mutation.test.ts suite (issue #1711)", () => {
+    // The weakest mutation baselines are lifted by targeted suites that pin
+    // the surviving mutant classes (layer ordering, timestamp dependence,
+    // cost arithmetic). A deleted or renamed suite would silently drop the
+    // module back to its untargeted kill rate.
+    const suiteFor: Record<string, string> = {
+      "src/lib/game-state/layer-system.ts": "layer-system.mutation.test.ts",
+      "src/lib/game-state/replacement-effects.ts":
+        "replacement-effects.mutation.test.ts",
+      "src/lib/game-state/spell-casting/*.ts": "spell-casting.mutation.test.ts",
+      "src/lib/game-state/trigger-system.ts": "trigger-system.mutation.test.ts",
+      "src/lib/game-state/state-based-actions.ts":
+        "state-based-actions.mutation.test.ts",
+      "src/lib/game-state/combat.ts": "combat.mutation.test.ts",
+    };
+    expect(Object.keys(suiteFor)).toEqual(strykerConfig.mutate);
+    for (const file of Object.values(suiteFor)) {
+      expect(
+        existsSync(
+          path.join(
+            __dirname,
+            "..",
+            "src",
+            "lib",
+            "game-state",
+            "__tests__",
+            file,
+          ),
+        ),
+      ).toBe(true);
+    }
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────
