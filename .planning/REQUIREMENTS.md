@@ -23,53 +23,53 @@
 
 ### Meta Deck Analysis
 
-- [ ] **META-01**: User can view top deck archetypes in selected format (Standard, Modern, Commander)
-- [ ] **META-02**: User can see deck win rates and meta share percentages
-- [ ] **META-03**: User can analyze card inclusion rates in top decks
-- [ ] **META-04**: User can filter meta by date range (last 7 days, 30 days, all time)
+- [x] **META-01**: User can view top deck archetypes in selected format (Standard, Modern, Commander) ✅
+- [x] **META-02**: User can see deck win rates and meta share percentages ✅
+- [x] **META-03**: User can analyze card inclusion rates in top decks ✅
+- [x] **META-04**: User can filter meta by date range (last 7 days, 30 days, all time) ✅
 
 ### Anti-Meta Recommendations
 
-- [ ] **AMETA-01**: User can get counter recommendations for specific deck archetypes
-- [ ] **AMETA-02**: User can see sideboard recommendations vs. popular matchups
-- [ ] **AMETA-03**: User can view mana base recommendations for anti-meta decks
+- [x] **AMETA-01**: User can get counter recommendations for specific deck archetypes ✅
+- [x] **AMETA-02**: User can see sideboard recommendations vs. popular matchups ✅
+- [x] **AMETA-03**: User can view mana base recommendations for anti-meta decks ✅
 
 ### Format Health Score
 
-- [ ] **HEALTH-01**: User can see format diversity score (0-100)
-- [ ] **HEALTH-02**: User can view color distribution in meta
-- [ ] **HEALTH-03**: User can see deck archetype balance metrics
+- [x] **HEALTH-01**: User can see format diversity score (0-100) ✅
+- [x] **HEALTH-02**: User can view color distribution in meta ✅
+- [x] **HEALTH-03**: User can see deck archetype balance metrics ✅
 
 ### Meta Trend Tracking
 
-- [ ] **TREND-01**: User can view rising deck archetypes (past 7 days)
-- [ ] **TREND-02**: User can view declining deck archetypes
-- [ ] **TREND-03**: User can see card inclusion rate changes over time
+- [x] **TREND-01**: User can view rising deck archetypes (past 7 days) ✅
+- [x] **TREND-02**: User can view declining deck archetypes ✅
+- [x] **TREND-03**: User can see card inclusion rate changes over time ✅
 
 ### Matchup Guides
 
-- [ ] **MATCH-01**: User can get pre-game strategic advice vs. specific archetypes
-- [ ] **MATCH-02**: User can see mulligan recommendations per matchup
-- [ ] **MATCH-03**: User can view game plan tips (aggro vs. control vs. midrange)
+- [x] **MATCH-01**: User can get pre-game strategic advice vs. specific archetypes ✅
+- [x] **MATCH-02**: User can see mulligan recommendations per matchup ✅
+- [x] **MATCH-03**: User can view game plan tips (aggro vs. control vs. midrange) ✅
 
 ### Sideboard Plans
 
-- [ ] **SIDE-01**: User can get generic sideboard guides per archetype matchup
-- [ ] **SIDE-02**: User can see in/out recommendations with card counts
-- [ ] **SIDE-03**: User can save custom sideboard plans for future reference
+- [x] **SIDE-01**: User can get generic sideboard guides per archetype matchup ✅
+- [x] **SIDE-02**: User can see in/out recommendations with card counts ✅
+- [x] **SIDE-03**: User can save custom sideboard plans for future reference ✅
 
 ### Mana Curve Optimization
 
-- [ ] **MANA-01**: User can get land count recommendations based on deck strategy
-- [ ] **MANA-02**: User can see mana curve suggestions for aggro/control/midrange
-- [ ] **MANA-03**: User can get color mana requirements analysis
+- [x] **MANA-01**: User can get land count recommendations based on deck strategy ✅
+- [x] **MANA-02**: User can see mana curve suggestions for aggro/control/midrange ✅
+- [x] **MANA-03**: User can get color mana requirements analysis ✅
 
 ### Game Phase Strategy
 
-- [ ] **PHASE-01**: User can get opening hand evaluation tips
-- [ ] **PHASE-02**: User can see mid-game strategic priorities by deck type
-- [ ] **PHASE-03**: User can get late-game top-deck scenarios advice
-- [ ] **PHASE-04**: User can receive combat phase decision guidance
+- [x] **PHASE-01**: User can get opening hand evaluation tips ✅
+- [x] **PHASE-02**: User can see mid-game strategic priorities by deck type ✅
+- [x] **PHASE-03**: User can get late-game top-deck scenarios advice ✅
+- [x] **PHASE-04**: User can receive combat phase decision guidance ✅
 
 ---
 
@@ -123,4 +123,4 @@
 ---
 
 *Requirements defined: 2026-03-19*
-*Last updated: 2026-03-19 after v1.5 milestone initiation*
+*Last updated: 2026-09-15 — v1.5 checkboxes reconciled with shipped code (issue #1721). All 26 requirements audited against the codebase, e.g. `src/lib/meta.ts` (archetypes/win rates/meta share/inclusion/date range), `src/lib/heuristic-meta-analysis.ts`, `src/components/meta/*` (FormatHealthGauge, ColorDistributionChart, ArchetypeBalance, ArchetypeTrends, CardTrendChart, MulliganTips, AntiMetaRecommendations), `src/lib/matchup-guides.ts`, `src/lib/sideboard-recommender.ts` + `src/lib/sideboard-plans.ts` + `src/app/(app)/sideboards/`, `src/lib/mana-curve.ts` (land counts, strategy curves, color requirements), and `src/lib/game-phase-strategy.ts` (opening/mid/late/combat).*
