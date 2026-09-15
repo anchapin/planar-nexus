@@ -530,32 +530,70 @@ jobs:
 
       - name: Run cargo audit
         working-directory: src-tauri
-        # `cargo audit` exits non-zero if RustSec advisories with a recognised
-        # severity are found. Warnings (unmaintained/unsound/notice) are
-        # surfaced but ignored here so the inherited gtk-rs GTK3 binders,
-        # which Tauri pulls in via `wry` on Linux, do not break the build
-        # until the gtk4-rs migration tracked in the roadmap lands.
+        # Gate on the parsed JSON severity only (>= high), per #1763:
+        # `cargo audit` exits 1 whenever ANY advisory is listed,
+        # regardless of severity, so passing that code through would fail
+        # the job on sub-high and unrated advisories and defeat the
+        # severity gate. Warnings (unmaintained/unsound/notice) and
+        # sub-high advisories are surfaced but not gated here so the
+        # inherited gtk-rs GTK3 binders, which Tauri pulls in via `wry`
+        # on Linux, do not break the build until the gtk4-rs migration
+        # tracked in the roadmap lands.
         # See docs/RUST_UPGRADE_STRATEGY.md for triage details.
         run: |
           set -e
+          # Exit 1 = "advisories found" (any severity) — NOT a tool error;
+          # the python gate below is authoritative for severity. Exit >= 2
+          # means cargo-audit itself errored (e.g. advisory-DB fetch
+          # failure): fail fast with a distinct tool-failure message (#1763).
           cargo audit --json > cargo-audit.json || AUDIT_EXIT=$?
-          set -e
+          if [ "${AUDIT_EXIT:-0}" -ge 2 ]; then
+              echo "::error::cargo audit TOOL FAILURE (exit ${AUDIT_EXIT}); this is a tool error, not an advisory finding. See cargo-audit.json"
+              exit "${AUDIT_EXIT}"
+          fi
           python3 - <<'PY'
           import json, sys
-          with open('cargo-audit.json') as fh:
-              data = json.load(fh)
-          vulns = data.get('vulnerabilities', {}).get('list', []) or []
+
+          # Severity gate: fail only on advisories rated >= high, matching
+          # the `npm audit --audit-level=high` contract from #1108 (#1763).
           order = {'low': 1, 'moderate': 2, 'medium': 2, 'high': 3, 'critical': 4}
           threshold = order['high']
+
+          # UNRATED-SEVERITY POLICY (#1763): fresh RustSec disclosures can
+          # carry an empty `severity` field (e.g. RUSTSEC-2026-0285 on day
+          # one). We explicitly treat unrated as `moderate`: printed loudly
+          # below, NOT gated. This fail-open choice is deliberate — the
+          # triage sweep in docs/RUST_UPGRADE_STRATEGY.md re-scores them
+          # once RustSec assigns a severity.
+          UNRATED_AS = 'moderate'
+
+          try:
+              with open('cargo-audit.json') as fh:
+                  data = json.load(fh)
+          except (OSError, ValueError) as exc:
+              print(f"cargo audit TOOL FAILURE: report missing or unparseable "
+                    f"({exc}); this is a tool error, not an advisory finding",
+                    file=sys.stderr)
+              sys.exit(2)
+
+          vulns = data.get('vulnerabilities', {}).get('list', []) or []
           failing = []
           for v in vulns:
-              sev = (v.get('advisory') or {}).get('severity') or ''
+              adv = v.get('advisory') or {}
+              sev = adv.get('severity') or ''
               pkg = (v.get('package') or {}).get('name')
               ver = (v.get('package') or {}).get('version')
-              aid = (v.get('advisory') or {}).get('id')
-              title = (v.get('advisory') or {}).get('title')
-              if order.get(sev, 0) >= threshold:
-                  failing.append(f"  {aid}: {pkg}@{ver} [{sev}] {title}")
+              aid = adv.get('id')
+              title = adv.get('title')
+              if sev in order:
+                  rank, label = order[sev], sev
+              else:
+                  rank, label = order[UNRATED_AS], f'unrated, treated as {UNRATED_AS}'
+              line = f"  {aid}: {pkg}@{ver} [{label}] {title}"
+              if rank >= threshold:
+                  failing.append(line)
+              else:
+                  print(f"advisory (not gated):{line}")
           if failing:
               print("cargo audit: failing advisories (severity >= high):", file=sys.stderr)
               for line in failing:
@@ -566,12 +604,6 @@ jobs:
           for kind, items in warnings.items():
               print(f"  warning [{kind}]: {len(items)} (informational, not gated)")
           PY
-          # Surface cargo-audit's own exit code if the JSON path succeeded
-          # but the binary itself reported an error.
-          if [ "${AUDIT_EXIT:-0}" -ne 0 ]; then
-              echo "cargo audit exited with status ${AUDIT_EXIT}; see cargo-audit.json"
-              exit "${AUDIT_EXIT}"
-          fi
 
       - name: Upload cargo-audit report
         uses: actions/upload-artifact@v7
