@@ -210,10 +210,16 @@ describe("mutation-floor-lib floorFor", () => {
       defaultFloor: 55,
       floors: { "src/lib/game-state/spell-casting/*.ts": 50 },
     };
-    expect(floorFor("src/lib/game-state/spell-casting/cast.ts", globConfig)).toBe(50);
-    expect(floorFor("src/lib/game-state/spell-casting/resolve.ts", globConfig)).toBe(50);
+    expect(
+      floorFor("src/lib/game-state/spell-casting/cast.ts", globConfig),
+    ).toBe(50);
+    expect(
+      floorFor("src/lib/game-state/spell-casting/resolve.ts", globConfig),
+    ).toBe(50);
     // A glob does not leak across directories…
-    expect(floorFor("src/lib/game-state/spell-casting/sub/dir.ts", globConfig)).toBe(55);
+    expect(
+      floorFor("src/lib/game-state/spell-casting/sub/dir.ts", globConfig),
+    ).toBe(55);
     expect(floorFor("src/lib/game-state/layer-system.ts", globConfig)).toBe(55);
     // …and an exact entry still beats a glob.
     const both: FloorConfig = {
@@ -224,7 +230,9 @@ describe("mutation-floor-lib floorFor", () => {
       },
     };
     expect(floorFor("src/lib/game-state/spell-casting/cast.ts", both)).toBe(70);
-    expect(floorFor("src/lib/game-state/spell-casting/choices.ts", both)).toBe(50);
+    expect(floorFor("src/lib/game-state/spell-casting/choices.ts", both)).toBe(
+      50,
+    );
   });
 });
 
@@ -504,12 +512,18 @@ describe("mutation-summary.js below-floor annotation", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────
-// Issue #1549: the per-PR mutation-test job in .github/workflows/ci.yml now
-// surfaces the per-module table on the Actions summary. These tests lock in
+// Issue #1549: the per-PR mutation-test job in .github/workflows/ci.yml used
+// to surface the per-module table on the Actions summary. These tests lock in
 // (a) the full Markdown contract of the table renderer on synthetic fixtures,
 // (b) the $GITHUB_STEP_SUMMARY append that makes it render on the Summary tab,
 // (c) the missing-report no-op that lets the CI step run with `if: always()`
 // without failing the job, and (d) the workflow wiring itself.
+//
+// Issue #1762: the per-PR Stryker run was removed entirely (it was the ~3h CI
+// long pole with 3x runtime variance). The wiring tests now pin the NEW
+// contract: no Stryker invocation anywhere in ci.yml, the fast
+// `mutation-smoke` config guard in its place, and the nightly breakdown step
+// unchanged.
 // ─────────────────────────────────────────────────────────────────────────
 
 describe("mutation-summary.js Markdown table (issue #1549)", () => {
@@ -620,9 +634,11 @@ describe("mutation-summary.js Markdown table (issue #1549)", () => {
   });
 });
 
-describe("per-PR mutation-test wiring (issue #1549)", () => {
+describe("mutation workflow wiring (issues #1549, #1762)", () => {
   type WorkflowStep = { name?: unknown; if?: unknown; run?: unknown };
-  type Workflow = { jobs: Record<string, { steps?: WorkflowStep[] }> };
+  type Workflow = {
+    jobs: Record<string, { steps?: WorkflowStep[]; needs?: unknown }>;
+  };
 
   function loadWorkflow(rel: string): Workflow {
     return parse(
@@ -634,15 +650,30 @@ describe("per-PR mutation-test wiring (issue #1549)", () => {
     return (steps ?? []).filter((s) => s.name === "Per-module score breakdown");
   }
 
-  it("ci.yml mutation-test job ends with the breakdown step gated by if: always()", () => {
+  it("ci.yml keeps Stryker off the per-PR path and gates on the config guard instead (issue #1762)", () => {
     const ci = loadWorkflow(".github/workflows/ci.yml");
-    const summaries = breakdownSteps(ci.jobs["mutation-test"]?.steps);
 
-    expect(summaries).toHaveLength(1);
-    expect(summaries[0]?.run).toBe("node scripts/mutation-summary.js");
-    // `if: always()` YAML-parses to the string "always()" — the table must
-    // render even when the Stryker step itself failed the job.
-    expect(String(summaries[0]?.if)).toBe("always()");
+    // No job in the per-PR workflow may invoke Stryker — the former
+    // `mutation-test` job was the ~3h CI long pole (#1762).
+    for (const [jobId, job] of Object.entries(ci.jobs)) {
+      for (const step of job.steps ?? []) {
+        const run = String(step.run ?? "");
+        expect(`${jobId}: ${run}`).not.toMatch(
+          /\bstryker run\b|npm run (test:)?mutate/,
+        );
+      }
+    }
+
+    // The fast config guard replaced it ...
+    const guardSteps = (ci.jobs["mutation-smoke"]?.steps ?? []).filter(
+      (s) => s.run === "node scripts/check-mutation-config.mjs",
+    );
+    expect(guardSteps).toHaveLength(1);
+    // ... and stays in the merge-blocking set while the old job id is gone.
+    const buildNeeds = ci.jobs["build"]?.needs;
+    expect(Array.isArray(buildNeeds)).toBe(true);
+    expect(buildNeeds).toContain("mutation-smoke");
+    expect(buildNeeds).not.toContain("mutation-test");
   });
 
   it("the nightly mutation workflow keeps the same breakdown step (consistency)", () => {

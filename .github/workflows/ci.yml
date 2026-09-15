@@ -427,17 +427,27 @@ jobs:
       - name: Validate commit messages
         run: npx commitlint --last --verbose
 
-  mutation-test:
-    # Mutation-score gate for the rules-engine invariants (#1265). Runs Stryker
-    # against `src/lib/game-state/layer-system.ts` on every PR and surfaces a
-    # per-pass threshold of 70% (see stryker.config.js `thresholds.break`). The
-    # full allowlist (layer-system, replacement-effects, spell-casting,
-    # trigger-system, state-based-actions, combat) runs
-    # nightly in .github/workflows/mutation.yml — too slow for per-PR CI.
+  mutation-smoke:
+    # Issue #1762: the former `Mutation Test (layer-system)` Stryker job was
+    # the CI long pole — ~2.5-3h per PR with 3x variance on identical code
+    # (59 vs 184 min runs of the same branch content, see #1762's duration
+    # table) — and `build` depended on it, so every PR merge waited on it.
+    # Stryker is now OFF the per-PR path entirely: layer-system is gated by
+    # the NIGHTLY .github/workflows/mutation.yml run, which already mutates
+    # it (it is in the `mutate` allowlist) and enforces both the aggregate
+    # `thresholds.break` and the per-module floor (55, via
+    # scripts/mutation-floor.js).
     #
-    # `build` depends on this job so a regression below the threshold blocks
-    # the merge, mirroring how `coverageThreshold` gates the `test` job.
-    name: Mutation Test (layer-system)
+    # Accepted tradeoff (#1762): a layer-system mutation-score regression
+    # surfaces on the nightly run (≤24h detection latency on main) instead
+    # of blocking the PR that introduced it; in exchange per-PR CI drops
+    # its single ~3h job and stops tracking Stryker/runner variance. This
+    # guard keeps the move honest (~50ms): it fails the PR if any marker
+    # that makes the nightly-only gate safe is removed — the 6-module
+    # allowlist, per-module floors for every entry, pinned Stryker
+    # concurrency, the nightly schedule + gates, and "no Stryker in ci.yml".
+    # Local equivalent: npm run lint:mutation-config.
+    name: Mutation Config Guard (#1762)
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
 
@@ -450,35 +460,8 @@ jobs:
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
 
-      - name: Run Stryker (layer-system only)
-        # Per-file scope keeps the PR gate to a single module (~15-20 min on a
-        # 2-core runner). The full allowlist (6 modules) runs on the nightly
-        # schedule — see .github/workflows/mutation.yml.
-        run: npm run mutate:layer-system
-        env:
-          STRYKER_CONCURRENCY: 4
-
-      - name: Upload mutation report
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: mutation-report-layer-system
-          path: reports/mutation/
-          retention-days: 30
-
-      - name: Per-module score breakdown
-        # Issue #1549: this job previously stopped at the artifact upload, so
-        # a layer-system regression below `thresholds.break` surfaced only as a
-        # bare Stryker exit code plus a 30-day artifact a maintainer had to
-        # download and unzip. Run the same summary step the nightly workflow
-        # has had since #1395 so the per-module table (score / killed /
-        # survived / no-coverage, plus the #1598 BELOW FLOOR marker) renders
-        # inline on the PR's Actions summary. `if: always()` keeps the table
-        # visible even when Stryker itself fails; when the report is missing
-        # the script exits 0 with a skip note, so this step can never turn a
-        # passing run into a failing one.
-        if: always()
-        run: node scripts/mutation-summary.js
+      - name: Assert nightly mutation gate wiring (#1762)
+        run: node scripts/check-mutation-config.mjs
 
   security:
     name: Security Audit (npm)
@@ -813,7 +796,7 @@ jobs:
     name: Build
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
-    needs: [test, lint, typecheck, commitlint, mutation-test, security, cargo-audit, rust-checks, a11y-contrast, e2e, workflow-lint, tauri-updater-config, engine-size-budget, turn-credentials-guard, coverage-docs-guard]
+    needs: [test, lint, typecheck, commitlint, mutation-smoke, security, cargo-audit, rust-checks, a11y-contrast, e2e, workflow-lint, tauri-updater-config, engine-size-budget, turn-credentials-guard, coverage-docs-guard]
 
     steps:
       - name: Checkout code
