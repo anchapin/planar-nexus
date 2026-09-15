@@ -584,7 +584,7 @@ location.reload();
 
 **Solution**:
 ```bash
-# Check Node version (should be 20+)
+# Check Node version (should be 22+)
 node --version
 
 # Clear npm cache
@@ -594,8 +594,9 @@ npm cache clean --force
 rm -rf node_modules package-lock.json
 npm install
 
-# Try with yarn if npm fails
-yarn install
+# Restore the lockfile and retry cleanly (npm is the only supported package manager)
+git checkout -- package-lock.json
+npm ci
 ```
 
 ---
