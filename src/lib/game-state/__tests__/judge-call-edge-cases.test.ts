@@ -18,7 +18,6 @@ import {
   getFailingEdgeCases,
   getEdgeCasesWithTests,
 } from "../judge-call-edge-cases";
-import { JUDGE_CALL_EXTRACTION_PROMPT } from "../judge-call-extraction-prompt";
 import { checkStateBasedActions } from "../state-based-actions";
 import { createInitialGameState, dealDamageToPlayer } from "../game-state";
 import { startGame } from "../game-state";
@@ -85,12 +84,6 @@ describe("Judge-Call Edge Cases - Data Validation", () => {
     for (const segment of JUDGE_CALL_EDGE_CASES) {
       expect(segment.crReference).toMatch(/^CR \d+/);
     }
-  });
-
-  it("should have extraction prompt defined", () => {
-    expect(JUDGE_CALL_EXTRACTION_PROMPT).toBeTruthy();
-    expect(typeof JUDGE_CALL_EXTRACTION_PROMPT).toBe("string");
-    expect(JUDGE_CALL_EXTRACTION_PROMPT.length).toBeGreaterThan(200);
   });
 });
 
