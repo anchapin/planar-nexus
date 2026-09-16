@@ -15,6 +15,22 @@ const MAX_REQUEST_BODY_BYTES = 512 * 1024;
 const MAX_CARDS = 250;
 
 /**
+ * Issue #1783 — outbound fetch guardrails for deck-site requests.
+ *
+ * The route used to relay user deck URLs through the third-party
+ * `api.allorigins.win` CORS proxy, giving that proxy read/modify access to
+ * every deck payload in transit (and a leak of every imported deck URL).
+ * Server-side fetch does not need a CORS proxy at all, so we now fetch
+ * allowlisted deck-site URLs directly with: per-hop allowlist/scheme
+ * validation (the proxy previously masked the real destination, including
+ * redirects), a 10 s abort timeout, and a 512 KB response-body cap that
+ * mirrors the #1277 inbound request cap.
+ */
+const MAX_RESPONSE_BODY_BYTES = 512 * 1024;
+const OUTBOUND_FETCH_TIMEOUT_MS = 10_000;
+const MAX_REDIRECT_HOPS = 5;
+
+/**
  * Supported deck hosting sites
  */
 interface SupportedSite {
@@ -151,70 +167,43 @@ const SUPPORTED_SITES: SupportedSite[] = [
       const publicId = match[1];
       const apiUrl = `https://api2.moxfield.com/v2/decks/all/${publicId}`;
 
-      // Try fetching via CORS proxy
-      const proxyUrls = [
-        `https://api.allorigins.win/raw?url=${encodeURIComponent(apiUrl)}`,
-        `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`,
+      // Issue #1783 — fetch the deck API directly. Server-side fetch needs
+      // no CORS proxy; fetchDeckSiteText enforces the outbound allowlist on
+      // every redirect hop, a 10 s timeout, and the 512 KB response cap.
+      const result = await fetchDeckSiteText(apiUrl, {
+        Accept: "application/json",
+      });
+      if (!result.ok) return null;
+
+      const deck = JSON.parse(result.text);
+      if (!deck) return null;
+
+      const allCards: string[] = [];
+      const boardNames = [
+        "mainboard",
+        "sideboard",
+        "commanders",
+        "companions",
+        "attractions",
+        "stickers",
+        "contraptions",
+        "planes",
+        "schemes",
       ];
 
-      for (const proxyUrl of proxyUrls) {
-        try {
-          const response = await fetch(proxyUrl, {
-            headers: { Accept: "application/json" },
-          });
+      for (const boardName of boardNames) {
+        const board = (deck as any)[boardName];
+        if (!board || typeof board !== "object") continue;
 
-          if (!response.ok) continue;
-
-          const text = await response.text();
-          let jsonText = text;
-
-          // allorigins /get wraps response in JSON
-          if (proxyUrl.includes("/get?")) {
-            try {
-              const wrapped = JSON.parse(text);
-              if (wrapped.contents) jsonText = wrapped.contents;
-            } catch {
-              // Not wrapped, use raw text
-            }
+        for (const entry of Object.values(board)) {
+          const cardEntry = entry as any;
+          if (cardEntry?.quantity && cardEntry?.card?.name) {
+            allCards.push(`${cardEntry.quantity} ${cardEntry.card.name}`);
           }
-
-          const deck = JSON.parse(jsonText);
-          if (!deck) continue;
-
-          const allCards: string[] = [];
-          const boardNames = [
-            "mainboard",
-            "sideboard",
-            "commanders",
-            "companions",
-            "attractions",
-            "stickers",
-            "contraptions",
-            "planes",
-            "schemes",
-          ];
-
-          for (const boardName of boardNames) {
-            const board = (deck as any)[boardName];
-            if (!board || typeof board !== "object") continue;
-
-            for (const entry of Object.values(board)) {
-              const cardEntry = entry as any;
-              if (cardEntry?.quantity && cardEntry?.card?.name) {
-                allCards.push(`${cardEntry.quantity} ${cardEntry.card.name}`);
-              }
-            }
-          }
-
-          if (allCards.length > 0) {
-            return allCards.join("\n");
-          }
-        } catch {
-          // Try next proxy
         }
       }
 
-      return null;
+      return allCards.length > 0 ? allCards.join("\n") : null;
     },
   },
   {
@@ -245,43 +234,18 @@ const SUPPORTED_SITES: SupportedSite[] = [
       // Archidekt v2 deckjson endpoint returns the full deck payload.
       const apiUrl = `https://archidekt.com/api/v2/decks/${deckId}/deckjson/`;
 
-      const proxyUrls = [
-        `https://api.allorigins.win/raw?url=${encodeURIComponent(apiUrl)}`,
-        `https://api.allorigins.win/get?url=${encodeURIComponent(apiUrl)}`,
-      ];
+      // Issue #1783 — fetch the deck API directly (no CORS proxy).
+      // fetchDeckSiteText enforces the outbound allowlist on every redirect
+      // hop, a 10 s timeout, and the 512 KB response cap.
+      const result = await fetchDeckSiteText(apiUrl, {
+        Accept: "application/json",
+      });
+      if (!result.ok) return null;
 
-      for (const proxyUrl of proxyUrls) {
-        try {
-          const response = await fetch(proxyUrl, {
-            headers: { Accept: "application/json" },
-          });
+      const deck = JSON.parse(result.text);
+      if (!deck) return null;
 
-          if (!response.ok) continue;
-
-          const text = await response.text();
-          let jsonText = text;
-
-          // allorigins /get wraps response in JSON
-          if (proxyUrl.includes("/get?")) {
-            try {
-              const wrapped = JSON.parse(text);
-              if (wrapped.contents) jsonText = wrapped.contents;
-            } catch {
-              // Not wrapped, use raw text
-            }
-          }
-
-          const deck = JSON.parse(jsonText);
-          if (!deck) continue;
-
-          const allCards = extractArchidektCardsFromState(deck);
-          if (allCards) return allCards;
-        } catch {
-          // Try next proxy
-        }
-      }
-
-      return null;
+      return extractArchidektCardsFromState(deck);
     },
   },
 ];
@@ -362,10 +326,7 @@ function extractArchidektCardsFromState(data: any): string | null {
  * homoglyph labels (`xn--…`) are rejected outright since none of the
  * supported sites use internationalized names.
  */
-function isSupportedHostname(
-  hostname: string,
-  allowedDomain: string,
-): boolean {
+function isSupportedHostname(hostname: string, allowedDomain: string): boolean {
   const h = hostname.toLowerCase();
   const d = allowedDomain.toLowerCase();
 
@@ -382,6 +343,161 @@ function isSupportedHostname(
   if (h.endsWith("." + d)) return true;
 
   return false;
+}
+
+/**
+ * Issue #1783 — the upstream deck-site response exceeded the outbound
+ * 512 KB response cap. Surfaces to the client as a 413.
+ */
+class UpstreamBodyTooLargeError extends Error {
+  constructor() {
+    super("Upstream response body exceeds the size cap");
+    this.name = "UpstreamBodyTooLargeError";
+  }
+}
+
+/**
+ * Issue #1783 — a redirect hop (or the initial URL) targeted a host that is
+ * not on the deck-site allowlist, or the redirect chain was too long. The
+ * request is refused instead of followed. Surfaces to the client as a 4xx.
+ */
+class UpstreamRedirectError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UpstreamRedirectError";
+  }
+}
+
+/**
+ * Issue #1783 — is this URL a legal outbound target?
+ *
+ * Applies the same #1392 rules the POST handler enforces on the user-supplied
+ * URL to every URL the route itself dials: http(s) scheme only, no embedded
+ * credentials, and a strict hostname match against `SUPPORTED_SITES`. This
+ * covers the site-specific API endpoints (`api2.moxfield.com` is a subdomain
+ * of the Moxfield entry) and every redirect hop.
+ */
+function isAllowedOutboundUrl(candidate: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(candidate);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
+  if (parsed.username || parsed.password) return false;
+  return SUPPORTED_SITES.some((site) =>
+    isSupportedHostname(parsed.hostname, site.domain),
+  );
+}
+
+interface DeckSiteFetchResult {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  text: string;
+}
+
+const REDIRECT_STATUSES = [301, 302, 303, 307, 308];
+
+/**
+ * Issue #1783 — direct, hardened outbound fetch for deck-site URLs.
+ *
+ * Replaces the `api.allorigins.win` CORS-proxy relay (which could read and
+ * modify every deck payload in transit) with a direct server-side fetch.
+ * Because the route is the HTTP client now, redirects are followed manually
+ * (`redirect: "manual"`) and **every hop is re-validated** against the
+ * #1392 allowlist — the proxy previously masked the final destination, so a
+ * allowlisted-looking URL could not be trusted to land on an allowlisted
+ * host. Each hop also carries a 10 s abort timeout so a slow or hostile
+ * deck site cannot pin the route, and the response body is capped at
+ * {@link MAX_RESPONSE_BODY_BYTES} (mirroring the #1277 inbound cap) before
+ * it is buffered.
+ */
+async function fetchDeckSiteText(
+  url: string,
+  headers: Record<string, string>,
+): Promise<DeckSiteFetchResult> {
+  let current = url;
+
+  for (let hop = 0; hop <= MAX_REDIRECT_HOPS; hop++) {
+    if (!isAllowedOutboundUrl(current)) {
+      throw new UpstreamRedirectError(
+        `Blocked outbound fetch to non-allowlisted URL: ${current}`,
+      );
+    }
+
+    // SSRF sink guard (CodeQL js/request-forgery): the fetch consumes the
+    // URL object whose `.hostname` is constrained by exact-match literal
+    // comparisons in the guarding condition — the shape static taint
+    // analysis recognizes as a barrier. The `isAllowedOutboundUrl` check
+    // above remains the full #1392 policy (scheme, credentials, subdomain
+    // rules); this guard is intentionally redundant defense-in-depth at
+    // the sink. Keep the literal chain in sync with SUPPORTED_SITES; the
+    // route tests exercise every host on every path. This is a deliberate
+    // tightening: redirects to subdomains beyond the apex, www, and the
+    // API hosts fail loudly instead of being silently followed.
+    const hopUrl = new URL(current);
+    let response: Response;
+    if (
+      hopUrl.hostname === "moxfield.com" ||
+      hopUrl.hostname === "www.moxfield.com" ||
+      hopUrl.hostname === "api2.moxfield.com" ||
+      hopUrl.hostname === "archidekt.com" ||
+      hopUrl.hostname === "www.archidekt.com" ||
+      hopUrl.hostname === "mtggoldfish.com" ||
+      hopUrl.hostname === "www.mtggoldfish.com" ||
+      hopUrl.hostname === "tappedout.net" ||
+      hopUrl.hostname === "www.tappedout.net"
+    ) {
+      response = await fetch(hopUrl, {
+        headers,
+        redirect: "manual",
+        signal: AbortSignal.timeout(OUTBOUND_FETCH_TIMEOUT_MS),
+      });
+    } else {
+      throw new UpstreamRedirectError(
+        `Blocked outbound fetch to non-allowlisted host: ${hopUrl.hostname}`,
+      );
+    }
+
+    if (REDIRECT_STATUSES.includes(response.status)) {
+      const location = response.headers.get("location");
+      if (!location) break;
+      // Resolve relative redirects against the current hop.
+      current = new URL(location, current).toString();
+      continue;
+    }
+
+    // Mirror the #1277 inbound pattern: honor the declared length before
+    // buffering, then re-check the actual buffered size.
+    const contentLength = response.headers.get("content-length");
+    if (
+      contentLength !== null &&
+      Number(contentLength) > MAX_RESPONSE_BODY_BYTES
+    ) {
+      throw new UpstreamBodyTooLargeError();
+    }
+
+    const text = await response.text();
+    if (text.length > MAX_RESPONSE_BODY_BYTES) {
+      throw new UpstreamBodyTooLargeError();
+    }
+
+    return {
+      ok: response.ok,
+      status: response.status,
+      statusText: response.statusText,
+      text,
+    };
+  }
+
+  return {
+    ok: false,
+    status: 502,
+    statusText: "Too many redirects",
+    text: "",
+  };
 }
 
 /**
@@ -480,10 +596,7 @@ export async function POST(request: NextRequest) {
     try {
       body = JSON.parse(raw);
     } catch {
-      return NextResponse.json(
-        { error: "Invalid JSON body" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
     if (!body || typeof body !== "object") {
@@ -550,6 +663,27 @@ export async function POST(request: NextRequest) {
       try {
         decklist = await supportedSite.fetchDecklist(url);
       } catch (error) {
+        // An oversized upstream body is a hard stop — do not fall back to
+        // scraping the same oversized site (issue #1783).
+        if (error instanceof UpstreamBodyTooLargeError) {
+          return NextResponse.json(
+            {
+              error: `Deck site response too large; max ${MAX_RESPONSE_BODY_BYTES} bytes`,
+            },
+            { status: 413 },
+          );
+        }
+        // A redirect escaping the allowlist is equally a hard stop — never
+        // retry a site whose API bounces off the allowlist (issue #1783).
+        if (error instanceof UpstreamRedirectError) {
+          return NextResponse.json(
+            {
+              error:
+                "Deck URL redirected to a host that is not an allowlisted deck site",
+            },
+            { status: 400 },
+          );
+        }
         console.error(
           `Site-specific fetch failed for ${supportedSite.name}:`,
           error,
@@ -559,28 +693,53 @@ export async function POST(request: NextRequest) {
 
     // Fall back to generic HTML scraping
     if (!decklist) {
-      // Fetch the URL using a CORS proxy approach (server-side)
-      // Using a public CORS proxy for development, in production you'd want your own proxy
-      const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-
-      const response = await fetch(proxyUrl, {
-        headers: {
+      // Issue #1783 — fetch the (already allowlisted) deck URL directly.
+      // Server-side fetch needs no CORS proxy; fetchDeckSiteText validates
+      // every redirect hop against the allowlist and caps the body size.
+      let html: string;
+      try {
+        const fetched = await fetchDeckSiteText(url, {
           Accept: "text/html",
-        },
-      });
+        });
 
-      if (!response.ok) {
-        return NextResponse.json(
-          {
-            error: `Failed to fetch deck URL: ${response.status} ${response.statusText}`,
-            suggestion:
-              "Try exporting the decklist as text from the site and using the Text/Clipboard import option instead.",
-          },
-          { status: response.status },
-        );
+        if (!fetched.ok) {
+          return NextResponse.json(
+            {
+              error: `Failed to fetch deck URL: ${fetched.status} ${fetched.statusText}`,
+              suggestion:
+                "Try exporting the decklist as text from the site and using the Text/Clipboard import option instead.",
+            },
+            { status: fetched.status },
+          );
+        }
+
+        html = fetched.text;
+      } catch (error) {
+        if (error instanceof UpstreamBodyTooLargeError) {
+          return NextResponse.json(
+            {
+              error: `Deck site response too large; max ${MAX_RESPONSE_BODY_BYTES} bytes`,
+            },
+            { status: 413 },
+          );
+        }
+        if (error instanceof UpstreamRedirectError) {
+          return NextResponse.json(
+            {
+              error:
+                "Deck URL redirected to a host that is not an allowlisted deck site",
+            },
+            { status: 400 },
+          );
+        }
+        if (error instanceof Error && error.name === "TimeoutError") {
+          return NextResponse.json(
+            { error: "Deck site took too long to respond" },
+            { status: 504 },
+          );
+        }
+        throw error;
       }
-
-      const html = await response.text();
 
       // Parse the decklist from the HTML
       const result = detectAndParseSite(url, html);
