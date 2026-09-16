@@ -44,5 +44,44 @@ runs:
       run: echo "value=${{ runner.os }}-node-${{ inputs.node-version }}-npm-${{ hashFiles('package-lock.json') }}" >> "$GITHUB_OUTPUT"
 
     - name: Install dependencies
+      # Issue #1837: GitHub-hosted runners intermittently hit npm-registry
+      # network errors (ETIMEDOUT/ENETUNREACH/ECONNRESET) during npm ci.
+      # Retry those transient failures (2 retries, 10s/30s backoff) before
+      # letting the job go red; any other failure fails immediately with
+      # npm's original output and exit code. npm's own fetch retries are
+      # raised as defense-in-depth for blips below this step's granularity.
       shell: bash
-      run: npm ci ${{ inputs.npm-ci-args }}
+      env:
+        npm_config_fetch_retries: '5'
+        npm_config_fetch_retry_mintimeout: '10000'
+        npm_config_fetch_retry_maxtimeout: '60000'
+      run: |
+        network_error_re='ETIMEDOUT|ENETUNREACH|ECONNRESET|network timeout|EAI_AGAIN'
+        max_attempts=3
+        backoffs=(10 30)
+        log="$(mktemp)"
+        trap 'rm -f "$log"' EXIT
+
+        attempt=1
+        while [ "$attempt" -le "$max_attempts" ]; do
+          set +e
+          npm ci ${{ inputs.npm-ci-args }} >"$log" 2>&1
+          status=$?
+          set -e
+
+          if [ "$status" -eq 0 ]; then
+            cat "$log"
+            exit 0
+          fi
+
+          if [ "$attempt" -lt "$max_attempts" ] && grep -Eq "$network_error_re" "$log"; then
+            error_code="$(grep -Eo "$network_error_re" "$log" | head -n 1)"
+            echo "::notice title=npm-ci-retry::attempt ${attempt} failed with network error (${error_code}); retrying in ${backoffs[$((attempt - 1))]}s [npm-ci-retry]"
+            sleep "${backoffs[$((attempt - 1))]}"
+            attempt=$((attempt + 1))
+            continue
+          fi
+
+          cat "$log"
+          exit "$status"
+        done
