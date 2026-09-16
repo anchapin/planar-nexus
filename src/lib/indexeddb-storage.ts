@@ -302,6 +302,30 @@ export interface StorageQuotaInfo {
 }
 
 // ============================================================================
+// V4 CONSOLIDATION CONSTANTS (issue #1811)
+// ============================================================================
+
+/**
+ * Issue #1811 — names of the four stores introduced in v3 → v4. Folded in
+ * from standalone single-store databases that were "not blessed" by the
+ * persistence ADR (docs/PERSISTENCE_ARCHITECTURE.md §1 / §6 stage 1):
+ *   - `local-game-state`     ← `PlanarNexusGameDB.games`
+ *   - `local-game-codes`     ← `PlanarNexusGameDB.gameCodes`
+ *   - `search-preferences`   ← `PlanarNexusSearchDB.preferences`
+ *   - `search-presets`       ← `PlanarNexusPresetsDB.search-presets`
+ *   - `recent-searches`      ← `PlanarNexusRecentSearchesDB.recent-searches`
+ *
+ * Exported so callers (and tests) don't repeat the kebab-case strings
+ * and so test fixtures reference the same constants the production code
+ * uses.
+ */
+export const LOCAL_GAME_STATE_STORE = "local-game-state";
+export const LOCAL_GAME_CODES_STORE = "local-game-codes";
+export const SEARCH_PREFERENCES_STORE = "search-preferences";
+export const SEARCH_PRESETS_STORE = "search-presets";
+export const RECENT_SEARCHES_STORE = "recent-searches";
+
+// ============================================================================
 // INDEXEDDB STORAGE CLASS
 // ============================================================================
 
@@ -368,8 +392,7 @@ async function ensureLegacyV3Split(storage: IndexedDBStorage): Promise<void> {
 
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error ?? new Error("v3 split tx failed"));
-    tx.onabort = () =>
-      reject(tx.error ?? new Error("v3 split tx aborted"));
+    tx.onabort = () => reject(tx.error ?? new Error("v3 split tx aborted"));
 
     for (const row of legacy) {
       // Idempotency probe — same transaction so the read is consistent
@@ -396,8 +419,7 @@ async function ensureLegacyV3Split(storage: IndexedDBStorage): Promise<void> {
           isAutoSave: row.isAutoSave,
           autoSaveSlot: row.autoSaveSlot,
           hasReplay:
-            typeof row.replayJson === "string" &&
-            row.replayJson.length > 0,
+            typeof row.replayJson === "string" && row.replayJson.length > 0,
         };
         const payloadRow: StoredGamePayload = {
           id: row.id,
@@ -410,6 +432,308 @@ async function ensureLegacyV3Split(storage: IndexedDBStorage): Promise<void> {
       };
     }
   });
+}
+
+// ============================================================================
+// V4 CONSOLIDATION (issue #1811)
+// ============================================================================
+
+/**
+ * Issue #1811 — list of standalone legacy databases that need to be
+ * folded into `PlanarNexusStorage` in v3 → v4.
+ *
+ * Each entry pairs a legacy DB name with its single object store and the
+ * new consolidated store name. The order is the order the migration runs
+ * (deterministic — easiest test failure to debug if a step breaks).
+ *
+ * `PlanarNexusGameDB` contributes TWO stores (`games` → `local-game-state`
+ * and `gameCodes` → `local-game-codes`) and is split into two
+ * sub-entries so the helper handles them uniformly.
+ */
+const V4_CONSOLIDATION_TARGETS: ReadonlyArray<{
+  legacyDbName: string;
+  legacyVersion: number;
+  legacyStoreName: string;
+  targetStoreName: string;
+  /**
+   * Map a legacy row to a target row. Receives the raw legacy value and
+   * the resolved key (from `openCursor` for stores whose keyPath is the
+   * natural key — `gameId`, `gameCode`, `id`, or `query`). Must return a
+   * row whose `id` is a non-empty string so the wrapper class's `set()`
+   * accepts it.
+   */
+  toTargetRow: (
+    row: Record<string, unknown>,
+    key: string,
+  ) => Record<string, unknown>;
+}> = [
+  {
+    legacyDbName: "PlanarNexusGameDB",
+    legacyVersion: 1,
+    legacyStoreName: "games",
+    targetStoreName: LOCAL_GAME_STATE_STORE,
+    // Legacy keyPath was `gameId`; IndexedDBStorage's stores all key on
+    // `id`. Mirror the legacy `gameId` onto the new `id` field so the
+    // wrapper class's `set()` accepts the row.
+    toTargetRow: (row) => ({
+      id: row.gameId as string,
+      ...row,
+    }),
+  },
+  {
+    legacyDbName: "PlanarNexusGameDB",
+    legacyVersion: 1,
+    legacyStoreName: "gameCodes",
+    targetStoreName: LOCAL_GAME_CODES_STORE,
+    // Legacy keyPath was `gameCode`; the new store keys on `id` (the
+    // kebab-case convention for the wrapper class). The legacy key is
+    // passed in explicitly because `openCursor` returns the keyPath
+    // value (`gameCode`) directly.
+    toTargetRow: (_row, key) => ({
+      id: key,
+      gameCode: key,
+      // gameId is the value side of the mapping — read it from the
+      // legacy row, which the original `storeGameCode` populated as
+      // `{ gameCode, gameId }`.
+      gameId: _row.gameId as string,
+    }),
+  },
+  {
+    legacyDbName: "PlanarNexusSearchDB",
+    legacyVersion: 1,
+    legacyStoreName: "preferences",
+    targetStoreName: SEARCH_PREFERENCES_STORE,
+    toTargetRow: (_row, key) => ({
+      id: key,
+      // The legacy row shape is `{ id, prefs, updatedAt }` — preserve
+      // it so the search-preferences module keeps reading what it wrote.
+      prefs: _row.prefs,
+      updatedAt: _row.updatedAt,
+    }),
+  },
+  {
+    legacyDbName: "PlanarNexusPresetsDB",
+    legacyVersion: 1,
+    legacyStoreName: "search-presets",
+    targetStoreName: SEARCH_PRESETS_STORE,
+    toTargetRow: (row, key) => ({
+      id: key,
+      ...row,
+    }),
+  },
+  {
+    legacyDbName: "PlanarNexusRecentSearchesDB",
+    legacyVersion: 1,
+    legacyStoreName: "recent-searches",
+    targetStoreName: RECENT_SEARCHES_STORE,
+    // Legacy keyPath was `query`; the new store keys on `id` (mirrored
+    // from `query`) so the wrapper class's `set()` accepts the row.
+    toTargetRow: (row) => ({
+      id: row.query as string,
+      query: row.query as string,
+      lastUsedAt: row.lastUsedAt as number,
+    }),
+  },
+];
+
+/**
+ * Open a legacy database and return all rows from the given store,
+ * keyed by the row's primary key (which depends on the legacy store's
+ * keyPath — `gameId`, `gameCode`, `id`, or `query`). Returns an empty
+ * Map when the DB / store does not exist (already migrated, or never
+ * used by this user) so the migration is idempotent. Resolves `null`
+ * when IndexedDB is unavailable (private-mode browsers, server-side) —
+ * the caller treats that as a no-op.
+ */
+async function readAllLegacyRows(
+  legacyDbName: string,
+  legacyVersion: number,
+  legacyStoreName: string,
+): Promise<Map<string, Record<string, unknown>> | null> {
+  if (typeof indexedDB === "undefined") return null;
+
+  // Open the legacy DB at the exact version it was published at so the
+  // existing on-disk schema / rows are honored (we never ask for an
+  // upgrade we don't define).
+  const db = await new Promise<IDBDatabase | null>((resolve) => {
+    let request: IDBOpenDBRequest;
+    try {
+      request = indexedDB.open(legacyDbName, legacyVersion);
+    } catch {
+      resolve(null);
+      return;
+    }
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => resolve(null);
+    request.onblocked = () => resolve(null);
+  });
+
+  if (!db) return null;
+
+  try {
+    if (!db.objectStoreNames.contains(legacyStoreName)) {
+      // Already deleted (or never existed) — nothing to migrate.
+      return new Map();
+    }
+
+    const tx = db.transaction(legacyStoreName, "readonly");
+    const store = tx.objectStore(legacyStoreName);
+
+    const rows = await new Promise<
+      Array<{ key: string; value: Record<string, unknown> }>
+    >((resolve, reject) => {
+      const request = store.openCursor();
+      const collected: Array<{
+        key: string;
+        value: Record<string, unknown>;
+      }> = [];
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          resolve(collected);
+          return;
+        }
+        collected.push({
+          key: cursor.key as string,
+          value: cursor.value as Record<string, unknown>,
+        });
+        cursor.continue();
+      };
+      request.onerror = () =>
+        reject(request.error ?? new Error("cursor failed"));
+    });
+
+    const map = new Map<string, Record<string, unknown>>();
+    for (const { key, value } of rows) {
+      map.set(key, value);
+    }
+    return map;
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * Delete a legacy database once its rows have been copied into the new
+ * consolidated store. Best-effort: a failure to delete the legacy DB
+ * (e.g. another tab still holds it open) does NOT roll back the data
+ * move — the next `initialize()` re-runs the migration, sees the
+ * consolidated store already holds the row, and re-attempts the delete.
+ */
+async function deleteLegacyDatabase(legacyDbName: string): Promise<void> {
+  if (typeof indexedDB === "undefined") return;
+
+  await new Promise<void>((resolve) => {
+    let request: IDBOpenDBRequest;
+    try {
+      request = indexedDB.deleteDatabase(legacyDbName);
+    } catch {
+      resolve();
+      return;
+    }
+    request.onsuccess = () => resolve();
+    request.onerror = () => resolve();
+    request.onblocked = () => resolve();
+  });
+}
+
+/**
+ * Issue #1811 — fold every row of every legacy single-store database
+ * into the new v4 stores on `PlanarNexusStorage`. Runs lazily, after
+ * the v3 → v4 schema upgrade has committed, gated by a marker row in
+ * `preferences` (`v4-consolidation-done`) so re-opens are no-ops.
+ *
+ * Idempotent: rows already present in the target store are skipped (we
+ * probe via `get()` before writing). The legacy DBs are deleted only
+ * after the rows land in the new stores — a mid-migration crash leaves
+ * the legacy DBs intact and the next `initialize()` retries the move.
+ *
+ * Errors are swallowed and logged so a corrupt legacy store cannot take
+ * the rest of the app down with it (mirroring the v3 split behavior).
+ */
+async function ensureLegacyV4Consolidation(
+  storage: IndexedDBStorage,
+): Promise<void> {
+  // Skip if the marker is already set OR any target store is missing.
+  if (await storage.get("preferences", "v4-consolidation-done")) {
+    return;
+  }
+  const requiredStores = [
+    LOCAL_GAME_STATE_STORE,
+    LOCAL_GAME_CODES_STORE,
+    SEARCH_PREFERENCES_STORE,
+    SEARCH_PRESETS_STORE,
+    RECENT_SEARCHES_STORE,
+  ];
+  for (const name of requiredStores) {
+    if (!storage.hasStore(name)) return;
+  }
+
+  let migratedAny = false;
+
+  for (const target of V4_CONSOLIDATION_TARGETS) {
+    try {
+      const legacyRows = await readAllLegacyRows(
+        target.legacyDbName,
+        target.legacyVersion,
+        target.legacyStoreName,
+      );
+      if (legacyRows === null) continue; // IDB unavailable — skip
+      if (legacyRows.size === 0) continue; // Nothing to migrate
+
+      // Walk every legacy row, write the mapped row to the new store.
+      // Skip rows whose target id already exists so re-runs (e.g. after
+      // a process crash between the row write and the DB delete) do
+      // not overwrite fresh data with stale legacy bytes.
+      for (const [key, value] of legacyRows) {
+        const targetRow = target.toTargetRow(value, key);
+        const id = targetRow.id as string;
+        if (!id) continue;
+
+        const existing = await storage.get<Record<string, unknown>>(
+          target.targetStoreName,
+          id,
+        );
+        if (existing) continue;
+
+        // `set()` requires a row with an `id`. The `toTargetRow` mapper
+        // always produces one; the assertion guards against a future
+        // mapper that drops the field.
+        await storage.set(target.targetStoreName, {
+          id,
+          ...targetRow,
+        });
+        migratedAny = true;
+      }
+
+      // Once every row for this legacy DB / store has landed, drop the
+      // legacy DB so the duplicate-open code path is gone for good.
+      if (legacyRows.size > 0) {
+        await deleteLegacyDatabase(target.legacyDbName);
+      }
+    } catch (error) {
+      console.warn(
+        `[indexeddb-storage] v4 consolidation failed for ${target.legacyDbName}/${target.legacyStoreName}:`,
+        error,
+      );
+    }
+  }
+
+  // Mark this consolidation pass as complete so re-opens short-circuit.
+  // We mark even when no rows moved so a user who never used the legacy
+  // DBs does not re-pay the migration cost on every open.
+  try {
+    await storage.set("preferences", {
+      id: "v4-consolidation-done",
+      migratedAt: Date.now(),
+      migratedAny,
+    });
+  } catch (error) {
+    console.warn(
+      "[indexeddb-storage] v4 consolidation marker write failed:",
+      error,
+    );
+  }
 }
 
 // ============================================================================
@@ -490,7 +814,7 @@ export class IndexedDBStorage {
       // SCHEMA AUDIT (Phase 34)
       // ============================================================================
       // Database: PlanarNexusStorage
-      // Current version: 3
+      // Current version: 4
       //
       // Object stores (all use keyPath: "id"):
       //
@@ -508,6 +832,22 @@ export class IndexedDBStorage {
       // | usage-tracking         | AI provider usage telemetry            | provider, timestamp                    |
       // | achievements           | Per-player achievement progress        | (none — keyPath lookup only)           |
       // | game-history           | Aggregated completed-game records      | date, result, mode                     |
+      // | local-game-state       | Per-game session rows for hot-seat /   | gameCode (non-unique — uniqueness      |
+      // |                        | local P2P (#1811 — folded from         | is enforced by the                     |
+      // |                        | PlanarNexusGameDB v1)                  | local-game-codes store), status,       |
+      // |                        |                                        | updatedAt                              |
+      // | local-game-codes       | Game-code → gameId lookup index        | (none — id lookup only)                |
+      // |                        | (#1811 — folded from                   |                                        |
+      // |                        | PlanarNexusGameDB v1)                  |                                        |
+      // | search-preferences     | Deck-builder search prefs              | (none — id lookup only)                |
+      // |                        | (#1811 — folded from                   |                                        |
+      // |                        | PlanarNexusSearchDB v1)                |                                        |
+      // | search-presets         | User-authored filter presets          | name, updatedAt                        |
+      // |                        | (#1811 — folded from                   |                                        |
+      // |                        | PlanarNexusPresetsDB v1)               |                                        |
+      // | recent-searches        | LRU list of recent deck-builder        | lastUsedAt                             |
+      // |                        | queries (#1811 — folded from           |                                        |
+      // |                        | PlanarNexusRecentSearchesDB v1)        |                                        |
       //
       // Version history:
       //   v1 — initial schema (lazy onupgradeneeded creates stores on first open)
@@ -522,6 +862,18 @@ export class IndexedDBStorage {
       //        so a user who downgrades back to a v2 build still sees the
       //        legacy monolithic rows in the backup envelope (no data loss
       //        in either direction).
+      //   v4 — issue #1811 (PERSISTENCE_ARCHITECTURE §6 stage 1). Adds
+      //        five new stores — local-game-state, local-game-codes,
+      //        search-preferences, search-presets, recent-searches —
+      //        folded in from the four standalone single-store
+      //        "not blessed" databases listed in the persistence ADR
+      //        (PlanarNexusGameDB, PlanarNexusSearchDB, PlanarNexusPresetsDB,
+      //        PlanarNexusRecentSearchesDB). The schema is created in
+      //        the upgrade handler; the actual data move is run lazily
+      //        by ensureLegacyV4Consolidation after open, gated on the
+      //        `v4-consolidation-done` marker in `preferences`. The
+      //        legacy databases are deleted once their rows land in the
+      //        consolidated stores.
       //
       // Migration rules when bumping the schema version:
       //   1. Increment DEFAULT_STORAGE_CONFIG.version.
@@ -574,7 +926,31 @@ export class IndexedDBStorage {
               store.createIndex("date", "date", { unique: false });
               store.createIndex("result", "result", { unique: false });
               store.createIndex("mode", "mode", { unique: false });
+            } else if (storeName === LOCAL_GAME_STATE_STORE) {
+              // #1811 — fold `PlanarNexusGameDB.games`. The original
+              // schema had a UNIQUE index on gameCode, but uniqueness is
+              // enforced upstream by the `local-game-codes` store (keyPath
+              // = gameCode, so duplicate keys overwrite). Marking this
+              // index non-unique makes the migration robust against any
+              // legacy rows that would have collided on the old unique
+              // constraint (the local-game-codes store remains the
+              // authoritative gameCode → gameId index).
+              store.createIndex("gameCode", "gameCode", { unique: false });
+              store.createIndex("status", "status", { unique: false });
+              store.createIndex("updatedAt", "updatedAt", { unique: false });
+            } else if (storeName === SEARCH_PRESETS_STORE) {
+              // #1811 — fold `PlanarNexusPresetsDB.search-presets`.
+              store.createIndex("name", "name", { unique: false });
+              store.createIndex("updatedAt", "updatedAt", { unique: false });
+            } else if (storeName === RECENT_SEARCHES_STORE) {
+              // #1811 — fold `PlanarNexusRecentSearchesDB.recent-searches`.
+              // LRU eviction walks all entries sorted by `lastUsedAt`, so
+              // we index it for an efficient cursor pass.
+              store.createIndex("lastUsedAt", "lastUsedAt", { unique: false });
             }
+            // LOCAL_GAME_CODES_STORE and SEARCH_PREFERENCES_STORE are
+            // keyed-by-id-only with no secondary indexes — primary-key
+            // lookup is the only access pattern.
           }
         }
 
@@ -602,6 +978,21 @@ export class IndexedDBStorage {
           // upgrade-tx auto-commit semantics (and adds risk in real
           // browsers if the user closes the tab mid-handler).
         }
+
+        // v3 → v4 (issue #1811 — PERSISTENCE_ARCHITECTURE §6 stage 1):
+        // add local-game-state, local-game-codes, search-preferences,
+        // search-presets, recent-searches — schema is created in the
+        // loop above. The actual data move (folding rows from
+        // PlanarNexusGameDB / PlanarNexusSearchDB / PlanarNexusPresetsDB
+        // / PlanarNexusRecentSearchesDB into the new stores, then
+        // deleting the legacy DBs) runs lazily in
+        // {@link ensureLegacyV4Consolidation} for the same reason as
+        // the v3 split (fake-indexeddb's upgrade-tx auto-commit + real
+        // browsers' tab-close risk).
+        if (oldVersion < 4 && oldVersion >= 1) {
+          // schema-only branch — data move is lazy, see
+          // {@link ensureLegacyV4Consolidation}.
+        }
       };
     });
 
@@ -619,6 +1010,23 @@ export class IndexedDBStorage {
           error,
         );
       }
+    }
+
+    // Issue #1811 — PERSISTENCE_ARCHITECTURE §6 stage 1. Once the v4
+    // upgrade has committed, lazily fold every row of the four
+    // standalone legacy DBs (PlanarNexusGameDB, PlanarNexusSearchDB,
+    // PlanarNexusPresetsDB, PlanarNexusRecentSearchesDB) into the new
+    // consolidated stores, then delete the legacy DBs. Gated by a
+    // marker row in `preferences`, so re-opens are no-ops. Errors are
+    // swallowed and logged (a corrupt legacy store cannot take the
+    // rest of the app down).
+    try {
+      await ensureLegacyV4Consolidation(this);
+    } catch (error) {
+      console.warn(
+        "[indexeddb-storage] v4 consolidation migration failed:",
+        error,
+      );
     }
   }
 
@@ -1108,7 +1516,7 @@ export class IndexedDBStorage {
     }
   }
 
-/**
+  /**
    * Issue #1572 — collect every saved-game row (across the legacy
    * `saved-games` store and the new meta + payload split) and join them
    * back into the monolithic `StoredGame` shape that the backup envelope
@@ -1437,12 +1845,13 @@ export class IndexedDBStorage {
  */
 const DEFAULT_STORAGE_CONFIG: StorageConfig = {
   dbName: "PlanarNexusStorage",
-  // Issue #1572 — v3 introduces saved-games-meta + saved-games-payloads
-  // (split out of the monolithic saved-games store). The legacy store name
-  // is still listed so a downgrade remains a "best-effort" no-data-loss
-  // path (the upgrade handler leaves the legacy rows in place until a
-  // later cleanup pass decides to remove them).
-  version: 3,
+  // Issue #1811 — v4 folds the four "not blessed" standalone single-store
+  // databases (PlanarNexusGameDB, PlanarNexusSearchDB, PlanarNexusPresetsDB,
+  // PlanarNexusRecentSearchesDB) into this DB. Schema is created in the
+  // upgrade handler; the data move runs lazily via
+  // ensureLegacyV4Consolidation so re-opens are no-ops and a corrupt
+  // legacy store cannot take the rest of the app down.
+  version: 4,
   stores: [
     "decks",
     "saved-games",
@@ -1452,6 +1861,11 @@ const DEFAULT_STORAGE_CONFIG: StorageConfig = {
     "usage-tracking",
     "achievements",
     "game-history",
+    LOCAL_GAME_STATE_STORE,
+    LOCAL_GAME_CODES_STORE,
+    SEARCH_PREFERENCES_STORE,
+    SEARCH_PRESETS_STORE,
+    RECENT_SEARCHES_STORE,
   ],
 };
 
