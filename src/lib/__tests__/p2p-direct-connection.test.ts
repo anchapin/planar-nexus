@@ -4,18 +4,38 @@
  */
 
 import {
+  closeAllSessions,
+  createClientConnection,
+  createHostConnection,
+  exportSessionData,
+  generateConnectionQRCode,
+  getConnectionState,
+  handleICEExchange,
   parseConnectionData,
   parseICECandidateData,
   generateConnectionString,
   generateICECandidateString,
+  sessionManager,
   validateConnectionData,
-  getConnectionState,
-  handleICEExchange,
   isConnectionData,
   isICECandidateData,
   type ConnectionData,
   type ICECandidateData,
 } from "../p2p-direct-connection";
+import {
+  installWebrtcGlobals,
+  uninstallWebrtcGlobals,
+  latestPC,
+  MockRTCPeerConnection,
+} from "@/test-utils/__mocks__/rtc";
+
+// The QR encoder is an external concern — stub it so the flow tests are
+// deterministic in jsdom and the error branch is reachable.
+jest.mock("qrcode", () => ({
+  toDataURL: jest.fn().mockResolvedValue("data:image/png;base64,QR"),
+}));
+import QRCode from "qrcode";
+const mockToDataURL = QRCode.toDataURL as unknown as jest.Mock;
 
 describe("P2P Direct Connection Utilities", () => {
   describe("parseConnectionData", () => {
@@ -468,5 +488,296 @@ describe("ConnectionData Type", () => {
       format: "commander",
     };
     expect(data.type).toBe("answer");
+  });
+});
+
+// =============================================================================
+// Issue #1788 — session-manager + host/client connection flows against the
+// real transport (driven through the shared WebRTC mock).
+// =============================================================================
+
+describe("Session manager lifecycle (#1788)", () => {
+  const validConnectionData: ConnectionData = {
+    type: "offer",
+    sessionId: "sess-mgr-1",
+    timestamp: Date.now(),
+    sdp: { type: "offer", sdp: "sdp" },
+    gameCode: "MGR001",
+    hostName: "Host",
+    format: "commander",
+  };
+
+  function makeFakeConnection() {
+    return {
+      close: jest.fn(),
+      addIceCandidate: jest.fn().mockResolvedValue(undefined),
+    };
+  }
+
+  afterEach(() => {
+    closeAllSessions();
+  });
+
+  it("tracks a session through create → update → ICE → export → close", () => {
+    const conn = makeFakeConnection();
+    sessionManager.createSession(
+      "sess-mgr-1",
+      conn as never,
+      validConnectionData,
+    );
+
+    expect(getConnectionState("sess-mgr-1")).toBe("idle");
+    expect(
+      sessionManager.getSession("sess-mgr-1")?.connectionData.gameCode,
+    ).toBe("MGR001");
+
+    sessionManager.updateSessionState("sess-mgr-1", "waiting-for-answer");
+    expect(getConnectionState("sess-mgr-1")).toBe("waiting-for-answer");
+
+    // Unknown ids are silently ignored.
+    sessionManager.updateSessionState("nope", "connected");
+
+    sessionManager.addICECandidate("sess-mgr-1", { candidate: "c1" });
+    sessionManager.addICECandidate("nope", { candidate: "ghost" });
+    expect(sessionManager.getICECandidates("sess-mgr-1")).toEqual([
+      { candidate: "c1" },
+    ]);
+    expect(sessionManager.getICECandidates("nope")).toEqual([]);
+
+    const exported = exportSessionData();
+    expect(exported).toEqual([
+      {
+        sessionId: "sess-mgr-1",
+        state: "waiting-for-answer",
+        timestamp: expect.any(Number),
+        iceCandidates: 1,
+      },
+    ]);
+
+    sessionManager.closeSession("sess-mgr-1");
+    expect(conn.close).toHaveBeenCalledTimes(1);
+    expect(getConnectionState("sess-mgr-1")).toBeNull();
+    // Closing an unknown session is a no-op.
+    sessionManager.closeSession("nope");
+  });
+
+  it("cleanupOldSessions only closes sessions older than 10 minutes", () => {
+    const base = Date.now();
+    const clock = jest.spyOn(Date, "now").mockReturnValue(base);
+    const stale = makeFakeConnection();
+    sessionManager.createSession(
+      "sess-stale",
+      stale as never,
+      validConnectionData,
+    );
+
+    // 11 minutes later: the fresh session is created here (age 0), the stale
+    // one is now past the 10-minute timeout.
+    clock.mockReturnValue(base + 11 * 60 * 1000);
+    const fresh = makeFakeConnection();
+    sessionManager.createSession(
+      "sess-fresh",
+      fresh as never,
+      validConnectionData,
+    );
+
+    sessionManager.cleanupOldSessions();
+
+    expect(stale.close).toHaveBeenCalledTimes(1);
+    expect(fresh.close).not.toHaveBeenCalled();
+    expect(getConnectionState("sess-stale")).toBeNull();
+    expect(getConnectionState("sess-fresh")).not.toBeNull();
+    clock.mockRestore();
+  });
+
+  it("closeAllSessions closes and removes everything", () => {
+    const a = makeFakeConnection();
+    const b = makeFakeConnection();
+    sessionManager.createSession("sess-a", a as never, validConnectionData);
+    sessionManager.createSession("sess-b", b as never, validConnectionData);
+
+    closeAllSessions();
+
+    expect(a.close).toHaveBeenCalled();
+    expect(b.close).toHaveBeenCalled();
+    expect(exportSessionData()).toEqual([]);
+  });
+});
+
+describe("generateConnectionQRCode (#1788)", () => {
+  let errorSpy: jest.SpyInstance;
+  beforeEach(() => {
+    errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    mockToDataURL.mockResolvedValue("data:image/png;base64,QR");
+  });
+  afterEach(() => {
+    errorSpy.mockRestore();
+    mockToDataURL.mockReset();
+  });
+
+  const data: ConnectionData = {
+    type: "offer",
+    sessionId: "qr-1",
+    timestamp: Date.now(),
+    sdp: { type: "offer", sdp: "sdp" },
+    gameCode: "QR0001",
+    hostName: "Host",
+    format: "commander",
+  };
+
+  it("returns the encoder data URL and forwards options", async () => {
+    const url = await generateConnectionQRCode(data, {
+      width: 128,
+      margin: 4,
+      color: { dark: "#112233", light: "#ffffff" },
+    });
+    expect(url).toBe("data:image/png;base64,QR");
+    expect(mockToDataURL).toHaveBeenCalledWith(
+      JSON.stringify(data),
+      expect.objectContaining({ width: 128, margin: 4 }),
+    );
+  });
+
+  it("throws a sanitized error (never rethrowing the encoder error) on failure", async () => {
+    mockToDataURL.mockRejectedValueOnce(new Error("encoder exploded"));
+    await expect(generateConnectionQRCode(data)).rejects.toThrow(
+      "Failed to generate connection QR code",
+    );
+    // #982: the log must not embed the session id.
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain("qr-1");
+  });
+});
+
+describe("Host / client connection flows against the real transport (#1788)", () => {
+  let originals: ReturnType<typeof installWebrtcGlobals>;
+  let errorSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    originals = installWebrtcGlobals();
+    errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+    mockToDataURL.mockResolvedValue("data:image/png;base64,QR");
+  });
+
+  afterEach(() => {
+    closeAllSessions();
+    uninstallWebrtcGlobals(originals);
+    errorSpy.mockRestore();
+    mockToDataURL.mockReset();
+  });
+
+  it("createHostConnection initializes, offers, registers a session and collects ICE candidates", async () => {
+    const onQRCodeGenerated = jest.fn();
+    const onICECandidate = jest.fn();
+
+    const connection = await createHostConnection({
+      isHost: true,
+      playerId: "host-1",
+      playerName: "Host",
+      onQRCodeGenerated,
+      onICECandidate,
+    });
+
+    expect(connection).toBeDefined();
+    expect(onQRCodeGenerated).toHaveBeenCalledTimes(1);
+    const [qrDataUrl, connectionData] = onQRCodeGenerated.mock.calls[0];
+    expect(qrDataUrl).toBe("data:image/png;base64,QR");
+    expect(connectionData).toMatchObject({
+      type: "offer",
+      hostName: "Host",
+      format: "commander",
+    });
+
+    // Exactly one session is waiting for the client's answer.
+    const sessions = exportSessionData();
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].state).toBe("waiting-for-answer");
+    expect(sessions[0].sessionId).toBe(connectionData.sessionId);
+    expect(getConnectionState(connectionData.sessionId)).toBe(
+      "waiting-for-answer",
+    );
+
+    // ICE gathering: the host's candidate handler is patched to record +
+    // forward candidates.
+    const candidate = {
+      candidate: "candidate:flow 1 udp 1 10.0.0.1 5000 typ host",
+      toJSON(this: { candidate: string }) {
+        return { candidate: this.candidate };
+      },
+    } as unknown as RTCIceCandidate;
+    connection["handleICECandidate"](candidate);
+    expect(onICECandidate).toHaveBeenCalledWith({
+      candidate: "candidate:flow 1 udp 1 10.0.0.1 5000 typ host",
+    });
+    expect(exportSessionData()[0].iceCandidates).toBe(1);
+  });
+
+  it("createClientConnection answers the host offer and registers the session", async () => {
+    // Host side first: produce a real offer + session.
+    await createHostConnection({
+      isHost: true,
+      playerId: "host-1",
+      playerName: "Host",
+    });
+    const [hostSession] = exportSessionData();
+    const hostConnectionData = {
+      type: "offer" as const,
+      sessionId: hostSession.sessionId,
+      timestamp: Date.now(),
+      sdp: { type: "offer" as const, sdp: "mock-offer-1" },
+      gameCode: "CLI001",
+      hostName: "Host",
+      format: "commander",
+    };
+
+    const onAnswerGenerated = jest.fn();
+    const client = await createClientConnection(hostConnectionData, {
+      isHost: false,
+      playerId: "client-1",
+      playerName: "Client",
+      onAnswerGenerated,
+    });
+
+    expect(client).toBeDefined();
+    expect(onAnswerGenerated).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "answer" }),
+    );
+    expect(getConnectionState(hostConnectionData.sessionId)).toBe(
+      "exchanging-ice",
+    );
+  });
+
+  it("handleICEExchange forwards candidates to the live session connection", async () => {
+    await createHostConnection({
+      isHost: true,
+      playerId: "host-1",
+      playerName: "Host",
+    });
+    const [hostSession] = exportSessionData().slice(-1);
+
+    const candidate: RTCIceCandidateInit = {
+      candidate: "candidate:exchange 1 udp 1 10.0.0.9 6000 typ host",
+    };
+    await handleICEExchange(hostSession.sessionId, candidate, {
+      isHost: true,
+      playerId: "host-1",
+      playerName: "Host",
+    } as never);
+
+    const pc = latestPC();
+    expect(pc.addedCandidates).toEqual([candidate]);
+  });
+
+  it("isConnectionData rejects a null sdp object", () => {
+    expect(
+      isConnectionData({
+        type: "offer",
+        sessionId: "s",
+        gameCode: "g",
+        hostName: "h",
+        timestamp: 1,
+        sdp: null,
+      }),
+    ).toBe(false);
+    expect(isICECandidateData(null)).toBe(false);
   });
 });
