@@ -613,9 +613,9 @@ const zaiConfig = {
 
 > **Note:** the Google provider reads `GOOGLE_AI_API_KEY` (or
 > `GOOGLE_GENERATIVE_AI_API_KEY`) — see `process.env.GOOGLE_AI_API_KEY` in
-> `src/ai/providers/factory.ts`. `.env.example` currently lists the Google key
-> under the name `GOOGLE_API_KEY`, which the app does **not** read; set one of
-> the two names above.
+> `src/ai/providers/factory.ts`. Older revisions of `.env.example` listed the
+> key under the name `GOOGLE_API_KEY`, which the app does **not** read; if you
+> copied that name, rename it to `GOOGLE_AI_API_KEY`.
 
 ### Optional
 

@@ -98,10 +98,10 @@ validate**.
    GOOGLE_AI_API_KEY=AIzaSy...
    ```
 
-   > ⚠️ **Do not use `GOOGLE_API_KEY`.** The app does not read that name.
-   > `.env.example` currently lists the Google key under `GOOGLE_API_KEY`,
-   > which is a known stale entry (issue #1553) — see
-   > [`docs/API.md`](./API.md) §4. Set one of the two names above.
+   > **Migration note:** if you copied the older name `GOOGLE_API_KEY` from a
+   > previous revision of `.env.example`, rename it to `GOOGLE_AI_API_KEY` —
+   > the app does not read the old name (see
+   > [`docs/API.md`](./API.md) §4).
 
 3. **Validate**:
 
