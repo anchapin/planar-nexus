@@ -179,12 +179,9 @@ jobs:
           # (guard 1), and this workflow's `on` only fires on main pushes.
           git commit -m "chore: auto-ratchet jest coverage floor to measured value"
           git push origin "$BRANCH"
+          PR_BODY="Automated coverage-floor bump from the Coverage Ratchet workflow (run ${{ github.run_id }} on ${GITHUB_SHA:0:7}). Commits jest.config.js + the README/CONTRIBUTING/TESTING doc tables atomically — the issue #1835 consistency guard (scripts/check-coverage-docs-sync.mjs) already passed in-workflow. Auto-merge is enabled; the PR lands when the required checks finish green."
           PR_URL=$(gh pr create --base main --head "$BRANCH" \
             --title "chore: auto-ratchet jest coverage floor" \
-            --body "Automated coverage-floor bump from the Coverage Ratchet workflow (run ${{ github.run_id }} on \`${GITHUB_SHA:0:7}\`).
-
-Commits \`jest.config.js\` + the README/CONTRIBUTING/TESTING doc tables atomically — the issue #1835 consistency guard (\`scripts/check-coverage-docs-sync.mjs\`) already passed in-workflow before this PR was opened.
-
-Auto-merge is enabled; the PR lands when the required checks finish green.")
+            --body "$PR_BODY")
           echo "[ratchet] opened $PR_URL"
           gh pr merge --auto --squash "$PR_URL"
