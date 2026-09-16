@@ -448,7 +448,9 @@ async function ensureLegacyV3Split(storage: IndexedDBStorage): Promise<void> {
  *
  * `PlanarNexusGameDB` contributes TWO stores (`games` → `local-game-state`
  * and `gameCodes` → `local-game-codes`) and is split into two
- * sub-entries so the helper handles them uniformly.
+ * sub-entries so the helper handles them uniformly. Both sub-entries
+ * must be processed BEFORE the legacy DB is deleted (see
+ * {@link ensureLegacyV4Consolidation}).
  */
 const V4_CONSOLIDATION_TARGETS: ReadonlyArray<{
   legacyDbName: string;
@@ -535,6 +537,18 @@ const V4_CONSOLIDATION_TARGETS: ReadonlyArray<{
     }),
   },
 ];
+
+/**
+ * Distinct legacy database names that participate in the v3 → v4
+ * consolidation. Used by the migration to delete a legacy DB only
+ * AFTER every store on that DB has been processed (a DB with
+ * multiple stores, like `PlanarNexusGameDB`, would otherwise be
+ * deleted after the first store's data move and the second store
+ * would find nothing).
+ */
+const V4_LEGACY_DB_NAMES: readonly string[] = Array.from(
+  new Set(V4_CONSOLIDATION_TARGETS.map((t) => t.legacyDbName)),
+);
 
 /**
  * Open a legacy database and return all rows from the given store,
@@ -671,6 +685,12 @@ async function ensureLegacyV4Consolidation(
 
   let migratedAny = false;
 
+  // Track per-DB counts so we only delete a legacy DB after every
+  // store on it has been processed (e.g. PlanarNexusGameDB contributes
+  // TWO stores: games and gameCodes). Deleting after the first store
+  // would orphan the second.
+  const dbHadAnyRows = new Map<string, boolean>();
+
   for (const target of V4_CONSOLIDATION_TARGETS) {
     try {
       const legacyRows = await readAllLegacyRows(
@@ -680,6 +700,10 @@ async function ensureLegacyV4Consolidation(
       );
       if (legacyRows === null) continue; // IDB unavailable — skip
       if (legacyRows.size === 0) continue; // Nothing to migrate
+
+      if (legacyRows.size > 0) {
+        dbHadAnyRows.set(target.legacyDbName, true);
+      }
 
       // Walk every legacy row, write the mapped row to the new store.
       // Skip rows whose target id already exists so re-runs (e.g. after
@@ -705,17 +729,29 @@ async function ensureLegacyV4Consolidation(
         });
         migratedAny = true;
       }
-
-      // Once every row for this legacy DB / store has landed, drop the
-      // legacy DB so the duplicate-open code path is gone for good.
-      if (legacyRows.size > 0) {
-        await deleteLegacyDatabase(target.legacyDbName);
-      }
     } catch (error) {
       console.warn(
         `[indexeddb-storage] v4 consolidation failed for ${target.legacyDbName}/${target.legacyStoreName}:`,
         error,
       );
+    }
+  }
+
+  // After every store on a legacy DB has been migrated, drop the DB
+  // so the duplicate-open code path is gone for good. We loop over the
+  // distinct DB names (rather than the per-store targets) so a DB
+  // with multiple stores (e.g. PlanarNexusGameDB) is deleted exactly
+  // once, AFTER every store on it has been processed.
+  for (const dbName of V4_LEGACY_DB_NAMES) {
+    if (dbHadAnyRows.get(dbName)) {
+      try {
+        await deleteLegacyDatabase(dbName);
+      } catch (error) {
+        console.warn(
+          `[indexeddb-storage] v4 consolidation legacy-DB delete failed for ${dbName}:`,
+          error,
+        );
+      }
     }
   }
 
