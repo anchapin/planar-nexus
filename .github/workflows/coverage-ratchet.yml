@@ -8,20 +8,30 @@
 # (docs/TESTING.md). The per-PR `test` job in ci.yml still catches coverage
 # removals at review time; this job makes the gains sticky post-merge.
 #
-# Loop safety (three independent guards, so the bot can never feed itself):
+# Loop safety (independent guards, so the bot can never feed itself):
 #   1. Pushes made with the built-in GITHUB_TOKEN never trigger new workflow
 #      runs (GitHub's built-in recursion protection).
-#   2. The bot's commit message carries `[skip ci]`, skipped by the job-level
-#      `if` below even if the push is later made with a PAT.
-#   3. The job-level `if` also skips pushes authored by github-actions[bot].
+#   2. The job-level `if` skips pushes authored by github-actions[bot] —
+#      which includes the auto-merge squash commit of the ratchet PR
+#      itself (issue #1850-followup landing flow).
 #
-# Issue #1835: because guards 1+2 mean NO CI ever runs on a ratchet commit,
-# this workflow asserts its own consistency before pushing — the same
+# Issue #1835: NO CI ran on a directly-pushed ratchet commit, so this
+# workflow asserts its own consistency before pushing — the same
 # coverage-docs guard ci.yml runs on PRs (`scripts/check-coverage-docs-sync.mjs`)
 # — and commits the ratcheted doc tables (README/CONTRIBUTING/TESTING) in the
 # SAME commit as the jest.config.js bump. Previously only jest.config.js was
 # staged, so the tables the ratchet script had just rewritten were silently
 # discarded and the next PR failed Coverage Docs Guard on the drift.
+#
+# Issue #1850-followup: landing via PR instead of a direct `git push` to main.
+# Branch protection on main requires the 17 status checks, which a direct
+# GITHUB_TOKEN push can never satisfy (GH006: "Protected branch update
+# failed"; the bot is not an admin, so enforce_admins=false does not exempt
+# it). The bump now lands through an auto-merge PR: the required checks run
+# on the PR (which also retires the `[skip ci]` guard — the PR merge commit
+# is bot-authored, so job-level guard 3 still prevents re-ratchet loops).
+# A second open ratchet PR suppresses duplicates until the first lands; the
+# next push to main re-ratchets from the merged floor.
 #
 # Concurrency: queued, never cancelled — two rapid merges to main must both
 # ratchet (the second run sees the first bump's floor as its baseline).
@@ -39,12 +49,14 @@ concurrency:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
-# The ratchet commits the bumped jest.config.js straight to main using the
-# built-in GITHUB_TOKEN (actions/checkout persists its credentials, so plain
-# `git push` works). Scoped here rather than on ci.yml so the write
-# permission never reaches the per-PR CI jobs.
+# The ratchet lands the bumped jest.config.js through an auto-merge PR using
+# the built-in GITHUB_TOKEN (issue #1850-followup: direct pushes to the
+# protected main branch are rejected with GH006 because the bot can never
+# satisfy required status checks). Scoped here rather than on ci.yml so the
+# write permission never reaches the per-PR CI jobs.
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   ratchet:
@@ -107,12 +119,11 @@ jobs:
           exit "$RATCHET_EXIT"
 
       - name: Assert coverage-docs consistency (issue #1835)
-        # Ratchet commits carry [skip ci] and GITHUB_TOKEN pushes never
-        # trigger workflows, so ci.yml's coverage-docs-guard job never sees
-        # them. Run the same guard HERE: if the ratchet rewrote
-        # jest.config.js but left any anchored doc table stale, fail loudly
-        # BEFORE the inconsistent state is pushed to main. Also covers the
-        # noop path (guard passes trivially when nothing was rewritten).
+        # Fail fast in-workflow BEFORE the ratchet PR is opened: if the
+        # ratchet rewrote jest.config.js but left any anchored doc table
+        # stale, this catches it here (the PR's own Coverage Docs Guard
+        # would also catch it, but only after a full CI cycle). Also covers
+        # the noop path (guard passes trivially when nothing was rewritten).
         run: node scripts/check-coverage-docs-sync.mjs
 
       - name: Detect ratchet change
@@ -128,25 +139,52 @@ jobs:
             git --no-pager diff -- jest.config.js README.md CONTRIBUTING.md docs/TESTING.md
           fi
 
-      - name: Commit and push ratcheted floor
+      - name: Open ratchet PR (auto-merge)
         if: steps.changed.outputs.changed == 'true'
         env:
           WORKFLOW_REF: ${{ github.ref }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -e
           if [ "$WORKFLOW_REF" != "refs/heads/main" ]; then
             echo "::notice::Manual run on non-main ref ($WORKFLOW_REF) — jest.config.js rewritten in the workspace only, not pushed."
             exit 0
           fi
+          # Duplicate suppression: if a previous ratchet PR is still open
+          # (its required checks still running), don't stack a conflicting
+          # second PR — the next push to main re-ratchets from the merged
+          # floor once it lands.
+          OPEN_RATCHET_PRS=$(gh pr list --state open \
+            --search "in:title chore: auto-ratchet jest coverage floor" \
+            --json number --jq 'length')
+          if [ "$OPEN_RATCHET_PRS" -gt 0 ]; then
+            echo "::notice::An auto-ratchet PR is already open — skipping duplicate (it will land via auto-merge)."
+            exit 0
+          fi
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          BRANCH="chore/auto-ratchet-${{ github.run_id }}"
+          git checkout -b "$BRANCH"
           # Issue #1835: stage the doc tables too — the ratchet script
           # rewrites them alongside jest.config.js, and they must land in the
           # SAME commit as the bump or main drifts doc-inconsistent (the
           # original bug: only jest.config.js was staged, silently discarding
           # the rewritten tables).
           git add jest.config.js README.md CONTRIBUTING.md docs/TESTING.md
-          # `[skip ci]` in the message is loop-guard layer 2 (see file header);
-          # GITHUB_TOKEN pushes not re-triggering workflows is layer 1.
-          git commit -m "chore: auto-ratchet jest coverage floor [skip ci]"
-          git push origin HEAD:main
+          # No `[skip ci]`: the PR's own required checks must run to gate the
+          # auto-merge. Loop safety is preserved by the job-level `if`
+          # (guard 3): the squash-merge commit is authored by
+          # github-actions[bot], so the merged bump never re-triggers this
+          # workflow. GITHUB_TOKEN branch pushes don't trigger workflows
+          # (guard 1), and this workflow's `on` only fires on main pushes.
+          git commit -m "chore: auto-ratchet jest coverage floor to measured value"
+          git push origin "$BRANCH"
+          PR_URL=$(gh pr create --base main --head "$BRANCH" \
+            --title "chore: auto-ratchet jest coverage floor" \
+            --body "Automated coverage-floor bump from the Coverage Ratchet workflow (run ${{ github.run_id }} on \`${GITHUB_SHA:0:7}\`).
+
+Commits \`jest.config.js\` + the README/CONTRIBUTING/TESTING doc tables atomically — the issue #1835 consistency guard (\`scripts/check-coverage-docs-sync.mjs\`) already passed in-workflow before this PR was opened.
+
+Auto-merge is enabled; the PR lands when the required checks finish green.")
+          echo "[ratchet] opened $PR_URL"
+          gh pr merge --auto --squash "$PR_URL"
