@@ -2,7 +2,7 @@
 
 **Defined:** 2026-03-19
 **Core Value:** Free open-source tabletop card game deck builder and tester with AI coaching.
-**Research:** `.planning/research/SUMMARY.md` (to be completed)
+**Research:** `.planning/research/SUMMARY.md` (complete)
 
 ---
 
@@ -75,52 +75,53 @@
 
 ## Out of Scope
 
-| Feature | Reason |
-|---------|--------|
+| Feature                  | Reason                                      |
+| ------------------------ | ------------------------------------------- |
 | Real-time meta data sync | Requires backend, client-side only for v1.5 |
-| Deck import from meta | Security review needed, defer |
-| Tournament results | Requires external API integration |
-| Social sharing | Not core to MVP |
+| Deck import from meta    | Security review needed, defer               |
+| Tournament results       | Requires external API integration           |
+| Social sharing           | Not core to MVP                             |
 
 ---
 
 ## Traceability
 
-| Requirement | Phase | Status |
-|-------------|-------|--------|
-| META-01 | Phase 18 | ✅ Complete |
-| META-02 | Phase 18 | ✅ Complete |
-| META-03 | Phase 18 | ✅ Complete |
-| META-04 | Phase 18 | ✅ Complete |
-| AMETA-01 | Phase 19 | ✅ Complete |
-| AMETA-02 | Phase 19 | ✅ Complete |
-| AMETA-03 | Phase 19 | ✅ Complete |
-| HEALTH-01 | Phase 18 | ✅ Complete |
-| HEALTH-02 | Phase 18 | ✅ Complete |
-| HEALTH-03 | Phase 18 | ✅ Complete |
-| TREND-01 | Phase 18 | ✅ Complete |
-| TREND-02 | Phase 18 | ✅ Complete |
-| TREND-03 | Phase 18 | ✅ Complete |
-| MATCH-01 | Phase 19 | ✅ Complete |
-| MATCH-02 | Phase 19 | ✅ Complete |
-| MATCH-03 | Phase 19 | ✅ Complete |
-| SIDE-01 | Phase 20 | ✅ Complete |
-| SIDE-02 | Phase 20 | ✅ Complete |
-| SIDE-03 | Phase 20 | ✅ Complete |
-| MANA-01 | Phase 20 | ✅ Complete |
-| MANA-02 | Phase 20 | ✅ Complete |
-| MANA-03 | Phase 20 | ✅ Complete |
-| PHASE-01 | Phase 19 | ✅ Complete |
-| PHASE-02 | Phase 19 | ✅ Complete |
-| PHASE-03 | Phase 19 | ✅ Complete |
-| PHASE-04 | Phase 19 | ✅ Complete |
+| Requirement | Phase    | Status      |
+| ----------- | -------- | ----------- |
+| META-01     | Phase 18 | ✅ Complete |
+| META-02     | Phase 18 | ✅ Complete |
+| META-03     | Phase 18 | ✅ Complete |
+| META-04     | Phase 18 | ✅ Complete |
+| AMETA-01    | Phase 19 | ✅ Complete |
+| AMETA-02    | Phase 19 | ✅ Complete |
+| AMETA-03    | Phase 19 | ✅ Complete |
+| HEALTH-01   | Phase 18 | ✅ Complete |
+| HEALTH-02   | Phase 18 | ✅ Complete |
+| HEALTH-03   | Phase 18 | ✅ Complete |
+| TREND-01    | Phase 18 | ✅ Complete |
+| TREND-02    | Phase 18 | ✅ Complete |
+| TREND-03    | Phase 18 | ✅ Complete |
+| MATCH-01    | Phase 19 | ✅ Complete |
+| MATCH-02    | Phase 19 | ✅ Complete |
+| MATCH-03    | Phase 19 | ✅ Complete |
+| SIDE-01     | Phase 20 | ✅ Complete |
+| SIDE-02     | Phase 20 | ✅ Complete |
+| SIDE-03     | Phase 20 | ✅ Complete |
+| MANA-01     | Phase 20 | ✅ Complete |
+| MANA-02     | Phase 20 | ✅ Complete |
+| MANA-03     | Phase 20 | ✅ Complete |
+| PHASE-01    | Phase 19 | ✅ Complete |
+| PHASE-02    | Phase 19 | ✅ Complete |
+| PHASE-03    | Phase 19 | ✅ Complete |
+| PHASE-04    | Phase 19 | ✅ Complete |
 
 **Coverage:**
+
 - v1.5 requirements: 26 total
 - Mapped to phases: 26
 - Unmapped: 0 ✓
 
 ---
 
-*Requirements defined: 2026-03-19*
-*Last updated: 2026-09-15 — v1.5 checkboxes reconciled with shipped code (issue #1721). All 26 requirements audited against the codebase, e.g. `src/lib/meta.ts` (archetypes/win rates/meta share/inclusion/date range), `src/lib/heuristic-meta-analysis.ts`, `src/components/meta/*` (FormatHealthGauge, ColorDistributionChart, ArchetypeBalance, ArchetypeTrends, CardTrendChart, MulliganTips, AntiMetaRecommendations), `src/lib/matchup-guides.ts`, `src/lib/sideboard-recommender.ts` + `src/lib/sideboard-plans.ts` + `src/app/(app)/sideboards/`, `src/lib/mana-curve.ts` (land counts, strategy curves, color requirements), and `src/lib/game-phase-strategy.ts` (opening/mid/late/combat).*
+_Requirements defined: 2026-03-19_
+_Last updated: 2026-09-15 — v1.5 checkboxes reconciled with shipped code (issue #1721). All 26 requirements audited against the codebase, e.g. `src/lib/meta.ts` (archetypes/win rates/meta share/inclusion/date range), `src/lib/heuristic-meta-analysis.ts`, `src/components/meta/*` (FormatHealthGauge, ColorDistributionChart, ArchetypeBalance, ArchetypeTrends, CardTrendChart, MulliganTips, AntiMetaRecommendations), `src/lib/matchup-guides.ts`, `src/lib/sideboard-recommender.ts` + `src/lib/sideboard-plans.ts` + `src/app/(app)/sideboards/`, `src/lib/mana-curve.ts` (land counts, strategy curves, color requirements), and `src/lib/game-phase-strategy.ts` (opening/mid/late/combat)._

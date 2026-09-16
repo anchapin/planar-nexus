@@ -1,5 +1,20 @@
 # Milestones
 
+## v1.8 - Performance & Scale (In Progress)
+
+**Status:** In Progress 🏗️ (31/34 phases complete — Phase 31 shipped, Phase 32 underway; per STATE.md)
+
+**Phases:** 4 phases (31-34)
+
+**Key accomplishments:**
+
+- **Phase 31 Search Engine Revolution** ✅: Orama-powered Web Worker for background search, automated indexing from IndexedDB, `useSearchWorker` hook for component integration.
+- **Phase 32 Off-Main-Thread Intelligence** 🏗️: Heuristic engine in a Web Worker, non-blocking AI "thinking" indicators, Genkit flow latency optimization via selective pre-fetching.
+- **Phase 33 High-Performance Rendering** ⏳: Virtualized, high-frame-rate battlefield rendering.
+- **Phase 34 Scalable Storage & Backups** ⏳: Robust IndexedDB scale-out and backup/restore.
+
+---
+
 ## v1.7 - Conversational AI Coach (Shipped: 2026-03-20)
 
 **Status:** Complete ✅
@@ -12,16 +27,6 @@
 - **Phase 28 Natural Language Processing**: Intent recognition, card analysis, and win condition identification.
 - **Phase 29 Context Management**: Deck-specific chat history and context retention for follow-up questions.
 - **Phase 30 AI Flow Integration**: Genkit flow implementation with streaming responses and robust error handling.
-
----
-
-## v1.6 v1.6 (Shipped: 2026-03-19)
-
-**Phases completed:** 0 phases, 0 plans, 0 tasks
-
-**Key accomplishments:**
-
-- (none recorded)
 
 ---
 
