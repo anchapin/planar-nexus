@@ -13,6 +13,12 @@ import {
   WebRTCConnection,
   type P2PEvents,
 } from "../webrtc-p2p";
+import {
+  installWebrtcGlobals,
+  uninstallWebrtcGlobals,
+  latestPC,
+  MockRTCDataChannel,
+} from "@/test-utils/__mocks__/rtc";
 
 describe("WebRTC P2P", () => {
   describe("generateGameCode", () => {
@@ -91,8 +97,7 @@ class MockRTCPeerConnection {
   onconnectionstatechange: (() => void) | null = null;
   oniceconnectionstatechange: (() => void) | null = null;
   onicecandidate:
-    | ((event: { candidate: RTCIceCandidateInit | null }) => void)
-    | null = null;
+    ((event: { candidate: RTCIceCandidateInit | null }) => void) | null = null;
   ondatachannel: ((event: { channel: MockDataChannel }) => void) | null = null;
 
   localDescription: RTCSessionDescriptionInit | null = null;
@@ -513,5 +518,203 @@ describe("WebRTCConnection.getDiagnostics() (issue #1088)", () => {
     conn.close();
     // Detaching must not throw and the connection is gone.
     expect(await conn.getDiagnostics()).toBeNull();
+  });
+});
+
+// =============================================================================
+// Issue #1788 — negotiation + data-channel message dispatch against the
+// shared WebRTC mock (real module code, controllable fake transport).
+// =============================================================================
+
+describe("WebRTCConnection transport surface (#1788)", () => {
+  let originals: ReturnType<typeof installWebrtcGlobals>;
+  let errorSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    originals = installWebrtcGlobals();
+    errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    uninstallWebrtcGlobals(originals);
+    errorSpy.mockRestore();
+  });
+
+  type SpyBundle = Partial<Record<keyof P2PEvents, jest.Mock>>;
+
+  function makeConn(
+    opts: {
+      isHost?: boolean;
+      spies?: SpyBundle;
+    } = {},
+  ): WebRTCConnection {
+    return new WebRTCConnection({
+      playerId: "p1",
+      playerName: "P1",
+      isHost: opts.isHost ?? false,
+      enableICEMonitoring: false,
+      // Keep pings driven by the test — no real interval handles.
+      externalPing: true,
+      maxReconnectAttempts: 2,
+      reconnectBaseDelayMs: 1,
+      reconnectAttemptTimeoutMs: 10,
+      events: (opts.spies ?? {}) as Partial<P2PEvents>,
+    });
+  }
+
+  it("propagates construction failure from initialize()", async () => {
+    const conn = new WebRTCConnection({
+      playerId: "p1",
+      playerName: "P1",
+      isHost: false,
+      enableICEMonitoring: false,
+      externalPing: true,
+      rtcConfig: { failConstruction: true } as unknown as RTCConfiguration,
+      events: { onError: jest.fn() },
+    });
+    await expect(conn.initialize()).rejects.toThrow(
+      "MockRTCPeerConnection: construction failed (test)",
+    );
+    expect(conn.getConnectionState()).toBe("failed");
+  });
+
+  it("rejects negotiation calls made before initialize()", async () => {
+    const conn = makeConn();
+    await expect(conn.createOffer()).rejects.toThrow(
+      "Peer connection not initialized",
+    );
+    await expect(conn.handleOffer({ type: "offer", sdp: "x" })).rejects.toThrow(
+      "Peer connection not initialized",
+    );
+    await expect(
+      conn.handleAnswer({ type: "answer", sdp: "x" }),
+    ).rejects.toThrow("Peer connection not initialized");
+    await expect(conn.connectToPeer()).rejects.toThrow(
+      "Peer connection not initialized",
+    );
+    // addIceCandidate is deliberately forgiving: a late/lost candidate must
+    // never break the connection.
+    await expect(
+      conn.addIceCandidate({ candidate: "c" }),
+    ).resolves.toBeUndefined();
+    await expect(conn.addIceCandidate(null)).resolves.toBeUndefined();
+  });
+
+  it("runs the full offer/answer/ICE negotiation against the mock transport", async () => {
+    const conn = makeConn();
+    await conn.initialize();
+    const pc = latestPC();
+
+    const offer = await conn.createOffer();
+    expect(offer.type).toBe("offer");
+    expect(pc.localDescriptions).toHaveLength(1);
+
+    await conn.handleAnswer({ type: "answer", sdp: "mock-answer" });
+    expect(pc.remoteDescriptions).toHaveLength(1);
+
+    await conn.connectToPeer();
+    expect(pc.createdChannels).toHaveLength(1);
+
+    const candidate: RTCIceCandidateInit = { candidate: "candidate:negot 1" };
+    await conn.addIceCandidate(candidate);
+    expect(pc.addedCandidates).toEqual([candidate]);
+
+    conn.close();
+    expect(pc.closed).toBe(true);
+  });
+
+  it("dispatches inbound data-channel messages to typed handlers", async () => {
+    const spies: SpyBundle = {
+      onChat: jest.fn(),
+      onEmote: jest.fn(),
+      onPlayerAction: jest.fn(),
+      onError: jest.fn(),
+      onConnectionStateChange: jest.fn(),
+    };
+    const conn = makeConn({ isHost: true, spies });
+    await conn.initialize();
+    const pc = latestPC();
+
+    // Remote side opens its channel: deliver it via ondatachannel, then open.
+    const channel = new MockRTCDataChannel();
+    pc.ondatachannel?.({ channel });
+    channel.onopen?.();
+    expect(conn.getConnectionState()).toBe("connected");
+    expect(spies.onConnectionStateChange).toHaveBeenCalledWith("connected", "");
+
+    const deliver = (payload: unknown) =>
+      channel.onmessage?.({ data: payload });
+
+    // Chat / emote / action / error round-trip through handleMessage.
+    deliver(
+      JSON.stringify({
+        type: "chat",
+        senderId: "p2",
+        timestamp: 1,
+        payload: { text: "gl hf" },
+      }),
+    );
+    expect(spies.onChat).toHaveBeenCalledWith("gl hf", "p2");
+
+    deliver(
+      JSON.stringify({
+        type: "emote",
+        senderId: "p2",
+        timestamp: 2,
+        payload: { emote: "thumbsup" },
+      }),
+    );
+    expect(spies.onEmote).toHaveBeenCalledWith("thumbsup", "p2");
+
+    deliver(
+      JSON.stringify({
+        type: "player-action",
+        senderId: "p2",
+        timestamp: 3,
+        payload: { action: "draw", data: { n: 1 } },
+      }),
+    );
+    expect(spies.onPlayerAction).toHaveBeenCalledWith("draw", { n: 1 }, "p2");
+
+    deliver(
+      JSON.stringify({
+        type: "error",
+        senderId: "p2",
+        timestamp: 4,
+        payload: { message: "boom" },
+      }),
+    );
+    expect(spies.onError).toHaveBeenCalledWith(new Error("boom"), "p2");
+
+    // Ping gets a pong back on the same channel.
+    deliver(JSON.stringify({ type: "ping", senderId: "p2", timestamp: 5 }));
+    const pongs = channel.sent
+      .map((raw) => JSON.parse(raw) as { type: string })
+      .filter((m) => m.type === "pong");
+    expect(pongs).toHaveLength(1);
+
+    // Garbage must never throw out of the handler.
+    expect(() => deliver("{not json")).not.toThrow();
+    expect(() => deliver(123 as unknown as string)).not.toThrow();
+    expect(() =>
+      deliver(JSON.stringify({ type: "unknown-kind" })),
+    ).not.toThrow();
+    // The malformed messages were dropped, not forwarded to game handlers.
+    expect(spies.onChat).toHaveBeenCalledTimes(1);
+  });
+
+  it("sendChat / sendEmote serialize onto an open channel and are safe without one", () => {
+    const conn = makeConn();
+    // No channel yet: sends are silently dropped, never thrown.
+    expect(() => conn.sendChat("too early")).not.toThrow();
+    expect(() => conn.sendEmote("wave")).not.toThrow();
+
+    const channel = new MockRTCDataChannel();
+    // Simulate the host receiving our channel, then us opening it.
+    conn["dataChannel"] = channel as unknown as RTCDataChannel;
+    conn.sendChat("hello");
+    conn.sendEmote("thumbsup");
+    const kinds = channel.sent.map((raw) => JSON.parse(raw).type);
+    expect(kinds).toEqual(["chat", "emote"]);
   });
 });
