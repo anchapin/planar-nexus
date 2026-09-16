@@ -34,7 +34,14 @@ interface AIDeckAssistantProps {
  * - Direct "Add to Deck" functionality
  */
 export function AIDeckAssistant({ deck, onAddCard }: AIDeckAssistantProps) {
-  const { topSuggestions, synergyData, isCalculating, error } = useSynergy();
+  const {
+    topSuggestions,
+    synergyData,
+    isCalculating,
+    error,
+    modelState,
+    enableSynergy,
+  } = useSynergy();
   const [explainingCardId, setExplainingCardId] = useState<string | null>(null);
 
   const { messages, sendMessage, setMessages, status } = useChat({
@@ -84,7 +91,38 @@ export function AIDeckAssistant({ deck, onAddCard }: AIDeckAssistantProps) {
       </CardHeader>
 
       <CardContent className="p-0 flex-grow">
-        {isCalculating && suggestions.length === 0 ? (
+        {modelState === "idle" && !error ? (
+          // Opt-in gate (#1813): the embedding model (multi-MB, loaded via
+          // WebGPU/WASM) is NOT downloaded until the user asks for synergy
+          // suggestions.
+          <div className="p-4 space-y-3 text-center">
+            <p className="text-xs text-muted-foreground">
+              Synergy suggestions run a local AI model in your browser. Enabling
+              downloads it once and keeps it warm for this session.
+            </p>
+            <Button
+              size="sm"
+              variant="default"
+              className="h-7 w-full text-[10px] font-semibold"
+              onClick={enableSynergy}
+              data-testid="synergy-enable-button"
+            >
+              <Sparkles className="size-3 mr-1" />
+              Enable AI Suggestions
+            </Button>
+          </div>
+        ) : modelState === "loading" ? (
+          // Visible loading state while the model initializes (#1813).
+          <div
+            className="flex flex-col items-center justify-center py-10 text-muted-foreground"
+            role="status"
+            aria-live="polite"
+            data-testid="synergy-model-loading"
+          >
+            <Loader2 className="size-8 animate-spin mb-2" aria-hidden="true" />
+            <p className="text-xs">Loading synergy model…</p>
+          </div>
+        ) : isCalculating && suggestions.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
             <Loader2 className="size-8 animate-spin mb-2" />
             <p className="text-xs">Analyzing synergies...</p>
