@@ -10,6 +10,12 @@
  * - Draft completes after picking 42 cards
  * - Pool persists across page refresh (DRFT-10)
  * - Session can be resumed from any state (DRFT-11)
+ *
+ * #1786: visibility checks no longer hide inside `if` conditions. Elements
+ * that must render are asserted unconditionally (`await expect(locator)
+ * .toBeVisible()` auto-retries, so it IS the waitFor). Flow-control reads
+ * use an explicit flag (`const hasError = await ...isVisible()`) so the
+ * skip-with-reason intent stays visible and auditable.
  */
 
 import { test, expect, mockScryfallApi, seedCardDatabase } from "./test-utils";
@@ -38,22 +44,27 @@ async function waitForSeed(page: any): Promise<void> {
 
 async function pickCard(page: any): Promise<boolean> {
   const pickButton = page.locator('button[aria-label^="Pick"]').first();
-  if (await pickButton.isVisible({ timeout: 5000 })) {
-    await pickButton.click();
-    await page.waitForTimeout(500);
-    return true;
+  // Flow control: the caller decides whether to bail out of the draft loop
+  // when picking fails, so the flag is explicit rather than buried in `if`.
+  const visible = await pickButton.isVisible();
+  if (!visible) {
+    return false;
   }
-  return false;
+  await pickButton.click();
+  await page.waitForTimeout(500);
+  return true;
 }
 
 async function openCurrentPack(page: any): Promise<boolean> {
   const faceDownCards = page.locator('[aria-label="Face-down card"]').first();
-  if (await faceDownCards.isVisible({ timeout: 5000 })) {
-    await faceDownCards.click();
-    await page.waitForTimeout(1500);
-    return true;
+  // Flow control: same as pickCard — boolean handed back to the caller.
+  const visible = await faceDownCards.isVisible();
+  if (!visible) {
+    return false;
   }
-  return false;
+  await faceDownCards.click();
+  await page.waitForTimeout(1500);
+  return true;
 }
 
 async function advanceToNextPack(page: any): Promise<void> {
@@ -61,7 +72,8 @@ async function advanceToNextPack(page: any): Promise<void> {
     .locator("button")
     .filter({ hasText: /Next|Open.*Pack|Continue/i })
     .first();
-  if (await nextButton.isVisible({ timeout: 2000 })) {
+  const visible = await nextButton.isVisible();
+  if (visible) {
     await nextButton.click();
     await page.waitForTimeout(500);
   }
@@ -72,7 +84,8 @@ async function startDraft(page: any): Promise<void> {
     .locator("button")
     .filter({ hasText: /Start Draft|Start Drafting|Start/i })
     .first();
-  if (await startButton.isVisible({ timeout: 3000 })) {
+  const visible = await startButton.isVisible();
+  if (visible) {
     await startButton.click();
     await page.waitForTimeout(1000);
   }
@@ -106,17 +119,19 @@ test.describe("Draft Mode - Initialization", () => {
       .isVisible({ timeout: 1000 })
       .catch(() => false);
 
+    if (hasError) {
+      test.skip(true, "Card database not seeded with required cards");
+    }
+
+    // #1786: the page must render the draft intro or the intro card — a
+    // blank shell is now a failure instead of a silent pass.
+    expect(hasStartButton || hasIntroCard).toBeTruthy();
+
     if (hasStartButton) {
       await expect(startButton).toBeVisible();
 
       const packInfo = page.locator(`text="${PACKS_PER_DRAFT} packs"`);
-      if (await packInfo.isVisible()) {
-        await expect(packInfo).toContainText(String(PACKS_PER_DRAFT));
-      }
-    } else if (hasIntroCard) {
-      expect(true).toBeTruthy();
-    } else if (hasError) {
-      test.skip(true, "Card database not seeded with required cards");
+      await expect(packInfo).toContainText(String(PACKS_PER_DRAFT));
     }
   });
 
@@ -179,19 +194,10 @@ test.describe("Draft Mode - UI Elements", () => {
     await waitForSeed(page);
     await page.waitForTimeout(3000);
 
+    // #1786: was a guarded expect plus a no-op else branch — the intro card
+    // must actually render the pack count.
     const packText = page.locator(`text="${PACKS_PER_DRAFT} packs"`);
-
-    if (await packText.isVisible({ timeout: 3000 })) {
-      await expect(packText).toBeVisible();
-    } else {
-      const startButton = page
-        .locator("button")
-        .filter({ hasText: /Start Draft/i })
-        .first();
-      if (await startButton.isVisible({ timeout: 1000 })) {
-        expect(true).toBeTruthy();
-      }
-    }
+    await expect(packText).toBeVisible({ timeout: 3000 });
   });
 });
 
@@ -207,23 +213,18 @@ test.describe("Draft Mode - Draft Complete Flow", () => {
     const sessionId = url.match(/session=([^&]+)/)?.[1];
 
     if (sessionId && !sessionId.includes("test-")) {
+      // #1786: unguarded — the completion page must render all of these.
       const completeTitle = page.locator('text="Draft Complete"').first();
-      if (await completeTitle.isVisible({ timeout: 3000 })) {
-        await expect(completeTitle).toBeVisible();
+      await expect(completeTitle).toBeVisible({ timeout: 3000 });
 
-        const cardsPicked = page.locator("text=/\\d+ Cards Picked/i").first();
-        if (await cardsPicked.isVisible({ timeout: 2000 })) {
-          await expect(cardsPicked).toBeVisible();
-        }
+      const cardsPicked = page.locator("text=/\\d+ Cards Picked/i").first();
+      await expect(cardsPicked).toBeVisible({ timeout: 2000 });
 
-        const buildDeckButton = page
-          .locator("button")
-          .filter({ hasText: /Build Deck/i })
-          .first();
-        if (await buildDeckButton.isVisible({ timeout: 2000 })) {
-          await expect(buildDeckButton).toBeVisible();
-        }
-      }
+      const buildDeckButton = page
+        .locator("button")
+        .filter({ hasText: /Build Deck/i })
+        .first();
+      await expect(buildDeckButton).toBeVisible({ timeout: 2000 });
     } else {
       test.skip(true, "No completed draft session exists");
     }
@@ -245,10 +246,9 @@ test.describe("Draft Mode - Draft Complete Flow", () => {
         .filter({ hasText: /Build Deck/i })
         .first();
 
-      if (await buildDeckButton.isVisible({ timeout: 3000 })) {
-        await buildDeckButton.click();
-        await expect(page).toHaveURL(/\/limited-deck-builder/);
-      }
+      await expect(buildDeckButton).toBeVisible({ timeout: 3000 });
+      await buildDeckButton.click();
+      await expect(page).toHaveURL(/\/limited-deck-builder/);
     } else {
       test.skip(true, "No completed draft session exists");
     }
@@ -267,45 +267,46 @@ test.describe("Draft Mode - Draft Flow (Full)", () => {
       .filter({ hasText: /Start Draft|Start Drafting|Start/i })
       .first();
 
-    if (await startButton.isVisible({ timeout: 3000 })) {
-      await startButton.click();
-      await page.waitForTimeout(1000);
+    // Skip-with-reason: an explicit seed error legitimately skips the run.
+    const errorCard = page.locator("text=/Not enough cards|Error/i").first();
+    const hasError = await errorCard.isVisible({ timeout: 2000 });
+    if (hasError) {
+      test.skip(true, "Card database not seeded with cards for set");
+    }
 
-      let totalPicked = 0;
-      for (let pack = 0; pack < PACKS_PER_DRAFT; pack++) {
-        const packOpened = await openCurrentPack(page);
-        if (!packOpened) break;
+    // #1786: the start button must render; a missing button now fails the
+    // test instead of silently skipping the whole flow.
+    await expect(startButton).toBeVisible({ timeout: 3000 });
+    await startButton.click();
+    await page.waitForTimeout(1000);
 
-        for (let pick = 0; pick < CARDS_PER_PACK; pick++) {
-          const picked = await pickCard(page);
-          if (!picked) break;
-          totalPicked++;
-        }
+    let totalPicked = 0;
+    for (let pack = 0; pack < PACKS_PER_DRAFT; pack++) {
+      const packOpened = await openCurrentPack(page);
+      if (!packOpened) break;
 
-        if (pack < PACKS_PER_DRAFT - 1) {
-          await advanceToNextPack(page);
-        }
+      for (let pick = 0; pick < CARDS_PER_PACK; pick++) {
+        const picked = await pickCard(page);
+        if (!picked) break;
+        totalPicked++;
       }
 
-      if (totalPicked >= TOTAL_CARDS) {
-        await page.waitForURL(/\/draft\/complete/, { timeout: 30000 });
-        await page.waitForTimeout(2000);
-
-        const completeTitle = page.locator('text="Draft Complete"').first();
-        if (await completeTitle.isVisible({ timeout: 10000 })) {
-          await expect(completeTitle).toBeVisible();
-        }
-      } else {
-        test.skip(
-          true,
-          `Only picked ${totalPicked}/${TOTAL_CARDS} cards - database may not have enough cards for set`,
-        );
+      if (pack < PACKS_PER_DRAFT - 1) {
+        await advanceToNextPack(page);
       }
+    }
+
+    if (totalPicked >= TOTAL_CARDS) {
+      await page.waitForURL(/\/draft\/complete/, { timeout: 30000 });
+      await page.waitForTimeout(2000);
+
+      const completeTitle = page.locator('text="Draft Complete"').first();
+      await expect(completeTitle).toBeVisible({ timeout: 10000 });
     } else {
-      const errorCard = page.locator("text=/Not enough cards|Error/i").first();
-      if (await errorCard.isVisible({ timeout: 2000 })) {
-        test.skip(true, "Card database not seeded with cards for set");
-      }
+      test.skip(
+        true,
+        `Only picked ${totalPicked}/${TOTAL_CARDS} cards - database may not have enough cards for set`,
+      );
     }
   });
 });
@@ -322,24 +323,23 @@ test.describe("Draft Mode - Card Interaction", () => {
       .filter({ hasText: /Start Draft|Start Drafting|Start/i })
       .first();
 
-    if (await startButton.isVisible({ timeout: 3000 })) {
-      await startButton.click();
-      await page.waitForTimeout(1000);
-
-      const packOpened = await openCurrentPack(page);
-
-      if (packOpened) {
-        const pickOverlay = page.locator('text="Pick"').first();
-        if (await pickOverlay.isVisible({ timeout: 5000 })) {
-          await expect(pickOverlay).toBeVisible();
-        }
-      }
-    } else {
-      const errorCard = page.locator("text=/Not enough cards|Error/i").first();
-      if (await errorCard.isVisible({ timeout: 2000 })) {
-        test.skip(true, "Card database not seeded with cards for set");
-      }
+    // Skip-with-reason: explicit seed error skip (#1786).
+    const errorCard = page.locator("text=/Not enough cards|Error/i").first();
+    const hasError = await errorCard.isVisible({ timeout: 2000 });
+    if (hasError) {
+      test.skip(true, "Card database not seeded with cards for set");
     }
+
+    await expect(startButton).toBeVisible({ timeout: 3000 });
+    await startButton.click();
+    await page.waitForTimeout(1000);
+
+    await openCurrentPack(page);
+
+    // #1786: the Pick overlay must render once the pack is open — a pack
+    // that fails to open now surfaces as a failure here.
+    const pickOverlay = page.locator('text="Pick"').first();
+    await expect(pickOverlay).toBeVisible({ timeout: 5000 });
   });
 
   test("DRFT-04: Picking a card updates pick counter", async ({ page }) => {
@@ -353,29 +353,25 @@ test.describe("Draft Mode - Card Interaction", () => {
       .filter({ hasText: /Start Draft|Start Drafting|Start/i })
       .first();
 
-    if (await startButton.isVisible({ timeout: 3000 })) {
-      await startButton.click();
-      await page.waitForTimeout(1000);
-
-      if (await openCurrentPack(page)) {
-        await page.waitForTimeout(500);
-        const cardPicked = await pickCard(page);
-
-        if (cardPicked) {
-          await page.waitForTimeout(500);
-
-          const pickBadge = page.locator("text=/Pick 2\\/14/");
-          if (await pickBadge.isVisible({ timeout: 2000 })) {
-            await expect(pickBadge).toBeVisible();
-          }
-        }
-      }
-    } else {
-      const errorCard = page.locator("text=/Not enough cards|Error/i").first();
-      if (await errorCard.isVisible({ timeout: 2000 })) {
-        test.skip(true, "Card database not seeded with cards for set");
-      }
+    // Skip-with-reason: explicit seed error skip (#1786).
+    const errorCard = page.locator("text=/Not enough cards|Error/i").first();
+    const hasError = await errorCard.isVisible({ timeout: 2000 });
+    if (hasError) {
+      test.skip(true, "Card database not seeded with cards for set");
     }
+
+    await expect(startButton).toBeVisible({ timeout: 3000 });
+    await startButton.click();
+    await page.waitForTimeout(1000);
+
+    await openCurrentPack(page);
+    await page.waitForTimeout(500);
+    await pickCard(page);
+    await page.waitForTimeout(500);
+
+    // #1786: after one pick the counter must read Pick 2/14.
+    const pickBadge = page.locator("text=/Pick 2\\/14/");
+    await expect(pickBadge).toBeVisible({ timeout: 2000 });
   });
 });
 
@@ -391,35 +387,35 @@ test.describe("Draft Mode - Persistence", () => {
       .filter({ hasText: /Start Draft|Start Drafting|Start/i })
       .first();
 
-    if (await startButton.isVisible({ timeout: 3000 })) {
-      await startButton.click();
-      await page.waitForTimeout(1000);
-
-      await openCurrentPack(page);
-
-      for (let i = 0; i < 3; i++) {
-        await pickCard(page);
-      }
-
-      const sessionId = page.url().match(/session=([^&]+)/)?.[1];
-
-      await page.reload();
-      await page.waitForTimeout(2000);
-
-      if (sessionId) {
-        await expect(page).toHaveURL(new RegExp(`session=${sessionId}`));
-
-        const poolText = page.locator('text="/\\d+ cards picked/i"').first();
-        if (await poolText.isVisible({ timeout: 3000 })) {
-          expect(await poolText.textContent()).toMatch(/\d+/);
-        }
-      }
-    } else {
-      const errorCard = page.locator("text=/Not enough cards|Error/i").first();
-      if (await errorCard.isVisible({ timeout: 2000 })) {
-        test.skip(true, "Card database not seeded with cards for set");
-      }
+    // Skip-with-reason: explicit seed error skip (#1786).
+    const errorCard = page.locator("text=/Not enough cards|Error/i").first();
+    const hasError = await errorCard.isVisible({ timeout: 2000 });
+    if (hasError) {
+      test.skip(true, "Card database not seeded with cards for set");
     }
+
+    await expect(startButton).toBeVisible({ timeout: 3000 });
+    await startButton.click();
+    await page.waitForTimeout(1000);
+
+    await openCurrentPack(page);
+
+    for (let i = 0; i < 3; i++) {
+      await pickCard(page);
+    }
+
+    const sessionId = page.url().match(/session=([^&]+)/)?.[1];
+    // #1786: a started draft must produce a session — missing it now fails.
+    expect(sessionId).toBeTruthy();
+
+    await page.reload();
+    await page.waitForTimeout(2000);
+
+    await expect(page).toHaveURL(new RegExp(`session=${sessionId}`));
+
+    const poolText = page.locator('text="/\\d+ cards picked/i"').first();
+    await expect(poolText).toBeVisible({ timeout: 3000 });
+    expect(await poolText.textContent()).toMatch(/\d+/);
   });
 
   test("DRFT-11: Session can be resumed from URL", async ({ page }) => {
@@ -433,45 +429,46 @@ test.describe("Draft Mode - Persistence", () => {
       .filter({ hasText: /Start Draft|Start Drafting|Start/i })
       .first();
 
-    if (await startButton.isVisible({ timeout: 3000 })) {
-      await startButton.click();
+    // Skip-with-reason: explicit seed error skip (#1786).
+    const errorCard = page.locator("text=/Not enough cards|Error/i").first();
+    const hasError = await errorCard.isVisible({ timeout: 2000 });
+    if (hasError) {
+      test.skip(true, "Card database not seeded with cards for set");
+    }
+
+    await expect(startButton).toBeVisible({ timeout: 3000 });
+    await startButton.click();
+    await page.waitForTimeout(1000);
+
+    const packOpened = await openCurrentPack(page);
+    const picked = packOpened ? await pickCard(page) : false;
+
+    const sessionId = page.url().match(/session=([^&]+)/)?.[1];
+
+    if (sessionId && picked) {
+      await page.goto("/");
       await page.waitForTimeout(1000);
 
-      const packOpened = await openCurrentPack(page);
-      const picked = packOpened ? await pickCard(page) : false;
+      await page.goto(`/draft?session=${sessionId}`);
+      await page.waitForLoadState("networkidle");
+      await page.waitForTimeout(3000);
 
-      const sessionId = page.url().match(/session=([^&]+)/)?.[1];
+      await expect(page).toHaveURL(new RegExp(`session=${sessionId}`));
 
-      if (sessionId && picked) {
-        await page.goto("/");
-        await page.waitForTimeout(1000);
+      const pickBadge = page.locator("text=/Pick \\d+\\/14/").first();
+      const introText = page.locator('text="Start Draft"').first();
 
-        await page.goto(`/draft?session=${sessionId}`);
-        await page.waitForLoadState("networkidle");
-        await page.waitForTimeout(3000);
+      const inPickingState = await pickBadge.isVisible({ timeout: 5000 });
+      const stillInIntro = await introText.isVisible({ timeout: 3000 });
 
-        await expect(page).toHaveURL(new RegExp(`session=${sessionId}`));
-
-        const pickBadge = page.locator("text=/Pick \\d+\\/14/").first();
-        const introText = page.locator('text="Start Draft"').first();
-
-        const inPickingState = await pickBadge.isVisible({ timeout: 5000 });
-        const stillInIntro = await introText.isVisible({ timeout: 3000 });
-
-        expect(inPickingState || !stillInIntro).toBeTruthy();
-      } else {
-        test.skip(
-          true,
-          sessionId
-            ? "Card could not be picked - insufficient cards"
-            : "No session ID found in URL after starting draft",
-        );
-      }
+      expect(inPickingState || !stillInIntro).toBeTruthy();
     } else {
-      const errorCard = page.locator("text=/Not enough cards|Error/i").first();
-      if (await errorCard.isVisible({ timeout: 2000 })) {
-        test.skip(true, "Card database not seeded with cards for set");
-      }
+      test.skip(
+        true,
+        sessionId
+          ? "Card could not be picked - insufficient cards"
+          : "No session ID found in URL after starting draft",
+      );
     }
   });
 
@@ -488,37 +485,38 @@ test.describe("Draft Mode - Persistence", () => {
       .filter({ hasText: /Start Draft|Start Drafting|Start/i })
       .first();
 
-    if (await startButton.isVisible({ timeout: 3000 })) {
-      await startButton.click();
-      await page.waitForTimeout(1000);
-
-      await openCurrentPack(page);
-      await pickCard(page);
-      await page.waitForTimeout(1500);
-
-      const dbCheck = await page.evaluate(async () => {
-        try {
-          const databases = await indexedDB.databases();
-          return databases.map((db) => db.name);
-        } catch {
-          return [];
-        }
-      });
-
-      expect(
-        dbCheck.some(
-          (db) =>
-            db &&
-            (db.includes("Limited") ||
-              db.includes("Draft") ||
-              db.includes("Nexus")),
-        ),
-      ).toBeTruthy();
-    } else {
-      const errorCard = page.locator("text=/Not enough cards|Error/i").first();
-      if (await errorCard.isVisible({ timeout: 2000 })) {
-        test.skip(true, "Card database not seeded with cards for set");
-      }
+    // Skip-with-reason: explicit seed error skip (#1786).
+    const errorCard = page.locator("text=/Not enough cards|Error/i").first();
+    const hasError = await errorCard.isVisible({ timeout: 2000 });
+    if (hasError) {
+      test.skip(true, "Card database not seeded with cards for set");
     }
+
+    await expect(startButton).toBeVisible({ timeout: 3000 });
+    await startButton.click();
+    await page.waitForTimeout(1000);
+
+    await openCurrentPack(page);
+    await pickCard(page);
+    await page.waitForTimeout(1500);
+
+    const dbCheck = await page.evaluate(async () => {
+      try {
+        const databases = await indexedDB.databases();
+        return databases.map((db) => db.name);
+      } catch {
+        return [];
+      }
+    });
+
+    expect(
+      dbCheck.some(
+        (db) =>
+          db &&
+          (db.includes("Limited") ||
+            db.includes("Draft") ||
+            db.includes("Nexus")),
+      ),
+    ).toBeTruthy();
   });
 });

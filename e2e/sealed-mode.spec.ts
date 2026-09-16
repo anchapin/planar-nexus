@@ -8,6 +8,12 @@
  * - Limited deck builder with validation
  * - Pool isolation from regular deck collection
  * - Session persistence across page refresh
+ *
+ * #1786: every element that must render is asserted unconditionally with
+ * `await expect(locator).toBeVisible()` (web-first assertions auto-retry,
+ * so the assert IS the waitFor). Branches with a meaningful else-side keep
+ * an explicit flag (`const hasX = await ...isVisible()`), never a bare
+ * `if (await el.isVisible())` guard that can silently pass.
  */
 
 import { test, expect, mockScryfallApi } from "./test-utils";
@@ -35,14 +41,13 @@ test.describe("Sealed Mode - Set Browser", () => {
       .locator('[class*="grid"], [class*="list"], [data-testid*="set"]')
       .first();
 
-    if (await setsContainer.isVisible()) {
-      // Should have multiple sets displayed
-      const setItems = page.locator(
-        '[class*="set"], [data-testid*="set-item"]',
-      );
-      const count = await setItems.count();
-      expect(count).toBeGreaterThan(0);
-    }
+    // #1786: the sets grid must render once the API responds.
+    await expect(setsContainer).toBeVisible();
+
+    // Should have multiple sets displayed
+    const setItems = page.locator('[class*="set"], [data-testid*="set-item"]');
+    const count = await setItems.count();
+    expect(count).toBeGreaterThan(0);
   });
 
   test("SET-02: should allow selecting a set", async ({ page }) => {
@@ -54,19 +59,17 @@ test.describe("Sealed Mode - Set Browser", () => {
       .filter({ hasText: /[A-Z]{2,}/i })
       .first();
 
-    if (await firstSet.isVisible({ timeout: 5000 })) {
-      await firstSet.click();
+    await expect(firstSet).toBeVisible({ timeout: 5000 });
+    await firstSet.click();
 
-      // Should open a modal or detail view with set info
-      const modal = page
-        .locator('[role="dialog"], [class*="modal"], [class*="detail"]')
-        .first();
+    // Should open a modal or detail view with set info
+    const modal = page
+      .locator('[role="dialog"], [class*="modal"], [class*="detail"]')
+      .first();
 
-      if (await modal.isVisible({ timeout: 2000 })) {
-        // Modal should show set details
-        await expect(modal).toContainText(/sealed|draft|start/i);
-      }
-    }
+    // Modal should show set details
+    await expect(modal).toBeVisible({ timeout: 2000 });
+    await expect(modal).toContainText(/sealed|draft|start/i);
   });
 
   test("SET-03: should show set details before confirming", async ({
@@ -79,22 +82,20 @@ test.describe("Sealed Mode - Set Browser", () => {
       .locator('[class*="card"], [class*="set"]')
       .first();
 
-    if (await setsWithCards.isVisible({ timeout: 5000 })) {
-      await setsWithCards.click();
+    await expect(setsWithCards).toBeVisible({ timeout: 5000 });
+    await setsWithCards.click();
 
-      // Wait for modal or detail view
-      await page.waitForTimeout(500);
+    // Wait for modal or detail view
+    await page.waitForTimeout(500);
 
-      // Look for Start Sealed button
-      const startSealedButton = page
-        .locator("button")
-        .filter({ hasText: /sealed|Start/i })
-        .first();
+    // Look for Start Sealed button
+    const startSealedButton = page
+      .locator("button")
+      .filter({ hasText: /sealed|Start/i })
+      .first();
 
-      if (await startSealedButton.isVisible({ timeout: 2000 })) {
-        await expect(startSealedButton).toBeEnabled();
-      }
-    }
+    await expect(startSealedButton).toBeVisible({ timeout: 2000 });
+    await expect(startSealedButton).toBeEnabled();
   });
 
   test("SET-02: should navigate to sealed page on Start Sealed", async ({
@@ -105,23 +106,21 @@ test.describe("Sealed Mode - Set Browser", () => {
     // Click a set
     const firstSet = page.locator('[class*="card"], [class*="set"]').first();
 
-    if (await firstSet.isVisible({ timeout: 5000 })) {
-      await firstSet.click();
-      await page.waitForTimeout(500);
+    await expect(firstSet).toBeVisible({ timeout: 5000 });
+    await firstSet.click();
+    await page.waitForTimeout(500);
 
-      // Click Start Sealed button
-      const startButton = page
-        .locator("button")
-        .filter({ hasText: /Start.*Sealed|Start.*sealed/i })
-        .first();
+    // Click Start Sealed button
+    const startButton = page
+      .locator("button")
+      .filter({ hasText: /Start.*Sealed|Start.*sealed/i })
+      .first();
 
-      if (await startButton.isVisible({ timeout: 2000 })) {
-        await startButton.click();
+    await expect(startButton).toBeVisible({ timeout: 2000 });
+    await startButton.click();
 
-        // Should navigate to /sealed page
-        await expect(page).toHaveURL(/\/sealed/);
-      }
-    }
+    // Should navigate to /sealed page
+    await expect(page).toHaveURL(/\/sealed/);
   });
 });
 
@@ -134,32 +133,28 @@ test.describe("Sealed Mode - Pool Display", () => {
     // Click first set
     const firstSet = page.locator('[class*="card"], [class*="set"]').first();
 
-    if (await firstSet.isVisible({ timeout: 5000 })) {
-      await firstSet.click();
-      await page.waitForTimeout(500);
+    await expect(firstSet).toBeVisible({ timeout: 5000 });
+    await firstSet.click();
+    await page.waitForTimeout(500);
 
-      // Click Start Sealed
-      const startButton = page
-        .locator("button")
-        .filter({ hasText: /Start.*Sealed|Start.*sealed/i })
-        .first();
+    // Click Start Sealed
+    const startButton = page
+      .locator("button")
+      .filter({ hasText: /Start.*Sealed|Start.*sealed/i })
+      .first();
 
-      if (await startButton.isVisible({ timeout: 2000 })) {
-        await startButton.click();
+    await expect(startButton).toBeVisible({ timeout: 2000 });
+    await startButton.click();
 
-        // Wait for redirect to sealed page
-        await page.waitForURL(/\/sealed/);
+    // Wait for redirect to sealed page
+    await page.waitForURL(/\/sealed/);
 
-        // Should show pool or session info
-        const poolSection = page
-          .locator('[class*="pool"], [class*="cards"], [data-testid*="pool"]')
-          .first();
+    // Should show pool or session info
+    const poolSection = page
+      .locator('[class*="pool"], [class*="cards"], [data-testid*="pool"]')
+      .first();
 
-        if (await poolSection.isVisible({ timeout: 5000 })) {
-          await expect(poolSection).toBeVisible();
-        }
-      }
-    }
+    await expect(poolSection).toBeVisible({ timeout: 5000 });
   });
 
   test("SEAL-02: should display sealed pool with cards", async ({ page }) => {
@@ -172,13 +167,13 @@ test.describe("Sealed Mode - Pool Display", () => {
       .locator('[class*="grid"], [class*="card"]')
       .first();
 
-    if (await cardsContainer.isVisible({ timeout: 5000 })) {
-      const cards = page.locator('[class*="card"]:not([class*="set"])');
-      const cardCount = await cards.count();
+    await expect(cardsContainer).toBeVisible({ timeout: 5000 });
 
-      // Should have cards displayed (84 total expected)
-      expect(cardCount).toBeGreaterThan(0);
-    }
+    const cards = page.locator('[class*="card"]:not([class*="set"])');
+    const cardCount = await cards.count();
+
+    // Should have cards displayed (84 total expected)
+    expect(cardCount).toBeGreaterThan(0);
   });
 
   test("SEAL-02: should show all cards (no face-down packs)", async ({
@@ -190,30 +185,28 @@ test.describe("Sealed Mode - Pool Display", () => {
 
     const firstSet = page.locator('[class*="card"], [class*="set"]').first();
 
-    if (await firstSet.isVisible({ timeout: 5000 })) {
-      await firstSet.click();
-      await page.waitForTimeout(500);
+    await expect(firstSet).toBeVisible({ timeout: 5000 });
+    await firstSet.click();
+    await page.waitForTimeout(500);
 
-      const startButton = page
-        .locator("button")
-        .filter({ hasText: /Start.*Sealed|Start.*sealed/i })
-        .first();
+    const startButton = page
+      .locator("button")
+      .filter({ hasText: /Start.*Sealed|Start.*sealed/i })
+      .first();
 
-      if (await startButton.isVisible({ timeout: 2000 })) {
-        await startButton.click();
+    await expect(startButton).toBeVisible({ timeout: 2000 });
+    await startButton.click();
 
-        // Wait for sealed page to load (either ?set= or ?session=)
-        await page.waitForURL(/\/sealed/, { timeout: 15000 });
-        await page.waitForTimeout(3000); // Wait for pool to load
+    // Wait for sealed page to load (either ?set= or ?session=)
+    await page.waitForURL(/\/sealed/, { timeout: 15000 });
+    await page.waitForTimeout(3000); // Wait for pool to load
 
-        // Look for visible cards in pool
-        const visibleCards = page.locator('[class*="card"]:visible');
-        const count = await visibleCards.count();
+    // Look for visible cards in pool
+    const visibleCards = page.locator('[class*="card"]:visible');
+    const count = await visibleCards.count();
 
-        // Should show cards immediately (pool of 84 cards)
-        expect(count).toBeGreaterThanOrEqual(1);
-      }
-    }
+    // Should show cards immediately (pool of 84 cards)
+    expect(count).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -268,14 +261,13 @@ test.describe("Sealed Mode - Pool Filtering", () => {
       .locator('[class*="cmc"], [class*="mana"], input[type="range"]')
       .first();
 
-    if (await cmcFilter.isVisible({ timeout: 2000 })) {
-      await cmcFilter.click();
-      await page.waitForTimeout(300);
+    await expect(cmcFilter).toBeVisible({ timeout: 2000 });
+    await cmcFilter.click();
+    await page.waitForTimeout(300);
 
-      // Cards should be filtered
-      const cards = page.locator('[class*="card"]:visible');
-      expect(await cards.count()).toBeGreaterThanOrEqual(0);
-    }
+    // Cards should be filtered
+    const cards = page.locator('[class*="card"]:visible');
+    expect(await cards.count()).toBeGreaterThanOrEqual(0);
   });
 
   test("SEAL-03: should clear filters", async ({ page }) => {
@@ -287,25 +279,23 @@ test.describe("Sealed Mode - Pool Filtering", () => {
       .locator("button")
       .filter({ hasText: /^[WUBRG]$/i });
 
-    if (await colorFilters.first().isVisible()) {
-      await colorFilters.first().click();
-      await page.waitForTimeout(300);
+    await expect(colorFilters.first()).toBeVisible();
+    await colorFilters.first().click();
+    await page.waitForTimeout(300);
 
-      // Look for clear/reset button
-      const clearButton = page
-        .locator("button")
-        .filter({ hasText: /clear|reset|all/i })
-        .first();
+    // Look for clear/reset button
+    const clearButton = page
+      .locator("button")
+      .filter({ hasText: /clear|reset|all/i })
+      .first();
 
-      if (await clearButton.isVisible({ timeout: 1000 })) {
-        await clearButton.click();
-        await page.waitForTimeout(300);
+    await expect(clearButton).toBeVisible({ timeout: 1000 });
+    await clearButton.click();
+    await page.waitForTimeout(300);
 
-        // Should show all cards again
-        const cards = page.locator('[class*="card"]:visible');
-        expect(await cards.count()).toBeGreaterThan(0);
-      }
-    }
+    // Should show all cards again
+    const cards = page.locator('[class*="card"]:visible');
+    expect(await cards.count()).toBeGreaterThan(0);
   });
 });
 
@@ -320,7 +310,12 @@ test.describe("Sealed Mode - Limited Deck Builder", () => {
       .filter({ hasText: /Build.*Deck|Deck.*Build|Build Deck/i })
       .first();
 
-    if (await buildDeckButton.isVisible({ timeout: 2000 })) {
+    // Meaningful else-side (#1786): no Build Deck button on /sealed means
+    // we fall back to direct navigation — kept as an explicit flag branch.
+    const hasBuildDeckButton = await buildDeckButton.isVisible({
+      timeout: 2000,
+    });
+    if (hasBuildDeckButton) {
       await buildDeckButton.click();
 
       // Should navigate to limited deck builder
@@ -343,10 +338,10 @@ test.describe("Sealed Mode - Limited Deck Builder", () => {
       .locator('[class*="pool"], [class*="source"]')
       .first();
 
-    if (await poolSection.isVisible({ timeout: 2000 })) {
-      const cards = page.locator('[class*="card"]:visible');
-      expect(await cards.count()).toBeGreaterThan(0);
-    }
+    await expect(poolSection).toBeVisible({ timeout: 2000 });
+
+    const cards = page.locator('[class*="card"]:visible');
+    expect(await cards.count()).toBeGreaterThan(0);
   });
 
   test("LBld-02: should have pool-only card source", async ({ page }) => {
@@ -358,7 +353,10 @@ test.describe("Sealed Mode - Limited Deck Builder", () => {
       .locator('input[placeholder*="search" i], input[aria-label*="search" i]')
       .first();
 
-    if (await searchInput.isVisible()) {
+    // Conditional requirement (#1786): only IF a search input exists must
+    // it be limited to the pool — kept as an explicit flag branch.
+    const hasSearchInput = await searchInput.isVisible();
+    if (hasSearchInput) {
       // If search exists, it should be limited to pool
       const poolLabel = page.locator("text=/pool/i");
       await expect(poolLabel).toBeVisible();
@@ -372,19 +370,16 @@ test.describe("Sealed Mode - Limited Deck Builder", () => {
     // Look for card count display
     const cardCount = page.locator("text=/\\d+\\s*\\/\\s*40/").first();
 
-    if (await cardCount.isVisible({ timeout: 2000 })) {
-      // Should show "0 / 40" initially
-      await expect(cardCount).toContainText("40");
-    }
+    // Should show "0 / 40" initially
+    await expect(cardCount).toBeVisible({ timeout: 2000 });
+    await expect(cardCount).toContainText("40");
 
     // Look for validation message
     const validationMsg = page
       .locator("text=/minimum|40 cards|valid/i")
       .first();
 
-    if (await validationMsg.isVisible({ timeout: 1000 })) {
-      await expect(validationMsg).toBeVisible();
-    }
+    await expect(validationMsg).toBeVisible({ timeout: 1000 });
   });
 
   test("LBld-04: should enforce 4-copy limit", async ({ page }) => {
@@ -396,25 +391,25 @@ test.describe("Sealed Mode - Limited Deck Builder", () => {
       '[class*="pool"] [class*="card"], [class*="source"] [class*="card"]',
     );
 
-    if (await poolCards.first().isVisible({ timeout: 3000 })) {
-      // Add the same card multiple times (if add button exists)
-      const addButton = poolCards
-        .first()
-        .locator("button")
-        .filter({ hasText: /\\+|add|Add/i })
-        .first();
+    await expect(poolCards.first()).toBeVisible({ timeout: 3000 });
 
-      if (await addButton.isVisible({ timeout: 1000 })) {
-        // Click add multiple times
-        for (let i = 0; i < 4; i++) {
-          await addButton.click();
-          await page.waitForTimeout(200);
-        }
+    // Add the same card multiple times (if add button exists)
+    const addButton = poolCards
+      .first()
+      .locator("button")
+      .filter({ hasText: /\\+|add|Add/i })
+      .first();
 
-        // Button should now be disabled (at max copies)
-        await expect(addButton).toBeDisabled();
-      }
+    await expect(addButton).toBeVisible({ timeout: 1000 });
+
+    // Click add multiple times
+    for (let i = 0; i < 4; i++) {
+      await addButton.click();
+      await page.waitForTimeout(200);
     }
+
+    // Button should now be disabled (at max copies)
+    await expect(addButton).toBeDisabled();
   });
 
   test("LBld-03: should show validation error for deck below 40 cards", async ({
@@ -431,18 +426,17 @@ test.describe("Sealed Mode - Limited Deck Builder", () => {
       .filter({ hasText: /Save|Save Deck|Play/i })
       .first();
 
-    if (await actionButton.isVisible({ timeout: 2000 })) {
-      // Should be disabled or show validation error
-      const isDisabled = await actionButton.isDisabled();
+    // Should be disabled or show validation error
+    await expect(actionButton).toBeVisible({ timeout: 2000 });
+    const isDisabled = await actionButton.isDisabled();
 
-      if (isDisabled) {
-        // Button disabled = validation working
-        expect(true).toBe(true);
-      } else {
-        // Check for validation message
-        const errorMsg = page.locator("text=/40|minimum|invalid/i");
-        await expect(errorMsg).toBeVisible();
-      }
+    if (isDisabled) {
+      // Button disabled = validation working
+      expect(true).toBe(true);
+    } else {
+      // Check for validation message
+      const errorMsg = page.locator("text=/40|minimum|invalid/i");
+      await expect(errorMsg).toBeVisible();
     }
   });
 
@@ -476,10 +470,8 @@ test.describe("Sealed Mode - Limited Deck Builder", () => {
       .filter({ hasText: /Save|Save Deck/i })
       .first();
 
-    if (await saveButton.isVisible({ timeout: 2000 })) {
-      // Save button should be enabled (even with 0 cards, just disabled on action)
-      await expect(saveButton).toBeVisible();
-    }
+    // Save button should be enabled (even with 0 cards, just disabled on action)
+    await expect(saveButton).toBeVisible({ timeout: 2000 });
   });
 });
 
@@ -493,21 +485,19 @@ test.describe("Sealed Mode - Pool Isolation", () => {
 
     const firstSet = page.locator('[class*="card"], [class*="set"]').first();
 
-    if (await firstSet.isVisible({ timeout: 5000 })) {
-      await firstSet.click();
-      await page.waitForTimeout(500);
+    await expect(firstSet).toBeVisible({ timeout: 5000 });
+    await firstSet.click();
+    await page.waitForTimeout(500);
 
-      const startButton = page
-        .locator("button")
-        .filter({ hasText: /Start.*Sealed|Start.*sealed/i })
-        .first();
+    const startButton = page
+      .locator("button")
+      .filter({ hasText: /Start.*Sealed|Start.*sealed/i })
+      .first();
 
-      if (await startButton.isVisible({ timeout: 2000 })) {
-        await startButton.click();
-        await page.waitForURL(/\/sealed/);
-        await page.waitForTimeout(2000);
-      }
-    }
+    await expect(startButton).toBeVisible({ timeout: 2000 });
+    await startButton.click();
+    await page.waitForURL(/\/sealed/);
+    await page.waitForTimeout(2000);
 
     // Now go to regular deck builder
     await page.goto("/deck-builder");
@@ -518,22 +508,22 @@ test.describe("Sealed Mode - Pool Isolation", () => {
       .locator('input[placeholder*="search" i], input[aria-label*="search" i]')
       .first();
 
-    if (await searchInput.isVisible({ timeout: 2000 })) {
-      await searchInput.fill("Island");
-      await page.waitForTimeout(1000);
+    await expect(searchInput).toBeVisible({ timeout: 2000 });
+    await searchInput.fill("Island");
+    await page.waitForTimeout(1000);
 
-      // Results should be from collection, not pool
-      // Pool cards have different metadata - verify results don't have pool indicators
-      const poolIndicator = page
-        .locator('[class*="pool"]')
-        .first()
-        .or(page.getByText(/pool/i))
-        .first();
+    // Results should be from collection, not pool
+    // Pool cards have different metadata - verify results don't have pool indicators
+    const poolIndicator = page
+      .locator('[class*="pool"]')
+      .first()
+      .or(page.getByText(/pool/i))
+      .first();
 
-      if (await poolIndicator.isVisible()) {
-        await expect(poolIndicator).not.toBeVisible();
-      }
-    }
+    // #1786: was `if (visible) expect(not visible)` — i.e. fail whenever
+    // visible; the guard only hid the assert when the element was absent.
+    // Same contract, now unconditional.
+    await expect(poolIndicator).not.toBeVisible();
   });
 
   test("ISOL-02: should use session ID to scope deck", async ({ page }) => {
@@ -543,27 +533,25 @@ test.describe("Sealed Mode - Pool Isolation", () => {
 
     const firstSet = page.locator('[class*="card"], [class*="set"]').first();
 
-    if (await firstSet.isVisible({ timeout: 5000 })) {
-      await firstSet.click();
-      await page.waitForTimeout(500);
+    await expect(firstSet).toBeVisible({ timeout: 5000 });
+    await firstSet.click();
+    await page.waitForTimeout(500);
 
-      const startButton = page
-        .locator("button")
-        .filter({ hasText: /Start.*Sealed|Start.*sealed/i })
-        .first();
+    const startButton = page
+      .locator("button")
+      .filter({ hasText: /Start.*Sealed|Start.*sealed/i })
+      .first();
 
-      if (await startButton.isVisible({ timeout: 2000 })) {
-        await startButton.click();
+    await expect(startButton).toBeVisible({ timeout: 2000 });
+    await startButton.click();
 
-        // Wait for sealed page to load
-        await page.waitForURL(/\/sealed/, { timeout: 15000 });
-        await page.waitForTimeout(3000);
+    // Wait for sealed page to load
+    await page.waitForURL(/\/sealed/, { timeout: 15000 });
+    await page.waitForTimeout(3000);
 
-        // URL should have session or set parameter
-        const url = page.url();
-        expect(url).toMatch(/\/sealed\/\?.*(session|set)=/i);
-      }
-    }
+    // URL should have session or set parameter
+    const url = page.url();
+    expect(url).toMatch(/\/sealed\/\?.*(session|set)=/i);
   });
 
   test("ISOL-03: should use separate IndexedDB store for sessions", async ({
@@ -575,42 +563,40 @@ test.describe("Sealed Mode - Pool Isolation", () => {
 
     const firstSet = page.locator('[class*="card"], [class*="set"]').first();
 
-    if (await firstSet.isVisible({ timeout: 5000 })) {
-      await firstSet.click();
-      await page.waitForTimeout(500);
+    await expect(firstSet).toBeVisible({ timeout: 5000 });
+    await firstSet.click();
+    await page.waitForTimeout(500);
 
-      const startButton = page
-        .locator("button")
-        .filter({ hasText: /Start.*Sealed|Start.*sealed/i })
-        .first();
+    const startButton = page
+      .locator("button")
+      .filter({ hasText: /Start.*Sealed|Start.*sealed/i })
+      .first();
 
-      if (await startButton.isVisible({ timeout: 2000 })) {
-        await startButton.click();
-        await page.waitForURL(/\/sealed/, { timeout: 15000 });
-        await page.waitForTimeout(3000);
+    await expect(startButton).toBeVisible({ timeout: 2000 });
+    await startButton.click();
+    await page.waitForURL(/\/sealed/, { timeout: 15000 });
+    await page.waitForTimeout(3000);
 
-        // Try to check IndexedDB
-        const dbCheck = await page.evaluate(async () => {
-          try {
-            // Fallback: try to access the DB directly
-            return new Promise((resolve) => {
-              const request = indexedDB.open("PlanarNexusLimited");
-              request.onsuccess = () => {
-                resolve(["PlanarNexusLimited"]);
-              };
-              request.onerror = () => {
-                resolve([]);
-              };
-            });
-          } catch {
-            return [];
-          }
+    // Try to check IndexedDB
+    const dbCheck = await page.evaluate(async () => {
+      try {
+        // Fallback: try to access the DB directly
+        return new Promise((resolve) => {
+          const request = indexedDB.open("PlanarNexusLimited");
+          request.onsuccess = () => {
+            resolve(["PlanarNexusLimited"]);
+          };
+          request.onerror = () => {
+            resolve([]);
+          };
         });
-
-        // Should have separate limited database
-        expect(dbCheck).toContain("PlanarNexusLimited");
+      } catch {
+        return [];
       }
-    }
+    });
+
+    // Should have separate limited database
+    expect(dbCheck).toContain("PlanarNexusLimited");
   });
 });
 
@@ -622,54 +608,49 @@ test.describe("Sealed Mode - Session Persistence", () => {
 
     const firstSet = page.locator('[class*="card"], [class*="set"]').first();
 
-    if (await firstSet.isVisible({ timeout: 5000 })) {
-      await firstSet.click();
-      await page.waitForTimeout(500);
+    await expect(firstSet).toBeVisible({ timeout: 5000 });
+    await firstSet.click();
+    await page.waitForTimeout(500);
 
-      const startButton = page
-        .locator("button")
-        .filter({ hasText: /Start.*Sealed|Start.*sealed/i })
-        .first();
+    const startButton = page
+      .locator("button")
+      .filter({ hasText: /Start.*Sealed|Start.*sealed/i })
+      .first();
 
-      if (await startButton.isVisible({ timeout: 2000 })) {
-        await startButton.click();
+    await expect(startButton).toBeVisible({ timeout: 2000 });
+    await startButton.click();
 
-        // Wait for sealed page to load
-        await page.waitForURL(/\/sealed/, { timeout: 15000 });
-        await page.waitForTimeout(3000);
+    // Wait for sealed page to load
+    await page.waitForURL(/\/sealed/, { timeout: 15000 });
+    await page.waitForTimeout(3000);
 
-        // Navigate to limited deck builder
-        const buildDeckButton = page
-          .locator("button")
-          .filter({ hasText: /Build.*Deck|Deck.*Build|Build Deck/i })
-          .first();
+    // Navigate to limited deck builder
+    const buildDeckButton = page
+      .locator("button")
+      .filter({ hasText: /Build.*Deck|Deck.*Build|Build Deck/i })
+      .first();
 
-        if (await buildDeckButton.isVisible({ timeout: 2000 })) {
-          await buildDeckButton.click();
+    await expect(buildDeckButton).toBeVisible({ timeout: 2000 });
+    await buildDeckButton.click();
 
-          // Wait for navigation (either with or without session param)
-          await page.waitForURL(/\/limited-deck-builder/, { timeout: 10000 });
-          await page.waitForTimeout(2000);
+    // Wait for navigation (either with or without session param)
+    await page.waitForURL(/\/limited-deck-builder/, { timeout: 10000 });
+    await page.waitForTimeout(2000);
 
-          // Get URL before refresh
-          const url = page.url();
+    // Get URL before refresh
+    const url = page.url();
 
-          // Refresh page
-          await page.reload();
-          await page.waitForTimeout(2000);
+    // Refresh page
+    await page.reload();
+    await page.waitForTimeout(2000);
 
-          // Should still be on limited deck builder page
-          await expect(page).toHaveURL(/\/limited-deck-builder/);
+    // Should still be on limited deck builder page
+    await expect(page).toHaveURL(/\/limited-deck-builder/);
 
-          // Deck section should still be visible
-          const deckSection = page.locator('[class*="deck"]').first();
+    // Deck section should still be visible
+    const deckSection = page.locator('[class*="deck"]').first();
 
-          if (await deckSection.isVisible({ timeout: 2000 })) {
-            await expect(deckSection).toBeVisible();
-          }
-        }
-      }
-    }
+    await expect(deckSection).toBeVisible({ timeout: 2000 });
   });
 
   test("should load existing session by ID", async ({ page }) => {
@@ -679,49 +660,47 @@ test.describe("Sealed Mode - Session Persistence", () => {
 
     const firstSet = page.locator('[class*="card"], [class*="set"]').first();
 
-    if (await firstSet.isVisible({ timeout: 5000 })) {
-      await firstSet.click();
+    await expect(firstSet).toBeVisible({ timeout: 5000 });
+    await firstSet.click();
+    await page.waitForTimeout(500);
+
+    const startButton = page
+      .locator("button")
+      .filter({ hasText: /Start.*Sealed|Start.*sealed/i })
+      .first();
+
+    await expect(startButton).toBeVisible({ timeout: 2000 });
+    await startButton.click();
+
+    // Wait for sealed page to load
+    await page.waitForURL(/\/sealed/, { timeout: 15000 });
+    await page.waitForTimeout(3000);
+
+    // Extract session or set ID
+    const url = page.url();
+    const sessionMatch = url.match(/session=([^&]+)/);
+    const setMatch = url.match(/set=([^&]+)/);
+    const param = sessionMatch
+      ? `session=${sessionMatch[1]}`
+      : setMatch
+        ? `set=${setMatch[1]}`
+        : "";
+
+    if (param) {
+      // Navigate away and back
+      await page.goto("/");
       await page.waitForTimeout(500);
 
-      const startButton = page
-        .locator("button")
-        .filter({ hasText: /Start.*Sealed|Start.*sealed/i })
-        .first();
+      // Navigate back with same parameter
+      await page.goto(`/sealed?${param}`);
+      await page.waitForTimeout(2000);
 
-      if (await startButton.isVisible({ timeout: 2000 })) {
-        await startButton.click();
+      // Should load same page
+      await expect(page).toHaveURL(/sealed/);
 
-        // Wait for sealed page to load
-        await page.waitForURL(/\/sealed/, { timeout: 15000 });
-        await page.waitForTimeout(3000);
-
-        // Extract session or set ID
-        const url = page.url();
-        const sessionMatch = url.match(/session=([^&]+)/);
-        const setMatch = url.match(/set=([^&]+)/);
-        const param = sessionMatch
-          ? `session=${sessionMatch[1]}`
-          : setMatch
-            ? `set=${setMatch[1]}`
-            : "";
-
-        if (param) {
-          // Navigate away and back
-          await page.goto("/");
-          await page.waitForTimeout(500);
-
-          // Navigate back with same parameter
-          await page.goto(`/sealed?${param}`);
-          await page.waitForTimeout(2000);
-
-          // Should load same page
-          await expect(page).toHaveURL(/sealed/);
-
-          // Should show cards
-          const cards = page.locator('[class*="card"]:visible');
-          expect(await cards.count()).toBeGreaterThanOrEqual(0);
-        }
-      }
+      // Should show cards
+      const cards = page.locator('[class*="card"]:visible');
+      expect(await cards.count()).toBeGreaterThanOrEqual(0);
     }
   });
 });
@@ -738,49 +717,45 @@ test.describe("Sealed Mode - Navigation Flow", () => {
     // Click a set
     const firstSet = page.locator('[class*="card"], [class*="set"]').first();
 
-    if (await firstSet.isVisible({ timeout: 5000 })) {
-      await firstSet.click();
-      await page.waitForTimeout(500);
+    await expect(firstSet).toBeVisible({ timeout: 5000 });
+    await firstSet.click();
+    await page.waitForTimeout(500);
 
-      // Click Start Sealed
-      const startButton = page
-        .locator("button")
-        .filter({ hasText: /Start.*Sealed|Start.*sealed/i })
-        .first();
+    // Click Start Sealed
+    const startButton = page
+      .locator("button")
+      .filter({ hasText: /Start.*Sealed|Start.*sealed/i })
+      .first();
 
-      if (await startButton.isVisible({ timeout: 2000 })) {
-        await startButton.click();
+    await expect(startButton).toBeVisible({ timeout: 2000 });
+    await startButton.click();
 
-        // Should be at Sealed page
-        await expect(page).toHaveURL(/\/sealed/);
-        await page.waitForTimeout(2000);
+    // Should be at Sealed page
+    await expect(page).toHaveURL(/\/sealed/);
+    await page.waitForTimeout(2000);
 
-        // Click Build Deck
-        const buildDeckButton = page
-          .locator("button")
-          .filter({ hasText: /Build.*Deck|Deck.*Build|Build Deck/i })
-          .first();
+    // Click Build Deck
+    const buildDeckButton = page
+      .locator("button")
+      .filter({ hasText: /Build.*Deck|Deck.*Build|Build Deck/i })
+      .first();
 
-        if (await buildDeckButton.isVisible({ timeout: 2000 })) {
-          await buildDeckButton.click();
+    await expect(buildDeckButton).toBeVisible({ timeout: 2000 });
+    await buildDeckButton.click();
 
-          // Should be at Limited Deck Builder
-          await expect(page).toHaveURL(/\/limited-deck-builder/);
+    // Should be at Limited Deck Builder
+    await expect(page).toHaveURL(/\/limited-deck-builder/);
 
-          // Should be able to go back to pool
-          const viewPoolButton = page
-            .locator("button")
-            .filter({ hasText: /View.*Pool|Pool/i })
-            .first();
+    // Should be able to go back to pool
+    const viewPoolButton = page
+      .locator("button")
+      .filter({ hasText: /View.*Pool|Pool/i })
+      .first();
 
-          if (await viewPoolButton.isVisible({ timeout: 1000 })) {
-            await viewPoolButton.click();
+    await expect(viewPoolButton).toBeVisible({ timeout: 1000 });
+    await viewPoolButton.click();
 
-            // Should go back to sealed page
-            await expect(page).toHaveURL(/\/sealed/);
-          }
-        }
-      }
-    }
+    // Should go back to sealed page
+    await expect(page).toHaveURL(/\/sealed/);
   });
 });

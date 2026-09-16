@@ -34,18 +34,18 @@ test.describe("Deck Builder", () => {
       )
       .first();
 
-    if (await searchInput.isVisible()) {
-      // Search for a card
-      await searchInput.fill("Lightning Bolt");
-      await page.waitForTimeout(500); // Wait for search debounce
+    await expect(searchInput).toBeVisible();
 
-      // Verify search results appear
-      const results = page.locator(
-        `[data-testid='card-result'], .card-result, [class*="card"]`,
-      );
-      // At least some results should appear
-      await expect(results.first()).toBeVisible({ timeout: 5000 });
-    }
+    // Search for a card
+    await searchInput.fill("Lightning Bolt");
+    await page.waitForTimeout(500); // Wait for search debounce
+
+    // Verify search results appear
+    const results = page.locator(
+      `[data-testid='card-result'], .card-result, [class*="card"]`,
+    );
+    // At least some results should appear
+    await expect(results.first()).toBeVisible({ timeout: 5000 });
   });
 
   test("should display deck statistics", async ({ page }) => {
@@ -56,10 +56,9 @@ test.describe("Deck Builder", () => {
       )
       .first();
 
-    if (await statsSection.isVisible()) {
-      // Should show card count
-      await expect(statsSection).toContainText(/0|count|cards/i);
-    }
+    // Should show card count
+    await expect(statsSection).toBeVisible();
+    await expect(statsSection).toContainText(/0|count|cards/i);
   });
 
   test("should handle empty deck state", async ({ page }) => {
@@ -81,11 +80,10 @@ test.describe("Deck Builder", () => {
       .locator(`a[href*="decks"], a[href*="saved"]`)
       .filter({ hasText: /Saved Decks|My Decks/i });
 
-    if (await savedDecksLink.isVisible()) {
-      await savedDecksLink.click();
-      // Should navigate to decks page or show saved decks modal
-      await page.waitForTimeout(500);
-    }
+    await expect(savedDecksLink).toBeVisible();
+    await savedDecksLink.click();
+    // Should navigate to decks page or show saved decks modal
+    await page.waitForTimeout(500);
   });
 });
 
@@ -98,11 +96,11 @@ test.describe("Deck Validation", () => {
       .locator(`select[data-testid='format'], select[aria-label*="format" i]`)
       .first();
 
-    if (await formatSelector.isVisible()) {
-      // Should have format options
-      const options = formatSelector.locator("option");
-      await expect(options.count()).toBeGreaterThan(0);
-    }
+    await expect(formatSelector).toBeVisible();
+
+    // Should have format options
+    const options = formatSelector.locator("option");
+    await expect(options).not.toHaveCount(0);
   });
 
   test("should show deck validation errors for invalid deck", async ({
@@ -117,10 +115,8 @@ test.describe("Deck Validation", () => {
       )
       .first();
 
-    if (await validationSection.isVisible()) {
-      // Should show some validation status
-      await expect(validationSection).toBeVisible();
-    }
+    // Should show some validation status
+    await expect(validationSection).toBeVisible();
   });
 });
 
@@ -135,9 +131,7 @@ test.describe("Deck Import/Export", () => {
       )
       .first();
 
-    if (await importButton.isVisible()) {
-      await expect(importButton).toBeVisible();
-    }
+    await expect(importButton).toBeVisible();
   });
 
   test("should have export functionality", async ({ page }) => {
@@ -150,8 +144,6 @@ test.describe("Deck Import/Export", () => {
       )
       .first();
 
-    if (await exportButton.isVisible()) {
-      await expect(exportButton).toBeVisible();
-    }
+    await expect(exportButton).toBeVisible();
   });
 });

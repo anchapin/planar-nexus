@@ -138,9 +138,9 @@ test.describe("Complex Combat E2E", () => {
     await expect(combatNextBtn).toBeVisible();
     await combatNextBtn.click();
 
-    if (await page.getByTestId("combat-phase-order").isVisible()) {
-      await combatNextBtn.click();
-    }
+    // #1786: the phase-order prompt must render mid-combat; click through it
+    await expect(page.getByTestId("combat-phase-order")).toBeVisible();
+    await combatNextBtn.click();
 
     await combatNextBtn.click();
 
