@@ -15,6 +15,14 @@
 #      `if` below even if the push is later made with a PAT.
 #   3. The job-level `if` also skips pushes authored by github-actions[bot].
 #
+# Issue #1835: because guards 1+2 mean NO CI ever runs on a ratchet commit,
+# this workflow asserts its own consistency before pushing — the same
+# coverage-docs guard ci.yml runs on PRs (`scripts/check-coverage-docs-sync.mjs`)
+# — and commits the ratcheted doc tables (README/CONTRIBUTING/TESTING) in the
+# SAME commit as the jest.config.js bump. Previously only jest.config.js was
+# staged, so the tables the ratchet script had just rewritten were silently
+# discarded and the next PR failed Coverage Docs Guard on the drift.
+#
 # Concurrency: queued, never cancelled — two rapid merges to main must both
 # ratchet (the second run sees the first bump's floor as its baseline).
 name: Coverage Ratchet
@@ -52,7 +60,6 @@ jobs:
         github.event.head_commit.committer.username != 'github-actions[bot]'
       )
     runs-on: ubuntu-latest
-
     steps:
       # Issue #1704: the local composite below cannot be resolved until the
       # repository exists in the workspace — check out first, mirroring the
@@ -71,7 +78,9 @@ jobs:
         # jest.config.js enables the `json-summary` reporter that feeds the
         # ratchet (coverage/coverage-summary.json). Jest fails before the
         # ratchet step if coverage is already below the current floor.
-        run: npm test -- --coverage --ci --maxWorkers=2 --forceExit --workerIdleMemoryLimit=512MB
+        # Issue #1719: no --forceExit, aligned with the ci.yml Test job — a
+        # hanging timer must fail this run, not be masked.
+        run: npm test -- --coverage --ci --maxWorkers=2 --workerIdleMemoryLimit=512MB
 
       - name: Ratchet coverage floor
         id: ratchet
@@ -97,17 +106,26 @@ jobs:
           fi
           exit "$RATCHET_EXIT"
 
+      - name: Assert coverage-docs consistency (issue #1835)
+        # Ratchet commits carry [skip ci] and GITHUB_TOKEN pushes never
+        # trigger workflows, so ci.yml's coverage-docs-guard job never sees
+        # them. Run the same guard HERE: if the ratchet rewrote
+        # jest.config.js but left any anchored doc table stale, fail loudly
+        # BEFORE the inconsistent state is pushed to main. Also covers the
+        # noop path (guard passes trivially when nothing was rewritten).
+        run: node scripts/check-coverage-docs-sync.mjs
+
       - name: Detect ratchet change
         id: changed
         run: |
           set -e
-          if git diff --quiet -- jest.config.js; then
+          if git diff --quiet -- jest.config.js README.md CONTRIBUTING.md docs/TESTING.md; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "[ratchet] jest.config.js already at the measured floor — nothing to commit."
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
             echo "[ratchet] jest.config.js coverageThreshold.global bumped:"
-            git --no-pager diff -- jest.config.js
+            git --no-pager diff -- jest.config.js README.md CONTRIBUTING.md docs/TESTING.md
           fi
 
       - name: Commit and push ratcheted floor
@@ -122,7 +140,12 @@ jobs:
           fi
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add jest.config.js
+          # Issue #1835: stage the doc tables too — the ratchet script
+          # rewrites them alongside jest.config.js, and they must land in the
+          # SAME commit as the bump or main drifts doc-inconsistent (the
+          # original bug: only jest.config.js was staged, silently discarding
+          # the rewritten tables).
+          git add jest.config.js README.md CONTRIBUTING.md docs/TESTING.md
           # `[skip ci]` in the message is loop-guard layer 2 (see file header);
           # GITHUB_TOKEN pushes not re-triggering workflows is layer 1.
           git commit -m "chore: auto-ratchet jest coverage floor [skip ci]"
