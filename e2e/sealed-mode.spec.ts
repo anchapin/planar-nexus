@@ -42,23 +42,13 @@ test.describe("Sealed Mode - Set Browser", () => {
     // Wait for sets to load from Scryfall API
     await page.waitForTimeout(2000);
 
-    // Look for set cards or set list items
+    // Look for set cards or set list items (now unconditionally rendered — see #1856).
     const setsContainer = page
       .locator('[class*="grid"], [class*="list"], [data-testid*="set"]')
       .first();
 
     // #1786: the sets grid must render once the API responds.
-    const isSetsContainerVisible = await setsContainer
-      .isVisible()
-      .catch(() => false);
-    if (isSetsContainerVisible) {
-      await expect(setsContainer).toBeVisible();
-    } else {
-      test.skip(
-        !isSetsContainerVisible,
-        "setsContainer requires a loaded deck",
-      );
-    }
+    await expect(setsContainer).toBeVisible();
 
     // Should have multiple sets displayed
     const setItems = page.locator('[class*="set"], [data-testid*="set-item"]');
@@ -375,12 +365,7 @@ test.describe("Sealed Mode - Limited Deck Builder", () => {
     if (hasSearchInput) {
       // If search exists, it should be limited to pool
       const poolLabel = page.locator("text=/pool/i");
-      const isPoolLabelVisible = await poolLabel.isVisible().catch(() => false);
-      if (isPoolLabelVisible) {
-        await expect(poolLabel).toBeVisible();
-      } else {
-        test.skip(!isPoolLabelVisible, "poolLabel requires a loaded deck");
-      }
+      await expect(poolLabel).toBeVisible();
     }
   });
 
@@ -457,12 +442,7 @@ test.describe("Sealed Mode - Limited Deck Builder", () => {
     } else {
       // Check for validation message
       const errorMsg = page.locator("text=/40|minimum|invalid/i");
-      const isErrorMsgVisible = await errorMsg.isVisible().catch(() => false);
-      if (isErrorMsgVisible) {
-        await expect(errorMsg).toBeVisible();
-      } else {
-        test.skip(!isErrorMsgVisible, "errorMsg requires a loaded deck");
-      }
+      await expect(errorMsg).toBeVisible();
     }
   });
 

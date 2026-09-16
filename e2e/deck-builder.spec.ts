@@ -33,28 +33,14 @@ test.describe("Deck Builder", () => {
   });
 
   test("should search for cards", async ({ page }) => {
-    // Find search input
+    // Find search input (now unconditionally rendered — see #1856).
     const searchInput = page
       .locator(
         `input[placeholder*="search" i], input[aria-label*="search" i], input[type="text"]`,
       )
       .first();
 
-    const isSearchInputVisible = await searchInput
-      .isVisible()
-      .catch(() => false);
-    if (isSearchInputVisible) {
-      const isSearchInputVisible = await searchInput
-        .isVisible()
-        .catch(() => false);
-      if (isSearchInputVisible) {
-        await expect(searchInput).toBeVisible();
-      } else {
-        test.skip(!isSearchInputVisible, "searchInput requires a loaded deck");
-      }
-    } else {
-      test.skip(!isSearchInputVisible, "searchInput requires a loaded deck");
-    }
+    await expect(searchInput).toBeVisible();
 
     // Search for a card
     await searchInput.fill("Lightning Bolt");
@@ -69,32 +55,14 @@ test.describe("Deck Builder", () => {
   });
 
   test("should display deck statistics", async ({ page }) => {
-    // Look for deck stats section
+    // Look for deck stats section (now unconditionally rendered — see #1856).
     const statsSection = page
       .locator(
         `[data-testid='deck-stats'], [class*="stats"], [class*="deck-info"]`,
       )
       .first();
 
-    // Should show card count
-    const isStatsSectionVisible = await statsSection
-      .isVisible()
-      .catch(() => false);
-    if (isStatsSectionVisible) {
-      const isStatsSectionVisible = await statsSection
-        .isVisible()
-        .catch(() => false);
-      if (isStatsSectionVisible) {
-        await expect(statsSection).toBeVisible();
-      } else {
-        test.skip(
-          !isStatsSectionVisible,
-          "statsSection requires a loaded deck",
-        );
-      }
-    } else {
-      test.skip(!isStatsSectionVisible, "statsSection requires a loaded deck");
-    }
+    await expect(statsSection).toBeVisible();
     await expect(statsSection).toContainText(/0|count|cards/i);
   });
 
@@ -112,32 +80,12 @@ test.describe("Deck Builder", () => {
   });
 
   test("should navigate to saved decks", async ({ page }) => {
-    // Look for saved decks link
+    // Look for saved decks link (now unconditionally rendered — see #1856).
     const savedDecksLink = page
       .locator(`a[href*="decks"], a[href*="saved"]`)
       .filter({ hasText: /Saved Decks|My Decks/i });
 
-    const isSavedDecksLinkVisible = await savedDecksLink
-      .isVisible()
-      .catch(() => false);
-    if (isSavedDecksLinkVisible) {
-      const isSavedDecksLinkVisible = await savedDecksLink
-        .isVisible()
-        .catch(() => false);
-      if (isSavedDecksLinkVisible) {
-        await expect(savedDecksLink).toBeVisible();
-      } else {
-        test.skip(
-          !isSavedDecksLinkVisible,
-          "savedDecksLink requires a loaded deck",
-        );
-      }
-    } else {
-      test.skip(
-        !isSavedDecksLinkVisible,
-        "savedDecksLink requires a loaded deck",
-      );
-    }
+    await expect(savedDecksLink).toBeVisible();
     await savedDecksLink.click();
     // Should navigate to decks page or show saved decks modal
     await page.waitForTimeout(500);
@@ -148,32 +96,12 @@ test.describe("Deck Validation", () => {
   test("should validate deck format", async ({ page }) => {
     await page.goto("/deck-builder");
 
-    // Look for format selector
+    // Look for format selector (now unconditionally rendered — see #1856).
     const formatSelector = page
       .locator(`select[data-testid='format'], select[aria-label*="format" i]`)
       .first();
 
-    const isFormatSelectorVisible = await formatSelector
-      .isVisible()
-      .catch(() => false);
-    if (isFormatSelectorVisible) {
-      const isFormatSelectorVisible = await formatSelector
-        .isVisible()
-        .catch(() => false);
-      if (isFormatSelectorVisible) {
-        await expect(formatSelector).toBeVisible();
-      } else {
-        test.skip(
-          !isFormatSelectorVisible,
-          "formatSelector requires a loaded deck",
-        );
-      }
-    } else {
-      test.skip(
-        !isFormatSelectorVisible,
-        "formatSelector requires a loaded deck",
-      );
-    }
+    await expect(formatSelector).toBeVisible();
 
     // Should have format options
     const options = formatSelector.locator("option");
@@ -185,35 +113,14 @@ test.describe("Deck Validation", () => {
   }) => {
     await page.goto("/deck-builder");
 
-    // Look for validation section
+    // Look for validation section (now unconditionally rendered — see #1856).
     const validationSection = page
       .locator(
         `[data-testid='validation'], [class*="validation"], [class*="deck-errors"]`,
       )
       .first();
 
-    // Should show some validation status
-    const isValidationSectionVisible = await validationSection
-      .isVisible()
-      .catch(() => false);
-    if (isValidationSectionVisible) {
-      const isValidationSectionVisible = await validationSection
-        .isVisible()
-        .catch(() => false);
-      if (isValidationSectionVisible) {
-        await expect(validationSection).toBeVisible();
-      } else {
-        test.skip(
-          !isValidationSectionVisible,
-          "validationSection requires a loaded deck",
-        );
-      }
-    } else {
-      test.skip(
-        !isValidationSectionVisible,
-        "validationSection requires a loaded deck",
-      );
-    }
+    await expect(validationSection).toBeVisible();
   });
 });
 
@@ -221,60 +128,26 @@ test.describe("Deck Import/Export", () => {
   test("should have import functionality", async ({ page }) => {
     await page.goto("/deck-builder");
 
-    // Look for import button
+    // Look for import button (now unconditionally rendered — see #1856).
     const importButton = page
       .locator(
         `button:has-text("Import"), button:has-text("import"), [data-testid='import']`,
       )
       .first();
 
-    const isImportButtonVisible = await importButton
-      .isVisible()
-      .catch(() => false);
-    if (isImportButtonVisible) {
-      const isImportButtonVisible = await importButton
-        .isVisible()
-        .catch(() => false);
-      if (isImportButtonVisible) {
-        await expect(importButton).toBeVisible();
-      } else {
-        test.skip(
-          !isImportButtonVisible,
-          "importButton requires a loaded deck",
-        );
-      }
-    } else {
-      test.skip(!isImportButtonVisible, "importButton requires a loaded deck");
-    }
+    await expect(importButton).toBeVisible();
   });
 
   test("should have export functionality", async ({ page }) => {
     await page.goto("/deck-builder");
 
-    // Look for export button
+    // Look for export button (now unconditionally rendered — see #1856).
     const exportButton = page
       .locator(
         `button:has-text("Export"), button:has-text("export"), [data-testid='export']`,
       )
       .first();
 
-    const isExportButtonVisible = await exportButton
-      .isVisible()
-      .catch(() => false);
-    if (isExportButtonVisible) {
-      const isExportButtonVisible = await exportButton
-        .isVisible()
-        .catch(() => false);
-      if (isExportButtonVisible) {
-        await expect(exportButton).toBeVisible();
-      } else {
-        test.skip(
-          !isExportButtonVisible,
-          "exportButton requires a loaded deck",
-        );
-      }
-    } else {
-      test.skip(!isExportButtonVisible, "exportButton requires a loaded deck");
-    }
+    await expect(exportButton).toBeVisible();
   });
 });

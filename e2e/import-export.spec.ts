@@ -28,41 +28,27 @@ test.describe("Deck Import", () => {
   });
 
   test("should have import button", async ({ page }) => {
-    // Look for import button
+    // Look for import button (now unconditionally rendered — see #1856).
     const importButton = page
       .locator(
         `button:has-text("Import"), button:has-text("import"), [data-testid='import']`,
       )
       .first();
 
-    const isImportButtonVisible = await importButton
-      .isVisible()
-      .catch(() => false);
-    if (isImportButtonVisible) {
-      await expect(importButton).toBeVisible();
-    } else {
-      test.skip(!isImportButtonVisible, "importButton requires a loaded deck");
-    }
+    await expect(importButton).toBeVisible();
   });
 
   test("should open import dialog", async ({ page }) => {
-    // Look for import button and click
+    // Look for import button and click (now unconditionally rendered — see #1856).
     const importButton = page
       .locator(`button:has-text("Import"), button:has-text("import")`)
       .first();
 
-    const isImportButtonVisible = await importButton
-      .isVisible()
-      .catch(() => false);
-    if (isImportButtonVisible) {
-      await expect(importButton).toBeVisible();
-    } else {
-      test.skip(!isImportButtonVisible, "importButton requires a loaded deck");
-    }
+    await expect(importButton).toBeVisible();
     await importButton.click();
 
     // Import UI appears as a dialog/modal or a bare import textarea;
-    // at least one of the two must render (#1786 — was two no-op guards).
+    // at least one of the two must render (#1786 + #1856).
     const importDialog = page
       .locator(
         `[data-testid='import-dialog'], [role="dialog"], [class*="import-modal"]`,
@@ -74,48 +60,23 @@ test.describe("Deck Import", () => {
       )
       .first();
 
+    // Explicit flag (#1786): a branch with a meaningful else-side (either/or
+    // UI variant) reads the flag into a const first.
     const hasDialog = await importDialog.isVisible();
     if (hasDialog) {
-      const isImportDialogVisible = await importDialog
-        .isVisible()
-        .catch(() => false);
-      if (isImportDialogVisible) {
-        await expect(importDialog).toBeVisible();
-      } else {
-        test.skip(
-          !isImportDialogVisible,
-          "importDialog requires a loaded deck",
-        );
-      }
+      await expect(importDialog).toBeVisible();
     } else {
-      const isImportTextareaVisible = await importTextarea
-        .isVisible()
-        .catch(() => false);
-      if (isImportTextareaVisible) {
-        await expect(importTextarea).toBeVisible();
-      } else {
-        test.skip(
-          !isImportTextareaVisible,
-          "importTextarea requires a loaded deck",
-        );
-      }
+      await expect(importTextarea).toBeVisible();
     }
   });
 
   test("should accept decklist text input", async ({ page }) => {
-    // Look for import button and click
+    // Look for import button and click (now unconditionally rendered — see #1856).
     const importButton = page
       .locator(`button:has-text("Import"), button:has-text("import")`)
       .first();
 
-    const isImportButtonVisible = await importButton
-      .isVisible()
-      .catch(() => false);
-    if (isImportButtonVisible) {
-      await expect(importButton).toBeVisible();
-    } else {
-      test.skip(!isImportButtonVisible, "importButton requires a loaded deck");
-    }
+    await expect(importButton).toBeVisible();
     await importButton.click();
     await page.waitForTimeout(500);
 
@@ -127,116 +88,68 @@ test.describe("Deck Import", () => {
 4 Mountain
 20 Island`;
 
-    const isTextareaVisible = await textarea.isVisible().catch(() => false);
-    if (isTextareaVisible) {
-      await expect(textarea).toBeVisible();
-    } else {
-      test.skip(!isTextareaVisible, "textarea requires a loaded deck");
-    }
+    await expect(textarea).toBeVisible();
     await textarea.fill(sampleDecklist);
     await expect(textarea).toHaveValue(sampleDecklist);
   });
 
   test("should have import confirmation button", async ({ page }) => {
-    // Look for import button and click
+    // Look for import button and click (now unconditionally rendered — see #1856).
     const importButton = page
       .locator(`button:has-text("Import"), button:has-text("import")`)
       .first();
 
-    const isImportButtonVisible = await importButton
-      .isVisible()
-      .catch(() => false);
-    if (isImportButtonVisible) {
-      await expect(importButton).toBeVisible();
-    } else {
-      test.skip(!isImportButtonVisible, "importButton requires a loaded deck");
-    }
+    await expect(importButton).toBeVisible();
     await importButton.click();
     await page.waitForTimeout(500);
 
-    // Look for confirm button
+    // Look for confirm button (now unconditionally rendered — see #1856).
     const confirmButton = page
       .locator(
         `button:has-text("Confirm"), button:has-text("Import"), button:has-text("OK"), button:has-text("Load")`,
       )
       .last();
 
-    const isConfirmButtonVisible = await confirmButton
-      .isVisible()
-      .catch(() => false);
-    if (isConfirmButtonVisible) {
-      await expect(confirmButton).toBeVisible();
-    } else {
-      test.skip(
-        !isConfirmButtonVisible,
-        "confirmButton requires a loaded deck",
-      );
-    }
+    await expect(confirmButton).toBeVisible();
   });
 
   test("should show parsing errors for invalid decklist", async ({ page }) => {
-    // Look for import button and click
+    // Look for import button and click (now unconditionally rendered — see #1856).
     const importButton = page
       .locator(`button:has-text("Import"), button:has-text("import")`)
       .first();
 
-    const isImportButtonVisible = await importButton
-      .isVisible()
-      .catch(() => false);
-    if (isImportButtonVisible) {
-      await expect(importButton).toBeVisible();
-    } else {
-      test.skip(!isImportButtonVisible, "importButton requires a loaded deck");
-    }
+    await expect(importButton).toBeVisible();
     await importButton.click();
     await page.waitForTimeout(500);
 
-    // Look for textarea
+    // Look for textarea (now unconditionally rendered — see #1856).
     const textarea = page.locator(`textarea`).first();
 
     // Enter invalid decklist
-    const isTextareaVisible = await textarea.isVisible().catch(() => false);
-    if (isTextareaVisible) {
-      await expect(textarea).toBeVisible();
-    } else {
-      test.skip(!isTextareaVisible, "textarea requires a loaded deck");
-    }
+    await expect(textarea).toBeVisible();
     await textarea.fill(
       "Invalid Card Name That Does Not Exist\nAnother Invalid Card",
     );
 
-    // Look for import/parse button
+    // Look for import/parse button (now unconditionally rendered — see #1856).
     const parseButton = page
       .locator(
         `button:has-text("Parse"), button:has-text("Import"), button:has-text("Load")`,
       )
       .last();
 
-    const isParseButtonVisible = await parseButton
-      .isVisible()
-      .catch(() => false);
-    if (isParseButtonVisible) {
-      await expect(parseButton).toBeVisible();
-    } else {
-      test.skip(!isParseButtonVisible, "parseButton requires a loaded deck");
-    }
+    await expect(parseButton).toBeVisible();
     await parseButton.click();
     await page.waitForTimeout(1000);
 
-    // Should show error message
+    // Should show error message (now unconditionally rendered — see #1856).
     const errorMessage = page
       .locator(`[data-testid='error'], [class*="error"], [role="alert"]`)
       .filter({ hasText: /invalid|not found|error/i })
       .first();
 
-    const isErrorMessageVisible = await errorMessage
-      .isVisible()
-      .catch(() => false);
-    if (isErrorMessageVisible) {
-      await expect(errorMessage).toBeVisible();
-    } else {
-      test.skip(!isErrorMessageVisible, "errorMessage requires a loaded deck");
-    }
+    await expect(errorMessage).toBeVisible();
   });
 });
 
@@ -247,111 +160,65 @@ test.describe("Deck Export", () => {
   });
 
   test("should have export button", async ({ page }) => {
-    // Look for export button
+    // Look for export button (now unconditionally rendered — see #1856).
     const exportButton = page
       .locator(
         `button:has-text("Export"), button:has-text("export"), [data-testid='export']`,
       )
       .first();
 
-    const isExportButtonVisible = await exportButton
-      .isVisible()
-      .catch(() => false);
-    if (isExportButtonVisible) {
-      await expect(exportButton).toBeVisible();
-    } else {
-      test.skip(!isExportButtonVisible, "exportButton requires a loaded deck");
-    }
+    await expect(exportButton).toBeVisible();
   });
 
   test("should export deck as text", async ({ page }) => {
-    // Look for export button
+    // Look for export button (now unconditionally rendered — see #1856).
     const exportButton = page
       .locator(`button:has-text("Export"), button:has-text("export")`)
       .first();
 
-    const isExportButtonVisible = await exportButton
-      .isVisible()
-      .catch(() => false);
-    if (isExportButtonVisible) {
-      await expect(exportButton).toBeVisible();
-    } else {
-      test.skip(!isExportButtonVisible, "exportButton requires a loaded deck");
-    }
+    await expect(exportButton).toBeVisible();
 
     // Check if there's a dropdown
     await exportButton.click();
     await page.waitForTimeout(500);
 
-    // Look for text export option
+    // Look for text export option (now unconditionally rendered — see #1856).
     const textExportOption = page
       .locator(`[data-testid='dropdown-item'], [role="menuitem"]`)
       .filter({ hasText: /Text|Copy/i })
       .first();
 
-    const isTextExportOptionVisible = await textExportOption
-      .isVisible()
-      .catch(() => false);
-    if (isTextExportOptionVisible) {
-      await expect(textExportOption).toBeVisible();
-    } else {
-      test.skip(
-        !isTextExportOptionVisible,
-        "textExportOption requires a loaded deck",
-      );
-    }
+    await expect(textExportOption).toBeVisible();
   });
 
   test("should export deck as JSON", async ({ page }) => {
-    // Look for export button
+    // Look for export button (now unconditionally rendered — see #1856).
     const exportButton = page
       .locator(`button:has-text("Export"), button:has-text("export")`)
       .first();
 
-    const isExportButtonVisible = await exportButton
-      .isVisible()
-      .catch(() => false);
-    if (isExportButtonVisible) {
-      await expect(exportButton).toBeVisible();
-    } else {
-      test.skip(!isExportButtonVisible, "exportButton requires a loaded deck");
-    }
+    await expect(exportButton).toBeVisible();
     await exportButton.click();
     await page.waitForTimeout(500);
 
-    // Look for JSON export option
+    // Look for JSON export option (now unconditionally rendered — see #1856).
     const jsonExportOption = page
       .locator(`[data-testid='dropdown-item'], [role="menuitem"]`)
       .filter({ hasText: /JSON/i })
       .first();
 
-    const isJsonExportOptionVisible = await jsonExportOption
-      .isVisible()
-      .catch(() => false);
-    if (isJsonExportOptionVisible) {
-      await expect(jsonExportOption).toBeVisible();
-    } else {
-      test.skip(
-        !isJsonExportOptionVisible,
-        "jsonExportOption requires a loaded deck",
-      );
-    }
+    await expect(jsonExportOption).toBeVisible();
   });
 
   test("should copy decklist to clipboard", async ({ page }) => {
-    // Look for export/copy button
+    // Look for export/copy button (now unconditionally rendered — see #1856).
     const copyButton = page
       .locator(
         `button:has-text("Copy"), button:has-text("copy"), [data-testid='copy']`,
       )
       .first();
 
-    const isCopyButtonVisible = await copyButton.isVisible().catch(() => false);
-    if (isCopyButtonVisible) {
-      await expect(copyButton).toBeVisible();
-    } else {
-      test.skip(!isCopyButtonVisible, "copyButton requires a loaded deck");
-    }
+    await expect(copyButton).toBeVisible();
 
     // Note: Can't actually test clipboard in Playwright without permissions
     // Just verify the button exists and is clickable
@@ -366,49 +233,29 @@ test.describe("Import/Export Round Trip", () => {
 
     await page.goto("/deck-builder");
 
-    // Look for export button
+    // Look for export button (now unconditionally rendered — see #1856).
     const exportButton = page
       .locator(`button:has-text("Export"), button:has-text("export")`)
       .first();
 
-    const isExportButtonVisible = await exportButton
-      .isVisible()
-      .catch(() => false);
-    if (isExportButtonVisible) {
-      await expect(exportButton).toBeVisible();
-    } else {
-      test.skip(!isExportButtonVisible, "exportButton requires a loaded deck");
-    }
+    await expect(exportButton).toBeVisible();
     await exportButton.click();
     await page.waitForTimeout(500);
 
-    // Look for copy option
+    // Look for copy option (now unconditionally rendered — see #1856).
     const copyOption = page
       .locator(`[data-testid='dropdown-item']`)
       .filter({ hasText: /Copy/i })
       .first();
 
-    // Verify export functionality exists
-    const isCopyOptionVisible = await copyOption.isVisible().catch(() => false);
-    if (isCopyOptionVisible) {
-      await expect(copyOption).toBeVisible();
-    } else {
-      test.skip(!isCopyOptionVisible, "copyOption requires a loaded deck");
-    }
+    await expect(copyOption).toBeVisible();
 
-    // Look for import button
+    // Look for import button (now unconditionally rendered — see #1856).
     const importButton = page
       .locator(`button:has-text("Import"), button:has-text("import")`)
       .first();
 
-    const isImportButtonVisible = await importButton
-      .isVisible()
-      .catch(() => false);
-    if (isImportButtonVisible) {
-      await expect(importButton).toBeVisible();
-    } else {
-      test.skip(!isImportButtonVisible, "importButton requires a loaded deck");
-    }
+    await expect(importButton).toBeVisible();
   });
 });
 
@@ -416,36 +263,22 @@ test.describe("Clipboard Operations", () => {
   test("should have paste from clipboard option", async ({ page }) => {
     await page.goto("/deck-builder");
 
-    // Look for import button
+    // Look for import button (now unconditionally rendered — see #1856).
     const importButton = page
       .locator(`button:has-text("Import"), button:has-text("import")`)
       .first();
 
-    const isImportButtonVisible = await importButton
-      .isVisible()
-      .catch(() => false);
-    if (isImportButtonVisible) {
-      await expect(importButton).toBeVisible();
-    } else {
-      test.skip(!isImportButtonVisible, "importButton requires a loaded deck");
-    }
+    await expect(importButton).toBeVisible();
     await importButton.click();
     await page.waitForTimeout(500);
 
-    // Look for paste button
+    // Look for paste button (now unconditionally rendered — see #1856).
     const pasteButton = page
       .locator(
         `button:has-text("Paste"), button:has-text("paste"), [aria-label*="paste" i]`,
       )
       .first();
 
-    const isPasteButtonVisible = await pasteButton
-      .isVisible()
-      .catch(() => false);
-    if (isPasteButtonVisible) {
-      await expect(pasteButton).toBeVisible();
-    } else {
-      test.skip(!isPasteButtonVisible, "pasteButton requires a loaded deck");
-    }
+    await expect(pasteButton).toBeVisible();
   });
 });

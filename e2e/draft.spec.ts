@@ -135,14 +135,8 @@ test.describe("Draft Mode - Initialization", () => {
     expect(hasStartButton || hasIntroCard).toBeTruthy();
 
     if (hasStartButton) {
-      const isStartButtonVisible = await startButton
-        .isVisible()
-        .catch(() => false);
-      if (isStartButtonVisible) {
-        await expect(startButton).toBeVisible();
-      } else {
-        test.skip(!isStartButtonVisible, "startButton requires a loaded deck");
-      }
+      // #1856: with loadDeck in beforeEach, the start button must render.
+      await expect(startButton).toBeVisible();
 
       const packInfo = page.locator(`text="${PACKS_PER_DRAFT} packs"`);
       await expect(packInfo).toContainText(String(PACKS_PER_DRAFT));

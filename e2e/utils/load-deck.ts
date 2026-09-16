@@ -4,9 +4,9 @@
  * Mirrors the `seedCardDatabase` pattern in `e2e/test-utils.ts`: an init
  * script is registered on the page so it runs before every navigation,
  * then we hand-roll the IndexedDB open + onupgradeneeded + onsuccess +
- * onerror path to populate the production `decks` store with a known
- * commander deck. The test can then assert unconditionally on deck-
- * dependent UI (deck selector, archetype, synergies, …) per issue
+ * onerror path to populate the production deck-related stores with a
+ * known commander deck. The test can then assert unconditionally on
+ * deck-dependent UI (deck selector, archetype, synergies, …) per issue
  * #1786's acceptance criterion #1.
  *
  * Production schema (see `src/lib/indexeddb-storage.ts` lines 537-551,
@@ -14,13 +14,28 @@
  *   - DB:    "PlanarNexusStorage"  v3
  *   - store: "decks"  keyPath: "id"
  *   - idx:   "name", "format", "createdAt", "updatedAt" (non-unique)
+ *   - store: "preferences"  keyPath: "id"  (no secondary indexes)
  *
- * The localStorage fallback (`planar_nexus_decks`, JSON-encoded ARRAY
- * of StoredDeck rows) is seeded too — `deckStorage.getAllDecks()` in
- * `src/lib/deck-storage.ts` line 238 reads localStorage only when the
- * IndexedDB read throws. In practice the IndexedDB seed wins, but
- * seeding both keeps the helper resilient if a future schema bump
- * breaks one path.
+ * Three storage locations are populated:
+ *
+ *   1. IndexedDB `decks` store — read by `deckStorage.getAllDecks()`
+ *      for "Decks" views that go through the canonical storage manager.
+ *
+ *   2. IndexedDB `preferences` store (`id = "saved-decks"`) + the
+ *      localStorage `saved-decks` fallback — read by the
+ *      `useLocalStorage("saved-decks", …)` hook used by the in-page
+ *      `<DeckSelector>` and other UI surfaces.
+ *
+ *   3. localStorage `planar_nexus_decks` — fallback path in
+ *      `deckStorage.getAllDecks()` (line 238).
+ *
+ * Race-condition fix: every `indexedDB.open("PlanarNexusStorage", 3)`
+ * call goes through a wrapper that holds the original `onsuccess`
+ * callbacks until our seed writes have committed. Without this, the
+ * page's React effect (`useLocalStorage`) can run its IndexedDB read
+ * BEFORE our seed-write transaction commits, and the selector ends
+ * up empty. The wrapper is installed once by the init script and
+ * applies to every navigation.
  */
 import { test as base, expect, Page } from "@playwright/test";
 import fs from "fs";
@@ -36,6 +51,8 @@ const testDeck = JSON.parse(
 const DECK_DB_NAME = "PlanarNexusStorage";
 const DECK_DB_VERSION = 3;
 const DECK_STORE = "decks";
+const PREFERENCES_STORE = "preferences";
+const SAVED_DECKS_LOCALSTORAGE_KEY = "saved-decks";
 const DECK_LOCALSTORAGE_KEY = "planar_nexus_decks";
 const FIXTURE_ID = "test-commander-deck-001";
 const FIXTURE_NAME = "Test Commander Deck";
@@ -95,8 +112,9 @@ function buildDeckRow(): unknown {
 }
 
 /**
- * Register an init script that seeds the production `decks` IndexedDB
- * store (and the localStorage fallback) with a known commander deck.
+ * Register an init script that seeds the production deck-related
+ * IndexedDB stores and localStorage fallbacks with a known commander
+ * deck.
  *
  * Must be called BEFORE `page.goto(...)` so the script is attached to
  * the initial navigation. Mirrors the `seedCardDatabase(page)` pattern
@@ -116,63 +134,24 @@ export async function loadDeck(
 
   await page.addInitScript(
     (config) => {
-      const { dbName, version, storeName, localStorageKey, deck } = config;
+      const {
+        dbName,
+        version,
+        decksStore,
+        preferencesStore,
+        savedDecksLocalStorageKey,
+        deckStorageLocalStorageKey,
+        deck,
+      } = config;
 
-      const open = indexedDB.open(dbName, version);
-
-      open.onupgradeneeded = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        if (!db.objectStoreNames.contains(storeName)) {
-          const store = db.createObjectStore(storeName, { keyPath: "id" });
-          store.createIndex("name", "name", { unique: false });
-          store.createIndex("format", "format", { unique: false });
-          store.createIndex("createdAt", "createdAt", { unique: false });
-          store.createIndex("updatedAt", "updatedAt", { unique: false });
-        }
-      };
-
-      open.onsuccess = (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        const tx = db.transaction([storeName], "readwrite");
-        const store = tx.objectStore(storeName);
-        store.clear();
-        store.put(deck);
-        tx.oncomplete = () => {
-          console.log(
-            `IndexedDB seeded with deck "${deck.id}" (${deck.cards.length} rows)`,
-          );
-          (
-            window as unknown as { __loadDeckSeeded?: boolean }
-          ).__loadDeckSeeded = true;
-        };
-        tx.onerror = () => {
-          console.error(
-            "IndexedDB deck seed tx error:",
-            (tx as IDBTransaction).error,
-          );
-          (
-            window as unknown as { __loadDeckSeedError?: string }
-          ).__loadDeckSeedError =
-            (tx as IDBTransaction).error?.message ?? "unknown";
-        };
-      };
-
-      open.onerror = (event) => {
-        console.error(
-          "IndexedDB deck seed open error:",
-          (event.target as IDBOpenDBRequest).error,
-        );
-        (
-          window as unknown as { __loadDeckSeedError?: string }
-        ).__loadDeckSeedError =
-          (event.target as IDBOpenDBRequest).error?.message ?? "unknown";
-      };
-
-      // localStorage fallback (see deck-storage.ts line 238). In practice
-      // the IndexedDB read wins; this is defensive in case the schema
-      // bumps in a way that breaks the open path during a test.
+      // localStorage seeds (synchronous — ready before any page script).
       try {
-        const existing = localStorage.getItem(localStorageKey);
+        localStorage.setItem(savedDecksLocalStorageKey, JSON.stringify([deck]));
+      } catch (e) {
+        console.error("localStorage [saved-decks] seed error:", e);
+      }
+      try {
+        const existing = localStorage.getItem(deckStorageLocalStorageKey);
         let decks: unknown[] = [];
         if (existing) {
           try {
@@ -190,16 +169,149 @@ export async function loadDeck(
           }
         }
         decks.push(deck);
-        localStorage.setItem(localStorageKey, JSON.stringify(decks));
+        localStorage.setItem(deckStorageLocalStorageKey, JSON.stringify(decks));
       } catch (e) {
-        console.error("localStorage deck seed error:", e);
+        console.error("localStorage [planar_nexus_decks] seed error:", e);
       }
+
+      // Race-condition-safe IndexedDB wrapper. Every
+      // `indexedDB.open("PlanarNexusStorage", 3)` call goes through us.
+      // We capture the page's `.onsuccess` handler and re-fire it
+      // AFTER our seed writes have committed. This guarantees that
+      // the page's React effect's `useLocalStorage` IndexedDB read
+      // ALWAYS sees our seeded data.
+      //
+      // Why capture instead of stopImmediatePropagation: a capture-
+      // phase `stopImmediatePropagation` listener can prevent the
+      // page's later-attached handlers, but the page sets its
+      // `request.onsuccess` BEFORE the success event fires (synchronously
+      // after `indexedDB.open()` returns). At event-dispatch time, the
+      // page's onsuccess is already on the request. We null it out
+      // (so the target-phase handler doesn't run automatically), then
+      // call it manually after the seed commits.
+      const originalOpen = indexedDB.open.bind(indexedDB);
+      const writeChain: { p: Promise<unknown> } = {
+        p: Promise.resolve(),
+      };
+
+      function seedAndContinue(
+        db: IDBDatabase,
+        req: IDBOpenDBRequest,
+      ): Promise<void> {
+        // Chain onto the write mutex so seed writes serialize.
+        const next = writeChain.p.then(
+          () =>
+            new Promise<void>((resolve) => {
+              try {
+                const tx = db.transaction(
+                  [decksStore, preferencesStore],
+                  "readwrite",
+                );
+                const ds = tx.objectStore(decksStore);
+                ds.clear();
+                ds.put(deck);
+                const ps = tx.objectStore(preferencesStore);
+                ps.put({
+                  id: savedDecksLocalStorageKey,
+                  _type: "array",
+                  items: [deck],
+                });
+                tx.oncomplete = () => {
+                  console.log(
+                    `IndexedDB [decks+preferences] seeded with deck "${deck.id}" (${deck.cards.length} cards)`,
+                  );
+                  (
+                    window as unknown as { __loadDeckSeeded?: boolean }
+                  ).__loadDeckSeeded = true;
+                  resolve();
+                };
+                tx.onerror = () => {
+                  console.error(
+                    "IndexedDB seed tx error:",
+                    (tx as IDBTransaction).error,
+                  );
+                  (
+                    window as unknown as { __loadDeckSeedError?: string }
+                  ).__loadDeckSeedError =
+                    (tx as IDBTransaction).error?.message ?? "unknown";
+                  resolve();
+                };
+              } catch (e) {
+                console.error("IndexedDB seed error:", e);
+                (
+                  window as unknown as { __loadDeckSeedError?: string }
+                ).__loadDeckSeedError = (e as Error).message ?? "unknown";
+                resolve();
+              }
+            }),
+        );
+        writeChain.p = next.catch(() => undefined);
+        return next;
+      }
+
+      (indexedDB as unknown as { open: typeof indexedDB.open }).open =
+        function (name: string, ver?: number): IDBOpenDBRequest {
+          if (name !== dbName) {
+            return originalOpen(name, ver);
+          }
+          const req = originalOpen(name, ver);
+
+          // Wrap onupgradeneeded to add stores if missing.
+          req.addEventListener(
+            "upgradeneeded",
+            (event) => {
+              const db = (event.target as IDBOpenDBRequest).result;
+              if (!db.objectStoreNames.contains(decksStore)) {
+                const store = db.createObjectStore(decksStore, {
+                  keyPath: "id",
+                });
+                store.createIndex("name", "name", { unique: false });
+                store.createIndex("format", "format", { unique: false });
+                store.createIndex("createdAt", "createdAt", { unique: false });
+                store.createIndex("updatedAt", "updatedAt", { unique: false });
+              }
+              if (!db.objectStoreNames.contains(preferencesStore)) {
+                db.createObjectStore(preferencesStore, { keyPath: "id" });
+              }
+            },
+            true,
+          );
+
+          // Hijack success: capture page's onsuccess, null it, and
+          // re-fire it AFTER our seed-write transaction commits.
+          req.addEventListener(
+            "success",
+            (event) => {
+              const r = event.target as IDBOpenDBRequest;
+              const pageOnSuccess = r.onsuccess;
+              r.onsuccess = null;
+              const db = r.result;
+
+              void seedAndContinue(db, r).then(() => {
+                const newEvent = new Event("success") as Event;
+                Object.defineProperty(newEvent, "target", { value: r });
+                if (typeof pageOnSuccess === "function") {
+                  try {
+                    pageOnSuccess.call(r, newEvent);
+                  } catch (e) {
+                    console.error("deck seed: re-firing onsuccess failed:", e);
+                  }
+                }
+              });
+            },
+            true,
+          );
+
+          return req;
+        };
     },
     {
       dbName: DECK_DB_NAME,
       version: DECK_DB_VERSION,
-      storeName: DECK_STORE,
-      localStorageKey: DECK_LOCALSTORAGE_KEY,
+      decksStore: DECK_STORE,
+      preferencesStore: PREFERENCES_STORE,
+      savedDecksLocalStorageKey: SAVED_DECKS_LOCALSTORAGE_KEY,
+      deckStorageLocalStorageKey: DECK_LOCALSTORAGE_KEY,
       deck: deckRow,
     },
   );
