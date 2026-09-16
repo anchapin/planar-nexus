@@ -8,7 +8,13 @@
  * - Saving and loading decks
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect, loadDeck } from "./test-utils";
+
+// Register the deck-seed init script BEFORE any navigation. Top-level
+// beforeEach so it covers all three describe blocks (issue #1856).
+test.beforeEach(async ({ page }) => {
+  await loadDeck(page);
+});
 
 test.describe("Deck Builder", () => {
   test.beforeEach(async ({ page }) => {

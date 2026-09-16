@@ -18,7 +18,13 @@
  * skip-with-reason intent stays visible and auditable.
  */
 
-import { test, expect, mockScryfallApi, seedCardDatabase } from "./test-utils";
+import {
+  test,
+  expect,
+  mockScryfallApi,
+  seedCardDatabase,
+  loadDeck,
+} from "./test-utils";
 
 const PACKS_PER_DRAFT = 3;
 const CARDS_PER_PACK = 14;
@@ -27,6 +33,7 @@ const TOTAL_CARDS = PACKS_PER_DRAFT * CARDS_PER_PACK;
 test.beforeEach(async ({ page }) => {
   await mockScryfallApi(page);
   await seedCardDatabase(page);
+  await loadDeck(page);
 });
 
 async function waitForSeed(page: any): Promise<void> {

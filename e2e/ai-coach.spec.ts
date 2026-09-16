@@ -14,7 +14,13 @@
  * when the element never renders.
  */
 
-import { test, expect } from "@playwright/test";
+import { test, expect, loadDeck } from "./test-utils";
+
+// Register the deck-seed init script BEFORE any navigation. Top-level
+// beforeEach so it covers both describe blocks (issue #1856).
+test.beforeEach(async ({ page }) => {
+  await loadDeck(page);
+});
 
 test.describe("AI Deck Coach", () => {
   test.beforeEach(async ({ page }) => {

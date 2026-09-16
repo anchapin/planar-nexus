@@ -16,7 +16,13 @@
  * `if (await el.isVisible())` guard that can silently pass.
  */
 
-import { test, expect, mockScryfallApi } from "./test-utils";
+import { test, expect, mockScryfallApi, loadDeck } from "./test-utils";
+
+// Register the deck-seed init script BEFORE any navigation. Top-level
+// beforeEach so it covers all six describe blocks (issue #1856).
+test.beforeEach(async ({ page }) => {
+  await loadDeck(page);
+});
 
 test.describe("Sealed Mode - Set Browser", () => {
   test.beforeEach(async ({ page }) => {
