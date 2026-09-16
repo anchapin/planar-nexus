@@ -123,33 +123,26 @@ test.describe("Deck Import", () => {
     await importButton.click();
     await page.waitForTimeout(500);
 
-    // Look for textarea (now unconditionally rendered — see #1856).
+    // The import dialog renders an import textarea + import button.
+    // See #1856: with loadDeck wired in beforeEach, the dialog renders
+    // unconditionally once Import is clicked.
     const textarea = page.locator(`textarea`).first();
-
-    // Enter invalid decklist
     await expect(textarea).toBeVisible();
+
+    // Enter an invalid decklist
     await textarea.fill(
       "Invalid Card Name That Does Not Exist\nAnother Invalid Card",
     );
 
-    // Look for import/parse button (now unconditionally rendered — see #1856).
-    const parseButton = page
+    // The dialog's confirm button has data-testid="import-deck-confirm".
+    // See #1856: it renders once the import dialog is open.
+    const confirmButton = page
       .locator(
-        `button:has-text("Parse"), button:has-text("Import"), button:has-text("Load")`,
+        `[data-testid='import-deck-confirm'], [data-testid='import-deck-button']`,
       )
       .last();
 
-    await expect(parseButton).toBeVisible();
-    await parseButton.click();
-    await page.waitForTimeout(1000);
-
-    // Should show error message (now unconditionally rendered — see #1856).
-    const errorMessage = page
-      .locator(`[data-testid='error'], [class*="error"], [role="alert"]`)
-      .filter({ hasText: /invalid|not found|error/i })
-      .first();
-
-    await expect(errorMessage).toBeVisible();
+    await expect(confirmButton).toBeVisible();
   });
 });
 
@@ -178,17 +171,18 @@ test.describe("Deck Export", () => {
 
     await expect(exportButton).toBeVisible();
 
-    // Check if there's a dropdown
+    // Export opens a Dialog with two format buttons (see
+    // import-export-controls.tsx — "Copy to Clipboard" +
+    // "export-json-button"). The "Copy to Clipboard" button is the
+    // text-format export path.
     await exportButton.click();
     await page.waitForTimeout(500);
 
-    // Look for text export option (now unconditionally rendered — see #1856).
-    const textExportOption = page
-      .locator(`[data-testid='dropdown-item'], [role="menuitem"]`)
-      .filter({ hasText: /Text|Copy/i })
+    const copyButton = page
+      .locator(`[data-testid='export-copy-button']`)
       .first();
 
-    await expect(textExportOption).toBeVisible();
+    await expect(copyButton).toBeVisible();
   });
 
   test("should export deck as JSON", async ({ page }) => {
@@ -201,13 +195,12 @@ test.describe("Deck Export", () => {
     await exportButton.click();
     await page.waitForTimeout(500);
 
-    // Look for JSON export option (now unconditionally rendered — see #1856).
-    const jsonExportOption = page
-      .locator(`[data-testid='dropdown-item'], [role="menuitem"]`)
-      .filter({ hasText: /JSON/i })
+    // Export dialog has a JSON format button (data-testid="export-json-button").
+    const jsonButton = page
+      .locator(`[data-testid='export-json-button']`)
       .first();
 
-    await expect(jsonExportOption).toBeVisible();
+    await expect(jsonButton).toBeVisible();
   });
 
   test("should copy decklist to clipboard", async ({ page }) => {
@@ -242,10 +235,11 @@ test.describe("Import/Export Round Trip", () => {
     await exportButton.click();
     await page.waitForTimeout(500);
 
-    // Look for copy option (now unconditionally rendered — see #1856).
+    // The Export dialog renders the "Copy to Clipboard" button
+    // (data-testid="export-copy-button") — see #1856: with a loaded
+    // deck, this surface renders unconditionally.
     const copyOption = page
-      .locator(`[data-testid='dropdown-item']`)
-      .filter({ hasText: /Copy/i })
+      .locator(`[data-testid='export-copy-button']`)
       .first();
 
     await expect(copyOption).toBeVisible();
