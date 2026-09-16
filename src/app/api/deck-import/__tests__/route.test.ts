@@ -251,7 +251,9 @@ describe("POST /api/deck-import — happy path (HTML scraping)", () => {
 
     // The API endpoint is fetched directly — no allorigins relay.
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0][0]).toBe(
+    // The route fetches a URL object (guard shape for the SSRF barrier);
+    // String() normalizes it for the assertion.
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
       "https://api2.moxfield.com/v2/decks/all/abc123",
     );
     expect(String(fetchMock.mock.calls[0][0])).not.toContain("allorigins");

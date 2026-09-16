@@ -427,38 +427,39 @@ async function fetchDeckSiteText(
       );
     }
 
-    // SSRF sink guard (CodeQL js/request-forgery): re-assert the hostname
-    // as an exact-match literal comparison directly at the fetch sink so
-    // the constraint on the user-derived value is visible to static
-    // analysis (the boolean `isAllowedOutboundUrl` policy above is opaque
-    // to taint tracking). Keep this chain in sync with SUPPORTED_SITES;
-    // parity is exercised by the route tests (every outbound URL in every
-    // path and redirect test is one of these hosts). Note this is a
-    // deliberate tightening: redirects to subdomains other than the apex,
-    // www, and the API hosts now fail loudly with a 400 instead of being
-    // silently followed.
-    const hopHost = new URL(current).hostname.toLowerCase();
+    // SSRF sink guard (CodeQL js/request-forgery): the fetch consumes the
+    // URL object whose `.hostname` is constrained by exact-match literal
+    // comparisons in the guarding condition — the shape static taint
+    // analysis recognizes as a barrier. The `isAllowedOutboundUrl` check
+    // above remains the full #1392 policy (scheme, credentials, subdomain
+    // rules); this guard is intentionally redundant defense-in-depth at
+    // the sink. Keep the literal chain in sync with SUPPORTED_SITES; the
+    // route tests exercise every host on every path. This is a deliberate
+    // tightening: redirects to subdomains beyond the apex, www, and the
+    // API hosts fail loudly instead of being silently followed.
+    const hopUrl = new URL(current);
+    let response: Response;
     if (
-      hopHost !== "moxfield.com" &&
-      hopHost !== "www.moxfield.com" &&
-      hopHost !== "api2.moxfield.com" &&
-      hopHost !== "archidekt.com" &&
-      hopHost !== "www.archidekt.com" &&
-      hopHost !== "mtggoldfish.com" &&
-      hopHost !== "www.mtggoldfish.com" &&
-      hopHost !== "tappedout.net" &&
-      hopHost !== "www.tappedout.net"
+      hopUrl.hostname === "moxfield.com" ||
+      hopUrl.hostname === "www.moxfield.com" ||
+      hopUrl.hostname === "api2.moxfield.com" ||
+      hopUrl.hostname === "archidekt.com" ||
+      hopUrl.hostname === "www.archidekt.com" ||
+      hopUrl.hostname === "mtggoldfish.com" ||
+      hopUrl.hostname === "www.mtggoldfish.com" ||
+      hopUrl.hostname === "tappedout.net" ||
+      hopUrl.hostname === "www.tappedout.net"
     ) {
+      response = await fetch(hopUrl, {
+        headers,
+        redirect: "manual",
+        signal: AbortSignal.timeout(OUTBOUND_FETCH_TIMEOUT_MS),
+      });
+    } else {
       throw new UpstreamRedirectError(
-        `Blocked outbound fetch to non-allowlisted host: ${hopHost}`,
+        `Blocked outbound fetch to non-allowlisted host: ${hopUrl.hostname}`,
       );
     }
-
-    const response = await fetch(current, {
-      headers,
-      redirect: "manual",
-      signal: AbortSignal.timeout(OUTBOUND_FETCH_TIMEOUT_MS),
-    });
 
     if (REDIRECT_STATUSES.includes(response.status)) {
       const location = response.headers.get("location");
