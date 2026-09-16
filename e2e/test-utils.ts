@@ -2,6 +2,8 @@ import { test as base, expect, Page } from "@playwright/test";
 import fs from "fs";
 import path from "path";
 
+export { loadDeck, waitForDeckSeed } from "./utils/load-deck";
+
 const testCards = JSON.parse(
   fs.readFileSync(path.join(__dirname, "fixtures/test-cards.json"), "utf8"),
 );
@@ -51,9 +53,8 @@ export async function seedCardDatabase(page: Page) {
         "IndexedDB seed error:",
         (event.target as IDBOpenDBRequest).error,
       );
-      (window as any).dbSeedError = (
-        event.target as IDBOpenDBRequest
-      ).error?.message;
+      (window as any).dbSeedError = (event.target as IDBOpenDBRequest).error
+        ?.message;
     };
   }, testCards);
 }

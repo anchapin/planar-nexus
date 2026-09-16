@@ -49,13 +49,12 @@ test.describe("Phase 20: Advanced Optimization", () => {
     // Wait for search results
     await page.waitForTimeout(1000);
 
-    // Click on a card result if visible
+    // Click on a card result — the click auto-waits for visibility,
+    // so an empty result set now fails instead of being skipped (#1786)
     const cardResult = page
       .locator('[class*="card"], [class*="result"]')
       .first();
-    if (await cardResult.isVisible()) {
-      await cardResult.click();
-    }
+    await cardResult.click();
 
     // Switch to Mana Curve tab
     await page.getByRole("tab", { name: /mana curve/i }).click();

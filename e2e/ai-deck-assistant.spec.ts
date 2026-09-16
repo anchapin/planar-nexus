@@ -1,16 +1,23 @@
-import { test, expect, seedCardDatabase } from "./test-utils";
+import { test, expect, seedCardDatabase, loadDeck } from "./test-utils";
 
 test.describe("AI Deck Assistant", () => {
   test.beforeEach(async ({ page }) => {
-    // Navigate to deck builder first. Use `domcontentloaded` rather than
+    // Register both init scripts BEFORE navigation (issue #1856).
+    // loadDeck wires the production `decks` IndexedDB store +
+    // localStorage fallbacks so the deck-builder's saved-decks
+    // sidebar renders the test commander deck; seedCardDatabase
+    // populates the local card lookup DB that the AI assistant and
+    // deck-builder search rely on. Order doesn't matter — both are
+    // addInitScript hooks that run before page scripts.
+    await loadDeck(page);
+    await seedCardDatabase(page);
+
+    // Navigate to deck builder. Use `domcontentloaded` rather than
     // `networkidle`: the dev server's HMR websocket + the deck-builder's
     // background sync keep the network busy indefinitely, so `networkidle`
     // times out at 30s on CI runners and the beforeEach hook hangs.
     await page.goto("/deck-builder");
     await page.waitForLoadState("domcontentloaded");
-
-    // Seed the database with test cards (runs in page context)
-    await seedCardDatabase(page);
   });
 
   test("should display initial state of AI Assistant", async ({ page }) => {
@@ -19,11 +26,12 @@ test.describe("AI Deck Assistant", () => {
     const assistant = page.locator("text=AI Assistant");
     await expect(assistant).toBeVisible({ timeout: 15000 });
 
-    // Initial state should prompt to add cards
-    const emptyState = page.locator(
-      "text=Add cards to your deck to get AI suggestions.",
-    );
-    await expect(emptyState).toBeVisible({ timeout: 10000 });
+    // Initial state surfaces "Smart suggestions based on your current deck."
+    // and an "Enable AI Suggestions" CTA. The "Add cards to your deck"
+    // prompt only renders AFTER the user enables suggestions, so we
+    // assert on the always-rendered CTA instead.
+    const enableButton = page.locator("text=Enable AI Suggestions");
+    await expect(enableButton).toBeVisible({ timeout: 10000 });
   });
 
   // Skipped: Requires AI service (Gemini) that may not be available in CI
