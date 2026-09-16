@@ -66,10 +66,10 @@ module.exports = {
   // See: https://github.com/anchapin/planar-nexus/issues/922
   coverageThreshold: {
     global: {
-      branches: 53,
-      functions: 53,
-      lines: 61,
-      statements: 61,
+      branches: 54,
+      functions: 55,
+      lines: 63,
+      statements: 62,
     },
   },
   // `json-summary` emits coverage/coverage-summary.json, consumed by
