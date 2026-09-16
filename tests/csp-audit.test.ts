@@ -17,6 +17,14 @@
  *      scheme-wide wildcard (issue #1584).
  *   6. The Next.js image optimizer (`next.config.ts`) agrees with the
  *      CSP `img-src` directive.
+ *   7. The WEB deployment CSP (issue #1822) emitted by
+ *      `next.config.ts` `headers()` mirrors `TAURI_CSP` directive-for-
+ *      directive with one documented exception (`script-src`), and is
+ *      derived from the same allowlists — the #1273 sync extended to
+ *      three consumers.
+ *   8. The non-CSP security headers (`X-Content-Type-Options`,
+ *      `Referrer-Policy`, `Strict-Transport-Security`) are configured
+ *      in `next.config.ts` for every route.
  *
  * These tests run in plain Node (no Tauri runtime required) so they fail
  * fast in CI without spinning up a webview.
@@ -27,6 +35,7 @@ import * as path from "path";
 
 import {
   TAURI_CSP,
+  WEB_CSP,
   REMOTE_IMAGE_HOSTS,
   REMOTE_FONT_HOSTS,
   REMOTE_CONNECT_HOSTS,
@@ -201,5 +210,97 @@ describe("next.config.ts agrees with the CSP img-src (issue #1273)", () => {
       /from\s+["']\.\.?\/src\/lib\/security\/csp-allowlist["']/,
     );
     expect(text).toMatch(/remotePatterns\s*:\s*REMOTE_IMAGE_HOSTS\.map/);
+  });
+});
+
+describe("web deployment security headers (issue #1822)", () => {
+  test("next.config.ts emits the allowlist-derived CSP on every route", () => {
+    const text = readText(NEXT_CONFIG);
+    // Same text-based pattern as the remotePatterns test above: the CSP
+    // value must be the shared WEB_CSP export, not a copied host list.
+    expect(text).toMatch(
+      /from\s+["']\.\.?\/src\/lib\/security\/csp-allowlist["']/,
+    );
+    expect(text).toMatch(
+      /key:\s*["']Content-Security-Policy["'],\s*value:\s*WEB_CSP/,
+    );
+    // Applied broadly: a source pattern covering all routes.
+    expect(text).toMatch(/source:\s*["']\/\(\.\*\)["']/);
+  });
+
+  test("non-CSP security headers are configured", () => {
+    const text = readText(NEXT_CONFIG);
+    expect(text).toMatch(
+      /key:\s*["']X-Content-Type-Options["'],\s*value:\s*["']nosniff["']/,
+    );
+    expect(text).toMatch(
+      /key:\s*["']Referrer-Policy["'],\s*value:\s*["']strict-origin-when-cross-origin["']/,
+    );
+    // HSTS: present with a numeric max-age (value documented in config).
+    expect(text).toMatch(
+      /key:\s*["']Strict-Transport-Security["'],\s*value:\s*["']max-age=\d+["']/,
+    );
+  });
+
+  test("WEB_CSP mirrors TAURI_CSP directive-for-directive except script-src", () => {
+    // The core #1273 sync invariant, extended to the third consumer:
+    // the web policy must be the desktop policy (same directives, same
+    // values, same order of hosts) with only the documented script-src
+    // delta. Any host added to the allowlists shows up in both; any
+    // hand-edit to either string fails here.
+    const tauri = splitDirectives(TAURI_CSP);
+    const web = splitDirectives(WEB_CSP);
+    expect([...web.keys()].sort()).toEqual([...tauri.keys()].sort());
+    for (const [name, values] of tauri) {
+      if (name === "script-src") continue;
+      expect(web.get(name)).toEqual(values);
+    }
+  });
+
+  test("WEB_CSP script-src documents the web-only inline requirement", () => {
+    const web = splitDirectives(WEB_CSP);
+    const script = web.get("script-src") ?? [];
+    // 'unsafe-inline' is required on the web deployment: Next.js App
+    // Router streams its flight payload as inline <script> tags and —
+    // unlike the Tauri webview, which auto-injects nonces into inline
+    // scripts — no runtime layer can mint per-request nonces from
+    // next.config headers(). Everything else stays as strict as the
+    // desktop.
+    expect(script).toContain("'self'");
+    expect(script).toContain("'wasm-unsafe-eval'");
+    expect(script).toContain("'unsafe-inline'");
+    // Plain 'unsafe-eval' stays forbidden in the shipped policy (Jest
+    // runs with NODE_ENV=test, i.e. the non-development branch).
+    expect(script.join(" ")).not.toMatch(/'unsafe-eval'(?![-a-z])/i);
+  });
+
+  test("WEB_CSP enumerates the shared allowlists (img/font/connect)", () => {
+    const web = splitDirectives(WEB_CSP);
+    const imgHosts = hostsInDirective(web.get("img-src") ?? []);
+    for (const host of REMOTE_IMAGE_HOSTS) {
+      expect(imgHosts).toContain(host.hostname);
+    }
+    const fontHosts = hostsInDirective(web.get("font-src") ?? []);
+    for (const host of REMOTE_FONT_HOSTS) {
+      expect(fontHosts).toContain(host.hostname);
+    }
+    const connect = web.get("connect-src") ?? [];
+    for (const host of REMOTE_CONNECT_HOSTS) {
+      expect(connect).toContain(`https://${host.hostname}`);
+    }
+    // No scheme-wide exfiltration wildcards on the web either (#1584).
+    expect(connect).not.toContain("https:");
+    expect(connect).not.toContain("wss:");
+    expect(connect).toContain("'self'");
+  });
+
+  test("clickjacking: frame-ancestors 'none' in CSP, no redundant X-Frame-Options", () => {
+    // Deliberate choice (documented in next.config.ts): the CSP
+    // frame-ancestors directive supersedes X-Frame-Options in every
+    // CSP-capable browser, so the legacy header is intentionally absent.
+    const web = splitDirectives(WEB_CSP);
+    expect(web.get("frame-ancestors")).toEqual(["'none'"]);
+    // Not emitted as a header (prose may still mention the choice).
+    expect(readText(NEXT_CONFIG)).not.toMatch(/key:\s*["']X-Frame-Options["']/);
   });
 });

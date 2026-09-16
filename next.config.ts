@@ -1,6 +1,6 @@
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
-import { REMOTE_IMAGE_HOSTS } from "./src/lib/security/csp-allowlist";
+import { REMOTE_IMAGE_HOSTS, WEB_CSP } from "./src/lib/security/csp-allowlist";
 
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
@@ -22,6 +22,41 @@ const nextConfig: NextConfig = {
       port: "",
       pathname: "/**",
     })),
+  },
+
+  // Security headers for the web deployment (issue #1822). The desktop
+  // shell gets its CSP from src-tauri/tauri.conf.json; these headers
+  // cover the browser-served app. The CSP value is derived from the
+  // shared csp-allowlist module, extending the #1273 single-source-of-
+  // truth sync to three consumers: the Tauri CSP, the image optimizer
+  // remotePatterns, and the web CSP (tests/csp-audit.test.ts).
+  //
+  // Clickjacking is mitigated via the CSP `frame-ancestors 'none'`
+  // directive rather than a redundant `X-Frame-Options: DENY` header —
+  // frame-ancestors supersedes X-Frame-Options in every CSP-capable
+  // browser and is already asserted by the audit test, so the header
+  // is deliberately omitted.
+  //
+  // HSTS max-age is 180 days: long enough to pin https for returning
+  // visitors, modest enough to keep the TLS-misconfiguration recovery
+  // window short for a newly shipped web deployment. Ignored by
+  // browsers over plain http, so local dev is unaffected.
+  async headers() {
+    return [
+      {
+        // All routes — pages and API handlers alike.
+        source: "/(.*)",
+        headers: [
+          { key: "Content-Security-Policy", value: WEB_CSP },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          {
+            key: "Referrer-Policy",
+            value: "strict-origin-when-cross-origin",
+          },
+          { key: "Strict-Transport-Security", value: "max-age=15552000" },
+        ],
+      },
+    ];
   },
 
   // Ensure trailing slashes for static hosting

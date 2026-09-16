@@ -6,7 +6,9 @@
  *
  *   1. `src-tauri/tauri.conf.json` — the desktop webview Content Security
  *      Policy (the only browser-level hardening we have in the Tauri build).
- *   2. `next.config.ts` — the Next.js Image Optimizer `remotePatterns`.
+ *   2. `next.config.ts` — the Next.js Image Optimizer `remotePatterns`
+ *      and (issue #1822) the web deployment's `Content-Security-Policy`
+ *      emitted via `headers()`.
  *   3. `src/app/layout.tsx` — any `<link rel="preconnect">` / `<link
  *      rel="stylesheet">` to external font or asset hosts.
  *
@@ -228,3 +230,99 @@ export function cspHostnames(): string[] {
   }
   return [...out].sort();
 }
+
+/**
+ * Web-deployment Content Security Policy (issue #1822).
+ *
+ * The desktop shell ships its CSP via `src-tauri/tauri.conf.json`; until
+ * #1822 the plain-web deployment shipped none at all — no header-level
+ * XSS mitigation for an app that renders untrusted text (Scryfall oracle
+ * text, imported deck names, peer chat) and holds provider API keys in
+ * localStorage. `next.config.ts` `headers()` serves the policy built
+ * below (plus the standard security headers) on every route.
+ *
+ * The policy is derived from the exact same allow-lists as
+ * {@link TAURI_CSP}, and `tests/csp-audit.test.ts` asserts that it
+ * mirrors TAURI_CSP directive-for-directive with a single, documented
+ * exception: `script-src`.
+ *
+ * Why the exception? On the desktop, Tauri rewrites the served HTML and
+ * CSP to nonce-tag inline scripts before the webview sees them, so
+ * TAURI_CSP can afford `script-src 'self' 'wasm-unsafe-eval'`. The web
+ * deployment has no such layer, and `next.config.ts` `headers()` cannot
+ * mint per-request nonces (that requires middleware, deliberately out
+ * of scope for #1822). Next.js App Router streams its RSC/flight
+ * payload as inline `<script>self.__next_f.push(...)</script>` tags,
+ * so the shipped web policy must additionally allow `'unsafe-inline'`
+ * for scripts or hydration breaks. Everything else — including the ban
+ * on plain `'unsafe-eval'` in the production policy — matches the
+ * desktop policy exactly.
+ */
+
+/**
+ * Build the `img-src` directive value shared by both deployments.
+ * Derived from {@link REMOTE_IMAGE_HOSTS}; `tests/csp-audit.test.ts`
+ * asserts the result matches the `img-src` tokens of {@link TAURI_CSP}.
+ */
+function buildImgSrc(): string {
+  return [
+    "'self'",
+    "data:",
+    ...REMOTE_IMAGE_HOSTS.map((host) => `https://${host.hostname}`),
+  ].join(" ");
+}
+
+/**
+ * Build the `font-src` directive value shared by both deployments.
+ * Derived from {@link REMOTE_FONT_HOSTS}; `tests/csp-audit.test.ts`
+ * asserts the result matches the `font-src` tokens of {@link TAURI_CSP}.
+ */
+function buildFontSrc(): string {
+  return [
+    "'self'",
+    "data:",
+    ...REMOTE_FONT_HOSTS.map((host) => `https://${host.hostname}`),
+  ].join(" ");
+}
+
+/**
+ * Assemble the web CSP. Split out from the {@link WEB_CSP} constant so
+ * the audit test can import the builder and reason about the shipped
+ * (non-development) shape deterministically.
+ */
+export function buildWebCsp(): string {
+  const scriptSrc =
+    process.env.NODE_ENV === "development"
+      ? // Dev-only addition: React Refresh (the Fast Refresh runtime)
+        // evaluates generated code via `new Function`, which CSP counts
+        // as `'unsafe-eval'`. Without it `npm run dev` and the Playwright
+        // suite (which boots the dev server) break. Never present in a
+        // production build — enforced by the audit test.
+        "script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline' 'unsafe-eval'"
+      : "script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline'";
+
+  return [
+    "default-src 'self'",
+    scriptSrc,
+    // Mirrors TAURI_CSP: `'unsafe-inline'` is required by Next.js
+    // streaming SSR styles and Tailwind's runtime style injection.
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    `img-src ${buildImgSrc()}`,
+    `font-src ${buildFontSrc()}`,
+    // Same explicit allow-list as the desktop policy (issue #1584):
+    // no bare `https:` / `wss:` scheme wildcards.
+    `connect-src ${buildConnectSrc()}`,
+    // MSW's service-worker shim compiles handlers into blob: URLs.
+    "worker-src 'self' blob:",
+    // WebRTC peer streams + board-state replay viewer (Blob/MediaStream).
+    "media-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "frame-src 'none'",
+  ].join("; ");
+}
+
+/** The CSP served by `next.config.ts` `headers()` on every web route. */
+export const WEB_CSP: string = buildWebCsp();
