@@ -4,12 +4,15 @@
  * Covers the canonical matrix for `POST /api/deck-import`:
  *   - 200 (decklist successfully fetched and parsed, body-size cap respected)
  *   - 400 (invalid JSON, missing URL, invalid URL, unsupported site)
- *   - 413 (request body exceeds the 512 KB cap — issue #1277)
+ *   - 413 (request body exceeds the 512 KB cap — issue #1277; upstream
+ *     response exceeds the 512 KB outbound cap — issue #1783)
  *   - 422 (the URL was reached but no decklist could be parsed)
  *   - 500 (upstream fetch failure / internal error)
  *
  * The real `fetch` is replaced with a controllable mock so no outbound HTTP
- * is performed; the entire pipeline runs in-memory.
+ * is performed; the entire pipeline runs in-memory. Issue #1783 tests assert
+ * that every outbound request targets an allowlisted deck-site host (no
+ * third-party proxy relay, no redirect escapes).
  *
  * @jest-environment @stryker-mutator/jest-runner/jest-env/node
  */
@@ -221,7 +224,7 @@ describe("POST /api/deck-import — happy path (HTML scraping)", () => {
     expect(data.cardCount).toBe(3);
   });
 
-  it("parses a Moxfield deck from the public API via the configured proxy", async () => {
+  it("parses a Moxfield deck from the public API via direct fetch (issue #1783)", async () => {
     const apiPayload = JSON.stringify({
       mainboard: {
         "card-id-1": { quantity: 4, card: { name: "Llanowar Elves" } },
@@ -245,6 +248,15 @@ describe("POST /api/deck-import — happy path (HTML scraping)", () => {
     expect(data.siteName).toBe("Moxfield");
     expect(data.decklist).toContain("4 Llanowar Elves");
     expect(data.decklist).toContain("20 Forest");
+
+    // The API endpoint is fetched directly — no allorigins relay.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // The route fetches a URL object (guard shape for the SSRF barrier);
+    // String() normalizes it for the assertion.
+    expect(String(fetchMock.mock.calls[0][0])).toBe(
+      "https://api2.moxfield.com/v2/decks/all/abc123",
+    );
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain("allorigins");
   });
 
   it("parses a TappedOut deck from mtg-parser-info HTML", async () => {
@@ -326,7 +338,7 @@ describe("POST /api/deck-import — happy path (HTML scraping)", () => {
 });
 
 describe("POST /api/deck-import — failure paths", () => {
-  it("returns the upstream status when the proxy cannot fetch the page", async () => {
+  it("returns the upstream status when the deck site cannot fetch the page", async () => {
     fetchMock.mockResolvedValue(
       new TestResponse("not found", {
         status: 404,
@@ -368,8 +380,8 @@ describe("POST /api/deck-import — failure paths", () => {
 
   it("falls back to HTML scraping when Moxfield's API fetch fails", async () => {
     // The Moxfield API endpoint is api2.moxfield.com, distinct from the
-    // user-facing moxfield.com URL. We fail those two proxy attempts, then
-    // succeed on the allorigins HTML-scrape fallback.
+    // user-facing moxfield.com URL. We fail the direct API attempt, then
+    // succeed on the direct HTML-scrape fallback of the page URL itself.
     const moxState = {
       publicDecklist: {
         boards: {
@@ -393,7 +405,7 @@ describe("POST /api/deck-import — failure paths", () => {
           statusText: "Error",
         }) as unknown as Response;
       }
-      // Fallback HTML scrape via allorigins
+      // Fallback HTML scrape (direct fetch of the page URL)
       return new TestResponse(moxHtml, {
         status: 200,
         statusText: "OK",
@@ -438,25 +450,26 @@ describe("POST /api/deck-import — SSRF / origin-spoofing (issue #1392)", () =>
     "https://MTGGOLDFISH.COM/deck/123",
     "https://www.tappedout.net/mtg-decks/some-deck/",
     "https://archidekt.com/decks/42",
-  ])("accepts the valid origin %s (no fetch rejection on hostname)", async (
-    url,
-  ) => {
-    // A valid hostname must clear the origin check and proceed to fetch.
-    // Provide a generic 200 so the pipeline does not 500; we only assert
-    // here that the request was NOT rejected as "Unsupported website".
-    fetchMock.mockResolvedValue(
-      new TestResponse("<html><body>no deck here</body></html>", {
-        status: 200,
-        statusText: "OK",
-      }) as unknown as Response,
-    );
+  ])(
+    "accepts the valid origin %s (no fetch rejection on hostname)",
+    async (url) => {
+      // A valid hostname must clear the origin check and proceed to fetch.
+      // Provide a generic 200 so the pipeline does not 500; we only assert
+      // here that the request was NOT rejected as "Unsupported website".
+      fetchMock.mockResolvedValue(
+        new TestResponse("<html><body>no deck here</body></html>", {
+          status: 200,
+          statusText: "OK",
+        }) as unknown as Response,
+      );
 
-    const res = await POST(makeRequest({ url }));
-    const data = (await (res as unknown as TestResponse).json()) as any;
-    expect(data.error).not.toBe("Unsupported website");
-    expect(data.error).not.toBe("Unsupported URL scheme");
-    expect(fetchMock).toHaveBeenCalled();
-  });
+      const res = await POST(makeRequest({ url }));
+      const data = (await (res as unknown as TestResponse).json()) as any;
+      expect(data.error).not.toBe("Unsupported website");
+      expect(data.error).not.toBe("Unsupported URL scheme");
+      expect(fetchMock).toHaveBeenCalled();
+    },
+  );
 
   it("rejects a URL whose origin/hostname is missing entirely (no url field)", async () => {
     const res = await POST(makeRequest({}));
@@ -501,5 +514,229 @@ describe("POST /api/deck-import — SSRF / origin-spoofing (issue #1392)", () =>
     const data = (await (res as unknown as TestResponse).json()) as any;
     expect(data.error).toBe("Unsupported website");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/deck-import — direct fetch & outbound allowlist (issue #1783)", () => {
+  const ALLOWED_OUTBOUND_DOMAINS = [
+    "mtggoldfish.com",
+    "tappedout.net",
+    "moxfield.com",
+    "archidekt.com",
+  ];
+
+  function fetchCallUrls(): string[] {
+    return fetchMock.mock.calls.map((call) => {
+      const input = call[0];
+      if (typeof input === "string") return input;
+      if (input instanceof URL) return input.toString();
+      return input.url;
+    });
+  }
+
+  function isAllowlistedOutboundUrl(url: string): boolean {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+      return false;
+    }
+    return ALLOWED_OUTBOUND_DOMAINS.some(
+      (d) => parsed.hostname === d || parsed.hostname.endsWith("." + d),
+    );
+  }
+
+  function assertAllOutboundCallsAllowlisted() {
+    const urls = fetchCallUrls();
+    expect(urls.length).toBeGreaterThan(0);
+    for (const url of urls) {
+      expect(url).not.toContain("allorigins");
+      expect(isAllowlistedOutboundUrl(url)).toBe(true);
+    }
+  }
+
+  it("issues no outbound request to a non-allowlisted host (Moxfield API path)", async () => {
+    fetchMock.mockResolvedValue(
+      new TestResponse(
+        JSON.stringify({
+          mainboard: {
+            c1: { quantity: 4, card: { name: "Llanowar Elves" } },
+          },
+        }),
+        { status: 200, statusText: "OK" },
+      ) as unknown as Response,
+    );
+
+    const res = await POST(
+      makeRequest({ url: "https://moxfield.com/decks/abc" }),
+    );
+    expect(res.status).toBe(200);
+    assertAllOutboundCallsAllowlisted();
+  });
+
+  it("issues no outbound request to a non-allowlisted host (Archidekt API path)", async () => {
+    fetchMock.mockResolvedValue(
+      new TestResponse(
+        JSON.stringify({
+          cards: [{ quantity: 2, name: "Sol Ring" }],
+        }),
+        { status: 200, statusText: "OK" },
+      ) as unknown as Response,
+    );
+
+    const res = await POST(
+      makeRequest({ url: "https://archidekt.com/decks/42" }),
+    );
+    expect(res.status).toBe(200);
+    assertAllOutboundCallsAllowlisted();
+    expect(fetchCallUrls()[0]).toBe(
+      "https://archidekt.com/api/v2/decks/42/deckjson/",
+    );
+  });
+
+  it("issues no outbound request to a non-allowlisted host (generic scrape path)", async () => {
+    fetchMock.mockResolvedValue(
+      new TestResponse(MTGGOLDFISH_DECK_HTML, {
+        status: 200,
+        statusText: "OK",
+      }) as unknown as Response,
+    );
+
+    const res = await POST(
+      makeRequest({ url: "https://mtggoldfish.com/deck/7" }),
+    );
+    expect(res.status).toBe(200);
+    assertAllOutboundCallsAllowlisted();
+
+    // Every outbound fetch carries an abort timeout signal so a slow deck
+    // site cannot pin the route.
+    for (const call of fetchMock.mock.calls) {
+      expect((call[1] as RequestInit | undefined)?.signal).toBeDefined();
+    }
+  });
+
+  it("rejects an oversized upstream response (content-length) with 413", async () => {
+    fetchMock.mockResolvedValue(
+      new TestResponse("<html></html>", {
+        status: 200,
+        statusText: "OK",
+        headers: { "content-length": String(600 * 1024) },
+      }) as unknown as Response,
+    );
+
+    const res = await POST(
+      makeRequest({ url: "https://mtggoldfish.com/deck/big" }),
+    );
+    expect(res.status).toBe(413);
+    const data = (await (res as unknown as TestResponse).json()) as any;
+    expect(data.error).toMatch(/too large/i);
+  });
+
+  it("rejects an oversized upstream response body (no content-length) with 413", async () => {
+    fetchMock.mockResolvedValue(
+      new TestResponse("x".repeat(600 * 1024), {
+        status: 200,
+        statusText: "OK",
+      }) as unknown as Response,
+    );
+
+    const res = await POST(
+      makeRequest({ url: "https://mtggoldfish.com/deck/big" }),
+    );
+    expect(res.status).toBe(413);
+    const data = (await (res as unknown as TestResponse).json()) as any;
+    expect(data.error).toMatch(/too large/i);
+  });
+
+  it("rejects an oversized Moxfield API response with 413 and does not retry via scraping", async () => {
+    fetchMock.mockResolvedValue(
+      new TestResponse("x".repeat(600 * 1024), {
+        status: 200,
+        statusText: "OK",
+      }) as unknown as Response,
+    );
+
+    const res = await POST(
+      makeRequest({ url: "https://moxfield.com/decks/huge" }),
+    );
+    expect(res.status).toBe(413);
+    // Hard stop: no fallback fetch of the page URL after the oversized API
+    // response.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("follows a redirect that stays on an allowlisted host", async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        new TestResponse("", {
+          status: 302,
+          statusText: "Found",
+          headers: { location: "https://www.mtggoldfish.com/deck/123" },
+        }) as unknown as Response,
+      )
+      .mockResolvedValueOnce(
+        new TestResponse(MTGGOLDFISH_DECK_HTML, {
+          status: 200,
+          statusText: "OK",
+        }) as unknown as Response,
+      );
+
+    const res = await POST(
+      makeRequest({ url: "https://mtggoldfish.com/deck/123" }),
+    );
+    expect(res.status).toBe(200);
+    const data = (await (res as unknown as TestResponse).json()) as any;
+    expect(data.decklist).toContain("4 Llanowar Elves");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    assertAllOutboundCallsAllowlisted();
+  });
+
+  it.each([
+    "https://evil.com/decks/abc",
+    "https://moxfield.com.attacker.com/decks/abc",
+    "file:///etc/passwd",
+    "https://user:pass@moxfield.com/decks/abc",
+  ])(
+    "refuses to follow a redirect to the non-allowlisted target %s",
+    async (location) => {
+      fetchMock.mockResolvedValueOnce(
+        new TestResponse("", {
+          status: 302,
+          statusText: "Found",
+          headers: { location },
+        }) as unknown as Response,
+      );
+
+      const res = await POST(
+        makeRequest({ url: "https://moxfield.com/decks/abc" }),
+      );
+      expect(res.status).toBe(400);
+      const data = (await (res as unknown as TestResponse).json()) as any;
+      expect(data.error).toMatch(/allowlist/i);
+
+      // Exactly one outbound call — to the allowlisted origin — and none to
+      // the redirect target.
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      assertAllOutboundCallsAllowlisted();
+    },
+  );
+
+  it("stops an allowlisted redirect loop after the hop cap instead of looping forever", async () => {
+    fetchMock.mockImplementation(
+      async () =>
+        new TestResponse("", {
+          status: 302,
+          statusText: "Found",
+          headers: { location: "https://mtggoldfish.com/deck/123" },
+        }) as unknown as Response,
+    );
+
+    const res = await POST(
+      makeRequest({ url: "https://mtggoldfish.com/deck/123" }),
+    );
+    expect(res.status).toBe(502);
+    const data = (await (res as unknown as TestResponse).json()) as any;
+    expect(data.error).toMatch(/Failed to fetch deck URL/);
+    // Initial fetch + MAX_REDIRECT_HOPS redirect fetches, then refusal.
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    assertAllOutboundCallsAllowlisted();
   });
 });
