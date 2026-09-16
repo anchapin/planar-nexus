@@ -66,7 +66,6 @@ import {
   exportReplayToFile,
   canShareViaURL,
 } from "@/lib/replay-sharing";
-import { decompressReplayJson } from "@/lib/game-state";
 import { useToast } from "@/hooks/use-toast";
 
 const formatDisplayNames: Record<string, string> = {
@@ -93,6 +92,10 @@ export default function SavedGamesPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [formatFilter, setFormatFilter] = useState<string>("all");
   const [isLoading, setIsLoading] = useState(true);
+  // Issue #1817 — the rules-engine barrel is too heavy to load for a list
+  // view; Share Replay pulls it dynamically, so track the row preparing a
+  // share to keep its menu item disabled until the chunk resolves.
+  const [preparingShareId, setPreparingShareId] = useState<string | null>(null);
   const [fileInputRef, setFileInputRef] = useState<HTMLInputElement | null>(
     null,
   );
@@ -230,56 +233,65 @@ export default function SavedGamesPage() {
       return;
     }
 
-    const payload = await savedGamesManager.getSavedGamePayload(game.id);
-    if (!payload?.replayJson) {
-      toast({
-        variant: "destructive",
-        title: "No Replay",
-        description: "This game doesn't have replay data.",
-      });
-      return;
-    }
-
+    // Issue #1817 — the engine's public API is the full barrel, so a
+    // static import would drag the whole rules-engine chunk into this
+    // route. Load it lazily at the only call site instead.
+    setPreparingShareId(game.id);
     try {
-      // Issue #1573 — the payload row stores `replayJson` in the `gzn:`
-      // gzip envelope. Inflate first; legacy uncompressed rows pass
-      // through the marker check unchanged.
-      const replayJson = await decompressReplayJson(payload.replayJson);
-      const replay = JSON.parse(replayJson as string);
+      const payload = await savedGamesManager.getSavedGamePayload(game.id);
+      if (!payload?.replayJson) {
+        toast({
+          variant: "destructive",
+          title: "No Replay",
+          description: "This game doesn't have replay data.",
+        });
+        return;
+      }
 
-      // Check if replay can be shared via URL
-      if (canShareViaURL(replay)) {
-        const success = await copyShareableLink(replay);
-        if (success) {
-          toast({
-            title: "Link Copied",
-            description: "Replay link copied to clipboard!",
-          });
+      try {
+        // Issue #1573 — the payload row stores `replayJson` in the `gzn:`
+        // gzip envelope. Inflate first; legacy uncompressed rows pass
+        // through the marker check unchanged.
+        const { decompressReplayJson } = await import("@/lib/game-state");
+        const replayJson = await decompressReplayJson(payload.replayJson);
+        const replay = JSON.parse(replayJson as string);
+
+        // Check if replay can be shared via URL
+        if (canShareViaURL(replay)) {
+          const success = await copyShareableLink(replay);
+          if (success) {
+            toast({
+              title: "Link Copied",
+              description: "Replay link copied to clipboard!",
+            });
+          } else {
+            toast({
+              variant: "destructive",
+              title: "Copy Failed",
+              description: "Failed to copy link to clipboard.",
+            });
+          }
         } else {
+          // Fall back to file export
+          exportReplayToFile(
+            replay,
+            `${game.name.replace(/\s+/g, "-")}-replay.json`,
+          );
           toast({
-            variant: "destructive",
-            title: "Copy Failed",
-            description: "Failed to copy link to clipboard.",
+            title: "Replay Exported",
+            description:
+              "Replay file downloaded. It's too large for URL sharing.",
           });
         }
-      } else {
-        // Fall back to file export
-        exportReplayToFile(
-          replay,
-          `${game.name.replace(/\s+/g, "-")}-replay.json`,
-        );
+      } catch {
         toast({
-          title: "Replay Exported",
-          description:
-            "Replay file downloaded. It's too large for URL sharing.",
+          variant: "destructive",
+          title: "Share Failed",
+          description: "Failed to generate replay share link.",
         });
       }
-    } catch {
-      toast({
-        variant: "destructive",
-        title: "Share Failed",
-        description: "Failed to generate replay share link.",
-      });
+    } finally {
+      setPreparingShareId(null);
     }
   }
 
@@ -603,6 +615,7 @@ export default function SavedGamesPage() {
                                 {game.hasReplay && (
                                   <DropdownMenuItem
                                     onClick={() => handleShareReplay(game)}
+                                    disabled={preparingShareId === game.id}
                                   >
                                     <Share2 className="w-4 h-4 mr-2" />
                                     Share Replay
