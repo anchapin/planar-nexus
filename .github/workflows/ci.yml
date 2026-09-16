@@ -861,6 +861,34 @@ jobs:
       - name: Assert engine module size budget (#1725)
         run: node scripts/check-engine-size-budget.mjs
 
+  no-prompt-in-engine-guard:
+    # Issue #1816: keep LLM prompt text out of the rules-engine directory.
+    # The engine (`src/lib/game-state/`) is exported only through its barrel
+    # and is the mutation-tested correctness core; LLM prompt strings live
+    # with the AI tooling (`src/ai/flows/`). Reintroducing a prompt into the
+    # engine directory adds churn to the directory whose merge gate is the
+    # strictest, and the engine boundary was deliberately built to exclude
+    # that class of content (#1724). The script walks the engine directory
+    # and exits 1 on any "You are a " / "Act as a " role-signature match.
+    # Runs in plain Node (~50ms) so a regression fails fast in its own job
+    # rather than waiting on the test suite. Local equivalent:
+    # `npm run lint:no-prompt-in-engine`.
+    name: No Prompt In Engine Guard
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
+
+      - name: Assert no LLM prompt text in rules engine (#1816)
+        run: node scripts/check-no-prompt-in-engine.mjs
+
   turn-credentials-guard:
     # Issue #1571: standalone guard that prevents private TURN credentials
     # from being committed via NEXT_PUBLIC_TURN_* env vars or inline
@@ -952,7 +980,7 @@ jobs:
     name: Build
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
-    needs: [test, lint, typecheck, commitlint, mutation-smoke, security, cargo-audit, rust-checks, a11y-contrast, e2e, workflow-lint, tauri-updater-config, engine-size-budget, turn-credentials-guard, coverage-docs-guard]
+    needs: [test, lint, typecheck, commitlint, mutation-smoke, security, cargo-audit, rust-checks, a11y-contrast, e2e, workflow-lint, tauri-updater-config, engine-size-budget, no-prompt-in-engine-guard, turn-credentials-guard, coverage-docs-guard]
 
     steps:
       - name: Checkout code
