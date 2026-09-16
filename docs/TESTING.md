@@ -506,7 +506,7 @@ npm test -- --testPathPattern=video-derived --coverage
 | Lines      | **70%**        | 61%                                  |
 | Functions  | **70%**        | 53%                                  |
 | Statements | **70%**        | 60%                                  |
-| Branches   | **60%**        | 52%                                  |
+| Branches   | **60%**        | 53%                                  |
 
 <!-- coverage-floor:end -->
 
