@@ -573,7 +573,7 @@ npm test -- --testPathPattern=video-derived --coverage
 | ---------- | -------------- | ------------------------------------ |
 | Lines      | **70%**        | 61%                                  |
 | Functions  | **70%**        | 53%                                  |
-| Statements | **70%**        | 60%                                  |
+| Statements | **70%**        | 61%                                  |
 | Branches   | **60%**        | 53%                                  |
 
 <!-- coverage-floor:end -->
@@ -815,16 +815,16 @@ See section [13. CI Integration](#13-ci-integration).
 
 ## 11. Decision Guide
 
-| Scenario                      | Test type                    |
-| ----------------------------- | ---------------------------- |
-| Pure function / utility       | Unit (co-located)            |
-| Custom hook                   | Unit                         |
-| Single React component        | Unit (RTL)                   |
-| Component + providers         | Unit (`renderWithProviders`) |
-| Server action / route         | Integration (`tests/`)       |
-| Cross-module workflow         | Integration (`tests/`)       |
-| Critical user flow in browser | E2E (`e2e/`)                 |
-| Game-state regression         | Video-derived fixture        |
+| Scenario                       | Test type                       |
+| ------------------------------ | ------------------------------- |
+| Pure function / utility        | Unit (co-located)               |
+| Custom hook                    | Unit                            |
+| Single React component         | Unit (RTL)                      |
+| Component + providers          | Unit (`renderWithProviders`)    |
+| Server action / route          | Integration (`tests/`)          |
+| Cross-module workflow          | Integration (`tests/`)          |
+| Critical user flow in browser  | E2E (`e2e/`)                    |
+| Game-state regression          | Video-derived fixture           |
 | AI opponent / simulator change | Simulation (`npm run simulate`) |
 
 **Choose E2E** when you need a real browser, real DOM, or unmocked network.
