@@ -1,8 +1,12 @@
-import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
 
+/**
+ * Merge Tailwind classes with conditional logic (shadcn/ui convention).
+ * See AGENTS.md "UI" for the component-alias contract that relies on this.
+ */
 export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
+  return twMerge(clsx(inputs));
 }
 
 /**
@@ -16,7 +20,7 @@ export function createChecksum(data: string): string {
   }
   // Convert to positive hex string
   const unsigned = hash >>> 0;
-  return unsigned.toString(16).padStart(8, '0');
+  return unsigned.toString(16).padStart(8, "0");
 }
 
 /**
