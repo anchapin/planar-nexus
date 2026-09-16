@@ -66,21 +66,18 @@
  * `useP2PConnection`) and exercising host-migration + per-link reconnection
  * end-to-end at N>2 is tracked as follow-up work — see the PR description.
  */
-import {
-  isGameMessage,
-  type GameMessage,
-  type GameMessageType,
-  type PeerActionValidator,
-  type PeerActionValidationResult,
-  type PeerGameActionPayload,
+import type {
+  GameMessage,
+  GameMessageType,
+  PeerActionValidator,
 } from "./p2p-game-connection";
+import { signMessageEnvelope } from "./p2p-json-validation";
 import {
-  safeParseJson,
-  isMessageEnvelope,
-  signMessageEnvelope,
-  verifyMessageEnvelope,
-  type MessageEnvelope,
-} from "./p2p-json-validation";
+  runInboundPipeline,
+  MESH_INBOUND_PIPELINE_MESSAGES,
+  type InboundPipelineConfig,
+  type InboundStepObserver,
+} from "./p2p-inbound-pipeline";
 import { hmacSha256Hex, isValidSessionKeyHex } from "./p2p-handshake";
 import { P2PRateLimiter, type P2PRateLimitOptions } from "./p2p-rate-limiter";
 import { redactSensitive } from "./p2p-log-redact";
@@ -246,6 +243,15 @@ export interface MeshGameConnectionOptions {
    * `onPeerUnreachable` fires).
    */
   heartbeat?: MeshHeartbeatOptions;
+  /**
+   * Observer invoked once per executed inbound trust-pipeline step with the
+   * step's terminal outcome (`pass` / `reject` / `skipped`), in execution
+   * order (issue #1791). Diagnostic/test hook — the pipeline is owned by
+   * `src/lib/p2p-inbound-pipeline.ts`; this option makes its (short-
+   * circuiting) execution order observable from outside the transport
+   * without trusting the module's internals.
+   */
+  pipelineObserver?: InboundStepObserver;
 }
 
 /** Default reason stamped on a host rejection when the validator omits one. */
@@ -313,6 +319,16 @@ export class MeshGameConnection {
 
   /** Per-sender inbound anti-replay high-water marks. Issue #1091. */
   private readonly antiReplay: AntiReplayTracker = new AntiReplayTracker();
+
+  /**
+   * Configuration delegating the ordered inbound trust pipeline (rate limit
+   * → parse → shape → anti-replay → role allowlist → host legality) to the
+   * shared module (`src/lib/p2p-inbound-pipeline.ts`). Issue #1791: the
+   * mesh owns NO inline pipeline logic — only per-surface configuration
+   * (per-link limiters/keys, log phrasing with link attribution, host gate)
+   * and reject delivery.
+   */
+  private readonly inboundPipeline: InboundPipelineConfig;
 
   /**
    * Counter of how many `game-action` messages were dropped on inbound
@@ -468,6 +484,48 @@ export class MeshGameConnection {
     // tick cannot fire before the caller's `onPeerUnreachable` is wired
     // up.
     this.startHeartbeat();
+
+    // Issue #1791 — delegate the ordered inbound trust pipeline to the
+    // shared module. Every callback reads LIVE mesh state (per-link keys,
+    // roles, the promoted-host flag) at message time; nothing is
+    // snapshotted.
+    this.inboundPipeline = {
+      rateLimiterFor: (peerId) => this.ensureLimiter(peerId ?? ""),
+      wireModeFor: (peerId) => {
+        const pairKey = peerId ? this.peerSessionKeys.get(peerId) : undefined;
+        if (!pairKey) {
+          return { kind: "legacy" };
+        }
+        return {
+          kind: "envelope",
+          // Per-sender subkey of THIS link's pairwise secret (#1708): the
+          // tag is bound to both the link and the declared sender.
+          resolveVerificationKey: (declaredSenderId) =>
+            derivePerSenderKey(pairKey, declaredSenderId),
+          // Sender binding: the declared sender MUST be the delivering
+          // link's peer (a peer cannot forge another peer's envelopes).
+          expectedSenderId: peerId,
+          revalidatePayloadShape: true,
+        };
+      },
+      antiReplay: this.antiReplay,
+      getLocalRole: () => this.localRoleFlag,
+      legalityAppliesTo: (message) =>
+        this.validatePeerActions &&
+        this.isHostFlag &&
+        message.type === "game-action",
+      actionValidator: this.validatePeerAction,
+      messages: MESH_INBOUND_PIPELINE_MESSAGES,
+      logTag: "[MeshGameConnection]",
+      logContextFor: (peerId) => (peerId ? { fromPeerId: peerId } : null),
+      onEnvelopeRejected: () => {
+        this.envelopeRejections += 1;
+      },
+      onRoleDisallowed: () => {
+        this.spectatorDrops += 1;
+      },
+      onStep: options.pipelineObserver,
+    };
   }
 
   // ────────────────────────────────────────────────────────────────────────
@@ -949,14 +1007,17 @@ export class MeshGameConnection {
   /**
    * Handle a raw inbound message that arrived over `fromPeerId`'s link.
    *
-   * Enforces, in order, the SAME pipeline as `P2PGameConnection.handleMessage`
-   * so the trust boundary is identical at N=2 and N>2:
+   * The ordered inbound trust pipeline is owned by the shared module
+   * `src/lib/p2p-inbound-pipeline.ts` (issue #1791) and enforces, in order,
+   * the SAME pipeline as `P2PGameConnection.handleMessage` — now by code
+   * rather than by comment — so the trust boundary is identical at N=2 and
+   * N>2:
    *   1. Per-link rate limit — a flooding peer is dropped before any parsing
    *      (issue #1111). Each peer has its own counter so one flooder cannot
    *      starve the others.
    *   2. Safe parse + structural limits (size/depth/key-count) via
-   *      {@link safeParseJson}.
-   *   3. Shape validation via the shared {@link isGameMessage} guard
+   *      `safeParseJson`.
+   *   3. Shape validation via the shared `isGameMessage` guard
    *      (including the required `seq`, #1091) — on a KEYED link this
    *      stage is the per-link envelope gate instead: the payload must
    *      be a `MessageEnvelope` verifying under the link's pairwise
@@ -966,9 +1027,7 @@ export class MeshGameConnection {
    *      from this `senderId` is dropped BEFORE it can touch game state (#1091).
    *   5. Per-peer role allowlist (issue #1253): if the LOCAL role is
    *      `'spectator'` (or `'moderator'`), a `game-action` arriving on the
-   *      wire is dropped BEFORE it can touch the dispatch surface. This is
-   *      the read-only-stream contract: a `PlayerActionMessage` never
-   *      reaches a spectator's game state.
+   *      wire is dropped BEFORE it can touch the dispatch surface.
    *   6. Host-side rules-engine legality (#1089): on the authoritative host, a
    *      `game-action` is validated against the host's own state; illegal
    *      actions are rejected (peer notified via a typed `error` message
@@ -980,79 +1039,17 @@ export class MeshGameConnection {
    */
   handleIncoming(raw: string, fromPeerId: string): void {
     try {
-      // 1. Per-link rate limit first — never do parse/validation work for a
-      //    flooding peer.
-      if (!this.ensureLimiter(fromPeerId).tryAcquire()) {
-        p2pLogger.warn(
-          "[MeshGameConnection] Rate limit exceeded; dropping peer message",
-          redactSensitive({ fromPeerId }),
-        );
-        return;
-      }
-
-      // 2 + 3. Safe parse + structural limits + shape validation — with the
-      // per-link envelope gate (issue #1708). On a KEYED link the payload
-      // MUST be a `MessageEnvelope` that (a) verifies under the per-sender
-      // subkey derived from THIS link's pairwise secret and (b) declares the
-      // delivering link's peer as its sender. This binds every accepted
-      // message's senderId to the authenticated pairwise channel it arrived
-      // on: a peer holding only its own pair key (the old "mesh-shared key"
-      // position) cannot produce an accepted envelope bearing another
-      // senderId, and non-enveloped traffic on a keyed link is rejected —
-      // the connection FAILS CLOSED instead of downgrading to unsigned.
-      const message = this.parseInbound(raw, fromPeerId);
-      if (!message) {
-        return;
-      }
-
-      // 4. Anti-replay (per senderId, scales to N senders). Issue #1091.
-      if (this.antiReplay.isReplay(message.senderId, message.seq)) {
-        p2pLogger.warn(
-          "[MeshGameConnection] Dropping duplicate/replay message",
-          redactSensitive({ senderId: message.senderId, seq: message.seq }),
-        );
-        return;
-      }
-      this.antiReplay.markApplied(message.senderId, message.seq);
-
-      // 5. Per-peer role allowlist (issue #1253). The local role is the
-      //    SINGLE source of truth for what the local node is willing to
-      //    receive. A `game-action` arriving on a spectator-only link is
-      //    dropped silently and counted via `getSpectatorDrops` so the
-      //    diagnostic surface can flag a misconfigured pod. Note we run
-      //    this AFTER anti-replay so a replayed `game-action` is still
-      //    counted once (the anti-replay check rejects it first).
-      if (!isMessageAllowedForRole(this.localRoleFlag, message.type)) {
-        this.spectatorDrops += 1;
-        p2pLogger.warn(
-          "[MeshGameConnection] Dropped message disallowed for local role",
-          redactSensitive({
-            fromPeerId,
-            type: message.type,
-            localRole: this.localRoleFlag,
-          }),
-        );
-        return;
-      }
-
-      // 6. Host-side rules-engine legality for game-actions. Issue #1089.
-      //    Auto-gated to the authoritative host: a non-host forwards actions
-      //    untouched (the host is the only one with authoritative state), and
-      //    a peer promoted by host migration (#946) begins validating
-      //    automatically once isHostFlag flips on.
-      if (
-        message.type === "game-action" &&
-        this.validatePeerActions &&
-        this.isHostFlag
-      ) {
-        const result = this.validatePeerGameAction(message);
-        if (!result.isValid) {
-          this.sendActionRejection(message, fromPeerId, result.reason);
-          return;
+      const result = runInboundPipeline(raw, this.inboundPipeline, fromPeerId);
+      if (result.outcome === "rejected") {
+        // Host-side legality rejection: notify the originating peer over the
+        // typed `error` channel, targeted at its link (issue #1089), and do
+        // NOT dispatch the action.
+        if (result.step === "legality" && result.message) {
+          this.sendActionRejection(result.message, fromPeerId, result.reason);
         }
+        return;
       }
-
-      this.dispatch(message, fromPeerId);
+      this.dispatch(result.message, fromPeerId);
     } catch (error) {
       // Defensive: a handler bug must not tear down the mesh.
       p2pLogger.error(
@@ -1066,77 +1063,6 @@ export class MeshGameConnection {
         fromPeerId,
       );
     }
-  }
-
-  /**
-   * Parse + authenticate one inbound wire payload from `fromPeerId`'s link
-   * (issue #1708). Returns the trusted `GameMessage`, or `null` when the
-   * payload must be dropped:
-   *
-   *   - KEYED link (`setPeerSessionKey` was called for `fromPeerId`):
-   *     the payload must be a well-shaped `MessageEnvelope` whose HMAC
-   *     verifies under {@link derivePerSenderKey}(pairKey, declared
-   *     senderId) AND whose declared senderId EQUALS `fromPeerId`. Any
-   *     failure (legacy non-enveloped JSON, bad signature, swapped
-   *     senderId, malformed shape) increments {@link envelopeRejections}
-   *     and returns `null` — fail closed, no downgrade.
-   *   - UNKEYED link: legacy non-enveloped `GameMessage` parse (back-compat
-   *     with single-player / AI / pre-#1252 peers).
-   */
-  private parseInbound(raw: string, fromPeerId: string): GameMessage | null {
-    const pairKey = this.peerSessionKeys.get(fromPeerId);
-    if (!pairKey) {
-      // Legacy (unkeyed) link: plain shape-validated GameMessage.
-      const legacy = safeParseJson<GameMessage>(raw, isGameMessage);
-      if (!legacy) {
-        p2pLogger.error(
-          "[MeshGameConnection] Rejected malformed peer message",
-          redactSensitive({ fromPeerId }),
-        );
-        return null;
-      }
-      return legacy;
-    }
-
-    // Keyed link — envelope mode, fail closed at every step.
-    const envelope = safeParseJson<MessageEnvelope>(raw, isMessageEnvelope);
-    if (!envelope) {
-      this.envelopeRejections += 1;
-      p2pLogger.warn(
-        "[MeshGameConnection] Rejected non-enveloped/malformed traffic on keyed link (fail closed)",
-        redactSensitive({ fromPeerId }),
-      );
-      return null;
-    }
-    // Sender binding + HMAC under the per-sender subkey of THIS link's
-    // pairwise secret. expectedSenderId = the delivering link's peer: an
-    // envelope signed under any other pair key (or bearing a swapped
-    // senderId) fails here even if the attacker holds their own link's key.
-    const senderKey = derivePerSenderKey(pairKey, envelope.payload.senderId);
-    if (!verifyMessageEnvelope(envelope, senderKey, fromPeerId)) {
-      this.envelopeRejections += 1;
-      p2pLogger.warn(
-        "[MeshGameConnection] Dropping forged/invalid envelope",
-        redactSensitive({
-          fromPeerId,
-          declaredSender: envelope.payload?.senderId,
-          seq: envelope.payload?.seq,
-        }),
-      );
-      return null;
-    }
-    // The envelope guard checks the HMAC-participating subset; the full
-    // GameMessage shape (type allowlist, required seq) still applies.
-    const message = envelope.payload as GameMessage;
-    if (!isGameMessage(message)) {
-      this.envelopeRejections += 1;
-      p2pLogger.warn(
-        "[MeshGameConnection] Envelope payload failed GameMessage shape validation",
-        redactSensitive({ fromPeerId }),
-      );
-      return null;
-    }
-    return message;
   }
 
   /**
@@ -1192,47 +1118,6 @@ export class MeshGameConnection {
       }
       default:
         break;
-    }
-  }
-
-  /**
-   * Validate a peer-originated `game-action` against the rules engine using the
-   * host's authoritative state (via {@link validatePeerAction}). Fail-closed:
-   * anything that cannot be confirmed legal is treated as illegal so it can
-   * never be applied to host state. Issue #1089.
-   */
-  private validatePeerGameAction(
-    message: GameMessage,
-  ): PeerActionValidationResult {
-    const payload = message.data;
-    if (
-      typeof payload !== "object" ||
-      payload === null ||
-      typeof (payload as { action?: unknown }).action !== "string"
-    ) {
-      return { isValid: false, reason: "Malformed game action" };
-    }
-    if (!this.validatePeerAction) {
-      // Gate enabled without a validator — fail-closed.
-      return { isValid: false, reason: "No action validator configured" };
-    }
-    const peerAction = payload as PeerGameActionPayload;
-    try {
-      const result = this.validatePeerAction(peerAction, message.senderId);
-      if (
-        result &&
-        typeof result === "object" &&
-        typeof result.isValid === "boolean"
-      ) {
-        return result;
-      }
-      return { isValid: false, reason: "Invalid validator result" };
-    } catch (error) {
-      return {
-        isValid: false,
-        reason:
-          error instanceof Error ? error.message : "Action validation error",
-      };
     }
   }
 

@@ -41,13 +41,16 @@ import {
   type ICEConfigOptions,
 } from "./ice-config";
 import {
-  safeParseJson,
   isNonNegativeInteger,
-  isMessageEnvelope,
   signMessageEnvelope,
-  verifyMessageEnvelope,
-  type MessageEnvelope,
 } from "./p2p-json-validation";
+import { AntiReplayTracker } from "./anti-replay-tracker";
+import {
+  runInboundPipeline,
+  P2P_INBOUND_PIPELINE_MESSAGES,
+  type InboundPipelineConfig,
+  type InboundStepObserver,
+} from "./p2p-inbound-pipeline";
 import { P2PRateLimiter, type P2PRateLimitOptions } from "./p2p-rate-limiter";
 import {
   classifyConnectionFailure,
@@ -496,6 +499,15 @@ export interface P2PGameConnectionOptions {
    * Defaults to {@link MAX_CHAT_MESSAGE_LENGTH} (500).
    */
   maxChatMessageLength?: number;
+  /**
+   * Observer invoked once per executed inbound trust-pipeline step with the
+   * step's terminal outcome (`pass` / `reject` / `skipped`), in execution
+   * order (issue #1791). Diagnostic/test hook — the pipeline is owned by
+   * `src/lib/p2p-inbound-pipeline.ts`; this option makes its (short-
+   * circuiting) execution order observable from outside the transport
+   * without trusting the module's internals.
+   */
+  pipelineObserver?: InboundStepObserver;
 }
 
 /**
@@ -530,16 +542,25 @@ export class P2PGameConnection {
    */
   private outgoingSeq: number = 0;
   /**
-   * Highest sequence number applied per remote `senderId`. The anti-replay
-   * high-water mark: any incoming message with `seq <=` the stored value is
-   * dropped as a duplicate/replay BEFORE it touches game state. Issue #1091.
+   * Per-sender inbound anti-replay high-water marks (issue #1091). Shared
+   * primitive — the same tracker policy the mesh transport uses — owned and
+   * enforced by the shared inbound pipeline
+   * (`src/lib/p2p-inbound-pipeline.ts`, step 4).
    *
    * Reset/advanced on a full `game-state-sync` (the reconciliation snapshot)
    * via the `lastSeq` field carried by the snapshot — see
    * {@link handleGameStateSync} and the host-migration policy in
    * `p2p-host-migration.ts`.
    */
-  private lastAppliedSeqByPeer: Map<string, number> = new Map();
+  private readonly antiReplay: AntiReplayTracker = new AntiReplayTracker();
+  /**
+   * Configuration delegating the ordered inbound trust pipeline (rate limit
+   * → parse → shape → anti-replay → role allowlist → host legality) to the
+   * shared module. Issue #1791: the connection owns NO inline pipeline
+   * logic — only per-surface configuration (log tag/phrasing, session-key
+   * wire mode, role/legality gates) and reject delivery.
+   */
+  private readonly inboundPipeline: InboundPipelineConfig;
   /**
    * Per-peer priority send queue with backpressure awareness (#1251).
    * Wraps the synchronous `dataChannel.send(...)` call site so a stalled
@@ -723,6 +744,39 @@ export class P2PGameConnection {
     this.events = options.events
       ? { ...defaultEvents, ...options.events }
       : defaultEvents;
+
+    // Issue #1791 — delegate the ordered inbound trust pipeline to the
+    // shared module. Every callback reads LIVE connection state (rotated
+    // session keys, updated roles) at message time; nothing is snapshotted.
+    this.inboundPipeline = {
+      rateLimiterFor: () => this.rateLimiter,
+      wireModeFor: () =>
+        this.sessionKeyHex
+          ? {
+              kind: "envelope",
+              resolveVerificationKey: () => this.sessionKeyHex ?? "",
+              // 1:1 sessions have exactly one possible sender, so no
+              // sender-to-link binding check (preserves pre-#1791 behavior).
+              expectedSenderId: undefined,
+              revalidatePayloadShape: false,
+            }
+          : { kind: "legacy" },
+      antiReplay: this.antiReplay,
+      getLocalRole: () => this.localRoleFlag,
+      legalityAppliesTo: (message) =>
+        this.validatePeerActions && message.type === "game-action",
+      actionValidator: this.validatePeerAction,
+      messages: P2P_INBOUND_PIPELINE_MESSAGES,
+      logTag: "[P2PGameConnection]",
+      logContextFor: () => null,
+      onEnvelopeRejected: () => {
+        this.envelopeRejections += 1;
+      },
+      onRoleDisallowed: () => {
+        this.spectatorDrops += 1;
+      },
+      onStep: options.pipelineObserver,
+    };
   }
 
   /**
@@ -1397,16 +1451,16 @@ export class P2PGameConnection {
   }
 
   /**
-   * Handle incoming message
+   * Handle incoming message.
    *
-   * Enforces, in order:
+   * The ordered inbound trust pipeline is owned by the shared module
+   * `src/lib/p2p-inbound-pipeline.ts` (issue #1791) and enforces, in order:
    *   1. Per-connection rate limit — a flooding peer is dropped before any
    *      parsing work is done (issue #1111).
    *   2. Safe parse + structural limits (size/depth/key-count) via
-   *      {@link safeParseJson}.
-   *   3. Shape validation via {@link isGameMessage} (including the required
-   *      `seq` field added in #1091) — OR envelope verification via
-   *      {@link verifyMessageEnvelope} when a session key is set
+   *      `safeParseJson`.
+   *   3. Shape validation via {@link isGameMessage} — OR envelope
+   *      verification via `verifyMessageEnvelope` when a session key is set
    *      (issue #1252). When a session key is configured, the inbound
    *      payload MUST be an envelope; legacy non-enveloped `GameMessage`
    *      payloads are rejected at this stage.
@@ -1415,9 +1469,7 @@ export class P2PGameConnection {
    *      it can be applied to game state (issue #1091).
    *   5. Per-peer role allowlist (issue #1253): if the local role is
    *      `'spectator'` (or `'moderator'`), a `game-action` arriving on the
-   *      wire is dropped BEFORE it can touch the dispatch surface. This is
-   *      the read-only-stream contract: a `PlayerActionMessage` never reaches
-   *      a spectator's game state.
+   *      wire is dropped BEFORE it can touch the dispatch surface.
    *   6. Rules-engine legality (issue #1089): on the authoritative host, a
    *      `game-action` is validated against the host's own state; illegal
    *      actions are rejected (peer notified via an `error` message) BEFORE
@@ -1433,87 +1485,16 @@ export class P2PGameConnection {
    */
   private handleMessage(data: string): void {
     try {
-      // Rate-limit first: never do parse/validation work for a flooding peer.
-      if (!this.rateLimiter.tryAcquire()) {
-        p2pLogger.warn(
-          "[P2PGameConnection] Rate limit exceeded; dropping peer message",
-        );
+      const result = runInboundPipeline(data, this.inboundPipeline);
+      if (result.outcome === "rejected") {
+        // Host-side legality rejection: notify the originating peer over the
+        // typed `error` channel (issue #1089) and do NOT emit the action.
+        if (result.step === "legality" && result.message) {
+          this.sendActionRejection(result.message, result.reason);
+        }
         return;
       }
-
-      // Issue #1252 — when a session key is configured, the inbound payload
-      // MUST be a `MessageEnvelope` and must verify against the key. This
-      // binds the message to its declared sender, closing the peer-
-      // impersonation gap left by sequence numbers (#1091). When no key is
-      // set, fall back to the legacy non-enveloped `GameMessage` wire format
-      // (back-compat with single-player / AI / pre-#1252 peers).
-      let message: GameMessage;
-      if (this.sessionKeyHex) {
-        const envelope = safeParseJson<MessageEnvelope>(
-          data,
-          isMessageEnvelope,
-        );
-        if (!envelope) {
-          this.envelopeRejections += 1;
-          p2pLogger.warn("[P2PGameConnection] Rejected malformed envelope");
-          return;
-        }
-        if (!verifyMessageEnvelope(envelope, this.sessionKeyHex)) {
-          this.envelopeRejections += 1;
-          p2pLogger.warn(
-            "[P2PGameConnection] envelope-sender-mismatch; dropping forged envelope",
-            redactSensitive({
-              declaredSender: envelope.payload?.senderId,
-              seq: envelope.payload?.seq,
-            }),
-          );
-          return;
-        }
-        // VerifyMessageEnvelope narrows the envelope — extract the typed
-        // GameMessage payload for the downstream pipeline.
-        message = envelope.payload as GameMessage;
-      } else {
-        const legacy = safeParseJson<GameMessage>(data, isGameMessage);
-        if (!legacy) {
-          // Malformed JSON or wrong shape — reject without breaking the channel.
-          p2pLogger.error(
-            "[P2PGameConnection] Rejected malformed peer message",
-          );
-          return;
-        }
-        message = legacy;
-      }
-
-      // Anti-replay (issue #1091): drop duplicates and replays BEFORE the
-      // message can touch game state. This runs after shape validation so
-      // `message.seq` is guaranteed to be a non-negative integer.
-      if (this.isReplay(message)) {
-        p2pLogger.warn(
-          "[P2PGameConnection] Dropping duplicate/replay message",
-          redactSensitive({ senderId: message.senderId, seq: message.seq }),
-        );
-        return;
-      }
-      this.markApplied(message);
-
-      // Per-peer role allowlist (issue #1253). The local role is the
-      // SINGLE source of truth for what the local node is willing to
-      // receive. A `game-action` arriving on a spectator-only link is
-      // dropped silently and counted via `getSpectatorDrops` so the
-      // diagnostic surface can flag a misconfigured pod. Note we run
-      // this AFTER anti-replay so a replayed `game-action` is still
-      // counted once (the anti-replay check rejects it first).
-      if (!isMessageAllowedForRole(this.localRoleFlag, message.type)) {
-        this.spectatorDrops += 1;
-        p2pLogger.warn(
-          "[P2PGameConnection] Dropped message disallowed for local role",
-          redactSensitive({
-            type: message.type,
-            localRole: this.localRoleFlag,
-          }),
-        );
-        return;
-      }
+      const message = result.message;
 
       // Update remote player info
       if (this.remotePlayerId === null) {
@@ -1524,25 +1505,12 @@ export class P2PGameConnection {
         case "game-state-sync":
           this.handleGameStateSync(message);
           break;
-        case "game-action": {
-          // Rules-engine legality (issue #1089). Runs AFTER anti-replay
-          // (#1091) and structural/shape checks, and BEFORE the action is
-          // emitted for application — so an illegal action can never touch
-          // host game state. Only the authoritative host opts in. Fail-closed:
-          // if the gate is on but no validator is wired, actions are rejected
-          // rather than applied unvalidated (trust-boundary default).
-          if (this.validatePeerActions) {
-            const result = this.validatePeerGameAction(message);
-            if (!result.isValid) {
-              this.sendActionRejection(message, result.reason);
-              // Do NOT fall through to onMessage: the illegal action is not
-              // applied. `return` skips the post-switch emission too.
-              return;
-            }
-          }
-          // Legal (or validation disabled): forward to onMessage below.
+        case "game-action":
+          // Rules-engine legality (issue #1089) was enforced by the shared
+          // pipeline's final step — an illegal action never reaches this
+          // dispatch. Legal (or validation-disabled) actions fall through to
+          // onMessage below.
           break;
-        }
         case "chat":
           this.handleChat(message);
           break;
@@ -1615,31 +1583,6 @@ export class P2PGameConnection {
   }
 
   /**
-   * Anti-replay check (issue #1091). Returns true when `message.seq` has
-   * already been applied (or is older than the last applied) for this
-   * `senderId`, indicating a duplicate or replay that must be dropped.
-   */
-  private isReplay(message: GameMessage): boolean {
-    const last = this.lastAppliedSeqByPeer.get(message.senderId);
-    if (last === undefined) {
-      // First message observed from this sender — accept.
-      return false;
-    }
-    return message.seq <= last;
-  }
-
-  /**
-   * Record the high-water mark for `message.senderId` as `message.seq`.
-   * Used on every accepted message so the stream stays monotonic. Issue #1091.
-   */
-  private markApplied(message: GameMessage): void {
-    const last = this.lastAppliedSeqByPeer.get(message.senderId) ?? -1;
-    if (message.seq > last) {
-      this.lastAppliedSeqByPeer.set(message.senderId, message.seq);
-    }
-  }
-
-  /**
    * The highest outgoing seq this connection has stamped so far. Exposed so a
    * newly-promoted host (issue #946) can ship it as the `lastSeq` high-water
    * mark in the post-migration reconciliation snapshot. Issue #1091.
@@ -1666,8 +1609,7 @@ export class P2PGameConnection {
    * from that sender. Exposed for diagnostics and tests. Issue #1091.
    */
   getLastAppliedSeq(senderId: string): number | null {
-    const v = this.lastAppliedSeqByPeer.get(senderId);
-    return v === undefined ? null : v;
+    return this.antiReplay.getLastApplied(senderId);
   }
 
   /**
@@ -1675,50 +1617,7 @@ export class P2PGameConnection {
    * fresh session or recovering from a known-clean state). Issue #1091.
    */
   resetIncomingSeq(senderId: string): void {
-    this.lastAppliedSeqByPeer.delete(senderId);
-  }
-
-  /**
-   * Validate a peer-originated `game-action` against the rules engine using
-   * the host's authoritative state (via {@link validatePeerAction}). Defensive
-   * against malformed payloads and throwing validators: anything that cannot
-   * be confirmed legal is treated as illegal (fail-closed) so it can never be
-   * applied to host state. Issue #1089.
-   */
-  private validatePeerGameAction(
-    message: GameMessage,
-  ): PeerActionValidationResult {
-    const payload = message.data;
-    if (
-      typeof payload !== "object" ||
-      payload === null ||
-      typeof (payload as { action?: unknown }).action !== "string"
-    ) {
-      return { isValid: false, reason: "Malformed game action" };
-    }
-    const peerAction = payload as PeerGameActionPayload;
-    if (!this.validatePeerAction) {
-      // Gate enabled without a validator — fail-closed.
-      return { isValid: false, reason: "No action validator configured" };
-    }
-    try {
-      const result = this.validatePeerAction(peerAction, message.senderId);
-      if (
-        result &&
-        typeof result === "object" &&
-        typeof result.isValid === "boolean"
-      ) {
-        return result;
-      }
-      return { isValid: false, reason: "Invalid validator result" };
-    } catch (error) {
-      // A throwing validator is treated as a rejection — never apply.
-      return {
-        isValid: false,
-        reason:
-          error instanceof Error ? error.message : "Action validation error",
-      };
-    }
+    this.antiReplay.resetSender(senderId);
   }
 
   /**
@@ -1777,11 +1676,7 @@ export class P2PGameConnection {
     // Advance the anti-replay high-water mark first (transport-level concern,
     // independent of whether the payload deserializes).
     if (data.isFullSync && isNonNegativeInteger(data.lastSeq)) {
-      const current = this.lastAppliedSeqByPeer.get(message.senderId) ?? -1;
-      this.lastAppliedSeqByPeer.set(
-        message.senderId,
-        Math.max(current, data.lastSeq),
-      );
+      this.antiReplay.advanceTo(message.senderId, data.lastSeq);
     }
 
     const baseState = this.createBaseEngineState();
@@ -2234,7 +2129,7 @@ export class P2PGameConnection {
     this.rateLimiter.reset();
     // Drop anti-replay tracking so a fresh session isn't poisoned by stale
     // high-water marks from the previous peer. Issue #1091.
-    this.lastAppliedSeqByPeer.clear();
+    this.antiReplay.clear();
     // Reset the reconnect-edge detectors so a fresh session's initial
     // connect never fires a spurious onReconnect. Issue #1086.
     this.hadConnectedOnce = false;
