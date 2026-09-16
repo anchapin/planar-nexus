@@ -68,6 +68,15 @@ npm run test:e2e
 # Playwright UI mode
 npx playwright test --ui
 
+# AI simulation suite only (see "AI simulation suite" under Unit Tests)
+npm run simulate
+
+# WCAG design-token contrast gate (see section 13, CI Integration)
+npm run a11y:contrast
+
+# Playwright flake detector: 5 runs, threshold 4 (see section 7)
+npm run test:e2e:flake
+
 # Type-check + lint (always run before pushing)
 npm run typecheck
 npm run lint
@@ -216,6 +225,29 @@ A run that exceeds the wall-clock budget is killed and reported as an
 infra failure — that is the deliberate signal for a hanging handle, the
 same class of bug `--forceExit` used to hide.
 
+### AI simulation suite (`npm run simulate`)
+
+`npm run simulate` is a scoped Jest invocation —
+`jest src/ai/__tests__/simulation/ --verbose` — that runs only the AI
+simulation suite backing the AI-opponent work. Two spec files:
+
+- `game-simulator.test.ts` — the seeded game simulator itself: deck-pool
+  sanity, determinism (mulberry32 RNG — same seed → identical game
+  outcome), and termination (every simulation reaches a terminal state
+  within the turn cap; a tiny cap forces a draw).
+- `difficulty-winrate.test.ts` — difficulty-tier signal: a fast smoke
+  tier (one result per tier, correct win/loss accounting) and a
+  monotonic-separation tier (`easy < medium < expert` strictly separated,
+  expert beats easy by ≥ 20 points, no tier inverts its neighbour, every
+  tier terminates without runaway stalls).
+
+Run it whenever you touch anything feeding the simulator — AI opponent
+decision logic, difficulty tuning, deck pools, or the seeded RNG — and
+before any PR under `src/ai/`. The suite is small, deterministic
+(seed-pinned, no network), and finishes in well under a minute standalone;
+it also runs as part of the full `npm test`. The `--verbose` flag gives
+per-test pass/fail output, which is the point of the alias.
+
 ---
 
 ## 5. Component Tests (React Testing Library)
@@ -359,6 +391,42 @@ Why not Option B (`tauri build --debug --no-bundle` + `xvfb-run` + WebDriver)?
 It requires webkit2gtk system deps, a headless WebDriver binary, and root in
 the CI image — a far heavier, flakier surface for the same UI coverage. The
 dev-server path covers every desktop-aware branch without any of that.
+
+### E2E flake detector (`npm run test:e2e:flake`)
+
+```bash
+npm run test:e2e:flake                            # default: 5 runs, threshold 4
+npm run test:e2e:flake -- --runs=3                # quick mode
+npm run test:e2e:flake -- --runs=10 --threshold=8 # stricter signal
+npm run test:e2e:flake -- --specs=basic-navigation # one spec
+```
+
+`e2e/flake-detector.ts` (issue #1264) runs the Playwright suite **5×**
+against `chromium` with `--retries=0` — each run against a freshly-spawned
+dev server, because a flaky spec should flake on a cold server too — and
+fails (exit 1) if any spec passes fewer than **4 of 5** runs. Regular E2E
+runs with `retries: 1`, which masks flakiness (a spec that fails once and
+passes once reports green); the detector exists to be the honest signal.
+Every spec lands in one of three buckets:
+
+- **stable** — passes ≥ threshold (4/5): reliable.
+- **flaky** — 0 < passes < threshold: genuinely flaky, fails the run.
+- **always broken** — 0 passes: also fails the run (a hard failure, not
+  flakiness).
+
+Runs that produce no test outcomes at all are reported separately as
+likely infra failures (`failedSetupRuns`). A markdown report and JSON
+summary are written to `reports/flake-detector/` (`--report-dir=` to
+override).
+
+This is the local twin of the nightly `flake-detector` job in
+`.github/workflows/ci.yml` (#1264, on the nightly schedule since #1599),
+which runs the same command and uploads the report as the
+`flake-detector-report` artifact. Findings from the nightly flake
+detectors are triaged in follow-up issues — #1779 currently tracks the
+Jest-detector findings (see
+[Flakiness and the nightly Jest flake detector](#4-unit-tests-jest));
+this detector is its Playwright sibling for `e2e/`.
 
 ---
 
@@ -679,6 +747,12 @@ npm run mutate -- --mutate src/lib/game-state/<file>.ts
 npm run test:mutation:incremental
 ```
 
+Prefer the per-module scripts while iterating: the full `test:mutation`
+run across all seven allowlisted modules takes **~40 minutes** locally.
+CI never runs Stryker per PR (since #1762) — the per-PR `mutation-smoke`
+job only asserts the gate wiring — and the nightly workflow runs the full
+allowlist (see [CI integration](#ci-integration) below).
+
 The HTML report is written to `reports/mutation/index.html`. Stryker uses
 `coverageAnalysis: "perTest"` so only the tests that cover each mutant are run
 for it — the single biggest performance lever on a large suite. Worker count
@@ -751,6 +825,7 @@ See section [13. CI Integration](#13-ci-integration).
 | Cross-module workflow         | Integration (`tests/`)       |
 | Critical user flow in browser | E2E (`e2e/`)                 |
 | Game-state regression         | Video-derived fixture        |
+| AI opponent / simulator change | Simulation (`npm run simulate`) |
 
 **Choose E2E** when you need a real browser, real DOM, or unmocked network.
 **Choose integration** when you can mock external dependencies and want faster
@@ -784,9 +859,9 @@ npx playwright test --headed --debug
 Tests run automatically on:
 
 - **Pull requests** and **pushes to `main`** — `.github/workflows/ci.yml`
-  (lint, typecheck, unit tests with coverage, the mutation config guard
-  `mutation-smoke` — no Stryker on PRs since #1762 — enforcing
-  `coverageThreshold`).
+  (lint, typecheck, unit tests with coverage enforcing
+  `coverageThreshold`, the mutation config guard `mutation-smoke` — no
+  Stryker on PRs since #1762 — and the `a11y-contrast` WCAG gate).
 - **Video-derived tests** — `.github/workflows/video-derived-tests.yml`
   (generates + runs video-derived tests, posts coverage delta on PRs).
 - **Nightly mutation report** — `.github/workflows/mutation.yml` (runs the
@@ -795,6 +870,10 @@ Tests run automatically on:
   `scripts/mutation-floor.config.js`, and uploads `reports/mutation/` as an
   artifact). Since #1762 this is the only mutation gate — per-PR CI runs a
   config-marker guard instead.
+- **Nightly Playwright flake detector** — the `flake-detector` job in
+  `.github/workflows/ci.yml` (#1264, nightly since #1599) runs
+  `npm run test:e2e:flake` (5 runs / threshold 4); see
+  [E2E flake detector](#7-e2e-tests-playwright).
 - **Nightly Jest flake detector** — the `jest-flake-detector` job in
   `.github/workflows/ci.yml` (#1719) runs the unit suite 5× with randomized
   seeds and fails if any test passes <4/5; see
@@ -815,3 +894,33 @@ To **raise** the coverage floor after improving coverage, run
 [Ratcheting the coverage floor](#10-coverage)) and commit the resulting
 `jest.config.js` bump. This is how the floor moves toward the 70% target
 without ever sliding backward.
+
+### Color-contrast accessibility gate (`npm run a11y:contrast`)
+
+The `a11y-contrast` CI job (#1268) is merge-blocking — it sits in the
+`build` job's `needs:` list. It runs
+[`scripts/check-color-contrast.ts`](../scripts/check-color-contrast.ts),
+which parses `src/app/globals.css`, pairs every design-token
+foreground/background combination, and asserts WCAG 2.1 AA ratios —
+≥ 4.5:1 for text (criterion 1.4.3) and ≥ 3:1 for non-text UI affordances
+(1.4.11). CI invokes the `:report` variant and uploads the result as the
+`contrast-audit-report` artifact.
+
+```bash
+# Gate only — the same check CI enforces (exit 1 on any failing pair):
+npm run a11y:contrast
+
+# Gate + regenerate docs/CONTRAST_AUDIT.md:
+npm run a11y:contrast:report
+```
+
+The `:report` variant additionally (re)writes
+[`docs/CONTRAST_AUDIT.md`](./CONTRAST_AUDIT.md) — the committed audit
+table (currently 19/19 token pairs passing). The coupling is deliberate:
+when you change a design token in `globals.css`, run
+`npm run a11y:contrast:report` and commit the regenerated
+`CONTRAST_AUDIT.md` alongside the token change so the doc never drifts
+from the tokens it audits. If your PR is red on `a11y-contrast`, the job
+summary lists each failing pair with its computed ratio — fix the token
+pairing (lighten or darken one side) until the gate passes; do not weaken
+the thresholds.
