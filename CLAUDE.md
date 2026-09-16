@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Planar Nexus is a digital Magic: The Gathering tabletop experience built with Next.js, featuring deck building, AI coaching, and multiplayer functionality. The app integrates with the Scryfall API for card data and uses a multi-provider AI layer (OpenAI, Anthropic, and Google via the Vercel AI SDK) for deck analysis and opponent generation.
+Planar Nexus is a digital Magic: The Gathering tabletop experience built with Next.js, featuring deck building, AI coaching, and multiplayer functionality. The app integrates with the Scryfall API for card data and uses a multi-provider AI layer (OpenAI, Anthropic, Google, and Z.ai via the Vercel AI SDK) for deck analysis and opponent generation.
 
 ## Development Commands
 
