@@ -209,6 +209,13 @@ function MobilePlayerArea({
     [onCardClick],
   );
 
+  // #1818 — stable hand-card callback so the memo() boundary on HandDisplay
+  // holds when MobilePlayerArea re-renders.
+  const handleHandCardClick = useCallback(
+    (cardId: string) => onCardClick?.(cardId, "hand"),
+    [onCardClick],
+  );
+
   const ZoneButton = ({
     zone,
     title,
@@ -299,7 +306,7 @@ function MobilePlayerArea({
             cards={player.hand}
             isCurrentPlayer={true}
             onCardSelect={setSelectedHandCards}
-            onCardClick={(cardId) => onCardClick?.(cardId, "hand")}
+            onCardClick={handleHandCardClick}
             selectedCardIds={selectedHandCards}
             className="min-h-[100px]"
           />

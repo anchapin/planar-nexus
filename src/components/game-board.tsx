@@ -367,6 +367,14 @@ const PlayerArea = memo(function PlayerArea({
     [onCardClick],
   );
 
+  // #1818 — stable hand-card callback. `HandDisplay` is `memo`-wrapped, so an
+  // inline arrow here would defeat its render boundary on every PlayerArea
+  // re-render and re-render the whole hand fan.
+  const handleHandCardClick = useCallback(
+    (cardId: string) => onCardClick?.(cardId, "hand"),
+    [onCardClick],
+  );
+
   // Local ZoneDisplay wrapper for backward compatibility
   const ZoneDisplayLocal = ({
     zone,
@@ -474,7 +482,7 @@ const PlayerArea = memo(function PlayerArea({
                   cards={player.hand}
                   isCurrentPlayer={true}
                   onCardSelect={setSelectedHandCards}
-                  onCardClick={(cardId) => onCardClick?.(cardId, "hand")}
+                  onCardClick={handleHandCardClick}
                   selectedCardIds={selectedHandCards}
                   className="min-h-[120px]"
                 />

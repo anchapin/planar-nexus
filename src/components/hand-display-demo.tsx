@@ -321,13 +321,15 @@ export function HandDisplayDemo() {
     return map;
   }, [currentPlayerHand, opponentHand, largeHand]);
 
-  const handleCardSelect = (cardIds: string[]) => {
+  // Stable handlers (#1818): HandDisplay is memo-wrapped, so unstable
+  // callback props would defeat its render boundary.
+  const handleCardSelect = React.useCallback((cardIds: string[]) => {
     setSelectedCardIds(cardIds);
-  };
+  }, []);
 
-  const handleCardClick = (cardId: string) => {
+  const handleCardClick = React.useCallback((cardId: string) => {
     setLastClickedCard(cardId);
-  };
+  }, []);
 
   const handleCastSelected = () => {
     if (selectedCardIds.length === 0) {
