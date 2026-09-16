@@ -68,6 +68,12 @@ export const REMOTE_IMAGE_HOSTS: readonly RemoteImageHost[] = [
     purpose: "Random placeholder images in deck-builder and demo flows.",
   },
   {
+    label: "Picsum CDN",
+    hostname: "fastly.picsum.photos",
+    purpose:
+      "picsum.photos redirects to this Fastly CDN host; CSP does not follow redirects, so the final host must be allowlisted (surfaced by the e2e forced-colors spec after #1822).",
+  },
+  {
     label: "Placeholder",
     hostname: "placehold.co",
     purpose: "Deterministic placeholder art for missing card images.",
@@ -174,6 +180,14 @@ export const REMOTE_CONNECT_HOSTS: readonly RemoteImageHost[] = [
 function buildConnectSrc(): string {
   const sources = [
     "'self'",
+    // Loopback WebSockets: Next.js dev-mode HMR and the local signaling
+    // WebSocket upgrade to ws:// on loopback. CSP 'self' does not cover
+    // the ws:// scheme, so without these the multiplayer pages stall
+    // under the web CSP (surfaced by e2e after #1822). Loopback only —
+    // production signaling is same-origin HTTPS, and there is still no
+    // bare ws/wss scheme wildcard (#1584).
+    "ws://localhost:*",
+    "ws://127.0.0.1:*",
     ...REMOTE_CONNECT_HOSTS.map((host) => `https://${host.hostname}`),
   ];
   return sources.join(" ");
@@ -190,7 +204,7 @@ export const TAURI_CSP = [
   // and by Tailwind's runtime style injection. Documented in
   // CONTRIBUTING.md § "Security model".
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "img-src 'self' data: https://cards.scryfall.io https://img.scryfall.com https://images.unsplash.com https://picsum.photos https://placehold.co",
+  "img-src 'self' data: https://cards.scryfall.io https://img.scryfall.com https://images.unsplash.com https://picsum.photos https://fastly.picsum.photos https://placehold.co",
   "font-src 'self' data: https://fonts.googleapis.com https://fonts.gstatic.com",
   // HTTPS endpoints are enumerated from REMOTE_CONNECT_HOSTS; no WSS
   // wildcard (the PeerJS broker pattern was removed with the orphaned

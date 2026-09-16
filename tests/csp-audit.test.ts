@@ -168,6 +168,12 @@ describe("Tauri CSP audit (issue #1273)", () => {
     const connectValues = directives.get("connect-src") ?? [];
     const expected = new Set<string>([
       "'self'",
+      // Loopback WebSocket sources: Next.js dev-mode HMR + the local
+      // signaling WS. CSP 'self' does not cover ws://, so they are
+      // enumerated explicitly (loopback only, no ws/wss wildcard — #1584).
+      // Surfaced by the e2e multiplayer timeouts after #1822.
+      "ws://localhost:*",
+      "ws://127.0.0.1:*",
       ...REMOTE_CONNECT_HOSTS.map((host) => `https://${host.hostname}`),
     ]);
     // Sort-compare so the assertion message lists every unexpected /
