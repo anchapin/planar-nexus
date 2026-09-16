@@ -401,6 +401,27 @@ interface DeckSiteFetchResult {
 const REDIRECT_STATUSES = [301, 302, 303, 307, 308];
 
 /**
+ * Issue #1836 — constant origins for every allowlisted outbound hostname.
+ *
+ * `fetchDeckSiteText` rebuilds each fetch target as
+ * `origin + pathname + search` from this map, so the fetched origin is
+ * always one of these literals — never constructed from user input. This
+ * mirrors the exact-match hostnames the sink guard accepts (apex + www +
+ * the Moxfield API host); keep in sync with `SUPPORTED_SITES`.
+ */
+const OUTBOUND_FETCH_ORIGINS: Readonly<Record<string, string>> = {
+  "mtggoldfish.com": "https://mtggoldfish.com",
+  "www.mtggoldfish.com": "https://www.mtggoldfish.com",
+  "tappedout.net": "https://tappedout.net",
+  "www.tappedout.net": "https://www.tappedout.net",
+  "moxfield.com": "https://moxfield.com",
+  "www.moxfield.com": "https://www.moxfield.com",
+  "api2.moxfield.com": "https://api2.moxfield.com",
+  "archidekt.com": "https://archidekt.com",
+  "www.archidekt.com": "https://www.archidekt.com",
+};
+
+/**
  * Issue #1783 — direct, hardened outbound fetch for deck-site URLs.
  *
  * Replaces the `api.allorigins.win` CORS-proxy relay (which could read and
@@ -427,39 +448,33 @@ async function fetchDeckSiteText(
       );
     }
 
-    // SSRF sink guard (CodeQL js/request-forgery): the fetch consumes the
-    // URL object whose `.hostname` is constrained by exact-match literal
-    // comparisons in the guarding condition — the shape static taint
-    // analysis recognizes as a barrier. The `isAllowedOutboundUrl` check
-    // above remains the full #1392 policy (scheme, credentials, subdomain
-    // rules); this guard is intentionally redundant defense-in-depth at
-    // the sink. Keep the literal chain in sync with SUPPORTED_SITES; the
-    // route tests exercise every host on every path. This is a deliberate
-    // tightening: redirects to subdomains beyond the apex, www, and the
-    // API hosts fail loudly instead of being silently followed.
+    // SSRF sink guard (CodeQL js/request-forgery, issue #1836): the fetch
+    // target is rebuilt from a CONSTANT origin picked by exact-match
+    // hostname lookup — the remedy CodeQL documents for this query ("pick
+    // the hostname from an allow-list instead of constructing it directly
+    // from user input"). Only the URL-normalized path and query derive
+    // from the user-supplied URL (and URL parsing resolves `../`
+    // traversal), so the destination host is statically independent of
+    // user input. The `isAllowedOutboundUrl` check above remains the full
+    // #1392 policy (scheme, credentials, subdomain rules); this guard is
+    // intentionally redundant defense-in-depth at the sink. Keep the
+    // origin map in sync with SUPPORTED_SITES; the route tests exercise
+    // every host on every path. This is a deliberate tightening:
+    // redirects to subdomains beyond the apex, www, and API hosts fail
+    // loudly, and plain-http deck URLs upgrade to their https origin.
     const hopUrl = new URL(current);
-    let response: Response;
-    if (
-      hopUrl.hostname === "moxfield.com" ||
-      hopUrl.hostname === "www.moxfield.com" ||
-      hopUrl.hostname === "api2.moxfield.com" ||
-      hopUrl.hostname === "archidekt.com" ||
-      hopUrl.hostname === "www.archidekt.com" ||
-      hopUrl.hostname === "mtggoldfish.com" ||
-      hopUrl.hostname === "www.mtggoldfish.com" ||
-      hopUrl.hostname === "tappedout.net" ||
-      hopUrl.hostname === "www.tappedout.net"
-    ) {
-      response = await fetch(hopUrl, {
-        headers,
-        redirect: "manual",
-        signal: AbortSignal.timeout(OUTBOUND_FETCH_TIMEOUT_MS),
-      });
-    } else {
+    const origin: string | undefined = OUTBOUND_FETCH_ORIGINS[hopUrl.hostname];
+    if (origin === undefined) {
       throw new UpstreamRedirectError(
         `Blocked outbound fetch to non-allowlisted host: ${hopUrl.hostname}`,
       );
     }
+    const fetchUrl = `${origin}${hopUrl.pathname}${hopUrl.search}`;
+    const response = await fetch(fetchUrl, {
+      headers,
+      redirect: "manual",
+      signal: AbortSignal.timeout(OUTBOUND_FETCH_TIMEOUT_MS),
+    });
 
     if (REDIRECT_STATUSES.includes(response.status)) {
       const location = response.headers.get("location");
