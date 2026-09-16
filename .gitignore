@@ -59,6 +59,10 @@ src-tauri/gen/
 !src-tauri/tauri.conf.json
 !src-tauri/tauri.*.conf.json
 
+# Bundle size budgets must be tracked (issue #1814): the blanket *.json
+# rule above would silently ignore the gate's recorded ceilings.
+!config/bundle-budget.json
+
 # python
 __pycache__/
 *.py[cod]

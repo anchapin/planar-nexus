@@ -915,6 +915,39 @@ jobs:
       - name: Assert coverage-floor doc tables match jest.config.js (#1712)
         run: node scripts/check-coverage-docs-sync.mjs
 
+  bundle-size-budget:
+    # Issue #1814: nothing gated the compiled client payload — a single
+    # careless import could silently add hundreds of KB to a route with
+    # no CI signal. This job builds the app, then fails when any route's
+    # First Load JS exceeds its recorded budget in
+    # config/bundle-budget.json (scripts/check-bundle-budget.mjs parses
+    # the .next/ build manifests; Next 16 Turbopack prints no size
+    # table, so stdout is not an option). Budgets ratchet downward only:
+    # over-budget, unbudgeted-new-route, stale-entry, and
+    # budget-now->10kB-too-high all fail. The full build is required to
+    # measure real chunks (minutes of runtime — accepted). Local
+    # equivalent: `npm run build && npm run check:bundle-budget`.
+    # Intentionally NOT in the `build` job's needs-list (#1814 keeps
+    # the CI graph unchanged).
+    name: Bundle Size Budget
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
+
+      - name: Build application
+        run: npm run build
+
+      - name: Assert per-route First Load JS budgets (#1814)
+        run: node scripts/check-bundle-budget.mjs --check
+
   build:
     name: Build
     if: github.event_name != 'schedule'
