@@ -24,7 +24,8 @@ Planar Nexus uses a minimal set of server-side route handlers for the features
 that genuinely need a server. The application is primarily client-side;
 `src/app/api/` exports exactly six route files exposing nine endpoints:
 
-- **AI proxy** — server-side relay to LLM providers, keeping API keys off the
+- **AI proxy** — server-side relay to the four built-in LLM providers (Google,
+  OpenAI, Anthropic, and Z.ai), keeping API keys off the
   client and enforcing rate limits (`/api/ai-proxy`, `/api/ai-proxy/validate`).
 - **Chat** — unified streaming chat and the conversational deck coach
   (`/api/chat`, `/api/chat/coach`).
@@ -997,10 +998,7 @@ console.log(validation.valid); // true or false
 ```typescript
 // src/lib/game-state/serialization.ts
 
-import {
-  engineToAIState,
-  aiToEngineState,
-} from "@/lib/game-state";
+import { engineToAIState, aiToEngineState } from "@/lib/game-state";
 
 // Convert engine state to AI-friendly format
 const aiState = engineToAIState(engineGameState);
