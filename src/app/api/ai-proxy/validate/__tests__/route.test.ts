@@ -6,6 +6,7 @@
  *   - 400 (missing provider, invalid provider, invalid key format)
  *   - 401 (upstream rejected the key)
  *   - 404 (provider not configured on server)
+ *   - 429 (rate limit exceeded — issue #1795)
  *   - 500 (internal failure, e.g. fetch threw)
  *
  * The real `fetch` is replaced with a controllable mock so no provider call
@@ -34,6 +35,49 @@ jest.mock("@/lib/server-api-key-storage", () => ({
   getProviderConfig: (...args: unknown[]) => getProviderConfig(...args),
   isProviderConfigured: (...args: unknown[]) => isProviderConfigured(...args),
   validateApiKeyFormat: (...args: unknown[]) => validateApiKeyFormat(...args),
+}));
+
+// Issue #1795 — the route is gated by the shared rate-limit policy. Mock
+// the limiter + identity helpers so the test can exercise the 429 path
+// deterministically and so other tests don't share the singleton's bucket.
+const enforceRateLimitMock = jest.fn() as unknown as jest.Mock<
+  (...args: any[]) => any
+>;
+class RateLimitError extends Error {
+  public readonly retryAfter: number;
+  public readonly remaining: number;
+  public readonly code = "RATE_LIMIT_EXCEEDED";
+  constructor(
+    message: string,
+    retryAfterMs: number,
+    remainingRequests: number,
+  ) {
+    super(message);
+    this.name = "RateLimitError";
+    this.retryAfter = retryAfterMs;
+    this.remaining = remainingRequests;
+  }
+}
+const getRateLimitHeadersMock: jest.Mock = jest.fn(
+  (result: any) =>
+    ({
+      "X-RateLimit-Limit": "5",
+      "X-RateLimit-Remaining": String(result.remaining),
+      "X-RateLimit-Reset": String(result.resetAt),
+      ...(result.retryAfter
+        ? { "Retry-After": String(result.retryAfter) }
+        : {}),
+    }) as Record<string, string>,
+);
+jest.mock("@/lib/server-rate-limiter", () => ({
+  enforceRateLimit: (...args: unknown[]) => enforceRateLimitMock(...args),
+  RateLimitError,
+  getRateLimitHeaders: (...args: unknown[]) => getRateLimitHeadersMock(...args),
+}));
+
+const getClientIdentifierMock: jest.Mock = jest.fn();
+jest.mock("@/lib/server-request-identity", () => ({
+  getClientIdentifier: (...args: unknown[]) => getClientIdentifierMock(...args),
 }));
 
 // Mock the global fetch used by the route to ping the upstream provider.
@@ -99,9 +143,122 @@ function mockFetchResponse(status: number, text = ""): Response {
 beforeEach(() => {
   jest.clearAllMocks();
   validateApiKeyFormat.mockReturnValue({ valid: true });
+  // Default: rate limiter admits the request. Individual tests override to
+  // exercise the 429 path.
+  enforceRateLimitMock.mockResolvedValue({
+    success: true,
+    remaining: 4,
+    resetAt: Date.now() + 60 * 60 * 1000,
+  });
+  // Deterministic client identifier for tests that need to assert on it.
+  getClientIdentifierMock.mockReturnValue("ip:127.0.0.1");
   // The custom provider reads its base URL from the environment; pin it so
   // buildTestUrl() can construct the /health probe.
   process.env.CUSTOM_AI_BASE_URL = "https://custom.example.com/v1";
+});
+
+describe("GET /api/ai-proxy/validate — rate limiting (issue #1795)", () => {
+  it("returns 429 with RATE_LIMIT_EXCEEDED and retryAfter when the limiter rejects", async () => {
+    enforceRateLimitMock.mockRejectedValue(
+      new RateLimitError(
+        "API key validation rate limit exceeded. Please try again later.",
+        3600,
+        0,
+      ),
+    );
+
+    const res = await GET(
+      makeRequest("http://localhost/api/ai-proxy/validate?provider=openai"),
+    );
+    expect(res.status).toBe(429);
+    const data = (await (res as unknown as TestResponse).json()) as any;
+    expect(data.success).toBe(false);
+    expect(data.errorCode).toBe("RATE_LIMIT_EXCEEDED");
+    expect(data.retryAfter).toBe(3600);
+
+    // Rate-limit headers are computed for the 429 response so clients can
+    // back off correctly. The header values ride through NextResponse's
+    // production path; here we assert the route calls getRateLimitHeaders
+    // with the right shape (the production Response.json() in Next.js does
+    // not go through the test polyfill's `Response` global, so we test
+    // the contract at the mock boundary).
+    expect(getRateLimitHeadersMock).toHaveBeenCalledTimes(1);
+    expect(getRateLimitHeadersMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: false,
+        remaining: 0,
+        retryAfter: 3600,
+      }),
+      expect.objectContaining({ maxRequests: 5, windowMs: 60 * 60 * 1000 }),
+    );
+  });
+
+  it("checks the rate limit BEFORE consulting provider config (oracle leak guard)", async () => {
+    // If the route looked up provider config first, a 429-throttled caller
+    // could still distinguish 'provider not configured' (404) from 'key
+    // invalid' (401) — defeating the gate. The provider mocks MUST NOT be
+    // invoked on the 429 path.
+    enforceRateLimitMock.mockRejectedValue(
+      new RateLimitError("rate limited", 60, 0),
+    );
+    getProviderConfig.mockReturnValue({
+      provider: "openai",
+      apiKey: "sk-test",
+      enabled: true,
+    });
+    validateApiKeyFormat.mockReturnValue({ valid: true });
+
+    const res = await GET(
+      makeRequest("http://localhost/api/ai-proxy/validate?provider=openai"),
+    );
+    expect(res.status).toBe(429);
+    expect(getProviderConfig).not.toHaveBeenCalled();
+    expect(validateApiKeyFormat).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("uses the server-verified client identifier (never a body-supplied value)", async () => {
+    getProviderConfig.mockReturnValue({
+      provider: "openai",
+      apiKey: "sk-fake",
+      enabled: true,
+    });
+    fetchMock.mockResolvedValue(mockFetchResponse(200, ""));
+    getClientIdentifierMock.mockReturnValue("ip:10.0.0.42");
+
+    await GET(
+      makeRequest("http://localhost/api/ai-proxy/validate?provider=openai"),
+    );
+
+    expect(getClientIdentifierMock).toHaveBeenCalledTimes(1);
+    expect(enforceRateLimitMock).toHaveBeenCalledWith(
+      "ip:10.0.0.42",
+      expect.objectContaining({
+        maxRequests: 5,
+        windowMs: 60 * 60 * 1000,
+      }),
+    );
+  });
+
+  it("emits rate-limit headers on the success response", async () => {
+    getProviderConfig.mockReturnValue({
+      provider: "openai",
+      apiKey: "sk-fake",
+      enabled: true,
+    });
+    fetchMock.mockResolvedValue(mockFetchResponse(200, ""));
+
+    const res = await GET(
+      makeRequest("http://localhost/api/ai-proxy/validate?provider=openai"),
+    );
+    expect(res.status).toBe(200);
+    // The success path also stamps the X-RateLimit-* / Retry-After headers
+    // (when applicable) via getRateLimitHeaders, mirroring POST /api/ai-proxy.
+    expect(getRateLimitHeadersMock).toHaveBeenCalledWith(
+      expect.objectContaining({ success: true, remaining: 4 }),
+      expect.objectContaining({ maxRequests: 5 }),
+    );
+  });
 });
 
 describe("GET /api/ai-proxy/validate — request validation", () => {
@@ -196,10 +353,11 @@ describe("GET /api/ai-proxy/validate — happy paths", () => {
     );
   });
 
-  it("uses the apiKey as a query parameter for Google", async () => {
+  it("sends the Google API key via the x-goog-api-key header, not the URL (issue #1795)", async () => {
+    const googleKey = "google-key-1234567890";
     getProviderConfig.mockReturnValue({
       provider: "google",
-      apiKey: "google-key-1234567890",
+      apiKey: googleKey,
       enabled: true,
     });
     fetchMock.mockResolvedValue(mockFetchResponse(200, ""));
@@ -208,14 +366,22 @@ describe("GET /api/ai-proxy/validate — happy paths", () => {
       makeRequest("http://localhost/api/ai-proxy/validate?provider=google"),
     );
     expect(res.status).toBe(200);
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringMatching(/[?&]key=google-key-1234567890/),
-      expect.objectContaining({
-        headers: expect.not.objectContaining({
-          Authorization: expect.anything(),
-        }),
-      }),
-    );
+
+    // The key must not appear in the probe URL — egress logs and any
+    // intermediate proxy would otherwise capture it (the original #1795
+    // leak).
+    const [calledUrl, calledInit] = fetchMock.mock.calls[0] as [
+      string,
+      RequestInit,
+    ];
+    expect(calledUrl).toMatch(/\/models$/);
+    expect(calledUrl).not.toContain(googleKey);
+    expect(calledUrl).not.toMatch(/[?&]key=/);
+
+    // The key rides on the `x-goog-api-key` header instead.
+    const headers = (calledInit.headers ?? {}) as Record<string, string>;
+    expect(headers["x-goog-api-key"]).toBe(googleKey);
+    expect(headers["Authorization"]).toBeUndefined();
   });
 
   it("builds a /health probe for the custom provider", async () => {
