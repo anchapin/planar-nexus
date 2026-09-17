@@ -204,7 +204,13 @@ export async function POST(req: NextRequest) {
     const clientIdentifier = getClientIdentifier(req);
     let rateLimitResult;
     try {
-      rateLimitResult = enforceRateLimit(clientIdentifier, CHAT_RATE_LIMIT);
+      // Issue #1782: the limiter is async (its backing store may be a shared
+      // KV); await so the throw surfaces inside this try/catch as a
+      // `RateLimitError` rejection rather than an unhandled rejection.
+      rateLimitResult = await enforceRateLimit(
+        clientIdentifier,
+        CHAT_RATE_LIMIT,
+      );
     } catch (error) {
       if (error instanceof RateLimitError) {
         return NextResponse.json(
