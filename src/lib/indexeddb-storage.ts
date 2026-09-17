@@ -29,10 +29,24 @@ import {
   type CalculateChecksumOptions,
   type CalculateChecksumProgress,
 } from "./backup/backup-checksum-bridge";
+import type { CoachConversation } from "./coach-conversation-storage";
+import type { MatchRecord } from "./db/local-intelligence-db";
+import type { LimitedSession } from "./limited/types";
 import {
   IndexedDBBlockedError,
   registerVersionChangeClose,
 } from "./indexeddb-open-events";
+
+/**
+ * Schema version of the backup envelope produced by this build. Bumped in
+ * lockstep with `BACKUP_SCOPE_SCHEMA_VERSION` in `./backup/backup-scope.ts`
+ * (they share a value — duplicated here so the storage layer can stay
+ * runtime-independent of the scope helpers, which form a small cycle
+ * through `coach-conversation-storage.ts`). The type-only imports above keep
+ * the type-graph clean; the functions imported from `backup/backup-scope`
+ * are loaded dynamically inside the methods that need them.
+ */
+const BACKUP_SCOPE_SCHEMA_VERSION = 2;
 
 // ============================================================================
 // TYPES
@@ -66,9 +80,17 @@ export interface IncrementalBackupData {
 
 /**
  * Backup manifest tracking full and incremental backup history
+ *
+ * Issue #1812 — the manifest row is stamped with `version: 1` on first
+ * creation so future schema changes can branch on the persisted value
+ * rather than re-deriving it from `backupHistory`. Legacy manifests written
+ * before this field existed load with `version === undefined`; readers
+ * tolerate that via the `?? 1` convention used by the import path.
  */
 export interface BackupManifest {
   id: "backup-manifest";
+  /** Schema version of the manifest row itself. Defaults to `1` for legacy rows. */
+  version?: number;
   lastFullBackupAt: string | null;
   lastIncrementalBackupAt: string | null;
   backupHistory: Array<{ type: "full" | "incremental"; exportedAt: string }>;
@@ -76,10 +98,22 @@ export interface BackupManifest {
 
 /**
  * Export data format for backups
+ *
+ * Issue #1812 — three additional optional fields (`coachConversations`,
+ * `matchRecords`, `limitedSessions`) carry content from the three "not in
+ * backup until #1812" databases (persistence ADR §5.6 / §7). They are
+ * additive: legacy envelopes that pre-date the field are still valid
+ * `BackupData` shapes because each new field is `?`. `schemaVersion` (also
+ * optional) names the wire-format version that produced the envelope so
+ * future forwards-incompatible changes can branch on the value; legacy
+ * envelopes read with `schemaVersion === 1` by the `?? 1` convention used
+ * in `importBackup`.
  */
 export interface BackupData {
-  /** Backup version */
+  /** Backup wire-format version (`"1.0.0"`, `"2.0.0"`, ...). */
   version: string;
+  /** Schema version of this envelope; legacy envelopes default to `1`. */
+  schemaVersion?: number;
   /** When exported */
   exportedAt: string;
   /** All decks */
@@ -92,9 +126,43 @@ export interface BackupData {
   usageTracking?: UsageRecord[];
   /** Achievements */
   achievements?: PlayerAchievements[];
+  /**
+   * Every row in `PlanarNexusCoach.coach-conversations` (issue #1812).
+   * Optional because legacy envelopes pre-date this field and continue to
+   * import cleanly without it; restore is a no-op when absent.
+   */
+  coachConversations?: CoachConversationForBackup[];
+  /**
+   * Every row in `LocalIntelligenceDB.match_records` (issue #1812).
+   * Optional; the same legacy-compat rule applies.
+   */
+  matchRecords?: MatchRecordForBackup[];
+  /**
+   * Every row in `PlanarNexusLimited.sessions` (issue #1812). Optional;
+   * the same legacy-compat rule applies.
+   */
+  limitedSessions?: LimitedSessionForBackup[];
   /** Integrity checksum */
   checksum: string;
 }
+
+/**
+ * The wire-shape of a `CoachConversation` as persisted by
+ * `PlanarNexusCoach.coach-conversations`. Aliased to the concrete type
+ * (imported with `import type` so this file stays free of cross-DB runtime
+ * coupling — see the ownership declaration at the top of this file).
+ */
+export type CoachConversationForBackup = CoachConversation;
+
+/**
+ * Wire-shape alias of a `LocalIntelligenceDB.match_records` row.
+ */
+export type MatchRecordForBackup = MatchRecord;
+
+/**
+ * Wire-shape alias of a `PlanarNexusLimited.sessions` row.
+ */
+export type LimitedSessionForBackup = LimitedSession;
 
 /**
  * Stored deck schema
@@ -1119,6 +1187,13 @@ export class IndexedDBStorage {
 
   /**
    * Update the backup manifest after a backup operation
+   *
+   * Issue #1812 — when the manifest row is created for the first time it
+   * is stamped with `version: 1` so future readers can branch on the
+   * persisted schema of the row itself. Existing rows loaded from disk
+   * keep whatever `version` they carried (usually `undefined` for pre-
+   * #1812 rows), which the import path reads as `1` by the convention in
+   * `BackupManifest.version`.
    */
   private async updateBackupManifest(
     type: "full" | "incremental",
@@ -1127,6 +1202,7 @@ export class IndexedDBStorage {
     const now = new Date().toISOString();
     const manifest: BackupManifest = existing ?? {
       id: "backup-manifest",
+      version: 1,
       lastFullBackupAt: null,
       lastIncrementalBackupAt: null,
       backupHistory: [],
@@ -1357,6 +1433,12 @@ export class IndexedDBStorage {
    * Backward-compatible: callers that pre-date #1249 can `await` this with
    * no arguments; the checksum still completes successfully (the worker
    * simply runs without a progress listener).
+   *
+   * Issue #1812 — the envelope now also carries `coachConversations`,
+   * `matchRecords`, and `limitedSessions` from the three databases that the
+   * §5.6 "in backup?" table newly lists as in-scope. The gather step
+   * (`collectBackupScopeData`) is fail-soft so a missing / unavailable
+   * external DB produces an empty slice and the envelope remains valid.
    */
   async exportBackup(options?: {
     onChecksumProgress?: (progress: CalculateChecksumProgress) => void;
@@ -1372,8 +1454,24 @@ export class IndexedDBStorage {
     const usageTracking = await this.getAll<UsageRecord>("usage-tracking");
     const achievements = await this.getAll<PlayerAchievements>("achievements");
 
+    // Issue #1812 — gather the three excluded databases so a restore
+    // recovers user-authored coach conversations, match history, and
+    // limited-format pool sessions. Each leg is fail-soft and returns
+    // `[]` on error, so a backup taken on a device that never opened the
+    // coach route (or never sealed a pool) still produces a well-formed
+    // envelope.
+    //
+    // The scope module is dynamically imported to break an import cycle
+    // (`backup-scope.ts` → `coach-conversation-storage.ts` →
+    // `indexeddb-storage.ts`) that would otherwise leave the helper
+    // undefined at module-load time. The dynamic import is paid only on
+    // the first backup, after which the module is cached.
+    const { collectBackupScopeData } = await import("./backup/backup-scope");
+    const scope = await collectBackupScopeData();
+
     const backupData: BackupData = {
       version: "1.0.0",
+      schemaVersion: BACKUP_SCOPE_SCHEMA_VERSION,
       exportedAt: new Date().toISOString(),
       decks,
       savedGames,
@@ -1391,6 +1489,9 @@ export class IndexedDBStorage {
       ),
       usageTracking,
       achievements,
+      coachConversations: scope.coachConversations,
+      matchRecords: scope.matchRecords,
+      limitedSessions: scope.limitedSessions,
       checksum: "",
     };
 
@@ -1407,12 +1508,35 @@ export class IndexedDBStorage {
 
   /**
    * Import data from backup
+   *
+   * Issue #1812 — legacy envelopes that pre-date the schema versioning
+   * surface a `schemaVersion === undefined` here; the `?? 1` reading keeps
+   * them on the original restore path while new envelopes land at schema
+   * version 2 and may carry the three optional fields described on
+   * {@link BackupData}. The three restore legs are fail-soft and skip on
+   * an empty / missing array, so the absence of a field in a legacy
+   * envelope is indistinguishable from an empty array — both restore
+   * without touching the external DBs.
    */
   async importBackup(backupData: BackupData): Promise<void> {
     // Verify checksum
     const checksum = await this.calculateChecksum(backupData);
     if (checksum !== backupData.checksum) {
       throw new Error("Backup integrity check failed: checksum mismatch");
+    }
+
+    // Issue #1812 — log the schema version we accepted so an audit trail
+    // of legacy-vs-new imports is available. The literal is informational,
+    // not a gate: every so-far-defined schemaVersion is forwards-compatible
+    // with the current import path because the three new fields are
+    // additive.
+    const schemaVersion = backupData.schemaVersion ?? 1;
+    if (schemaVersion > BACKUP_SCOPE_SCHEMA_VERSION) {
+      console.warn(
+        "[indexeddb-storage] importing a backup with a newer schemaVersion " +
+          `(${schemaVersion}) than this build understands (${BACKUP_SCOPE_SCHEMA_VERSION}); ` +
+          "the unknown fields will be ignored.",
+      );
     }
 
     // Import decks
@@ -1462,6 +1586,23 @@ export class IndexedDBStorage {
       await this.clear("achievements");
       await this.setAll("achievements", backupData.achievements);
     }
+
+    // Issue #1812 — restore the three excluded stores (coach conversations,
+    // match records, limited sessions) when the envelope carries them. A
+    // legacy envelope omits these fields and the restore is a no-op — that
+    // is the post-#1812 backward-compat behaviour for backups produced
+    // before this issue landed.
+    //
+    // Dynamic import for the same cycle-avoidance reason as in
+    // {@link exportBackup}.
+    const { restoreBackupScopeData } = await import(
+      "./backup/backup-scope"
+    );
+    await restoreBackupScopeData({
+      coachConversations: backupData.coachConversations ?? [],
+      matchRecords: backupData.matchRecords ?? [],
+      limitedSessions: backupData.limitedSessions ?? [],
+    });
   }
 
   /**
