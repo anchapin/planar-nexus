@@ -999,6 +999,37 @@ jobs:
       - name: Assert e2e assertion hygiene (#1786, #1857, #1858, #1859)
         run: node scripts/check-e2e-asserts.mjs
 
+  jest-mock-boundary-guard:
+    # Issue #1815: the #1710 barrel rule (eslint `no-restricted-imports`)
+    # keeps production code routed through `@/lib/game-state`, but Jest's
+    # `jest.mock("path")` / `jest.requireActual("path")` / dynamic
+    # `import("path")` calls bypass that rule — they take string-literal
+    # arguments that ESLint cannot statically analyse. The bypass is a
+    # silent footgun: after an engine-internal rename (issue #1725's
+    # decomposition just shipped one), a stale mock path stops
+    # intercepting and the test asserts against the real implementation
+    # while reporting "this was mocked". Green CI, broken code. This job
+    # walks every `.test.ts(x)` under src/ and tests/ with the
+    # TypeScript AST and fails when a deep engine specifier appears
+    # without a corresponding allowlist entry in
+    # config/jest-mock-boundary-allowlist.json. Runs in plain Node
+    # (~100ms). Local equivalent: `npm run lint:jest-mock-boundary`.
+    name: Jest Mock Boundary Guard
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
+
+      - name: Assert no deep engine jest.mock specifiers outside the engine tree (#1815)
+        run: node scripts/check-jest-mock-boundary.mjs
+
   bundle-size-budget:
     # Issue #1814: nothing gated the compiled client payload — a single
     # careless import could silently add hundreds of KB to a route with
@@ -1036,7 +1067,7 @@ jobs:
     name: Build
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
-    needs: [test, lint, typecheck, commitlint, mutation-smoke, security, cargo-audit, rust-checks, a11y-contrast, e2e, workflow-lint, tauri-updater-config, engine-size-budget, no-prompt-in-engine-guard, turn-credentials-guard, coverage-docs-guard, mutation-docs-guard, e2e-asserts-guard]
+    needs: [test, lint, typecheck, commitlint, mutation-smoke, security, cargo-audit, rust-checks, a11y-contrast, e2e, workflow-lint, tauri-updater-config, engine-size-budget, no-prompt-in-engine-guard, turn-credentials-guard, coverage-docs-guard, mutation-docs-guard, e2e-asserts-guard, jest-mock-boundary-guard]
 
     steps:
       - name: Checkout code
