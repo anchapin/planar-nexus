@@ -1,0 +1,23 @@
+{
+  "$comment": "Allowlist for scripts/check-jest-mock-boundary.mjs (issue #1815). Each entry documents a test file that legitimately needs to deep-mock engine submodules past the #1710 barrel — every entry MUST name the seam being mocked and explain why the barrel alone is insufficient (e.g. tests need to stub a specific mutator without nuking unrelated engine behaviour). Adding an entry without a written reason will fail review.",
+  "files": {
+    "src/ai/__tests__/ai-action-executor.test.ts": {
+      "reason": "Executor's own dispatch + assembly logic is the unit under test; the six engine mutators (mana / spell-casting / combat / keyword-actions / game-state / serialization) are stubbed via jest.mock(auto) so the executor's behavior can be driven deterministically without exercising the rules engine. The barrel would over-mock every engine export and break the executor's normal dispatch paths."
+    },
+    "src/ai/__tests__/ai-turn-loop.test.ts": {
+      "reason": "The turn-loop's phase ordering / priority / aggregation logic is the unit under test; the seven engine mutators (mana / spell-casting / combat / keyword-actions / game-state / turn-phases / serialization) plus @/lib/game-rules are stubbed so loop ordering can be driven without the rules engine running real. Barrel mocking would clobber unrelated engine exports the loop reads from."
+    },
+    "src/ai/__tests__/ai-turn-loop-worker.test.ts": {
+      "reason": "Off-main-thread variant of ai-turn-loop.test.ts (issue #1077 worker thread); same seven engine mutator mocks for the same reason — loop ordering is the unit, mutators are stubbed. Without per-submodule mocks the worker would re-import the real engine and the test would either take seconds to run or fail non-deterministically on rule interactions."
+    },
+    "src/ai/decision-making/__tests__/block-prediction.test.ts": {
+      "reason": "Uses the AIPermanent type from the engine's `types/` submodule as a TYPE annotation only (import-type qualifier — runtime cost is zero, the eslint #1710 patterns miss this inline-qualifier form). The test does not import any runtime value from the engine. Migration to the barrel would require AIPermanent to be re-exported from @/lib/game-state (currently it isn't); tracking the migration as a follow-up rather than blocking this guard."
+    },
+    "src/lib/__tests__/p2p-handshake.test.ts": {
+      "reason": "The handshake test needs serializeGameState to return a deterministic stub (specific shape: {turnNumber, id}) so checksum-match/mismatch paths can be exercised without a full engine GameState. The mock path mirrors the source import specifier on purpose so the stub replaces only the serialization layer; mocking the barrel would replace every engine export and the handshake test would lose access to real non-serialization engine behaviour elsewhere."
+    },
+    "src/lib/__tests__/p2p-session-key-forgery.test.ts": {
+      "reason": "P2P session-key forgery tests need the same deterministic serializeGameState stub as p2p-handshake.test.ts (drives checksum-mismatch paths without standing up the full engine). Per-submodule mock keeps the rest of the engine real so the forgery paths exercise real non-serialization behaviour; barrel mocking would over-reach."
+    }
+  }
+}

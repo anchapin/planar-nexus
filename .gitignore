@@ -63,6 +63,11 @@ src-tauri/gen/
 # rule above would silently ignore the gate's recorded ceilings.
 !config/bundle-budget.json
 
+# Jest mock boundary allowlist must be tracked (issue #1815): the
+# blanket *.json rule above would silently ignore the guard's
+# documented exceptions.
+!config/jest-mock-boundary-allowlist.json
+
 # python
 __pycache__/
 *.py[cod]
