@@ -532,26 +532,25 @@ describe("POST /api/chat/coach — error redaction (issue #1794)", () => {
     expect(text).not.toContain(leakedKey);
     expect(text).not.toMatch(/Bearer\s+[A-Za-z0-9._-]+/);
     expect(text).not.toContain("Authorization");
-    expect(text).not.toMatch(/sk-[A-Za-z0-9]{20,}/);
+    expect(text).not.toMatch(/sk-[\w-]{20,}/);
 
     // Server log carries the redacted summary + correlation id so operators
     // can match a client-reported failure back to the server-side error.
     const logged = capturedLogOutput();
     expect(logged).not.toContain(leakedKey);
-    expect(logged).not.toMatch(/sk-[A-Za-z0-9]{20,}/);
+    expect(logged).not.toMatch(/sk-[\w-]{20,}/);
     expect(logged).toMatch(/corr [A-Za-z0-9_-]+/);
   });
 
   it("returns a generic 502 with correlationId when the outer handler catches an AUTH error", async () => {
-    // Use an Authorization-Bearer-wrapped key (the most common provider-SDK
-    // echo shape) so the bearer-token pattern in the redactor matches it
-    // without relying on the structural `sk-[A-Za-z0-9]{20,}` regex. (A bare
-    // `sk-proj-…` style key without a Bearer wrapper is a separate redactor
-    // gap tracked outside this issue.)
+    // Bare `sk-proj-...` style key with no Bearer wrapper and no
+    // Authorization header — exercises the structural `sk-[\w-]{20,}`
+    // regex (issue #1873). Previously worked around by always wrapping
+    // in `Bearer `; that workaround is now obsolete.
     const leakedKey = "sk-proj-zyxwabcdefghij0123456789abcdefghij";
     const providerError = Object.assign(
       new Error(
-        `403 Forbidden: request headers {'Authorization': 'Bearer ${leakedKey}'} were rejected by Anthropic`,
+        `403 Forbidden: provider rejected key ${leakedKey} for org proj_42`,
       ),
       { statusCode: 403 },
     );
@@ -581,12 +580,12 @@ describe("POST /api/chat/coach — error redaction (issue #1794)", () => {
     const responseBody = JSON.stringify(data);
     expect(responseBody).not.toContain(leakedKey);
     expect(responseBody).not.toMatch(/Bearer\s+[A-Za-z0-9._-]+/);
-    expect(responseBody).not.toMatch(/sk-[A-Za-z0-9]{20,}/);
+    expect(responseBody).not.toMatch(/sk-[\w-]{20,}/);
 
     // The server log line is redacted and carries the correlation id.
     const logged = capturedLogOutput();
     expect(logged).not.toContain(leakedKey);
-    expect(logged).not.toMatch(/sk-[A-Za-z0-9]{20,}/);
+    expect(logged).not.toMatch(/sk-[\w-]{20,}/);
     expect(logged).toMatch(/corr [A-Za-z0-9_-]+/);
   });
 });

@@ -54,7 +54,9 @@ const SECRET_ENV_VARS = [
  * The core pattern set is mandated by issue #1585:
  * /(Bearer\s+[A-Za-z0-9._-]+|sk-[A-Za-z0-9]{20,}|AIza[A-Za-z0-9_-]{35}|Authorization:[^;\n]+)/gi
  * extended with Anthropic sk-ant- keys, x-api-key headers, and key
- * query parameters (Google embeds ?key=... in request URLs).
+ * query parameters (Google embeds ?key=... in request URLs). Issue
+ * #1873 widened the `sk-` character class to include `-` so bare
+ * `sk-proj-...` keys (no Bearer wrapper) are caught.
  */
 const SECRET_PATTERNS: Array<{ pattern: RegExp; replacement: string }> = [
   // Bearer tokens (base64url charset, padded)
@@ -64,8 +66,11 @@ const SECRET_PATTERNS: Array<{ pattern: RegExp; replacement: string }> = [
   },
   // Anthropic keys: sk-ant-api03-... (hyphenated, before generic sk-)
   { pattern: /sk-ant-[A-Za-z0-9-]{16,}/g, replacement: REDACTED },
-  // OpenAI-style keys: sk-proj-... / sk-... (20+ alphanumerics)
-  { pattern: /sk-[A-Za-z0-9]{20,}/g, replacement: REDACTED },
+  // OpenAI-style keys: sk-proj-... / sk-... (20+ url-safe chars incl. hyphens).
+  // Issue #1873: widened from [A-Za-z0-9] to [\w-] so bare `sk-proj-...`
+  // keys (no Bearer wrapper, no Authorization header) are caught by the
+  // structural regex — matching the Anthropic sk-ant- precedent above.
+  { pattern: /sk-[\w-]{20,}/g, replacement: REDACTED },
   // Google AI keys (exactly AIza + 35 url-safe chars)
   { pattern: /AIza[A-Za-z0-9_-]{35}/g, replacement: REDACTED },
   // Auth header echoes: `Authorization: <creds>`, `x-api-key: <key>`,

@@ -3,6 +3,8 @@
  *
  * Covers the secret-shaped patterns mandated by the issue —
  * /(Bearer\s+[A-Za-z0-9._-]+|sk-[A-Za-z0-9]{20,}|AIza[A-Za-z0-9_-]{35}|Authorization:[^;\n]+)/gi
+ * (`sk-` character class widened to `[\w-]` per issue #1873 so bare
+ * `sk-proj-...` keys without a Bearer wrapper are caught)
  * — plus the extensions (sk-ant- Anthropic keys, x-api-key headers, key
  * query params, literal env secret scrubbing), the 200-char body-excerpt
  * truncation, and the stable AUTH/PROVIDER/NETWORK/INTERNAL classification
@@ -67,7 +69,21 @@ describe("redactSecrets", () => {
   it("strips OpenAI-style sk- keys (20+ alphanumerics)", () => {
     const output = redactSecrets(`Incorrect API key provided: ${OPENAI_KEY}`);
     expect(output).not.toContain(OPENAI_KEY);
-    expect(output).not.toMatch(/sk-[A-Za-z0-9]{20,}/);
+    // Widened to [\w-] per issue #1873 so bare sk-proj-* keys are caught.
+    expect(output).not.toMatch(/sk-[\w-]{20,}/);
+  });
+
+  it("strips bare OpenAI sk-proj-* keys (no Bearer wrapper, issue #1873)", () => {
+    // Regression for issue #1873: the structural sk- regex previously
+    // used [A-Za-z0-9]{20,}, which misses the hyphen in `sk-proj-...`
+    // prefixes and lets bare keys (no `Bearer` wrapper, no
+    // `Authorization:` header) leak through. Widened to [\w-]{20,}.
+    const leakedKey = "sk-proj-abcdefghij0123456789abcdefghij";
+    const output = redactSecrets(
+      `provider rejected key ${leakedKey} for org proj_42`,
+    );
+    expect(output).not.toContain(leakedKey);
+    expect(output).not.toMatch(/sk-[\w-]{20,}/);
   });
 
   it("strips Anthropic sk-ant- keys", () => {

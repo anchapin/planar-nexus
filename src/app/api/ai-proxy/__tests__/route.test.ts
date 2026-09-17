@@ -661,7 +661,7 @@ describe("POST /api/ai-proxy — error redaction (Issue #1585)", () => {
     // Server log: redacted — no key pattern survives.
     const logged = capturedLogOutput();
     expect(logged).not.toContain(leakedKey);
-    expect(logged).not.toMatch(/sk-[A-Za-z0-9]{20,}/);
+    expect(logged).not.toMatch(/sk-[\w-]{20,}/);
     expect(logged).not.toMatch(/Bearer\s+[A-Za-z0-9._~+/=-]{8,}/);
   });
 

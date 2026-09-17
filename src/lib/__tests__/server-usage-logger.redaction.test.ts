@@ -24,7 +24,7 @@ describe("UsageLogger.markFailure redaction (issue #1585)", () => {
     const entry = logger["entry"] as { error?: string; errorCode?: string };
     expect(entry.error).toBeDefined();
     expect(entry.error).not.toContain(leakedKey);
-    expect(entry.error).not.toMatch(/sk-[A-Za-z0-9]{20,}/);
+    expect(entry.error).not.toMatch(/sk-[\w-]{20,}/);
     expect(entry.error).not.toMatch(/Bearer\s+[A-Za-z0-9._~+/=-]{8,}/);
     expect(entry.errorCode).toBe("PROVIDER_REQUEST_FAILED");
   });
