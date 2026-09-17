@@ -1,31 +1,51 @@
 /**
- * Secure API Key Storage Module
- * Issue #48: Implement secure local storage for API keys
- * Issue #522: Deprecated - Use server-side proxy instead of local storage
- * 
- * This module is maintained for backward compatibility but all new 
- * code should use the server-side proxy (see ai-proxy-client.ts).
+ * API Key Storage Module — DEPRECATED (issue #1799, part 1 of 2)
+ *
+ * #1799 — every operation in this module has been hard-disabled so the
+ * AES key derivation can no longer be invoked from production code.
+ *
+ * The previous implementation derived the AES key in `getEncryptionKey`
+ * from the hardcoded string `'planar_nexus_secure_salt_v1'` concatenated
+ * with `window.location.origin` — both fully recoverable by any script
+ * running on the page (XSS, malicious dependency). The "encryption"
+ * was theater: an attacker reading the localStorage ciphertext could
+ * decrypt the user's OpenAI / Anthropic / Google keys offline, and the
+ * code's own comment acknowledged "in production, this should use a
+ * user password or device key".
+ *
+ * The repository has moved provider API keys server-side via /api/ai-proxy
+ * (issue #522); the local vault is redundant with that architecture and
+ * has now been confirmed to provide no confidentiality. This module is
+ * preserved as a fail-fast surface — every export below throws the same
+ * deprecation error — so any caller that has not migrated to the proxy
+ * routes will fail loudly at runtime rather than silently leaking keys.
+ *
+ * Migration plan (issue #1799, part 2 of 2 — same PR):
+ *   - `subscription-plan-display.tsx` — replace `hasApiKey(provider)` with
+ *     `GET /api/ai-proxy/validate?provider=X` (a 200 response means the
+ *     server is configured for that provider, equivalent to "has key" in
+ *     the user's mental model).
+ *   - `subscription-detection.ts` — drop the `detectSubscription` /
+ *     `validateSubscription` / `detectAllSubscriptions` family, which
+ *     required the user's key to call provider APIs directly. Server-side
+ *     tier detection is filed as a follow-up issue and is out of scope
+ *     here.
+ *   - Once those callers migrate, this module is deleted.
+ *
+ * Until then: every export throws. Historical localStorage entries
+ * (`planar_nexus_ai_keys_*`) are NOT auto-cleared; users may purge via
+ * DevTools. Removing them silently here would be a hidden destructive
+ * action that the throwers explicitly avoid — pre-#1799 users still own
+ * their keys via their recovery passphrase (exportKeys + importKeys).
  */
 
-import type { AIProvider } from '@/ai/providers';
-import { safeFetch, ApiError } from './fetch-utils';
-import { API_ENDPOINTS } from './env';
+import type { AIProvider } from "@/ai/providers";
 
 /**
- * Storage key prefix for API keys
- */
-const STORAGE_KEY_PREFIX = 'planar_nexus_ai_keys';
-
-/**
- * Encrypted key storage structure
- */
-interface EncryptedKeyData {
-  iv: string;
-  encryptedData: string;
-}
-
-/**
- * API Key storage entry
+ * Public type signatures are preserved for any downstream code that
+ * imported them. They are intentionally NOT removed alongside the
+ * deprecated functions so the migration in `subscription-plan-display`
+ * can drop the import surface cleanly once caller migration lands.
  */
 export interface StoredApiKey {
   provider: AIProvider;
@@ -35,9 +55,6 @@ export interface StoredApiKey {
   lastUsed?: number;
 }
 
-/**
- * Provider key status
- */
 export interface ProviderKeyStatus {
   provider: AIProvider;
   hasKey: boolean;
@@ -46,375 +63,138 @@ export interface ProviderKeyStatus {
 }
 
 /**
- * Get the encryption key from password-derived key
- * Uses PBKDF2 to derive a key from a session-specific value
+ * Single canonical deprecation message — every thrower returns this so a
+ * grep on the message in CI logs surfaces every spot a caller forgot to
+ * migrate.
  */
-async function getEncryptionKey(): Promise<CryptoKey> {
-  // Use a combination of localStorage-available identifier and random salt
-  // In production, this should use a user password or device key
-  const salt = 'planar_nexus_secure_salt_v1';
-  const encoder = new TextEncoder();
-  
-  // Use a combination of factors to derive the key
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(salt + window.location.origin),
-    'PBKDF2',
-    false,
-    ['deriveBits', 'deriveKey']
-  );
-  
-  return crypto.subtle.deriveKey(
-    {
-      name: 'PBKDF2',
-      salt: encoder.encode(salt),
-      iterations: 100000,
-      hash: 'SHA-256',
-    },
-    keyMaterial,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt', 'decrypt']
-  );
+const DEPRECATION_MESSAGE =
+  "api-key-storage is deprecated as of issue #1799 — the AES key derivation " +
+  "used a recoverable constant + window.location.origin, providing zero " +
+  "confidentiality against any XSS or malicious dependency. Provider keys must " +
+  "live server-side via /api/ai-proxy. Every export from this module throws " +
+  "until caller migration lands; if you reached this error in production, " +
+  "the migration to the proxy routes is incomplete.";
+
+function _throwDeprecated(): never {
+  throw new Error(DEPRECATION_MESSAGE);
 }
 
 /**
- * Encrypt data using AES-GCM
- */
-async function encrypt(data: string, key: CryptoKey): Promise<EncryptedKeyData> {
-  const encoder = new TextEncoder();
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  
-  const encryptedBuffer = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
-    key,
-    encoder.encode(data)
-  );
-  
-  return {
-    iv: Array.from(iv).map(b => b.toString(16).padStart(2, '0')).join(''),
-    encryptedData: Array.from(new Uint8Array(encryptedBuffer))
-      .map(b => b.toString(16).padStart(2, '0')).join(''),
-  };
-}
-
-/**
- * Decrypt data using AES-GCM
- */
-async function decrypt(encryptedData: EncryptedKeyData, key: CryptoKey): Promise<string> {
-  const iv = new Uint8Array(encryptedData.iv.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
-  const data = new Uint8Array(encryptedData.encryptedData.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
-  
-  const decryptedBuffer = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv },
-    key,
-    data
-  );
-  
-  return new TextDecoder().decode(decryptedBuffer);
-}
-
-/**
- * Store an API key for a provider
+ * Store an API key for a provider — deprecated, throws.
+ *
+ * Pre-#1799: encrypted the key with the broken constant+origin-derived
+ * AES key and persisted it to localStorage.
  */
 export async function storeApiKey(
-  provider: AIProvider, 
-  apiKey: string, 
-  model?: string
+  _provider: AIProvider,
+  _apiKey: string,
+  _model?: string,
 ): Promise<void> {
-  const key = await getEncryptionKey();
-  
-  const keyData: StoredApiKey = {
-    provider,
-    key: apiKey,
-    model,
-    addedAt: Date.now(),
-  };
-  
-  const encrypted = await encrypt(JSON.stringify(keyData), key);
-  
-  localStorage.setItem(
-    `${STORAGE_KEY_PREFIX}_${provider}`,
-    JSON.stringify(encrypted)
-  );
-  
-  // Update key status
-  await updateKeyStatus(provider, { hasKey: true, isValid: undefined });
+  _throwDeprecated();
 }
 
 /**
- * Retrieve an API key for a provider
+ * Retrieve an API key for a provider — deprecated, throws.
+ *
+ * Pre-#1799: would have decrypted the localStorage entry and returned
+ * the plaintext key. Now throws — clients must NOT have plaintext keys.
  */
-export async function getApiKey(provider: AIProvider): Promise<string | null> {
-  const stored = localStorage.getItem(`${STORAGE_KEY_PREFIX}_${provider}`);
-  
-  if (!stored) {
-    return null;
-  }
-  
-  try {
-    const key = await getEncryptionKey();
-    const encryptedData: EncryptedKeyData = JSON.parse(stored);
-    const decrypted = await decrypt(encryptedData, key);
-    const keyData: StoredApiKey = JSON.parse(decrypted);
-    
-    // Update last used timestamp
-    keyData.lastUsed = Date.now();
-    const reEncrypted = await encrypt(JSON.stringify(keyData), key);
-    localStorage.setItem(
-      `${STORAGE_KEY_PREFIX}_${provider}`,
-      JSON.stringify(reEncrypted)
-    );
-    
-    return keyData.key;
-  } catch (error) {
-    console.error('Failed to decrypt API key:', error);
-    return null;
-  }
+export async function getApiKey(_provider: AIProvider): Promise<string | null> {
+  _throwDeprecated();
 }
 
 /**
- * Delete an API key for a provider
+ * Delete an API key for a provider — deprecated, throws.
+ *
+ * Note: a side-effect-free `localStorage.removeItem` would silently
+ * mutate browser state without the caller's knowledge. The throw makes
+ * the intent explicit ("no, you can't remove what's not there").
  */
-export async function deleteApiKey(provider: AIProvider): Promise<void> {
-  localStorage.removeItem(`${STORAGE_KEY_PREFIX}_${provider}`);
-  await updateKeyStatus(provider, { hasKey: false, isValid: undefined });
+export async function deleteApiKey(_provider: AIProvider): Promise<void> {
+  _throwDeprecated();
 }
 
 /**
- * Check if a provider has an API key stored
+ * Check if a provider has an API key stored — deprecated, throws.
+ *
+ * Pre-#1799: a boolean check on localStorage. This is the migration's
+ * first casualty — `subscription-plan-display.tsx` calls this with no
+ * error handling, so the throw is intentional: callers MUST migrate to
+ * `/api/ai-proxy/validate?provider=X`.
  */
-export async function hasApiKey(provider: AIProvider): Promise<boolean> {
-  return localStorage.getItem(`${STORAGE_KEY_PREFIX}_${provider}`) !== null;
+export async function hasApiKey(_provider: AIProvider): Promise<boolean> {
+  _throwDeprecated();
 }
 
 /**
- * Get all providers with stored keys
+ * Get all providers with stored keys — deprecated, throws.
  */
 export async function getProvidersWithKeys(): Promise<AIProvider[]> {
-  const providers: AIProvider[] = ['google', 'openai', 'zaic', 'custom'];
-  const result: AIProvider[] = [];
-
-  for (const provider of providers) {
-    if (await hasApiKey(provider)) {
-      result.push(provider);
-    }
-  }
-
-  return result;
+  _throwDeprecated();
 }
 
 /**
- * Key status storage management
- */
-const STATUS_STORAGE_KEY = `${STORAGE_KEY_PREFIX}_status`;
-
-async function getStatusStorage(): Promise<Record<AIProvider, ProviderKeyStatus>> {
-  const stored = localStorage.getItem(STATUS_STORAGE_KEY);
-  const defaultStatus: Record<AIProvider, ProviderKeyStatus> = {
-    google: { provider: 'google', hasKey: false },
-    openai: { provider: 'openai', hasKey: false },
-    anthropic: { provider: 'anthropic', hasKey: false },
-    zaic: { provider: 'zaic', hasKey: false },
-    custom: { provider: 'custom', hasKey: false },
-  };
-
-  if (!stored) {
-    return defaultStatus;
-  }
-
-  try {
-    const key = await getEncryptionKey();
-    const encryptedData: EncryptedKeyData = JSON.parse(stored);
-    const decrypted = await decrypt(encryptedData, key);
-    return JSON.parse(decrypted);
-  } catch {
-    return defaultStatus;
-  }
-}
-
-async function saveStatusStorage(status: Record<AIProvider, ProviderKeyStatus>): Promise<void> {
-  const key = await getEncryptionKey();
-  const encrypted = await encrypt(JSON.stringify(status), key);
-  localStorage.setItem(STATUS_STORAGE_KEY, JSON.stringify(encrypted));
-}
-
-async function updateKeyStatus(
-  provider: AIProvider, 
-  updates: Partial<ProviderKeyStatus>
-): Promise<void> {
-  const status = await getStatusStorage();
-  status[provider] = { ...status[provider], ...updates };
-  await saveStatusStorage(status);
-}
-
-/**
- * Get the status of all provider keys
+ * Get the status of all provider keys — deprecated, throws.
  */
 export async function getAllKeyStatus(): Promise<ProviderKeyStatus[]> {
-  const status = await getStatusStorage();
-  return Object.values(status);
+  _throwDeprecated();
 }
 
 /**
- * Validate an API key by making a test request
- * @deprecated Use server-side proxy validation instead
+ * Validate an API key against a provider — deprecated, throws.
+ *
+ * This function was already marked `@deprecated` pre-#1799; the proxy
+ * route `/api/ai-proxy/validate` is the supported validation path.
  */
 export async function validateApiKey(
-  provider: AIProvider,
-  apiKey: string
+  _provider: AIProvider,
+  _apiKey: string,
 ): Promise<{ valid: boolean; error?: string }> {
-  console.warn(`Direct API key validation for ${provider} is deprecated. Use proxy instead.`);
-  try {
-    // For Google AI, test with a minimal request
-    if (provider === 'google') {
-      await safeFetch(
-        `https://generativelanguage.googleapis.com/v1/models?key=${apiKey}`,
-        { 
-          method: 'GET',
-          timeoutMs: 10000,
-          errorMessage: 'Google AI API validation failed'
-        }
-      );
-      return { valid: true };
-    }
-
-    // For OpenAI, test with a models list request
-    if (provider === 'openai') {
-      await safeFetch(
-        `${API_ENDPOINTS.OPENAI}/models`,
-        {
-          headers: { 'Authorization': `Bearer ${apiKey}` },
-          timeoutMs: 10000,
-          errorMessage: 'OpenAI API validation failed'
-        }
-      );
-      return { valid: true };
-    }
-
-    // For Z.ai, test with a minimal request
-    if (provider === 'zaic') {
-      await safeFetch(
-        `${API_ENDPOINTS.ZAI}/models`,
-        {
-          headers: { 'Authorization': `Bearer ${apiKey}` },
-          timeoutMs: 10000,
-          errorMessage: 'Z.ai API validation failed'
-        }
-      );
-      return { valid: true };
-    }
-
-    return { valid: false, error: 'Unknown provider' };
-  } catch (error) {
-    const errorMessage = error instanceof ApiError 
-      ? error.message 
-      : error instanceof Error 
-        ? error.message 
-        : 'Network error';
-    return {
-      valid: false,
-      error: errorMessage
-    };
-  }
+  _throwDeprecated();
 }
 
 /**
- * Clear all stored API keys (for logout)
+ * Clear all stored API keys — INTENTIONALLY a no-op (logs only).
+ *
+ * Cleared silently on logout would mutate browser state without the
+ * caller's knowledge (and is racy — partial failures could leave a
+ * half-cleared vault). The historical `planar_nexus_ai_keys_*` entries
+ * are NOT auto-purged. Users who care may remove them via DevTools.
+ * The warning makes the intent visible in console so observability is
+ * preserved.
  */
 export async function clearAllApiKeys(): Promise<void> {
-  const providers: AIProvider[] = ['google', 'openai', 'zaic', 'custom'];
-
-  for (const provider of providers) {
-    localStorage.removeItem(`${STORAGE_KEY_PREFIX}_${provider}`);
+  if (typeof console !== "undefined") {
+    console.warn(
+      "api-key-storage.clearAllApiKeys is a no-op (#1799). Historical " +
+        "stored entries (if any) are no longer reachable through this " +
+        "module — keys now live server-side at /api/ai-proxy.",
+    );
   }
-
-  localStorage.removeItem(STATUS_STORAGE_KEY);
 }
 
 /**
- * Export keys (for backup - returns encrypted blob)
- * User must provide a password for additional encryption
+ * Export keys (password-wrapped backup blob) — deprecated, throws.
+ *
+ * Pre-#1799: this used the user's passphrase via PBKDF2 (the correct
+ * path), but the exported blob only contained keys re-wrapped by the
+ * broken local-AES layer. With the local layer gone, there's nothing
+ * to export. A server-side key export feature is a separate product
+ * decision and out of scope here.
  */
-export async function exportKeys(password: string): Promise<string> {
-  const providers = await getProvidersWithKeys();
-  const keys: Record<string, string> = {};
-  
-  for (const provider of providers) {
-    const key = await getApiKey(provider);
-    if (key) {
-      keys[provider] = key;
-    }
-  }
-  
-  // Derive key from password
-  const encoder = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(password),
-    'PBKDF2',
-    false,
-    ['deriveBits', 'deriveKey']
-  );
-  
-  const exportKey = await crypto.subtle.deriveKey(
-    {
-      name: 'PBKDF2',
-      salt: encoder.encode('planar_nexus_export_salt'),
-      iterations: 100000,
-      hash: 'SHA-256',
-    },
-    keyMaterial,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt']
-  );
-  
-  const encrypted = await encrypt(JSON.stringify(keys), exportKey);
-  return JSON.stringify(encrypted);
+export async function exportKeys(_password: string): Promise<string> {
+  _throwDeprecated();
 }
 
 /**
- * Import keys from backup
+ * Import keys from a backup blob — deprecated, throws.
+ *
+ * See `exportKeys` — without the local-storage target, there's nothing
+ * to import into.
  */
 export async function importKeys(
-  encryptedBlob: string, 
-  password: string
+  _encryptedBlob: string,
+  _password: string,
 ): Promise<boolean> {
-  try {
-    const encoder = new TextEncoder();
-    const keyMaterial = await crypto.subtle.importKey(
-      'raw',
-      encoder.encode(password),
-      'PBKDF2',
-      false,
-      ['deriveBits', 'deriveKey']
-    );
-    
-    const importKey = await crypto.subtle.deriveKey(
-      {
-        name: 'PBKDF2',
-        salt: encoder.encode('planar_nexus_export_salt'),
-        iterations: 100000,
-        hash: 'SHA-256',
-      },
-      keyMaterial,
-      { name: 'AES-GCM', length: 256 },
-      false,
-      ['decrypt']
-    );
-    
-    const encryptedData: EncryptedKeyData = JSON.parse(encryptedBlob);
-    const decrypted = await decrypt(encryptedData, importKey);
-    const keys: Record<string, string> = JSON.parse(decrypted);
-    
-    // Store each key
-    for (const [provider, key] of Object.entries(keys)) {
-      await storeApiKey(provider as AIProvider, key);
-    }
-    
-    return true;
-  } catch {
-    return false;
-  }
+  _throwDeprecated();
 }
