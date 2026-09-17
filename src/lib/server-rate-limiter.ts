@@ -501,7 +501,45 @@ export class ServerRateLimiter {
 export function createServerRateLimiter(
   backend?: RateLimiterBackend,
 ): ServerRateLimiter {
-  return new ServerRateLimiter(backend ?? new InMemoryRateLimiterBackend());
+  return new ServerRateLimiter(backend ?? selectBackendFromEnv());
+}
+
+/**
+ * Pick a {@link RateLimiterBackend} based on `process.env.RATE_LIMIT_BACKEND`.
+ *
+ * Recognized values:
+ *   - unset / `"memory"` / `""` → {@link InMemoryRateLimiterBackend}.
+ *   - `"redis"` → {@link RedisRateLimiterBackend} from `REDIS_URL` +
+ *     `REDIS_TOKEN`. Throws if either is missing.
+ *   - anything else → throws with the unrecognized value in the message.
+ *
+ * The throw-at-construction contract is the point: a misconfigured
+ * multi-instance deploy MUST fail loud. A silent fallback to in-memory
+ * would re-introduce the very bug #1782 retires — a state of "limits
+ * appear to work in dev, fail open in production".
+ *
+ * @internal
+ */
+export function selectBackendFromEnv(): RateLimiterBackend {
+  const raw = process.env.RATE_LIMIT_BACKEND;
+  const backend = (raw ?? "memory").trim().toLowerCase();
+  if (backend === "" || backend === "memory") {
+    return new InMemoryRateLimiterBackend();
+  }
+  if (backend === "redis") {
+    const url = process.env.REDIS_URL;
+    const token = process.env.REDIS_TOKEN;
+    if (!url || !token) {
+      throw new Error(
+        "RATE_LIMIT_BACKEND=redis requires both REDIS_URL and REDIS_TOKEN " +
+          "to be set. See docs/SECURITY.md for the deployment matrix.",
+      );
+    }
+    return new RedisRateLimiterBackend({ url, token });
+  }
+  throw new Error(
+    `Unknown RATE_LIMIT_BACKEND: "${raw}". Supported values: "memory", "redis".`,
+  );
 }
 
 /** Lazily-constructed singleton used by the module-level wrappers below. */
