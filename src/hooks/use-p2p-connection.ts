@@ -25,6 +25,7 @@ import type {
 import {
   HandshakeSession,
   verifySimpleStateChecksum,
+  generateSessionKey,
   type HandshakeState,
 } from "@/lib/p2p-handshake";
 import {
@@ -1660,31 +1661,6 @@ export function useP2PConnection(
      */
     gameEnded,
   };
-}
-
-/**
- * Issue #1254 — generate a fresh per-session shared secret used by the
- * reconnect-token store. Cryptographically random; never reused across
- * sessions so a leaked token cannot resurrect a future game.
- */
-function generateSessionKey(): string {
-  if (
-    typeof crypto !== "undefined" &&
-    typeof crypto.getRandomValues === "function"
-  ) {
-    const bytes = new Uint8Array(32);
-    crypto.getRandomValues(bytes);
-    return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
-  }
-  // Last-resort fallback (only hit on platforms without crypto). NOT
-  // cryptographically secure — preferable to a hard failure when the
-  // reconnect-token store is unavailable, the caller will skip the save
-  // gracefully anyway.
-  let fallback = "";
-  for (let i = 0; i < 64; i += 1) {
-    fallback += Math.floor(Math.random() * 16).toString(16);
-  }
-  return fallback;
 }
 
 /**

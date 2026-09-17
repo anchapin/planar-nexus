@@ -53,10 +53,20 @@ jest.mock("@/lib/local-game-storage", () => ({
   saveGameForLocalHotSeat: jest.fn(),
 }));
 
-jest.mock("@/lib/p2p-handshake", () => ({
-  HandshakeSession: jest.fn(),
-  verifySimpleStateChecksum: jest.fn(),
-}));
+jest.mock("@/lib/p2p-handshake", () => {
+  // Issue #1796: the hook's `rotateSessionKeyOnPromotion` and the
+  // reconnect-token save both import `generateSessionKey` from this
+  // module. The mock passes through the real implementation and only
+  // stubs the class + checksum helpers this test actually exercises;
+  // removing the pass-through would silently turn the session-key
+  // mint into `undefined` and break these two paths.
+  const actual = jest.requireActual("@/lib/p2p-handshake");
+  return {
+    ...actual,
+    HandshakeSession: jest.fn(),
+    verifySimpleStateChecksum: jest.fn(),
+  };
+});
 
 jest.mock("@/lib/p2p-host-migration", () => ({
   HostMigrationManager: jest.fn(),
