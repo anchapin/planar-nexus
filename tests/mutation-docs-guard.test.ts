@@ -258,8 +258,13 @@ describe("check-mutation-docs-sync repo state", () => {
 
 describe("mutation-docs-guard CI wiring (issue #1785)", () => {
   type WorkflowStep = { name?: unknown; run?: unknown };
+  type WorkflowJob = {
+    steps?: WorkflowStep[];
+    needs?: unknown;
+    strategy?: { "fail-fast"?: unknown; matrix?: { module?: unknown } };
+  };
   type Workflow = {
-    jobs: Record<string, { steps?: WorkflowStep[]; needs?: unknown }>;
+    jobs: Record<string, WorkflowJob>;
   };
 
   function loadWorkflow(rel: string): Workflow {
