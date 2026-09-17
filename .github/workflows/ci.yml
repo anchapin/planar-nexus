@@ -943,6 +943,35 @@ jobs:
       - name: Assert coverage-floor doc tables match jest.config.js (#1712)
         run: node scripts/check-coverage-docs-sync.mjs
 
+  mutation-docs-guard:
+    # Issue #1785: the mutation section in docs/TESTING.md documents the
+    # CI-enforced aggregate floor (`stryker.config.js` thresholds.break)
+    # and the per-module floors for the modules with measured baselines
+    # (`layer-system.ts` at 55, `replacement-effects.ts` at 76). Those
+    # numbers drift the same way the coverage floors did before #1712:
+    # the nightly gate had not completed in twelve consecutive scheduled
+    # runs (2026-09-04..09-15), leaving six of seven allowlisted modules
+    # ungated and the documented 70% project target unverified against
+    # `thresholds.break: 50`. Mirrors the coverage guard (#1712): parses
+    # `thresholds.break` and the anchored table cell, parses the inline
+    # "Per-module floor:" markers, and exits 1 on any drift. ~1ms plain
+    # Node, no toolchain. Local equivalent: `npm run lint:mutation-docs`.
+    name: Mutation Docs Guard (#1785)
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
+
+      - name: Assert mutation-floor doc tables match stryker.config.js (#1785)
+        run: node scripts/check-mutation-docs-sync.mjs
+
   bundle-size-budget:
     # Issue #1814: nothing gated the compiled client payload — a single
     # careless import could silently add hundreds of KB to a route with
@@ -980,7 +1009,7 @@ jobs:
     name: Build
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
-    needs: [test, lint, typecheck, commitlint, mutation-smoke, security, cargo-audit, rust-checks, a11y-contrast, e2e, workflow-lint, tauri-updater-config, engine-size-budget, no-prompt-in-engine-guard, turn-credentials-guard, coverage-docs-guard]
+    needs: [test, lint, typecheck, commitlint, mutation-smoke, security, cargo-audit, rust-checks, a11y-contrast, e2e, workflow-lint, tauri-updater-config, engine-size-budget, no-prompt-in-engine-guard, turn-credentials-guard, coverage-docs-guard, mutation-docs-guard]
 
     steps:
       - name: Checkout code
