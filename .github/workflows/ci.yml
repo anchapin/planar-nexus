@@ -972,6 +972,33 @@ jobs:
       - name: Assert mutation-floor doc tables match stryker.config.js (#1785)
         run: node scripts/check-mutation-docs-sync.mjs
 
+  e2e-asserts-guard:
+    # Issues #1786, #1857, #1858, #1859: AST guard that keeps two vacuous
+    # anti-patterns out of the e2e suite. (1) `if (await el.isVisible())`
+    # around an assertion (the original #1786 bug — a blank shell could
+    # pass). (2) `expect(<text>.length).toBeGreaterThan(<N>)` with N≤200
+    # — the pattern PR #1853 introduced under deadline pressure and
+    # Greptile flagged in P1 reviews (#1858 sealed, #1859 draft). The
+    # guard walks every `.ts` and `.tsx` under e2e/ (#1857 widened the
+    # filename collection from `.ts` only). Runs in plain Node (~50ms)
+    # so a regression fails fast in its own job rather than waiting on
+    # the e2e suite. Local equivalent: `npm run lint:e2e-asserts`.
+    name: E2E Assertion Guard
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
+
+      - name: Assert e2e assertion hygiene (#1786, #1857, #1858, #1859)
+        run: node scripts/check-e2e-asserts.mjs
+
   bundle-size-budget:
     # Issue #1814: nothing gated the compiled client payload — a single
     # careless import could silently add hundreds of KB to a route with
@@ -1009,7 +1036,7 @@ jobs:
     name: Build
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
-    needs: [test, lint, typecheck, commitlint, mutation-smoke, security, cargo-audit, rust-checks, a11y-contrast, e2e, workflow-lint, tauri-updater-config, engine-size-budget, no-prompt-in-engine-guard, turn-credentials-guard, coverage-docs-guard, mutation-docs-guard]
+    needs: [test, lint, typecheck, commitlint, mutation-smoke, security, cargo-audit, rust-checks, a11y-contrast, e2e, workflow-lint, tauri-updater-config, engine-size-budget, no-prompt-in-engine-guard, turn-credentials-guard, coverage-docs-guard, mutation-docs-guard, e2e-asserts-guard]
 
     steps:
       - name: Checkout code

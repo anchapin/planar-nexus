@@ -3,6 +3,16 @@ import fs from "fs";
 import path from "path";
 
 export { loadDeck, waitForDeckSeed } from "./utils/load-deck";
+export {
+  seedLimitedSession,
+  waitForLimitedSessionSeed,
+  SESSION_ID,
+} from "./utils/seed-limited-session";
+export {
+  seedDraftSession,
+  waitForDraftSessionSeed,
+  DRAFT_SESSION_ID,
+} from "./utils/seed-draft-session";
 
 const testCards = JSON.parse(
   fs.readFileSync(path.join(__dirname, "fixtures/test-cards.json"), "utf8"),
