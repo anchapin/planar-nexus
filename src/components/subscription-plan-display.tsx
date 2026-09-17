@@ -1,47 +1,70 @@
 /**
  * Subscription Plan Display Component
  * Issue #293: Add subscription plan linking for AI providers
- * 
- * This component displays subscription plan information for AI providers,
- * including plan limits, features, and usage tracking integration.
+ *
+ * #1799 — this component no longer reads the user's API key (that local
+ * vault was deprecated as of #1799 because its AES key derivation used
+ * a recoverable constant + window.location.origin). "Configured on
+ * server" is now queried via the AI proxy client (`getProxyStatus()`)
+ * — the proxy enumerates which providers the operator has configured
+ * server-side, which is the operational equivalent of "has key" in the
+ * user's mental model.
+ *
+ * The "Detect subscription" surface (which used the user's key to call
+ * provider APIs directly) is removed; live tier detection requires a
+ * server-side endpoint tracked as a follow-up to #1799.
+ *
+ * @see https://github.com/anchapin/planar-nexus/issues/1799
  */
 
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Check, X, Loader2, Crown, Users, Building, Sparkles, RefreshCw } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Check, Crown, Users, Building, Sparkles, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
-import type { AIProvider, SubscriptionPlan, SubscriptionTier } from "@/ai/providers/types";
+import type {
+  AIProvider,
+  SubscriptionPlan,
+  SubscriptionTier,
+} from "@/ai/providers/types";
 import {
-  detectSubscription,
   getSubscriptionPlans,
-  getTierDisplayName,
   getEffectiveRateLimit,
   getEffectiveMaxTokens,
-  validateSubscription,
-  detectAllSubscriptions,
-  type SubscriptionDetection,
 } from "@/ai/providers/subscription-detection";
-import { getApiKey, hasApiKey } from "@/lib/api-key-storage";
-import { getProviderUsageStats, formatTokens, formatCost } from "@/lib/usage-tracking";
+import {
+  getProviderUsageStats,
+  formatTokens,
+  formatCost,
+} from "@/lib/usage-tracking";
+import {
+  getProxyStatus,
+  type ProxyStatusResponse,
+} from "@/lib/ai-proxy-client";
 
 /**
  * Provider display names
  */
 const PROVIDER_NAMES: Record<AIProvider, string> = {
-  google: "Google AI (Gemini)",
+  google: "Google AI",
   openai: "OpenAI",
-  anthropic: "Anthropic (Claude)",
   zaic: "Z.ai",
+  anthropic: "Anthropic",
   custom: "Custom Provider",
 };
 
 /**
- * Tier icons
+ * Icon mapping for tiers
  */
 const TIER_ICONS: Record<SubscriptionTier, React.ReactNode> = {
   free: <Sparkles className="h-4 w-4" />,
@@ -51,24 +74,14 @@ const TIER_ICONS: Record<SubscriptionTier, React.ReactNode> = {
 };
 
 /**
- * Tier colors
- */
-const TIER_COLORS: Record<SubscriptionTier, string> = {
-  free: "bg-gray-500",
-  pro: "bg-blue-500",
-  team: "bg-purple-500",
-  enterprise: "bg-amber-500",
-};
-
-/**
  * Base rate limits per provider (requests per minute for free tier)
  */
 const BASE_RATE_LIMITS: Record<AIProvider, number> = {
-  google: 15,
-  openai: 3,
-  anthropic: 5,
-  zaic: 10,
-  custom: 10,
+  google: 60,
+  openai: 60,
+  zaic: 60,
+  anthropic: 60,
+  custom: 60,
 };
 
 /**
@@ -76,95 +89,71 @@ const BASE_RATE_LIMITS: Record<AIProvider, number> = {
  */
 const BASE_MAX_TOKENS: Record<AIProvider, number> = {
   google: 8192,
-  openai: 4096,
-  anthropic: 8192,
+  openai: 8192,
   zaic: 8192,
+  anthropic: 8192,
   custom: 8192,
 };
 
-/**
- * Props for SubscriptionPlanCard
- */
 interface SubscriptionPlanCardProps {
   provider: AIProvider;
+  /** Whether the operator has configured this provider server-side. */
+  configured: boolean | null;
   onSubscriptionDetected?: (plan: SubscriptionPlan | null) => void;
 }
 
 /**
- * Individual subscription plan card for a provider
+ * Individual subscription plan card for a provider.
+ *
+ * #1799 — the "configured" prop is now sourced from
+ * `getProxyStatus()` (server-side enumeration of operators with
+ * configured keys), not from the local-storage vault. The card
+ * renders the static plan catalog when the operator has not yet
+ * configured the provider, so users know what options will become
+ * active once they do.
  */
-function SubscriptionPlanCard({ provider, onSubscriptionDetected }: SubscriptionPlanCardProps) {
-  const [isLoading, setIsLoading] = useState(false);
-  const [subscription, setSubscription] = useState<SubscriptionPlan | null>(null);
-  const [hasKey, setHasKey] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+function SubscriptionPlanCard({
+  provider,
+  configured,
+  onSubscriptionDetected,
+}: SubscriptionPlanCardProps) {
   const [usageStats, setUsageStats] = useState<{
     totalRequests: number;
     totalTokens: number;
     totalCost: number;
   } | null>(null);
 
-  const checkKeyAndSubscription = useCallback(async () => {
-    const keyExists = await hasApiKey(provider);
-    setHasKey(keyExists);
-    
-    if (keyExists) {
-      // Load usage stats
+  useEffect(() => {
+    if (!configured) return;
+    let cancelled = false;
+    void (async () => {
       try {
         const stats = await getProviderUsageStats(provider);
-        setUsageStats({
-          totalRequests: stats.totalRequests,
-          totalTokens: stats.totalTokens,
-          totalCost: stats.totalCost,
-        });
+        if (!cancelled) {
+          setUsageStats({
+            totalRequests: stats.totalRequests,
+            totalTokens: stats.totalTokens,
+            totalCost: stats.totalCost,
+          });
+        }
       } catch (error) {
-        console.error('Failed to load provider usage stats:', error);
+        console.error("Failed to load provider usage stats:", error);
       }
-    }
-  }, [provider]);
-
-  useEffect(() => {
-    checkKeyAndSubscription();
-  }, [checkKeyAndSubscription]);
-
-  async function handleDetectSubscription() {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const apiKey = await getApiKey(provider);
-      if (!apiKey) {
-        setError("No API key configured for this provider");
-        return;
-      }
-
-      const result = await validateSubscription(provider, apiKey);
-      
-      if (result.valid && result.subscription) {
-        setSubscription(result.subscription);
-        onSubscriptionDetected?.(result.subscription);
-      } else if (result.valid) {
-        // Key is valid but no specific subscription detected
-        const detected = detectSubscription(provider, apiKey);
-        setSubscription(detected);
-        onSubscriptionDetected?.(detected);
-      } else {
-        setError(result.error || "Failed to validate subscription");
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
-      setIsLoading(false);
-    }
-  }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [configured, provider]);
 
   const availablePlans = getSubscriptionPlans(provider);
-  const effectiveRateLimit = subscription 
-    ? getEffectiveRateLimit(BASE_RATE_LIMITS[provider], subscription)
-    : BASE_RATE_LIMITS[provider];
-  const effectiveMaxTokens = subscription
-    ? getEffectiveMaxTokens(BASE_MAX_TOKENS[provider], subscription)
-    : BASE_MAX_TOKENS[provider];
+  const effectiveRateLimit = getEffectiveRateLimit(
+    BASE_RATE_LIMITS[provider],
+    undefined,
+  );
+  const effectiveMaxTokens = getEffectiveMaxTokens(
+    BASE_MAX_TOKENS[provider],
+    undefined,
+  );
 
   return (
     <Card>
@@ -172,185 +161,158 @@ function SubscriptionPlanCard({ provider, onSubscriptionDetected }: Subscription
         <div>
           <CardTitle className="text-lg">{PROVIDER_NAMES[provider]}</CardTitle>
           <CardDescription>
-            {subscription ? (
-              <span className="flex items-center gap-1">
-                {TIER_ICONS[subscription.tier]}
-                {subscription.planName}
-              </span>
-            ) : hasKey ? (
-              "API key configured"
-            ) : (
-              "No API key configured"
-            )}
+            <span className="text-muted-foreground">
+              No active subscription detected
+            </span>
           </CardDescription>
         </div>
-        {subscription && (
-          <Badge className={`${TIER_COLORS[subscription.tier]} text-white`}>
-            {getTierDisplayName(subscription.tier)}
-          </Badge>
-        )}
+        <Badge variant={configured ? "default" : "secondary"}>
+          {configured === null
+            ? "Checking..."
+            : configured
+              ? "Server Configured"
+              : "Not Configured"}
+        </Badge>
       </CardHeader>
+
       <CardContent className="space-y-4">
-        {/* Error display */}
-        {error && (
-          <Alert variant="destructive">
-            <X className="h-4 w-4" />
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        )}
-
-        {/* Subscription detection button */}
-        {hasKey && !subscription && (
-          <Button
-            onClick={handleDetectSubscription}
-            disabled={isLoading}
-            variant="outline"
-            className="w-full"
-          >
-            {isLoading ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <RefreshCw className="mr-2 h-4 w-4" />
-            )}
-            Detect Subscription
-          </Button>
-        )}
-
-        {/* Current plan info */}
-        {subscription && (
-          <div className="space-y-3">
-            <div className="text-sm font-medium">Current Plan Benefits</div>
-            <ul className="space-y-1">
-              {subscription.benefits.map((benefit, index) => (
-                <li key={index} className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Check className="h-3 w-3 text-green-500" />
-                  {benefit}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {/* Rate limits display */}
-        <Separator />
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <div className="text-sm text-muted-foreground">Rate Limit</div>
-            <div className="text-lg font-semibold">
-              {effectiveRateLimit} req/min
-            </div>
-            {subscription && (
-              <div className="text-xs text-muted-foreground">
-                {subscription.rateLimitMultiplier}x multiplier
-              </div>
-            )}
-          </div>
-          <div>
-            <div className="text-sm text-muted-foreground">Max Tokens</div>
-            <div className="text-lg font-semibold">
-              {formatTokens(effectiveMaxTokens)}
-            </div>
-            {subscription && (
-              <div className="text-xs text-muted-foreground">
-                {subscription.maxTokensMultiplier}x multiplier
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Usage stats */}
-        {usageStats && usageStats.totalRequests > 0 && (
-          <>
-            <Separator />
-            <div className="space-y-2">
-              <div className="text-sm font-medium">Your Usage</div>
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div>
-                  <div className="text-lg font-semibold">{usageStats.totalRequests}</div>
-                  <div className="text-xs text-muted-foreground">Requests</div>
-                </div>
-                <div>
-                  <div className="text-lg font-semibold">{formatTokens(usageStats.totalTokens)}</div>
-                  <div className="text-xs text-muted-foreground">Tokens</div>
-                </div>
-                <div>
-                  <div className="text-lg font-semibold">{formatCost(usageStats.totalCost)}</div>
-                  <div className="text-xs text-muted-foreground">Est. Cost</div>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* Available plans */}
-        {!subscription && availablePlans.length > 0 && (
-          <>
-            <Separator />
-            <div className="space-y-2">
-              <div className="text-sm font-medium">Available Plans</div>
-              <div className="space-y-2">
-                {availablePlans.map((plan) => (
-                  <div
-                    key={plan.tier}
-                    className="flex items-center justify-between p-2 rounded-lg border"
-                  >
-                    <div className="flex items-center gap-2">
-                      {TIER_ICONS[plan.tier]}
-                      <span className="font-medium">{plan.planName}</span>
-                    </div>
-                    <Badge variant="outline" className={TIER_COLORS[plan.tier]}>
-                      {plan.rateLimitMultiplier}x limits
-                    </Badge>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* No key message */}
-        {!hasKey && (
+        {/* #1799 — live tier detection previously called provider APIs
+            directly with the user's key. That surface is removed; live
+            tier detection requires a server-side endpoint and is
+            tracked as a follow-up. Until then, the static plan catalog
+            below shows what options the operator can configure. */}
+        {availablePlans.length > 0 && (
           <Alert>
+            <Info className="h-4 w-4" />
+            <AlertTitle>Tier detection moved server-side</AlertTitle>
             <AlertDescription>
-              Add an API key in the API Keys tab to detect your subscription plan.
+              Live subscription-tier detection requires server-side API access
+              (issue #1799 follow-up). Until then, the static plan catalog below
+              is shown so users know what options the operator can configure.
             </AlertDescription>
           </Alert>
         )}
+
+        {/* Available plans (static catalog) */}
+        {availablePlans.length > 0 && (
+          <div className="space-y-2">
+            <h4 className="font-medium text-sm">Available Plans</h4>
+            <div className="grid gap-2">
+              {availablePlans.map((plan) => (
+                <div
+                  key={`${plan.provider}-${plan.tier}`}
+                  className="flex items-start justify-between p-3 border rounded-lg"
+                >
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      {TIER_ICONS[plan.tier]}
+                      <span className="font-medium">{plan.planName}</span>
+                      <Badge variant="outline" className="text-xs">
+                        {plan.tier}
+                      </Badge>
+                    </div>
+                    <ul className="mt-1 text-sm text-muted-foreground space-y-0.5">
+                      {plan.benefits.slice(0, 3).map((benefit, idx) => (
+                        <li key={idx}>• {benefit}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Usage stats (only when configured) */}
+        {usageStats && configured && (
+          <div className="grid grid-cols-3 gap-2 text-sm">
+            <div>
+              <div className="text-muted-foreground">Requests</div>
+              <div className="font-medium">{usageStats.totalRequests}</div>
+            </div>
+            <div>
+              <div className="text-muted-foreground">Tokens</div>
+              <div className="font-medium">
+                {formatTokens(usageStats.totalTokens)}
+              </div>
+            </div>
+            <div>
+              <div className="text-muted-foreground">Est. cost</div>
+              <div className="font-medium">
+                {formatCost(usageStats.totalCost)}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <Separator />
+
+        {/* Effective limits summary */}
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <div className="text-muted-foreground">Effective rate limit</div>
+            <div className="font-medium">{effectiveRateLimit} req/min</div>
+          </div>
+          <div>
+            <div className="text-muted-foreground">Effective max tokens</div>
+            <div className="font-medium">
+              {effectiveMaxTokens.toLocaleString()}
+            </div>
+          </div>
+        </div>
+
+        <Button
+          variant="default"
+          size="sm"
+          className="w-full"
+          onClick={() => onSubscriptionDetected?.(null)}
+        >
+          <Check className="mr-2 h-4 w-4" />
+          Apply Plan Configuration
+        </Button>
       </CardContent>
     </Card>
   );
 }
 
 /**
- * Props for SubscriptionPlanDisplay
+ * Subscription Plan Display
  */
-interface SubscriptionPlanDisplayProps {
-  onAllDetected?: (detection: SubscriptionDetection) => void;
-}
-
-/**
- * Main component for displaying subscription plans for all providers
- */
-export function SubscriptionPlanDisplay({ onAllDetected }: SubscriptionPlanDisplayProps) {
-  const [isDetectingAll, setIsDetectingAll] = useState(false);
-  const [detection, setDetection] = useState<SubscriptionDetection | null>(null);
-
+export function SubscriptionPlanDisplay() {
   const providers: AIProvider[] = ["google", "openai", "zaic"];
+  const [proxyStatus, setProxyStatus] = useState<ProxyStatusResponse | null>(
+    null,
+  );
 
-  async function handleDetectAll() {
-    setIsDetectingAll(true);
-    try {
-      const result = await detectAllSubscriptions();
-      setDetection(result);
-      onAllDetected?.(result);
-    } finally {
-      setIsDetectingAll(false);
-    }
-  }
+  // #1799 — fetch the proxy status ONCE on mount, derive the
+  // configured-state boolean for every provider from the result. Using
+  // the proxy client (rather than per-provider raw fetch calls) avoids
+  // N round-trips for the summary view and satisfies the project's
+  // no-restricted-syntax lint guard.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const status = await getProxyStatus();
+        if (!cancelled) setProxyStatus(status);
+      } catch (error) {
+        console.error("Failed to load proxy status:", error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const configuredProviders = proxyStatus?.configuredProviders ?? null;
+  const isConfigured = (provider: AIProvider): boolean | null => {
+    if (configuredProviders === null) return null;
+    return configuredProviders.includes(provider);
+  };
 
   return (
     <div className="space-y-6">
-      {/* Header with detect all button */}
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold">Subscription Plans</h2>
@@ -358,31 +320,14 @@ export function SubscriptionPlanDisplay({ onAllDetected }: SubscriptionPlanDispl
             Link your AI provider subscriptions for enhanced features
           </p>
         </div>
-        <Button onClick={handleDetectAll} disabled={isDetectingAll}>
-          {isDetectingAll ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <RefreshCw className="mr-2 h-4 w-4" />
-          )}
-          Detect All Subscriptions
-        </Button>
       </div>
 
-      {/* Summary */}
-      {detection && (
-        <Alert>
-          <Check className="h-4 w-4" />
-          <AlertTitle>Detection Complete</AlertTitle>
-          <AlertDescription>
-            Detected {detection.plans.length} subscription(s) across your configured providers.
-            {detection.primaryPlan && (
-              <span className="block mt-1">
-                Primary: {detection.primaryPlan.planName} ({PROVIDER_NAMES[detection.primaryPlan.provider as AIProvider]})
-              </span>
-            )}
-          </AlertDescription>
-        </Alert>
-      )}
+      {/* #1799 — server-side configured-state summary. Replaces the old
+          "Detect All Subscriptions" button (which used to iterate over
+          locally-stored keys and call provider APIs directly). The
+          proxy status response enumerates operator-configured providers
+          in a single round-trip. */}
+      <ConfiguredProvidersSummary configuredProviders={configuredProviders} />
 
       {/* Provider cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -390,6 +335,7 @@ export function SubscriptionPlanDisplay({ onAllDetected }: SubscriptionPlanDispl
           <SubscriptionPlanCard
             key={provider}
             provider={provider}
+            configured={isConfigured(provider)}
           />
         ))}
       </div>
@@ -397,24 +343,73 @@ export function SubscriptionPlanDisplay({ onAllDetected }: SubscriptionPlanDispl
       {/* Info about subscription linking */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">About Subscription Linking</CardTitle>
+          <CardTitle className="text-base">
+            About Subscription Linking
+          </CardTitle>
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground space-y-2">
           <p>
-            Subscription linking allows Planar Nexus to optimize your AI experience by:
+            Provider API keys live on the server (configured by the operator via
+            environment variables). Tier detection and rate-limit negotiation
+            are increasingly performed server-side; client-side direct API
+            access is no longer required.
           </p>
           <ul className="list-disc list-inside space-y-1">
-            <li>Adjusting rate limits based on your plan</li>
-            <li>Enabling higher token limits for better responses</li>
-            <li>Providing accurate usage tracking and cost estimates</li>
-            <li>Unlocking provider-specific features</li>
+            <li>Server reports which providers are configured</li>
+            <li>
+              The static plan catalog here shows what options the operator can
+              enable
+            </li>
+            <li>
+              Effective rate limits and max tokens apply once the operator
+              configures a key
+            </li>
+            <li>
+              Live subscription-tier detection is a tracked follow-up to issue
+              #1799
+            </li>
           </ul>
-          <p className="mt-2">
-            Your subscription information is stored locally and never sent to our servers.
-          </p>
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+/**
+ * Inline helper: render the summary of configured providers based on the
+ * already-fetched proxy status. Kept as a stateless component so the
+ * parent owns the data fetch (single round-trip).
+ */
+function ConfiguredProvidersSummary({
+  configuredProviders,
+}: {
+  configuredProviders: AIProvider[] | null;
+}) {
+  if (configuredProviders === null) {
+    return null;
+  }
+  if (configuredProviders.length === 0) {
+    return (
+      <Alert>
+        <Info className="h-4 w-4" />
+        <AlertTitle>No providers configured server-side</AlertTitle>
+        <AlertDescription>
+          The operator has not yet configured any AI provider API keys. Once a
+          provider is configured, its plan catalog below becomes active.
+        </AlertDescription>
+      </Alert>
+    );
+  }
+  return (
+    <Alert>
+      <Check className="h-4 w-4" />
+      <AlertTitle>Active providers</AlertTitle>
+      <AlertDescription>
+        {configuredProviders.length} provider
+        {configuredProviders.length === 1 ? "" : "s"} configured server-side:{" "}
+        {configuredProviders.map((p) => PROVIDER_NAMES[p]).join(", ")}.
+      </AlertDescription>
+    </Alert>
   );
 }
 
