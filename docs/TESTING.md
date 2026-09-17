@@ -723,7 +723,9 @@ follow-up only after the nightly run confirms every module clears it.
 
 | Metric         | Project target | CI-enforced floor (Stryker `thresholds.break`)      |
 | -------------- | -------------- | --------------------------------------------------- |
+<!-- mutation-floor:start -->
 | Mutation score | **70%**        | **50%** (ratcheted to 70 once all modules clear it) |
+<!-- mutation-floor:end -->
 
 #### Running locally
 
@@ -784,12 +786,14 @@ Stryker/runner variance entirely.
 #### Baseline measurements
 
 - `replacement-effects.ts`: **77.78%** — 293 killed, 85 survived, 50 timed out,
-  13 no-coverage of 441 mutants.
+  13 no-coverage of 441 mutants. Per-module floor: **76**
+  (`scripts/mutation-floor.config.js`).
 - `layer-system.ts`: **56.65%** (PR #1297, CI run 28489517797). Issue #1711
   added the targeted `layer-system.mutation.test.ts` (layer-ordering
   boundaries, timestamp dependence, sublayer pipeline math); the next nightly
   run re-measures the baseline and the floor is ratcheted to
-  `floor(measured − 1)` per the derivation rule.
+  `floor(measured − 1)` per the derivation rule. Per-module floor: **55**
+  (`scripts/mutation-floor.config.js`).
 - `spell-casting.ts`: no recorded measurement yet. Issue #1711 added the
   targeted `spell-casting.mutation.test.ts` (X-cost arithmetic, multikicker ×n
   scaling, blitz-style replacement-cost deltas, convoke pip order, delve
@@ -803,7 +807,8 @@ Stryker/runner variance entirely.
   the first nightly run after it lands records the baseline, then the floor
   is ratcheted to `floor(measured − 1)`.
 - Other modules: measured on each nightly run; the latest numbers are in the
-  `mutation-report` workflow artifact.
+  `mutation-report-<module>` workflow artifact (issue #1785 split the
+  nightly run into one artifact per module).
 
 Most survivors are equivalent or non-behavioural (description strings, generated
 ids, empty-array initializers); the actionable ones are tracked as follow-up

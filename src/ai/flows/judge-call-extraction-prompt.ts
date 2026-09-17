@@ -1,11 +1,21 @@
 /**
- * Judge-Call Extraction Prompt
+ * Judge-Call Extraction Prompt — fixture-generation tooling (Issue #1816)
  *
- * This prompt can be used to extract structured edge-case data from
- * tournament coverage transcripts (YouTube, Twitch VODs, etc.).
+ * Relocated from `src/lib/game-state/judge-call-extraction-prompt.ts` so the
+ * rules-engine directory no longer contains LLM prompt text. The prompt is
+ * pure AI/tooling data: it is fed to an LLM alongside a tournament-coverage
+ * transcript segment to produce JudgeCallSegment-compatible JSON, which then
+ * feeds the engine's judge-call edge-case fixtures (see
+ * `src/lib/game-state/judge-call-edge-cases.ts`).
  *
- * Usage: Feed the prompt along with a transcript segment to an LLM to
- * produce JudgeCallSegment-compatible JSON objects.
+ * The rules-engine boundary (`src/lib/game-state/`) is exported only through
+ * its barrel and is the mutation-tested correctness core; LLM prompt strings
+ * invite edits from the AI-tooling side of the repo for no rules reason, and
+ * every such edit touches the directory whose merge gate is the strictest.
+ *
+ * `scripts/check-no-prompt-in-engine.mjs` is the regression guard: a CI gate
+ * that fails the build if any prompt-style string ("You are a " or similar
+ * role signatures) is reintroduced under `src/lib/game-state/`.
  *
  * Issue #682 - Brainstorm §10 example prompt
  */

@@ -1,22 +1,35 @@
 #!/usr/bin/env node
 /**
- * Mutation Config Guard — Issue #1762
+ * Mutation Config Guard — Issues #1762 + #1785
  *
  * The per-PR `Mutation Test (layer-system)` Stryker job was the CI long pole:
  * ~2.5-3h per PR with 3x variance on identical code (59 vs 184 min runs on
  * the same branch content — see the duration table in #1762), while the
  * `build` job depended on it, so every PR merge waited on it. Issue #1762
- * moved that gate OFF the per-PR critical path: layer-system is mutated by
- * the NIGHTLY .github/workflows/mutation.yml run (it is in the `mutate`
- * allowlist), which enforces BOTH the aggregate `thresholds.break`
- * (Stryker's exit code) and the per-module floor
- * (scripts/mutation-floor.js → floor 55 for layer-system).
+ * moved that gate OFF the per-PR critical path: every rules-engine module
+ * is mutated by the NIGHTLY .github/workflows/mutation.yml run (it is in
+ * the `mutate` allowlist), which enforces BOTH the aggregate
+ * `thresholds.break` (Stryker's exit code) and the per-module floor
+ * (scripts/mutation-floor.js → floor 55 for layer-system, floor 76 for
+ * replacement-effects, conservative 50 for the rest until each first
+ * successful nightly run records its baseline, see
+ * scripts/mutation-floor.config.js).
  *
- * Accepted tradeoff (#1762): a layer-system mutation-score regression now
+ * Accepted tradeoff (#1762): a per-module mutation-score regression now
  * surfaces on the nightly Actions run (≤24h detection latency on main)
  * instead of blocking the PR that introduced it. In exchange, per-PR CI
  * drops its single ~3h job and PR wall-clock stops tracking Stryker/runner
  * variance entirely.
+ *
+ * Issue #1785 follow-up: the single nightly Stryker job had not succeeded
+ * in twelve consecutive scheduled runs (2026-09-04..09-15) because the
+ * full-allowlist mutation took longer than GitHub Actions' default 6h job
+ * timeout and 1128+ mutants per run were timing out (suite hangs on
+ * specific mutations). The workflow was split into per-module matrix
+ * jobs, each running a single `npm run mutate:<module>` against a 90-min
+ * per-job timeout. This guard now also asserts the per-module matrix
+ * shape so a future refactor cannot silently regress to the broken
+ * single-job shape that left six of seven rules-engine modules ungated.
  *
  * This guard is the per-PR replacement (~50ms, plain Node, no Stryker run)
  * and keeps that tradeoff honest. It fails the PR if any marker that makes
@@ -30,12 +43,18 @@
  *   3. scripts/mutation-floor.config.js defines a floor entry for EVERY
  *      allowlisted module, so the nightly per-module gate cannot silently
  *      lose a module.
- *   4. package.json still exposes `test:mutation` (stryker + floor gate)
- *      and the per-module `mutate:*` convenience scripts.
+ *   4. package.json still exposes `test:mutation` (full-suite Stryker for
+ *      local dev — slower but useful for reproducing a nightly failure
+ *      end-to-end) and the per-module `mutate:*` convenience scripts
+ *      used by the nightly per-module matrix (#1785).
  *   5. .github/workflows/mutation.yml still triggers on a nightly
- *      `schedule:` and runs `npm run test:mutation` +
- *      `node scripts/mutation-floor.js` + `node scripts/mutation-summary.js`.
- *   6. .github/workflows/ci.yml does NOT invoke Stryker anywhere — the
+ *      `schedule:` and runs `npm run mutate:<module>` (per-module matrix
+ *      invocation) + `node scripts/mutation-floor.js` +
+ *      `node scripts/mutation-summary.js` (issue #1785 split).
+ *   6. The nightly mutation.yml matrix JSON contains a quoted entry for
+ *      every allowlisted module — a per-module job that doesn't run is
+ *      the same regression as removing the per-module floor (#1785).
+ *   7. .github/workflows/ci.yml does NOT invoke Stryker anywhere — the
  *      ~3h long pole cannot creep back onto the per-PR path unnoticed.
  *
  * Exit codes:
@@ -166,7 +185,16 @@ const mutationYml = readFileSync(
 const mutationYmlCode = stripYamlComments(mutationYml);
 const NIGHTLY_MARKERS = [
   { needle: "schedule:", why: "the nightly cron trigger" },
-  { needle: "npm run test:mutation", why: "the full-allowlist Stryker run" },
+  // Issue #1785: the nightly workflow was split into per-module matrix
+  // jobs (`npm run mutate:${{ matrix.module }}`) after 12 consecutive
+  // runs (2026-09-04..09-15) hit GitHub Actions' 6h job timeout running
+  // the full allowlist serially. Assert the per-module invocation
+  // pattern, not the old `npm run test:mutation` entry point, so a future
+  // refactor cannot silently regress back to the broken single-job shape.
+  {
+    needle: "npm run mutate:",
+    why: "a per-module Stryker invocation (issue #1785 split)",
+  },
   {
     needle: "node scripts/mutation-floor.js",
     why: "the per-module floor gate (issue #1598)",
@@ -182,6 +210,41 @@ for (const { needle, why } of NIGHTLY_MARKERS) {
       `.github/workflows/mutation.yml: marker missing: "${needle}" (${why}) — ` +
         `since per-PR Stryker was removed (#1762), this nightly workflow is ` +
         `the ONLY mutation gate; deleting this marker disables it silently.`,
+    );
+  }
+}
+// Issue #1785: every allowlisted module's short name must appear in the
+// matrix JSON of mutation.yml so removing a per-module job (e.g. by
+// shrinking the matrix array) cannot silently disable a module's gate.
+// The matrix expression is a JSON array of short names: ["layer-system",
+// "replacement-effects", ...]. We assert each short name is wrapped in
+// quotes somewhere in the YAML so a manual edit to the matrix list
+// either keeps all seven entries or fails this guard.
+//
+// `shortName` extraction handles both the literal-file entries
+// (`src/lib/game-state/layer-system.ts` → `layer-system`) and the
+// family-dir glob entry from issue #1725
+// (`src/lib/game-state/spell-casting/*.ts` → `spell-casting`). The
+// Stryker allowlist is rooted under `src/lib/game-state/`, so stripping
+// that prefix leaves either `<file>.ts` or `<dir>/*.ts` — both reduce to
+// the same per-module npm script suffix (`mutate:<name>`).
+function shortModuleName(entry) {
+  return entry
+    .replace(/^src\/lib\/game-state\//, "")
+    .replace(/\.ts$/, "")
+    .replace(/\*\.ts$/, "")
+    .replace(/\*+$/, "")
+    .replace(/\/+$/, "");
+}
+for (const entry of mutateEntries) {
+  const shortName = shortModuleName(entry);
+  const quoted = `"${shortName}"`;
+  if (!mutationYmlCode.includes(quoted)) {
+    failures.push(
+      `.github/workflows/mutation.yml: matrix entry missing for ${entry} ` +
+        `(looked for ${quoted}) — issue #1785 split the nightly run into ` +
+        `per-module matrix jobs; removing an entry from the matrix silently ` +
+        `disables that module's nightly gate.`,
     );
   }
 }
@@ -211,8 +274,8 @@ if (failures.length === 0) {
   const floorCount = Object.keys(floors).length;
   console.log(
     `mutation-config: OK — ${mutateEntries.length} allowlisted modules, ` +
-      `${floorCount} per-module floors, nightly gate wired, no Stryker on ` +
-      `the per-PR path (issue #1762).`,
+      `${floorCount} per-module floors, nightly per-module matrix wired ` +
+      `(issue #1785), no Stryker on the per-PR path (issue #1762).`,
   );
   process.exit(0);
 }
