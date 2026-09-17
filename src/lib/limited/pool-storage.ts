@@ -473,6 +473,52 @@ export async function abandonSession(sessionId: string): Promise<void> {
 }
 
 // ============================================================================
+// BACKUP / RESTORE (issue #1812)
+// ============================================================================
+//
+// `PlanarNexusLimited` is the dedicated Dexie-backed database that ISOL-01
+// mandates for sealed/draft/rochester/winston sessions. The §5.6 backup scope
+// table marks `sessions` as in-scope for backups as of #1812: user-authored
+// pool rows are part of the user's collection (just isolated from the main
+// deck store for migration-safety reasons) and a backup/restore cycle that
+// lost them would be a real user-visible regression.
+//
+// `getAllLimitedSessionsForBackup` re-uses the existing `getAllSessions` so
+// the row order (newest-first) matches every other consumer in the app, and
+// `restoreLimitedSessionsForBackup` writes back via `bulkPut` so a fresh
+// import replaces existing local rows with their backup copies (re-import is
+// idempotent on the session UUID).
+// ============================================================================
+
+/**
+ * Issue #1812 — read every session on `PlanarNexusLimited` for inclusion in a
+ * full backup. Newest-first, matching the live listing helper.
+ */
+export async function getAllLimitedSessionsForBackup(): Promise<
+  LimitedSession[]
+> {
+  return getAllSessions();
+}
+
+/**
+ * Issue #1812 — restore `sessions` rows from a backup envelope into the live
+ * Dexie table. `bulkPut` keeps the restore in a single transaction; row
+ * identity is the session UUID, so re-importing the same backup is
+ * idempotent. An empty / missing array is a no-op.
+ */
+export async function restoreLimitedSessionsForBackup(
+  rows: LimitedSession[],
+): Promise<void> {
+  if (!Array.isArray(rows) || rows.length === 0) return;
+  const database = getDatabase();
+  try {
+    await database.sessions.bulkPut(rows);
+  } catch (error) {
+    console.error('Failed to restore limited sessions from backup:', error);
+  }
+}
+
+// ============================================================================
 // Utility Functions
 // ============================================================================
 
