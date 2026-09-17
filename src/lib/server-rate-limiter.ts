@@ -167,6 +167,215 @@ export class InMemoryRateLimiterBackend implements RateLimiterBackend {
 }
 
 /**
+ * Options for {@link RedisRateLimiterBackend}.
+ *
+ * The backend speaks the Upstash Redis HTTP REST contract — a single
+ * `fetch()` per primitive against `<baseUrl>/<COMMAND>/<args>?<query>`.
+ * That keeps the dep cost at zero (no `ioredis`, no `@upstash/ratelimit`)
+ * and is the same primitive Cloudflare Workers and Vercel Edge functions
+ * reach for when they need a KV primitive from outside Node.
+ */
+export interface RedisRateLimiterBackendOptions {
+  /** Upstash REST base URL, e.g. `https://my-instance.upstash.io`. */
+  url: string;
+  /** Upstash REST read/write token. */
+  token: string;
+  /**
+   * Optional fetch implementation override. Tests stub this; production
+   * code lets Node's global `fetch` (Node ≥18) handle the request.
+   */
+  fetchImpl?: typeof fetch;
+  /**
+   * Per-request timeout in ms. Default 1000. A Redis timeout MUST throw —
+   * failing closed (denying the request) is the abuse-control-safe
+   * behavior; failing open would silently lift the rate limit.
+   */
+  timeoutMs?: number;
+  /**
+   * Key prefix. Default `rl:`. The clear() SCAN match glob uses the same
+   * prefix, so changing this without also wiring the clear pattern will
+   * leave stale keys behind.
+   */
+  keyPrefix?: string;
+}
+
+/**
+ * Response shape returned by the Upstash REST API. The `result` field
+ * carries the command's native return value (`null` for GET misses,
+ * `string` for SET/GET hits, an integer-shaped string for INCR, a
+ * `[cursor, keys[]]` tuple for SCAN, etc.).
+ */
+interface UpstashResponse<T> {
+  result: T;
+}
+
+/**
+ * Cap on SCAN iterations in {@link RedisRateLimiterBackend.clear}. A
+ * hostile or misconfigured Redis that keeps returning new cursors cannot
+ * pin the test runner indefinitely.
+ */
+const MAX_SCAN_ITERATIONS = 1000;
+
+/**
+ * Shared Redis backend for the rate limiter — issue #1782.
+ *
+ * Encodes a fixed-window counter per bucket key as a single Redis string
+ * holding `{ count, windowFloor }` JSON, with a TTL slightly longer than
+ * the window so an idle bucket self-evicts. Every primitive goes over
+ * the Upstash HTTP REST API (one `fetch()` per call) so the runtime
+ * footprint is zero deps — there is no `ioredis`/`@upstash/ratelimit`
+ * pulled in for what amounts to `GET` + `SET … EX` + `DEL`.
+ *
+ * Atomicity: a fixed-window has no read-modify-write race because the
+ * `ServerRateLimiter` reads the bucket, decides, then writes the new
+ * count — concurrent writers from different instances can race by one
+ * request, which is the standard tradeoff for distributed rate limiters
+ * and is well within the abuse-control envelope.
+ */
+export class RedisRateLimiterBackend implements RateLimiterBackend {
+  private readonly baseUrl: string;
+  private readonly authHeader: string;
+  private readonly fetchImpl: typeof fetch;
+  private readonly timeoutMs: number;
+  private readonly keyPrefix: string;
+
+  constructor(options: RedisRateLimiterBackendOptions) {
+    if (!options.url) {
+      throw new Error(
+        "RedisRateLimiterBackend: `url` is required (Upstash REST base URL).",
+      );
+    }
+    if (!options.token) {
+      throw new Error(
+        "RedisRateLimiterBackend: `token` is required (Upstash REST token).",
+      );
+    }
+    this.baseUrl = options.url.replace(/\/$/, "");
+    this.authHeader = `Bearer ${options.token}`;
+    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.timeoutMs = options.timeoutMs ?? 1000;
+    this.keyPrefix = options.keyPrefix ?? "rl:";
+  }
+
+  /**
+   * Build the Redis-side key for a caller-supplied bucket key. The
+   * `rl:` prefix namespaces the limiter away from any other KV
+   * usage the same Upstash database might serve.
+   */
+  private buildKey(bucketKey: string): string {
+    return `${this.keyPrefix}${bucketKey}`;
+  }
+
+  async get(bucketKey: string): Promise<RateLimitBucket | null> {
+    const key = this.buildKey(bucketKey);
+    const url = `${this.baseUrl}/GET/${encodeURIComponent(key)}`;
+    const response = await this.request(url);
+    // Upstash REST returns 200 with `result: null` for a missing key;
+    // some Upstash tiers return 404 for missing GETs — handle both.
+    if (response.status === 404) return null;
+    if (!response.ok) {
+      throw await this.commandError("GET", response);
+    }
+    const body = (await response.json()) as UpstashResponse<string | null>;
+    if (body.result == null) return null;
+    try {
+      const parsed = JSON.parse(body.result) as unknown;
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        typeof (parsed as { count?: unknown }).count === "number" &&
+        typeof (parsed as { windowFloor?: unknown }).windowFloor === "number"
+      ) {
+        return parsed as RateLimitBucket;
+      }
+      return null;
+    } catch {
+      // Corrupt payload — treat as miss so the caller starts a fresh
+      // window rather than denying on bad state.
+      return null;
+    }
+  }
+
+  async set(
+    bucketKey: string,
+    bucket: RateLimitBucket,
+    ttlMs: number,
+  ): Promise<void> {
+    const key = this.buildKey(bucketKey);
+    const value = encodeURIComponent(JSON.stringify(bucket));
+    // Round up + buffer of 1s so the key does not expire mid-window under
+    // a network roundtrip that eats into the last 100ms.
+    const ttlSeconds = Math.max(1, Math.ceil(ttlMs / 1000) + 1);
+    const url = `${this.baseUrl}/SET/${encodeURIComponent(key)}/${value}?EX=${ttlSeconds}`;
+    const response = await this.request(url);
+    if (!response.ok) {
+      throw await this.commandError("SET", response);
+    }
+  }
+
+  async delete(bucketKey: string): Promise<void> {
+    const key = this.buildKey(bucketKey);
+    const url = `${this.baseUrl}/DEL/${encodeURIComponent(key)}`;
+    const response = await this.request(url);
+    if (!response.ok) {
+      throw await this.commandError("DEL", response);
+    }
+  }
+
+  /**
+   * Drop every rate-limit bucket tracked by this backend. Cursor-scan
+   * with the configured key prefix; capped at {@link MAX_SCAN_ITERATIONS}
+   * iterations to bound pathological cases. Only invoked from tests
+   * (`clearAllRateLimits` is not on any production hot path).
+   */
+  async clear(): Promise<void> {
+    const matchPattern = `${this.keyPrefix}*`;
+    let cursor = "0";
+    let iterations = 0;
+    do {
+      const url = `${this.baseUrl}/SCAN/${encodeURIComponent(
+        cursor,
+      )}/MATCH/${encodeURIComponent(matchPattern)}/COUNT/100`;
+      const response = await this.request(url);
+      if (!response.ok) {
+        throw await this.commandError("SCAN", response);
+      }
+      const body = (await response.json()) as UpstashResponse<
+        [string, string[]]
+      >;
+      cursor = body.result[0];
+      const keys = body.result[1] ?? [];
+      for (const key of keys) {
+        const delUrl = `${this.baseUrl}/DEL/${encodeURIComponent(key)}`;
+        const delResponse = await this.request(delUrl);
+        if (!delResponse.ok) {
+          throw await this.commandError("DEL", delResponse);
+        }
+      }
+      iterations++;
+    } while (cursor !== "0" && iterations < MAX_SCAN_ITERATIONS);
+  }
+
+  private async request(url: string): Promise<Response> {
+    return this.fetchImpl(url, {
+      method: "GET",
+      headers: { Authorization: this.authHeader },
+      signal: AbortSignal.timeout(this.timeoutMs),
+    });
+  }
+
+  private async commandError(
+    command: string,
+    response: Response,
+  ): Promise<Error> {
+    const text = await response.text().catch(() => "");
+    return new Error(
+      `RedisRateLimiterBackend: ${command} failed with HTTP ${response.status}: ${text}`,
+    );
+  }
+}
+
+/**
  * The fixed-window counter logic shared by every {@link RateLimiterBackend}
  * implementation.
  *
