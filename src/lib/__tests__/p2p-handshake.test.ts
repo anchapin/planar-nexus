@@ -77,10 +77,16 @@ describe("P2P Handshake Protocol", () => {
       expect(PROTOCOL_VERSION).toBe("1.0.0");
     });
 
-    it("should have valid checksum algorithms", () => {
-      expect(CHECKSUM_ALGORITHMS).toContain("crc32");
-      expect(CHECKSUM_ALGORITHMS).toContain("md5");
-      expect(CHECKSUM_ALGORITHMS).toContain("sha256");
+    it("should advertise only crc32 (issue #1797 — md5/sha256 are a 32-bit djb2 in disguise)", () => {
+      // #1797 — historically `CHECKSUM_ALGORITHMS` advertised
+      // `["crc32", "md5", "sha256"]`. The `md5` / `sha256` branches both
+      // called `simpleHash()`, a 32-bit djb2 loop whose entire output
+      // entropy was 32 bits — collisions by birthday at ~2^16. Per the
+      // issue acceptance criterion ("only crc32 can be negotiated
+      // honestly"), the supported set is now a single value.
+      expect(CHECKSUM_ALGORITHMS).toEqual(["crc32"]);
+      expect(CHECKSUM_ALGORITHMS).not.toContain("md5");
+      expect(CHECKSUM_ALGORITHMS).not.toContain("sha256");
     });
 
     it("should have default algorithm", () => {
@@ -143,9 +149,12 @@ describe("P2P Handshake Protocol", () => {
         );
       });
 
-      it("should accept custom algorithm", () => {
-        const message = createHandshakeChallenge("sender1", "sha256");
-        expect(message.payload.checksumAlgorithm).toBe("sha256");
+      it("should accept the crc32 algorithm parameter (the only supported algorithm, #1797)", () => {
+        // #1797 — `md5` / `sha256` are no longer in `CHECKSUM_ALGORITHMS`
+        // (the djb2-hash fix removed them); the type narrows to `"crc32"`,
+        // so this is the only legal explicit override.
+        const message = createHandshakeChallenge("sender1", "crc32");
+        expect(message.payload.checksumAlgorithm).toBe("crc32");
       });
 
       it("should generate unique challenges", () => {
@@ -377,7 +386,7 @@ function makeGameState(turnNumber: number, id = "default-state"): GameState {
   return { turn: { turnNumber }, __id: id } as unknown as GameState;
 }
 
-describe("calculateStateChecksum / verifyChecksum — algorithms (#1094)", () => {
+describe("calculateStateChecksum / verifyChecksum — algorithms (#1094, #1797)", () => {
   const state = makeGameState(7, "algo-state");
 
   it("crc32 (default) yields an 8-char hex string", () => {
@@ -386,17 +395,36 @@ describe("calculateStateChecksum / verifyChecksum — algorithms (#1094)", () =>
     expect(calculateStateChecksum(state, "crc32")).toBe(sum);
   });
 
-  it("md5 yields a 32-char hex string (128 bits / 4)", () => {
-    expect(calculateStateChecksum(state, "md5")).toMatch(/^[0-9a-f]{32}$/);
-  });
+  it("md5 / sha256 algorithms are NO LONGER supported (#1797 — 32-bit djb2 in disguise)", () => {
+    // #1797 — prior to this fix the `md5` and `sha256` branches both
+    // called `simpleHash`, a 32-bit djb2 loop whose entire output entropy
+    // was 32 bits. The branches were removed so they cannot be selected;
+    // asking for one now fails at the type level (TypeScript narrows
+    // `ChecksumAlgorithm` to `"crc32"`).
+    //
+    // At runtime a stale peer could still send `"md5"` / `"sha256"` on
+    // the wire. The route's defensive default falls back to crc32 so the
+    // handshake stays consistent; below asserts that runtime collapse
+    // produces the crc32 shape (8-char hex, NOT 32 / 64 — which would
+    // be the djb2-padded lookalike).
+    const md5Label = "md5" as unknown as Parameters<
+      typeof calculateStateChecksum
+    >[1];
+    const md5Result = calculateStateChecksum(state, md5Label);
+    expect(md5Result).toMatch(/^[0-9a-f]{8}$/);
+    expect(md5Result).toBe(calculateStateChecksum(state, "crc32"));
 
-  it("sha256 yields a 64-char hex string (256 bits / 4)", () => {
-    expect(calculateStateChecksum(state, "sha256")).toMatch(/^[0-9a-f]{64}$/);
+    const sha256Label = "sha256" as unknown as Parameters<
+      typeof calculateStateChecksum
+    >[1];
+    const sha256Result = calculateStateChecksum(state, sha256Label);
+    expect(sha256Result).toMatch(/^[0-9a-f]{8}$/);
+    expect(sha256Result).toBe(calculateStateChecksum(state, "crc32"));
   });
 
   it("produces deterministic, input-sensitive checksums", () => {
-    expect(calculateStateChecksum(state, "md5")).toBe(
-      calculateStateChecksum(state, "md5"),
+    expect(calculateStateChecksum(state, "crc32")).toBe(
+      calculateStateChecksum(state, "crc32"),
     );
     expect(calculateStateChecksum(state)).not.toBe(
       calculateStateChecksum(makeGameState(8, "other")),
@@ -404,15 +432,15 @@ describe("calculateStateChecksum / verifyChecksum — algorithms (#1094)", () =>
   });
 
   it("verifyChecksum returns true for a matching checksum and false otherwise", () => {
-    const sum = calculateStateChecksum(state, "sha256");
-    expect(verifyChecksum(state, sum, "sha256")).toBe(true);
-    expect(verifyChecksum(state, "deadbeef", "sha256")).toBe(false);
+    const sum = calculateStateChecksum(state, "crc32");
+    expect(verifyChecksum(state, sum, "crc32")).toBe(true);
+    expect(verifyChecksum(state, "deadbeef", "crc32")).toBe(false);
   });
 
   it("createStateChecksumResponse carries checksum + stateVersion", () => {
-    const msg = createStateChecksumResponse("me", state, "md5");
+    const msg = createStateChecksumResponse("me", state, "crc32");
     expect(msg.type).toBe("state-checksum-response");
-    expect(msg.payload.checksum).toBe(calculateStateChecksum(state, "md5"));
+    expect(msg.payload.checksum).toBe(calculateStateChecksum(state, "crc32"));
     expect(msg.payload.stateVersion).toBe(7);
     expect(msg.payload.timestamp).toBeDefined();
   });
@@ -632,14 +660,17 @@ describe("HandshakeSession — timeout / abort path (#1094)", () => {
   });
 });
 
-describe("createHandshakeResponse — message shape (#1094)", () => {
-  it("embeds the computed checksum and remote state version", () => {
+describe("createHandshakeResponse — message shape (#1094, #1797)", () => {
+  it("embeds the computed crc32 checksum and remote state version", () => {
+    // #1797 — switched from `"sha256"` (which routed through the 32-bit
+    // djb2 `simpleHash`) to the now-only-supported `"crc32"`.
     const state = makeGameState(9, "r");
-    const msg = createHandshakeResponse("me", "chal", state, "sha256");
+    const msg = createHandshakeResponse("me", "chal", state, "crc32");
     expect(msg.type).toBe("handshake-response");
     expect(msg.senderId).toBe("me");
     expect(msg.payload.challenge).toBe("chal");
-    expect(msg.payload.checksum).toBe(calculateStateChecksum(state, "sha256"));
+    expect(msg.payload.checksum).toBe(calculateStateChecksum(state, "crc32"));
+    expect(msg.payload.checksum).toMatch(/^[0-9a-f]{8}$/);
     expect(msg.payload.stateVersion).toBe(9);
   });
 });

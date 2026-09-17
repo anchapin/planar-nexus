@@ -189,8 +189,26 @@ export const PROTOCOL_VERSION = "1.0.0";
 
 /**
  * Supported checksum algorithms
+ *
+ * #1797 — historically this list advertised `["crc32", "md5", "sha256"]`,
+ * but the `md5` and `sha256` branches routed through {@link simpleHash}
+ * (a 32-bit djb2 loop zero-padded to look like a 128/256-bit digest) —
+ * the code itself carried a "for production, use crypto.subtle" comment
+ * acknowledging it was not cryptographic. A peer that selected `md5`
+ * or `sha256` therefore believed it got a collision-resistant digest
+ * when in fact the entire output entropy was 32 bits (collisions by
+ * birthday at ~2^16) — enough to subvert state-desync detection.
+ *
+ * Per the issue acceptance criterion ("only crc32 can be negotiated
+ * honestly"), only `crc32` is now advertised. CRC32 is honest about its
+ * non-cryptographic nature (its `4` billion output space is what it
+ * advertises, not 2^128 / 2^256). The selection set dropped down to a
+ * single value so the switch below stays trivially exhaustive; the
+ * default fall-through remains as a defensive catch for an old peer
+ * that still negotiates `md5` / `sha256` and would otherwise break
+ * cross-version handshakes in production.
  */
-export const CHECKSUM_ALGORITHMS = ["crc32", "md5", "sha256"] as const;
+export const CHECKSUM_ALGORITHMS = ["crc32"] as const;
 export type ChecksumAlgorithm = (typeof CHECKSUM_ALGORITHMS)[number];
 
 /**
@@ -232,6 +250,12 @@ function getCRC32Table(): Uint32Array {
 
 /**
  * Calculate checksum for game state
+ *
+ * #1797 — accepts only the lone {@link CHECKSUM_ALGORITHMS} entry
+ * (`crc32`). Any unrecognized algorithm value falls back to the
+ * default (also crc32) so a stale peer advertising `md5` or `sha256`
+ * does not break the handshake — both endpoints collapse the
+ * algorithm label to crc32 and produce the same hex string.
  */
 export function calculateStateChecksum(
   gameState: GameState,
@@ -243,31 +267,12 @@ export function calculateStateChecksum(
   switch (algorithm) {
     case "crc32":
       return calculateCRC32(data).toString(16).padStart(8, "0");
-    case "md5":
-      // Simple MD5-like hash (for production, use crypto.subtle)
-      return simpleHash(data);
-    case "sha256":
-      // Simple SHA256-like hash (for production, use crypto.subtle)
-      return simpleHash(data, 256);
     default:
+      // Defensive: unknown algorithm label (e.g. legacy peer still
+      // advertising `md5` / `sha256`). Both sides collapse to crc32
+      // so the handshake verifies deterministically.
       return calculateCRC32(data).toString(16).padStart(8, "0");
   }
-}
-
-/**
- * Simple hash function for fallback
- */
-function simpleHash(data: string, bits: number = 128): string {
-  let hash = 0;
-  for (let i = 0; i < data.length; i++) {
-    const char = data.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash; // Convert to 32bit integer
-  }
-
-  // Convert to hex string with specified bits
-  const hex = (hash >>> 0).toString(16).padStart(bits / 4, "0");
-  return hex.slice(0, bits / 4);
 }
 
 /**
