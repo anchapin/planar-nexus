@@ -16,6 +16,18 @@
  *     (acceptance criterion b) regardless of `TURN_HMAC_TTL_SECONDS`
  *   - The HMAC verifies against the secret (acceptance criterion c)
  *
+ * #1798 — per-identity rate limit (mirrors `/api/ai-proxy/validate`):
+ *   - 429 with `Retry-After` + `X-RateLimit-*` headers when the shared
+ *     limiter rejects the request
+ *   - Rate-limit check runs BEFORE any `TURN_HMAC_SECRET` read so the
+ *     endpoint cannot be used as an oracle for operator deployment state
+ *   - Server-verified client identifier (IP / forwarded header / UA
+ *     fingerprint) — never the query-supplied `clientId` parameter —
+ *     buckets the limiter so a single identity cannot drain the mint
+ *     by churning `clientId` values
+ *   - `X-RateLimit-*` headers are stamped on the 200 success path so
+ *     legitimate clients can self-throttle
+ *
  * The route reads `process.env.TURN_HMAC_SECRET` directly, so each
  * test sets + restores the relevant env keys to keep state isolated.
  *
@@ -31,6 +43,53 @@ import {
   afterEach,
 } from "@jest/globals";
 import { createHmac } from "node:crypto";
+
+// ---- Mocks (must be declared before importing the route) ---------------------
+
+// #1798 — the route is gated by the shared rate-limit policy. Mock the
+// limiter + identity helpers so the test can exercise the 429 path
+// deterministically and so other tests don't share the singleton's bucket.
+// Same shape as the sibling `/api/ai-proxy/validate` test (issue #1795),
+// adapted for the TURN route's surface.
+const enforceRateLimitMock = jest.fn() as unknown as jest.Mock<
+  (...args: any[]) => any
+>;
+class RateLimitError extends Error {
+  public readonly retryAfter: number;
+  public readonly remaining: number;
+  public readonly code = "RATE_LIMIT_EXCEEDED";
+  constructor(
+    message: string,
+    retryAfterMs: number,
+    remainingRequests: number,
+  ) {
+    super(message);
+    this.name = "RateLimitError";
+    this.retryAfter = retryAfterMs;
+    this.remaining = remainingRequests;
+  }
+}
+const getRateLimitHeadersMock: jest.Mock = jest.fn(
+  (result: any) =>
+    ({
+      "X-RateLimit-Limit": "5",
+      "X-RateLimit-Remaining": String(result.remaining),
+      "X-RateLimit-Reset": String(result.resetAt),
+      ...(result.retryAfter
+        ? { "Retry-After": String(result.retryAfter) }
+        : {}),
+    }) as Record<string, string>,
+);
+jest.mock("@/lib/server-rate-limiter", () => ({
+  enforceRateLimit: (...args: unknown[]) => enforceRateLimitMock(...args),
+  RateLimitError,
+  getRateLimitHeaders: (...args: unknown[]) => getRateLimitHeadersMock(...args),
+}));
+
+const getClientIdentifierMock: jest.Mock = jest.fn();
+jest.mock("@/lib/server-request-identity", () => ({
+  getClientIdentifier: (...args: unknown[]) => getClientIdentifierMock(...args),
+}));
 
 // ---- Minimal NextResponse / Request polyfill (parity with the
 // ---- existing `/api/signaling/__tests__/route.test.ts` harness so
@@ -113,7 +172,17 @@ const envSnapshot = snapshotEnv();
 
 beforeEach(() => {
   jest.resetModules();
+  jest.clearAllMocks();
   for (const k of ENV_KEYS) delete process.env[k];
+  // #1798 — re-establish mock defaults after clearAllMocks. Individual
+  // tests override these to exercise the 429 path.
+  enforceRateLimitMock.mockResolvedValue({
+    success: true,
+    remaining: 4,
+    resetAt: Date.now() + 60 * 60 * 1000,
+  });
+  // Deterministic client identifier for tests that need to assert on it.
+  getClientIdentifierMock.mockReturnValue("ip:127.0.0.1");
 });
 
 afterEach(() => {
@@ -205,6 +274,196 @@ describe("GET /api/signaling/turn-credentials — failure modes", () => {
       unknown
     >;
     expect(data.code).toBe("CLIENT_ID_TOO_LONG");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Rate limiting (issue #1798)
+// ---------------------------------------------------------------------------
+
+describe("GET /api/signaling/turn-credentials — rate limiting (issue #1798)", () => {
+  it("returns 429 with RATE_LIMIT_EXCEEDED and retryAfter when the limiter rejects", async () => {
+    enforceRateLimitMock.mockRejectedValue(
+      new RateLimitError(
+        "TURN credential mint rate limit exceeded. Please try again later.",
+        3600,
+        0,
+      ),
+    );
+
+    const { GET } = await loadRoute();
+    const res = await GET(
+      makeGet(
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+      ),
+    );
+    expect(res.status).toBe(429);
+    const data = (await (res as unknown as TestResponse).json()) as Record<
+      string,
+      unknown
+    >;
+    expect(data.error).toContain("TURN credential mint rate limit exceeded");
+    expect(data.code).toBe("RATE_LIMIT_EXCEEDED");
+    expect(data.retryAfter).toBe(3600);
+
+    // Rate-limit headers are computed for the 429 response so clients can
+    // back off correctly. The header values ride through NextResponse's
+    // production path; here we assert the route calls getRateLimitHeaders
+    // with the right shape (the production Response.json() in Next.js does
+    // not go through the test polyfill's `Response` global, so we test
+    // the contract at the mock boundary — Findings #10 from issue #1795).
+    expect(getRateLimitHeadersMock).toHaveBeenCalledTimes(1);
+    expect(getRateLimitHeadersMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: false,
+        remaining: 0,
+        retryAfter: 3600,
+      }),
+      expect.objectContaining({ maxRequests: 5, windowMs: 60 * 60 * 1000 }),
+    );
+  });
+
+  it("checks the rate limit BEFORE consulting TURN_HMAC_SECRET (oracle-leak guard)", async () => {
+    // #1798 — the rate-limit gate must run before the secret read so a
+    // rate-limited caller cannot distinguish 'secret configured' from
+    // 'rate limited'. If the gate were last, the 503 path's response
+    // shape would leak operator deployment state. TURN_HMAC_SECRET is
+    // intentionally unset; if the rate-limit check ran first, we get a
+    // 429 (not a 503).
+    delete process.env.TURN_HMAC_SECRET;
+    enforceRateLimitMock.mockRejectedValue(
+      new RateLimitError("rate limited", 60, 0),
+    );
+
+    const { GET } = await loadRoute();
+    const res = await GET(
+      makeGet(
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+      ),
+    );
+    expect(res.status).toBe(429);
+    const data = (await (res as unknown as TestResponse).json()) as Record<
+      string,
+      unknown
+    >;
+    expect(data.code).toBe("RATE_LIMIT_EXCEEDED");
+    expect(data.code).not.toBe("TURN_HMAC_SECRET_NOT_CONFIGURED");
+  });
+
+  it("uses the server-verified client identifier (never the query's clientId)", async () => {
+    process.env.TURN_HMAC_SECRET =
+      "test-secret-do-not-use-in-prod-1234567890abcdef";
+    getClientIdentifierMock.mockReturnValue("ip:10.0.0.42");
+
+    const { GET } = await loadRoute();
+    const res = await GET(
+      makeGet(
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+      ),
+    );
+    expect(res.status).toBe(200);
+
+    // The bucket key is the SERVER-VERIFIED identifier, not the
+    // query-supplied clientId — otherwise an attacker could rotate
+    // clientId to dodge the per-identity limit.
+    expect(getClientIdentifierMock).toHaveBeenCalledTimes(1);
+    expect(enforceRateLimitMock).toHaveBeenCalledWith(
+      "ip:10.0.0.42",
+      expect.objectContaining({
+        maxRequests: 5,
+        windowMs: 60 * 60 * 1000,
+      }),
+    );
+    // The query's clientId is NOT the bucket key.
+    const enforceCallArgs = enforceRateLimitMock.mock.calls[0] as unknown[];
+    expect(enforceCallArgs[0]).not.toBe("peer-1");
+    expect(enforceCallArgs[0]).not.toContain("peer-1");
+  });
+
+  it("clientId churn under one identity is rate-limited (acceptance criterion)", async () => {
+    // #1798 — "clientId churn under one identity" test. An attacker
+    // submitting different clientId values per request from a single
+    // server-verified identity (IP) must not be able to dodge the
+    // bucket — the bucket key is the identity, NOT the clientId.
+    process.env.TURN_HMAC_SECRET =
+      "test-secret-do-not-use-in-prod-1234567890abcdef";
+    getClientIdentifierMock.mockReturnValue("ip:10.0.0.42");
+    // First request succeeds, second request (same identity, different
+    // clientId) is rate-limited.
+    enforceRateLimitMock.mockResolvedValueOnce({
+      success: true,
+      remaining: 4,
+      resetAt: Date.now() + 60 * 60 * 1000,
+    });
+    enforceRateLimitMock.mockRejectedValueOnce(
+      new RateLimitError("rate limited", 3600, 0),
+    );
+
+    const { GET } = await loadRoute();
+    const resA = await GET(
+      makeGet(
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+      ),
+    );
+    expect(resA.status).toBe(200);
+
+    const resB = await GET(
+      makeGet(
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-2",
+      ),
+    );
+    expect(resB.status).toBe(429);
+    const dataB = (await (resB as unknown as TestResponse).json()) as Record<
+      string,
+      unknown
+    >;
+    expect(dataB.code).toBe("RATE_LIMIT_EXCEEDED");
+
+    // Both requests hit the SAME bucket key (the server-verified
+    // identity), even though the query's clientId differs.
+    expect(getClientIdentifierMock).toHaveBeenCalledTimes(2);
+    const calls = enforceRateLimitMock.mock.calls as Array<[string, unknown]>;
+    expect(calls[0][0]).toBe("ip:10.0.0.42");
+    expect(calls[1][0]).toBe("ip:10.0.0.42");
+  });
+
+  it("emits rate-limit headers on the success response", async () => {
+    process.env.TURN_HMAC_SECRET =
+      "test-secret-do-not-use-in-prod-1234567890abcdef";
+
+    const { GET } = await loadRoute();
+    const res = await GET(
+      makeGet(
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+      ),
+    );
+    expect(res.status).toBe(200);
+
+    // The success path stamps X-RateLimit-* via getRateLimitHeaders,
+    // mirroring POST /api/ai-proxy (#1782/#1868) and the 429 path
+    // above. Assert at the mock boundary (Findings #10).
+    expect(getRateLimitHeadersMock).toHaveBeenCalledWith(
+      expect.objectContaining({ success: true, remaining: 4 }),
+      expect.objectContaining({ maxRequests: 5, windowMs: 60 * 60 * 1000 }),
+    );
+  });
+
+  it("the 429 response never contains the TURN_HMAC_SECRET even when configured", async () => {
+    process.env.TURN_HMAC_SECRET =
+      "test-secret-do-not-use-in-prod-1234567890abcdef";
+    enforceRateLimitMock.mockRejectedValue(
+      new RateLimitError("rate limited", 60, 0),
+    );
+
+    const { GET } = await loadRoute();
+    const res = await GET(
+      makeGet(
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+      ),
+    );
+    expect(res.status).toBe(429);
+    const text = await (res as unknown as TestResponse).text();
+    expect(text).not.toContain("test-secret-do-not-use-in-prod");
   });
 });
 
