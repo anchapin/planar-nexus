@@ -25,7 +25,7 @@ import {
   insertMultiple,
   search as oramaSearch,
 } from "@orama/orama";
-import { restore } from "@orama/plugin-data-persistence";
+import { persist, restore } from "@orama/plugin-data-persistence";
 import type { CardSearchDocument, SearchOptions } from "./card-search-index";
 
 const CARD_SCHEMA = {
@@ -57,6 +57,15 @@ export interface SearchWorkerAPI {
   ): Promise<{ id: string; name: string }[]>;
   clear(): Promise<void>;
   count(): Promise<number>;
+  /**
+   * Serialize the current worker Orama instance to a string the main
+   * thread can persist via {@link loadWorkerSnapshot} / {@link saveWorkerSnapshot}.
+   * Returns `null` when the worker has never been initialised — callers
+   * must persist the result only after a successful index() (or after
+   * a successful init() from a previously-persisted snapshot, which is
+   * a no-op round-trip but still serialises the same data).
+   */
+  exportSnapshot(): Promise<string | null>;
 }
 
 const searchWorker: SearchWorkerAPI = {
@@ -117,6 +126,25 @@ const searchWorker: SearchWorkerAPI = {
       return 0;
     }
   },
+
+  async exportSnapshot(): Promise<string | null> {
+    if (!oramaInstance) return null;
+    try {
+      const data = await persist(oramaInstance, "json");
+      // `persist()` is overloaded — `"json"` is documented to return
+      // a string, but the runtime type union also includes ArrayBuffer /
+      // Buffer. We only support the string form (the rest of the
+      // pipeline round-trips through IndexedDB as a JSON-serialised
+      // string); narrow explicitly so a future runtime that returns a
+      // different shape doesn't silently corrupt the snapshot.
+      return typeof data === "string" ? data : null;
+    } catch {
+      // Serialization can fail if the index is in an inconsistent state
+      // (e.g. mid-reindex). Surface as null so the caller skips persistence
+      // — the next session will rebuild from scratch.
+      return null;
+    }
+  },
 };
 
 /**
@@ -135,8 +163,8 @@ export { searchWorker };
 // `addEventListener`, so we skip the expose call to avoid runtime errors.
 if (
   typeof self !== "undefined" &&
-  typeof (self as unknown as { addEventListener?: unknown }).addEventListener ===
-    "function"
+  typeof (self as unknown as { addEventListener?: unknown })
+    .addEventListener === "function"
 ) {
   Comlink.expose(searchWorker);
 }
