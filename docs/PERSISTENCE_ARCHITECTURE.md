@@ -1,12 +1,12 @@
 # Persistence Architecture Decision Record
 
-| | |
-|---|---|
-| **Status** | Accepted |
-| **Date** | 2026-09-08 |
-| **Issue** | [#1722](https://github.com/anchapin/planar-nexus/issues/1722) — Unify IndexedDB persistence: raw wrapper vs Dexie split needs one documented architecture |
+|             |                                                                                                                                                                                                            |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**  | Accepted                                                                                                                                                                                                   |
+| **Date**    | 2026-09-08                                                                                                                                                                                                 |
+| **Issue**   | [#1722](https://github.com/anchapin/planar-nexus/issues/1722) — Unify IndexedDB persistence: raw wrapper vs Dexie split needs one documented architecture                                                  |
 | **Related** | #1709 (open-lifecycle primitives), #1726 (card-DB init retry), #1572 (saved-games v3 split), #1085 (quota awareness), #1074 (coach conversations), #1570 (match records), #1592 (ai-client/actions rename) |
-| **Scope** | Architecture and documentation only. **No data-format migrations and no code rewrites were performed for this issue** (scope guard in #1722). The only code changes are doc-header ownership annotations. |
+| **Scope**   | Architecture and documentation only. **No data-format migrations and no code rewrites were performed for this issue** (scope guard in #1722). The only code changes are doc-header ownership annotations.  |
 
 ---
 
@@ -16,7 +16,7 @@ Planar Nexus keeps a **tiered multi-database architecture with two sanctioned
 access stacks**, and consolidates its accidental long tail on a staged roadmap.
 
 1. **`PlanarNexusStorage` (raw `IndexedDBStorage` wrapper) stays the single
-   Tier-1 user-data database of record.** It is *not* rewritten to Dexie —
+   Tier-1 user-data database of record.** It is _not_ rewritten to Dexie —
    the wrapper already exceeds every Dexie module's operational hygiene
    (incremental migrations, multi-tab safety, backup, quota guard).
 2. **Dexie remains sanctioned, but only for Tier-2/Tier-3 dedicated
@@ -24,7 +24,7 @@ access stacks**, and consolidates its accidental long tail on a staged roadmap.
    (`LocalIntelligenceDB`, `PlanarNexusLimited`).
 3. **The split is blessed only where justified.** Four single-store
    databases with no isolation rationale (the three search DBs and
-   `PlanarNexusGameDB`) are *not* blessed; they move into
+   `PlanarNexusGameDB`) are _not_ blessed; they move into
    `PlanarNexusStorage` via the staged roadmap in §6 — in follow-up issues,
    not in this one.
 4. **One convention governs all databases** (§5): naming, version-bump
@@ -41,18 +41,18 @@ Every IndexedDB database opened by the app. Reproduce with:
 `rg -n "indexedDB\.open|new Dexie|super\(\"|super\('" src/` — each row below
 names its owner module where the constant lives.
 
-| # | Database | Ver | Owner module | Stack | Object stores | #1709 open-lifecycle | In backup? |
-|---|----------|-----|--------------|-------|---------------|----------------------|------------|
-| 1 | `PlanarNexusStorage` | 4 | `src/lib/indexeddb-storage.ts` (`DEFAULT_STORAGE_CONFIG`, singleton `indexedDBStorage`) | raw wrapper class | `decks`, `saved-games` (legacy, retained for downgrade safety), `saved-games-meta`, `saved-games-payloads`, `preferences`, `usage-tracking`, `achievements`, `game-history`, `local-game-state`, `local-game-codes`, `search-preferences`, `search-presets`, `recent-searches` (last five folded in from the standalone DBs by #1811) | ✅ `onblocked` → `IndexedDBBlockedError`; `onversionchange` → close + broadcast | ✅ source of `exportBackup` / `exportIncrementalBackup`; envelope also carries the three scope fields (issue #1812) |
-| 2 | `PlanarNexusCardDB` | 2 | `src/lib/card-database.ts` | raw standalone open | `cards` (indexes `name`, `name_lower`, compound `format_legality`), `card_images` (v2) | ✅ + #1726 init retry | ❌ — re-importable from Scryfall by design |
-| 3 | `PlanarNexusCoach` | 1 | `src/lib/coach-conversation-storage.ts` (own `IndexedDBStorage` instance) | raw wrapper class (reused) | `coach-conversations` | ✅ (inherited from wrapper class) | ✅ since issue #1812 — store `coach-conversations` round-trips through `BackupData.coachConversations` |
-| 4 | `PlanarNexusGameDB` | 1 | `src/lib/local-game-storage.ts` | raw standalone open | `games` (keyPath `gameId`; indexes `gameCode` unique, `status`, `updatedAt`), `gameCodes` | ❌ none | ❌ — sessions semi-ephemeral |
-| 5 | `PlanarNexusReconnectTokens` | 1 | `src/lib/p2p-reconnect-store.ts` (`ReconnectTokenStore`) — **plus a second read-only open** in `src/hooks/use-reconnect-tokens.ts` (`openReconnectDb`) | raw standalone open | `tokens` (keyPath `id`, TTL-bounded rows) | ⚠️ warn-only `onblocked` in the store; none in the hook's open | ❌ — ephemeral by design |
-| 6 | `PlanarNexusSearchDB` | 1 | `src/lib/search/search-preferences.ts` | raw standalone open | `preferences` | ❌ none | ❌ |
-| 7 | `PlanarNexusPresetsDB` | 1 | `src/lib/search/search-presets.ts` | raw standalone open | `search-presets` | ❌ none | ❌ — user-created content; consolidation candidate (§6) |
-| 8 | `PlanarNexusRecentSearchesDB` | 1 | `src/lib/search/recent-searches.ts` | raw standalone open | `recent-searches` | ❌ none | ❌ — trivial |
-| 9 | `LocalIntelligenceDB` | 3 | `src/lib/db/local-intelligence-db.ts` (Dexie singleton; consumed by `src/hooks/use-p2p-connection.ts` for `match_records`) | **Dexie** | `embeddings`, `orama_snapshots`, `game_history`, `player_decisions`, `game_embeddings` (v2), `match_records` (v3) | ⚠️ Dexie defaults | ✅ for `match_records` since issue #1812 — round-trips through `BackupData.matchRecords`. Other tables remain out of scope (derived/recomputable). |
-| 10 | `PlanarNexusLimited` | 1 | `src/lib/limited/pool-storage.ts` | **Dexie** | `sessions` | ⚠️ Dexie defaults | ✅ since issue #1812 — store `sessions` round-trips through `BackupData.limitedSessions` |
+| #   | Database                      | Ver | Owner module                                                                                                                                           | Stack                      | Object stores                                                                                                                                                                                                                                                                                                                         | #1709 open-lifecycle                                                            | In backup?                                                                                                                                         |
+| --- | ----------------------------- | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `PlanarNexusStorage`          | 4   | `src/lib/indexeddb-storage.ts` (`DEFAULT_STORAGE_CONFIG`, singleton `indexedDBStorage`)                                                                | raw wrapper class          | `decks`, `saved-games` (legacy, retained for downgrade safety), `saved-games-meta`, `saved-games-payloads`, `preferences`, `usage-tracking`, `achievements`, `game-history`, `local-game-state`, `local-game-codes`, `search-preferences`, `search-presets`, `recent-searches` (last five folded in from the standalone DBs by #1811) | ✅ `onblocked` → `IndexedDBBlockedError`; `onversionchange` → close + broadcast | ✅ source of `exportBackup` / `exportIncrementalBackup`; envelope also carries the three scope fields (issue #1812)                                |
+| 2   | `PlanarNexusCardDB`           | 2   | `src/lib/card-database.ts`                                                                                                                             | raw standalone open        | `cards` (indexes `name`, `name_lower`, compound `format_legality`), `card_images` (v2)                                                                                                                                                                                                                                                | ✅ + #1726 init retry                                                           | ❌ — re-importable from Scryfall by design                                                                                                         |
+| 3   | `PlanarNexusCoach`            | 1   | `src/lib/coach-conversation-storage.ts` (own `IndexedDBStorage` instance)                                                                              | raw wrapper class (reused) | `coach-conversations`                                                                                                                                                                                                                                                                                                                 | ✅ (inherited from wrapper class)                                               | ✅ since issue #1812 — store `coach-conversations` round-trips through `BackupData.coachConversations`                                             |
+| 4   | `PlanarNexusGameDB`           | 1   | `src/lib/local-game-storage.ts`                                                                                                                        | raw standalone open        | `games` (keyPath `gameId`; indexes `gameCode` unique, `status`, `updatedAt`), `gameCodes`                                                                                                                                                                                                                                             | ❌ none                                                                         | ❌ — sessions semi-ephemeral                                                                                                                       |
+| 5   | `PlanarNexusReconnectTokens`  | 1   | `src/lib/p2p-reconnect-store.ts` (`ReconnectTokenStore`) — **plus a second read-only open** in `src/hooks/use-reconnect-tokens.ts` (`openReconnectDb`) | raw standalone open        | `tokens` (keyPath `id`, TTL-bounded rows)                                                                                                                                                                                                                                                                                             | ⚠️ warn-only `onblocked` in the store; none in the hook's open                  | ❌ — ephemeral by design                                                                                                                           |
+| 6   | `PlanarNexusSearchDB`         | 1   | `src/lib/search/search-preferences.ts`                                                                                                                 | raw standalone open        | `preferences`                                                                                                                                                                                                                                                                                                                         | ❌ none                                                                         | ❌                                                                                                                                                 |
+| 7   | `PlanarNexusPresetsDB`        | 1   | `src/lib/search/search-presets.ts`                                                                                                                     | raw standalone open        | `search-presets`                                                                                                                                                                                                                                                                                                                      | ❌ none                                                                         | ❌ — user-created content; consolidation candidate (§6)                                                                                            |
+| 8   | `PlanarNexusRecentSearchesDB` | 1   | `src/lib/search/recent-searches.ts`                                                                                                                    | raw standalone open        | `recent-searches`                                                                                                                                                                                                                                                                                                                     | ❌ none                                                                         | ❌ — trivial                                                                                                                                       |
+| 9   | `LocalIntelligenceDB`         | 3   | `src/lib/db/local-intelligence-db.ts` (Dexie singleton; consumed by `src/hooks/use-p2p-connection.ts` for `match_records`)                             | **Dexie**                  | `embeddings`, `orama_snapshots`, `game_history`, `player_decisions`, `game_embeddings` (v2), `match_records` (v3)                                                                                                                                                                                                                     | ⚠️ Dexie defaults                                                               | ✅ for `match_records` since issue #1812 — round-trips through `BackupData.matchRecords`. Other tables remain out of scope (derived/recomputable). |
+| 10  | `PlanarNexusLimited`          | 1   | `src/lib/limited/pool-storage.ts`                                                                                                                      | **Dexie**                  | `sessions`                                                                                                                                                                                                                                                                                                                            | ⚠️ Dexie defaults                                                               | ✅ since issue #1812 — store `sessions` round-trips through `BackupData.limitedSessions`                                                           |
 
 **Facades, not databases** (verified — they hold no `indexedDB.open` of their own):
 
@@ -73,11 +73,7 @@ use for small synchronous state (`use-local-storage` hook, `sideboard-plans`
 convention (§5.5) applies to these too — `sideboard-plans.ts` already routes
 through `withQuotaGuard`.
 
-**Dependency status:** `dexie@^4.4.5` — used, by exactly the two modules
-above. `dexie-react-hooks@^4.4.0` — **declared but never imported anywhere in
-`src/`** (`rg -rn "useLiveQuery|dexie-react-hooks" src/` → no matches).
-Removal is a recommended follow-up chore (§7), deliberately not done in this
-docs-only issue.
+**Dependency status:** `dexie@^4.4.6` — used, by exactly the two modules above.
 
 ---
 
@@ -85,16 +81,16 @@ docs-only issue.
 
 New features MUST place data according to this tier model:
 
-| Tier | Database(s) | Content | Rule |
-|------|-------------|---------|------|
-| **1 — User data of record** | `PlanarNexusStorage` | Anything whose loss the user would feel: decks, saved games, preferences, usage, achievements, history. | **Default destination.** Add a store + bump the version (§5.3). Backed up (§5.6). |
+| Tier                                  | Database(s)                                                                                                       | Content                                                                                                                                                                                                                                                                                                                                                                                | Rule                                                                                                                             |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| **1 — User data of record**           | `PlanarNexusStorage`                                                                                              | Anything whose loss the user would feel: decks, saved games, preferences, usage, achievements, history.                                                                                                                                                                                                                                                                                | **Default destination.** Add a store + bump the version (§5.3). Backed up (§5.6).                                                |
 | **2 — Justified dedicated databases** | `PlanarNexusCardDB`, `PlanarNexusReconnectTokens`, `PlanarNexusCoach`, `PlanarNexusLimited`, `PlanarNexusGameDB`† | Data with a written carve-out: bulk re-derivable content (card catalog + image cache), independent-wipe requirements (reconnect tokens: "sign out" flushes them without touching decks), isolation mandates (`PlanarNexusLimited` ISOL-01: pool sessions must never mix with the deck collection), or independent schema cadence (coach store avoids version-conflicting the main DB). | Requires one of the carve-out criteria, stated in the module's doc-header. †`PlanarNexusGameDB` is provisional — see §6 stage 3. |
-| **3 — Derived / analytics** | `LocalIntelligenceDB` | Recomputable or low-stakes derived data (embeddings, snapshots, match analytics). | Same carve-out discipline; never the only copy of user data of record. |
-| **— Consolidation queue** | `PlanarNexusSearchDB`, `PlanarNexusPresetsDB`, `PlanarNexusRecentSearchesDB` | Tiny UX preferences with **no** carve-out justification. | Not blessed. Scheduled into Tier 1 (§6 stage 2). |
+| **3 — Derived / analytics**           | `LocalIntelligenceDB`                                                                                             | Recomputable or low-stakes derived data (embeddings, snapshots, match analytics).                                                                                                                                                                                                                                                                                                      | Same carve-out discipline; never the only copy of user data of record.                                                           |
+| **— Consolidation queue**             | `PlanarNexusSearchDB`, `PlanarNexusPresetsDB`, `PlanarNexusRecentSearchesDB`                                      | Tiny UX preferences with **no** carve-out justification.                                                                                                                                                                                                                                                                                                                               | Not blessed. Scheduled into Tier 1 (§6 stage 2).                                                                                 |
 
 **Quota note (correcting the issue premise):** `navigator.storage.estimate()`
-reports per-*origin* usage across all databases, so split databases do **not**
-fragment the actual quota. What was fragmented is quota *handling* — and
+reports per-_origin_ usage across all databases, so split databases do **not**
+fragment the actual quota. What was fragmented is quota _handling_ — and
 `src/lib/storage-quota.ts` already centralizes that (8 consumer modules).
 The real costs of the split this record addresses are convention drift,
 inconsistent multi-tab behavior, and decision friction for new features.
@@ -103,10 +99,10 @@ inconsistent multi-tab behavior, and decision friction for new features.
 
 ## 3. Decision D2 — Two sanctioned access stacks, chosen by tier (not by whim)
 
-| Stack | Where sanctioned | Why it is the right tool there |
-|-------|------------------|--------------------------------|
-| **A. `IndexedDBStorage` wrapper class** (`src/lib/indexeddb-storage.ts`) | Tier 1 and any Tier-2 raw DB. New raw databases MUST instantiate this class (as `coach-conversation-storage.ts` does) rather than hand-rolling an open. | Inherits for free: versioned config, incremental `oldVersion` migrations, #1709 `onblocked`/`onversionchange` handling, quota classification on writes, and a documented bump recipe. |
-| **B. Dexie** (`dexie@^4.x`) | Existing Tier-3 analytics (`LocalIntelligenceDB`) and the isolated limited-play store (`PlanarNexusLimited`). New Dexie databases require a Tier-2/3 carve-out. | Typed `EntityTable` schemas and append-only `version().stores()` replay are a good fit for green-field derived-data stores. Dexie's reactive hooks are **not** used anywhere (`dexie-react-hooks` has zero imports — §7). |
+| Stack                                                                    | Where sanctioned                                                                                                                                                | Why it is the right tool there                                                                                                                                                                                                                                           |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **A. `IndexedDBStorage` wrapper class** (`src/lib/indexeddb-storage.ts`) | Tier 1 and any Tier-2 raw DB. New raw databases MUST instantiate this class (as `coach-conversation-storage.ts` does) rather than hand-rolling an open.         | Inherits for free: versioned config, incremental `oldVersion` migrations, #1709 `onblocked`/`onversionchange` handling, quota classification on writes, and a documented bump recipe.                                                                                    |
+| **B. Dexie** (`dexie@^4.x`)                                              | Existing Tier-3 analytics (`LocalIntelligenceDB`) and the isolated limited-play store (`PlanarNexusLimited`). New Dexie databases require a Tier-2/3 carve-out. | Typed `EntityTable` schemas and append-only `version().stores()` replay are a good fit for green-field derived-data stores. All Dexie reads in this codebase go through direct `EntityTable` access (`.toArray()`, `.get()`, etc.); the reactive-hook layer is not used. |
 
 The two existing standalone raw opens that predate this rule
 (`card-database.ts`, `local-game-storage.ts`, the search trio, the reconnect
@@ -144,12 +140,12 @@ on (raw wrapper = debt to retire) is inverted in this codebase:
 
 Cost comparison of the two options considered:
 
-| | Single Dexie DB (rejected) | Blessed tiered split + roadmap (chosen) |
-|---|---|---|
-| Implementation cost | Rewrite ~1,600-line hardened wrapper + 8 modules + 10 data migrations | ~0 now; staged low-risk consolidations later |
-| Data-loss risk | High (single cut-over on user data of record) | Minimal (per-DB, read-old→write-new→clear-old) |
-| Operational cost | One DB to reason about | Convention + inventory table (this doc) replaces the single DB's benefit |
-| Future change cost | Dexie lock-in for Tier-1 | New features follow the tier model; stacks chosen by rule |
+|                     | Single Dexie DB (rejected)                                            | Blessed tiered split + roadmap (chosen)                                  |
+| ------------------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Implementation cost | Rewrite ~1,600-line hardened wrapper + 8 modules + 10 data migrations | ~0 now; staged low-risk consolidations later                             |
+| Data-loss risk      | High (single cut-over on user data of record)                         | Minimal (per-DB, read-old→write-new→clear-old)                           |
+| Operational cost    | One DB to reason about                                                | Convention + inventory table (this doc) replaces the single DB's benefit |
+| Future change cost  | Dexie lock-in for Tier-1                                              | New features follow the tier model; stacks chosen by rule                |
 
 ---
 
@@ -246,15 +242,15 @@ machinery) → `src/lib/backup-compression.ts` (`pn1` gzip + SHA-256 codec) →
 `src/hooks/use-storage-backup.ts` (UI orchestration).** Backup scope is a
 decision, not an oversight:
 
-| Database | In backup? | Rationale |
-|----------|-----------|-----------|
-| `PlanarNexusStorage` | ✅ | User data of record — the whole point of backup |
-| `PlanarNexusPresetsDB` | ❌ today | Only user-*authored* content outside Tier 1; folding into the Tier 1 export is the stage-2 stretch goal (§6) |
-| `PlanarNexusCardDB` | ❌ | Re-importable from Scryfall; also potentially huge (would balloon export size) |
-| `PlanarNexusCoach` | ✅ since #1812 | Coach conversations are user-authored content; their inclusion closes the §7 "user-authored content loss on export/import cycle" gap. Carried on the wire envelope as the additive optional field `BackupData.coachConversations`. |
-| `LocalIntelligenceDB` | partial — `match_records` only since #1812 | The P2P match-history store (issue #1570) is user-authored and lives in Tier 3 because the rest of the DB (embeddings, snapshots, decisions) is derived / re-computable. Only `match_records` round-trips today, via `BackupData.matchRecords`. |
-| `PlanarNexusLimited` | ✅ since #1812 | Sealed/draft/rochester/winston pool sessions are user-authored content and were the other half of the §7 "user-authored content loss" gap. Carried as `BackupData.limitedSessions`. |
-| `PlanarNexusGameDB`, `PlanarNexusReconnectTokens`, search trio | ❌ | Ephemeral or trivial UX state |
+| Database                                                       | In backup?                                 | Rationale                                                                                                                                                                                                                                       |
+| -------------------------------------------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PlanarNexusStorage`                                           | ✅                                         | User data of record — the whole point of backup                                                                                                                                                                                                 |
+| `PlanarNexusPresetsDB`                                         | ❌ today                                   | Only user-_authored_ content outside Tier 1; folding into the Tier 1 export is the stage-2 stretch goal (§6)                                                                                                                                    |
+| `PlanarNexusCardDB`                                            | ❌                                         | Re-importable from Scryfall; also potentially huge (would balloon export size)                                                                                                                                                                  |
+| `PlanarNexusCoach`                                             | ✅ since #1812                             | Coach conversations are user-authored content; their inclusion closes the §7 "user-authored content loss on export/import cycle" gap. Carried on the wire envelope as the additive optional field `BackupData.coachConversations`.              |
+| `LocalIntelligenceDB`                                          | partial — `match_records` only since #1812 | The P2P match-history store (issue #1570) is user-authored and lives in Tier 3 because the rest of the DB (embeddings, snapshots, decisions) is derived / re-computable. Only `match_records` round-trips today, via `BackupData.matchRecords`. |
+| `PlanarNexusLimited`                                           | ✅ since #1812                             | Sealed/draft/rochester/winston pool sessions are user-authored content and were the other half of the §7 "user-authored content loss" gap. Carried as `BackupData.limitedSessions`.                                                             |
+| `PlanarNexusGameDB`, `PlanarNexusReconnectTokens`, search trio | ❌                                         | Ephemeral or trivial UX state                                                                                                                                                                                                                   |
 
 The wire envelope is `BackupData` (`src/lib/indexeddb-storage.ts`):
 
@@ -284,12 +280,12 @@ Any change to backup scope must update this table and
 
 ## 6. Staged consolidation roadmap (follow-up issues; none executed here)
 
-| Stage | Work | Trigger / notes |
-|-------|------|-----------------|
-| **1. Close the #1709 gaps** | Add `onblocked`/`onversionchange` handling (or migrate onto the wrapper class) in: `local-game-storage.ts`, `search-preferences.ts`, `search-presets.ts`, `recent-searches.ts`, the `use-reconnect-tokens.ts` second open; upgrade `p2p-reconnect-store.ts` from warn-only to reject. | Small, no data migration. Cheap insurance; prerequisite for any of these DBs ever reaching v2 (§5.5 rule 3). |
-| **2. Fold the search trio into Tier 1** | `PlanarNexusStorage` v4 adds `search-preferences`, `search-presets`, `recent-searches` stores; the three modules swap internals to the `indexedDBStorage` singleton; migration = read-old → write-new → clear-old → `indexedDB.deleteDatabase` the three DBs; extend backup `ImportOptions` to cover presets. | Deletes three databases and three bespoke opens. The only "unification" this record commits to. |
-| **3. Decide `PlanarNexusGameDB`'s fate** | Either absorb into `PlanarNexusStorage` ( alongside `saved-games*`) or retain with an explicit ephemerality rationale in §2. Also resolve the match-history duality already flagged in `use-p2p-connection.ts` (`useLocalStorage` mirror vs `match_records` as "durable source of truth"). | Decide when stage 2 reopens the main DB anyway. |
-| **4. Dependency hygiene** | `npm uninstall dexie-react-hooks` (zero imports, verified) and update AGENTS.md/CLAUDE.md if wording mentions it. | Trivial; kept out of this issue only to honor the docs-only scope guard. |
+| Stage                                    | Work                                                                                                                                                                                                                                                                                                          | Trigger / notes                                                                                              |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| **1. Close the #1709 gaps**              | Add `onblocked`/`onversionchange` handling (or migrate onto the wrapper class) in: `local-game-storage.ts`, `search-preferences.ts`, `search-presets.ts`, `recent-searches.ts`, the `use-reconnect-tokens.ts` second open; upgrade `p2p-reconnect-store.ts` from warn-only to reject.                         | Small, no data migration. Cheap insurance; prerequisite for any of these DBs ever reaching v2 (§5.5 rule 3). |
+| **2. Fold the search trio into Tier 1**  | `PlanarNexusStorage` v4 adds `search-preferences`, `search-presets`, `recent-searches` stores; the three modules swap internals to the `indexedDBStorage` singleton; migration = read-old → write-new → clear-old → `indexedDB.deleteDatabase` the three DBs; extend backup `ImportOptions` to cover presets. | Deletes three databases and three bespoke opens. The only "unification" this record commits to.              |
+| **3. Decide `PlanarNexusGameDB`'s fate** | Either absorb into `PlanarNexusStorage` ( alongside `saved-games*`) or retain with an explicit ephemerality rationale in §2. Also resolve the match-history duality already flagged in `use-p2p-connection.ts` (`useLocalStorage` mirror vs `match_records` as "durable source of truth").                    | Decide when stage 2 reopens the main DB anyway.                                                              |
+| **4. Dependency hygiene**                | (Resolved by #1811 + this ADR sweep)                                                                                                                                                                                                                                                                          | `dexie-react-hooks` uninstalled in #1811; remaining doc references swept here.                               |
 
 **Explicit non-goals (do not open issues for these):** rewriting
 `PlanarNexusStorage` on Dexie (rejected in §4); renaming
@@ -300,13 +296,13 @@ into the main DB (their isolation is load-bearing).
 
 ## 7. Known gaps register
 
-| Gap | Risk today | Disposition |
-|-----|-----------|-------------|
-| 6 of 10 opens lack full #1709 handling | Latent — all are v1 databases that have never version-bumped, so `blocked` cannot occur today | §6 stage 1; blocked-by-rule from bumping (§5.5 rule 3) |
-| `dexie-react-hooks` declared, never imported | Dependency bloat, misleading docs (the original #1722 symptom) | §6 stage 4 |
-| Coach conversations + limited sessions outside backup scope | ~~User-authored content loss on export/import cycle~~ | **Resolved by issue #1812** — `coach-conversations`, `match_records`, and `limited-sessions` now round-trip through `BackupData`. The envelope is schema-versioned (§5.6) so legacy backups still import. |
-| Duplicate reconnect open in `use-reconnect-tokens.ts` | Duplicated schema knowledge; no blocked handling | Fold into `ReconnectTokenStore` (expose a read-only `list()`) in stage 1 |
-| `p2p-reconnect-store.ts` warn-only `onblocked` | Open promise can pend forever under a future v2 | Stage 1 |
+| Gap                                                         | Risk today                                                                                    | Disposition                                                                                                                                                                                               |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 6 of 10 opens lack full #1709 handling                      | Latent — all are v1 databases that have never version-bumped, so `blocked` cannot occur today | §6 stage 1; blocked-by-rule from bumping (§5.5 rule 3)                                                                                                                                                    |
+| `dexie-react-hooks` declared, never imported                | (Resolved — package uninstalled in #1811; doc references swept in #1864)                      | —                                                                                                                                                                                                         |
+| Coach conversations + limited sessions outside backup scope | ~~User-authored content loss on export/import cycle~~                                         | **Resolved by issue #1812** — `coach-conversations`, `match_records`, and `limited-sessions` now round-trip through `BackupData`. The envelope is schema-versioned (§5.6) so legacy backups still import. |
+| Duplicate reconnect open in `use-reconnect-tokens.ts`       | Duplicated schema knowledge; no blocked handling                                              | Fold into `ReconnectTokenStore` (expose a read-only `list()`) in stage 1                                                                                                                                  |
+| `p2p-reconnect-store.ts` warn-only `onblocked`              | Open promise can pend forever under a future v2                                               | Stage 1                                                                                                                                                                                                   |
 
 ---
 
@@ -318,9 +314,9 @@ Every claim above is reproducible from the worktree:
 # Inventory of opens (10 databases, 2 stacks)
 rg -n "indexedDB\.open|new Dexie" src/ --glob '!__tests__'
 
-# dexie-react-hooks is dead weight
-rg -rn "useLiveQuery|dexie-react-hooks" src/          # → no matches
-rg -n '"dexie' package.json                           # → dexie + dexie-react-hooks both declared
+# Dexie's reactive hooks are not used in src/ (all Dexie reads are direct EntityTable access)
+rg -rn "useLiveQuery" src/                            # → no matches
+rg -n '"dexie' package.json                           # → only dexie declared
 
 # #1709 adoption
 rg -ln "indexeddb-open-events|onblocked" src/ --glob '!__tests__'
@@ -332,5 +328,5 @@ rg -ln "storage-quota|withQuotaGuard|predictQuotaHeadroom" src/ --glob '!__tests
 rg -n "exportBackup|exportIncrementalBackup" src/hooks/use-storage-backup.ts
 ```
 
-*Maintained as the canonical persistence reference. If you add, remove, or
-version-bump a database, updating this document is part of your PR.*
+_Maintained as the canonical persistence reference. If you add, remove, or
+version-bump a database, updating this document is part of your PR._
