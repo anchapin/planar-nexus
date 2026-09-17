@@ -255,3 +255,61 @@ describe("check-mutation-docs-sync repo state", () => {
     expect(res.stdout).toContain("stryker.config.js");
   });
 });
+
+describe("mutation-docs-guard CI wiring (issue #1785)", () => {
+  type WorkflowStep = { name?: unknown; run?: unknown };
+  type Workflow = {
+    jobs: Record<string, { steps?: WorkflowStep[]; needs?: unknown }>;
+  };
+
+  function loadWorkflow(rel: string): Workflow {
+    const fs = require("fs") as typeof import("fs");
+    const yaml = require("yaml") as { parse: (s: string) => unknown };
+    const abs = path.join(__dirname, "..", rel);
+    return yaml.parse(fs.readFileSync(abs, "utf8")) as Workflow;
+  }
+
+  it("ci.yml runs the guard in its own job and gates build on it", () => {
+    const ci = loadWorkflow(".github/workflows/ci.yml");
+
+    const guardSteps = (ci.jobs["mutation-docs-guard"]?.steps ?? []).filter(
+      (s) => s.run === "node scripts/check-mutation-docs-sync.mjs",
+    );
+    expect(guardSteps).toHaveLength(1);
+
+    const buildNeeds = ci.jobs["build"]?.needs;
+    expect(Array.isArray(buildNeeds)).toBe(true);
+    expect(buildNeeds).toContain("mutation-docs-guard");
+  });
+
+  it("the nightly mutation workflow exposes every allowlisted module in its matrix (#1785)", () => {
+    const nightly = loadWorkflow(".github/workflows/mutation.yml");
+    const moduleExpr = String(
+      nightly.jobs["mutation"]?.strategy?.matrix?.module ?? "",
+    );
+    const stryker = require("../stryker.config") as {
+      mutate: string[];
+    };
+    // The matrix JSON must include every allowlisted entry's short name
+    // (issue #1785: a per-module job that doesn't run is the same
+    // regression as removing the per-module floor). Mirrors the
+    // extraction logic in scripts/check-mutation-config.mjs so the two
+    // tests cannot disagree about how to derive a short name from a
+    // glob entry like `src/lib/game-state/spell-casting/*.ts`.
+    function shortModuleName(entry: string): string {
+      return entry
+        .replace(/^src\/lib\/game-state\//, "")
+        .replace(/\*\.ts$/, "")
+        .replace(/\.ts$/, "")
+        .replace(/\*+$/, "")
+        .replace(/\/+$/, "");
+    }
+    for (const entry of stryker.mutate) {
+      const shortName = shortModuleName(entry);
+      expect(moduleExpr).toContain(`"${shortName}"`);
+    }
+    // fail-fast: false so one slow/hung module does not abort the others
+    // (issue #1785 acceptance criterion 1).
+    expect(nightly.jobs["mutation"]?.strategy?.["fail-fast"]).toBe(false);
+  });
+});

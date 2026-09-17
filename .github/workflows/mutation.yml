@@ -86,13 +86,20 @@ jobs:
   mutation:
     name: Stryker (${{ matrix.module }})
     runs-on: ubuntu-latest
-    # Per-job timeout (issue #1785): one module at a time, 90 minutes —
-    # generous for a single ~2000-line rules module with perTest coverage
-    # analysis at STRYKER_CONCURRENCY=4. Six of the seven nightly jobs are
-    # expected to clear this in 30-45 min; combat.ts and mana.ts (issue
-    # #1717 follow-up) are the slowest and have their own timeout floor
-    # measured after the first green run.
-    timeout-minutes: 90
+    # Per-job timeout (issue #1785): one module at a time, 180 minutes —
+    # observed on the GitHub-hosted 2-core runner that the prior 6h
+    # nightly runs had been hitting: a single layer-system.ts Stryker
+    # run consumed the full 90-minute budget in the first manual
+    # dispatch (run 35165289073, cancelled at 01:38:31Z after starting
+    # 00:08:56Z) without producing a report, because the file's mutants
+    # + the perTest test-suite fanout outpace the 90-min cap on this
+    # runner class. 180 min is well under GitHub Actions' 6h job cap
+    # and bounds the slowest module (layer-system or combat.ts) at
+    # ~3h; the six lighter modules are expected to clear in 30-60 min.
+    # The first green nightly run will record measured runtimes per
+    # module and a follow-up PR can tighten this back toward 90 min
+    # for the lighter entries if it becomes a budget concern.
+    timeout-minutes: 180
     strategy:
       # `fail-fast: false` (issue #1785 acceptance criterion 1): one slow
       # or hung module must not abort the others. With fail-fast enabled,
@@ -120,8 +127,8 @@ jobs:
 
       - name: Run Stryker mutation testing (${{ matrix.module }})
         # Issue #1785 acceptance criterion 1: per-module job calling
-        # `npm run mutate:<module>` with a generous timeout (90 min — see
-        # the job-level `timeout-minutes` above). Using the existing
+        # `npm run mutate:<module>` with a generous timeout (180 min —
+        # see the job-level `timeout-minutes` above). Using the existing
         # per-module npm scripts keeps the local-dev workflow identical
         # (`npm run mutate:layer-system` etc.) so the per-PR config guard
         # `scripts/check-mutation-config.mjs` (`mutation-smoke` job) keeps
@@ -129,9 +136,12 @@ jobs:
         run: npm run mutate:${{ matrix.module }}
         env:
           # Pinned (issue #1762): an unset worker count tracks runner CPU
-          # count and produced 59↔184 min variance. 4 is the same default
-          # the full-allowlist run used; per-module runs scale down
-          # proportionally so the per-module budget is generous.
+          # count and produced 59↔184 min variance. The GitHub-hosted
+          # ubuntu-latest runner is 2-core, so 4 workers is the same
+          # oversubscription the full-allowlist run used; raising it
+          # would only add scheduler contention. The 180-min timeout is
+          # what absorbs the slow mutants the full run used to spread
+          # across six modules.
           STRYKER_CONCURRENCY: 4
 
       - name: Per-module score breakdown
