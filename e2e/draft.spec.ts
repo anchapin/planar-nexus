@@ -333,7 +333,7 @@ test.describe("Draft Mode - Persistence", () => {
           req.onerror = () => reject(new Error("DB open failed"));
         });
       },
-      { dbName: "PlanarNexusLimited", version: 10, storeName: "sessions" },
+      { dbName: "PlanarNexusLimited", version: 11, storeName: "sessions" },
     );
     expect(sessionCount).toBeGreaterThan(0);
   });

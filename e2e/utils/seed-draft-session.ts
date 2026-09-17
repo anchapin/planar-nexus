@@ -49,15 +49,14 @@ import { test as base, expect, Page } from "@playwright/test";
 export const DRAFT_SESSION_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 
 const LIMITED_DB_NAME = "PlanarNexusLimited";
-// Dexie multiplies the version number by 10 internally — so a
-// production `this.version(1)` actually opens IDB version 10
-// (see node_modules/dexie/dist/dexie.js around line 5959:
-// "blocked by other connection holding version ".concat(
-//   ev.oldVersion / 10)). If we open the DB at IDB version 1
-// (the natural number), Dexie's open(10) sees a version mismatch
-// and races with our open, causing "blocked by other connection".
-// Use the same Dexie-scaled version number here.
-const LIMITED_DB_VERSION = 10;
+// Dexie multiplies the schema version by 10 internally — Dexie's
+// `this.version(1)` opens IDB version 10. We open at version 11
+// (one above Dexie's) so the seed's `upgradeneeded` always fires
+// and creates a clean schema with the five indexes Dexie expects.
+// This avoids the seed-vs-Dexie SchemaDiff race that causes
+// intermittent "Session not found" failures in CI (see the
+// detailed comment in seed-limited-session.ts).
+const LIMITED_DB_VERSION = 11;
 const SESSIONS_STORE = "sessions";
 
 const CARDS_PER_PACK = 14;

@@ -10,7 +10,7 @@
  *
  * Production schema (see `src/lib/limited/pool-storage.ts` lines 49-60,
  * `LimitedDatabase extends Dexie`):
- *   - DB:    "PlanarNexusLimited"  v1
+ *   - DB:    "PlanarNexusLimited"  Dexie version(1) → IDB version 10
  *   - store: "sessions"  keyPath: "id"
  *   - idx:   "setCode", "mode", "status", "createdAt", "updatedAt"
  *
@@ -51,31 +51,35 @@ import { test as base, expect, Page } from "@playwright/test";
  */
 export const SESSION_ID = "11111111-2222-3333-4444-555555555555";
 
-const LIMITED_DB_NAME = "PlanarNexusLimitedBroken";
-// Dexie multiplies the version number by 10 internally — so a
-// production `this.version(1)` actually opens IDB version 10
-// (see node_modules/dexie/dist/dexie.js around line 5959:
-// "blocked by other connection holding version ".concat(
-//   ev.oldVersion / 10)). If we open the DB at IDB version 1
-// (the natural number), Dexie's open(10) sees a version mismatch
-// and races with our open, causing "blocked by other connection".
-// Use the same Dexie-scaled version number here.
-const LIMITED_DB_VERSION = 10;
+const LIMITED_DB_NAME = "PlanarNexusLimited";
+// Dexie multiplies the schema version by 10 internally — Dexie's
+// `this.version(1)` actually opens IDB version 10. We open at
+// version 11 so the seed's open always forces an upgrade path
+// (regardless of any Dexie SchemaDiff workarounds).
+const LIMITED_DB_VERSION = 11;
 const SESSIONS_STORE = "sessions";
 
 /**
  * Synthetic 84-card sealed pool used by the fixture. Drawn from the
- * 10 production test-cards in `e2e/fixtures/test-cards.json` plus a
- * few synthesized basics so the deck builder has ≥40 distinct cards
- * (the LBld-03 40-card minimum) and the limited-deck-builder page
- * exercises real pool-only behavior instead of an empty pool.
+ * 10 production test-cards in `e2e/fixtures/test-cards.json`,
+ * distributed across 6 packs of 14 cards each (84 cards = the
+ * standard sealed-pool size).
  *
  * Coverage targets:
- *   - colors:    W, U, B, R, G + colorless (artifacts/lands)
- *   - types:     Creature, Instant, Sorcery, Artifact, Enchantment, Land
- *   - cmc:       0 (lands), 1 (bolt, ring), 2 (counterspell, greaves,
- *                terror), 3 (cultivate)
+ *   - colors: W, U, B, R, G + colorless (artifacts/lands)
+ *   - types: Creature, Instant, Sorcery, Artifact, Enchantment, Land
+ *   - cmc: 0 (lands), 1 (bolt, ring), 2 (counterspell, greaves,
+ *     terror), 3 (cultivate)
  *   - quantities: 1, 4, 40 — exercises the LBld-04 4-copy rule
+ *
+ * Each card gets `image_uris` set so the sealed page renders
+ * `<img alt={card.name}>` (the test asserts on this attribute) — without
+ * it the page falls back to a text-only display. The URLs point at
+ * an example.test domain; the pixels never load but the alt
+ * attribute is what the tests read.
+ *
+ * Each card gets `legalities` so the type-line + legality checks in
+ * the validation pipeline don't fail with "undefined.length".
  */
 function buildSealedPool() {
   const baseCards = [
@@ -249,9 +253,22 @@ function buildSealedPool() {
  * Register an init script that seeds the production `PlanarNexusLimited`
  * IndexedDB database with a known sealed session.
  *
- * Must be called BEFORE `page.goto(...)` so the script is attached to
- * the initial navigation. Mirrors `loadDeck(page)` and
- * `seedCardDatabase(page)`.
+ * Implementation note (the race-condition that took two attempts to
+ * pin down): the sealed page's React mount fires `useEffect →
+ * getSession` BEFORE the addInitScript's `tx.oncomplete` commits,
+ * because both happen on the same page navigation in parallel.
+ * The sealed page then renders "Session not found" and never
+ * re-fetches — so the test fails even though the seed eventually
+ * lands. To fix this we open the DB at IDB version 11 (Dexie's
+ * `version(1)` is internally scaled to 10, so 11 is one above Dexie's
+ * target). That guarantees the seed's `upgradeneeded` fires AFTER
+ * any prior Dexie open, creating a clean schema with the five
+ * indexes Dexie expects. Dexie's later open at version 10 sees the
+ * `sessions` store + indexes and is happy.
+ *
+ * We also explicitly `s.put` (not `s.clear()` + `s.put`) — the DB
+ * was either created by us (clean) or by Dexie (already correct),
+ * so there's nothing to clear.
  */
 export async function seedLimitedSession(page: Page): Promise<void> {
   const session = buildSealedPool();
@@ -263,22 +280,22 @@ export async function seedLimitedSession(page: Page): Promise<void> {
       const seedDb = indexedDB.open(dbName, version);
       seedDb.addEventListener("upgradeneeded", (event) => {
         const db = (event.target as IDBOpenDBRequest).result;
-        if (!db.objectStoreNames.contains(storeName)) {
-          const store = db.createObjectStore(storeName, { keyPath: "id" });
-          // Mirrors `pool-storage.ts` LimitedDatabase stores clause.
-          store.createIndex("setCode", "setCode", { unique: false });
-          store.createIndex("mode", "mode", { unique: false });
-          store.createIndex("status", "status", { unique: false });
-          store.createIndex("createdAt", "createdAt", { unique: false });
-          store.createIndex("updatedAt", "updatedAt", { unique: false });
-        }
+        // Always create the store fresh on upgrade — the seed
+        // controls the schema. Production Dexie's expected schema
+        // is one store named "sessions" with keyPath "id" and five
+        // non-unique indexes (mirrors pool-storage.ts).
+        const store = db.createObjectStore(storeName, { keyPath: "id" });
+        store.createIndex("setCode", "setCode", { unique: false });
+        store.createIndex("mode", "mode", { unique: false });
+        store.createIndex("status", "status", { unique: false });
+        store.createIndex("createdAt", "createdAt", { unique: false });
+        store.createIndex("updatedAt", "updatedAt", { unique: false });
       });
       seedDb.addEventListener("success", () => {
         const db = seedDb.result;
         try {
           const tx = db.transaction([storeName], "readwrite");
           const s = tx.objectStore(storeName);
-          s.clear();
           s.put(session);
           tx.oncomplete = () => {
             console.log(
@@ -287,14 +304,17 @@ export async function seedLimitedSession(page: Page): Promise<void> {
             (
               window as unknown as { __limitedSessionSeeded?: boolean }
             ).__limitedSessionSeeded = true;
+            try {
+              db.close();
+            } catch {
+              /* ignore */
+            }
+          };
+          tx.onerror = (event) => {
+            console.error("seed tx error:", (event.target as IDBRequest).error);
           };
         } catch (e) {
           console.error("seed [sessions] error:", e);
-        }
-        try {
-          db.close();
-        } catch {
-          /* ignore */
         }
       });
       seedDb.addEventListener("error", (event) => {
@@ -318,34 +338,16 @@ export async function seedLimitedSession(page: Page): Promise<void> {
 }
 
 /**
- * Wait for the `seedLimitedSession` init script to finish writing to
- * IndexedDB. Throws if the seed errors so the test fails fast with a
- * real cause rather than a downstream "Session not found" failure.
+ * Verify the seeded session row is in IndexedDB. Reads the DB
+ * directly so the helper doesn't rely on the in-page seed flag
+ * (which resets on every navigation).
  */
 export async function waitForLimitedSessionSeed(page: Page): Promise<void> {
-  await page.waitForFunction(
-    () =>
-      (window as unknown as { __limitedSessionSeeded?: boolean })
-        .__limitedSessionSeeded === true ||
-      (window as unknown as { __limitedSessionSeedError?: string })
-        .__limitedSessionSeedError !== undefined,
-    { timeout: 15000 },
-  );
-
-  const error = await page.evaluate(
-    () =>
-      (window as unknown as { __limitedSessionSeedError?: string })
-        .__limitedSessionSeedError,
-  );
-  if (error) {
-    throw new Error(`IndexedDB limited-session seeding failed: ${error}`);
-  }
-
   const sessionCount = await page.evaluate(
     async (config) => {
-      return new Promise<number>((resolve, reject) => {
+      return await new Promise<number>((resolve, reject) => {
         const req = indexedDB.open(config.dbName, config.version);
-        req.onsuccess = (event) => {
+        req.onsuccess = () => {
           const db = (event.target as IDBOpenDBRequest).result;
           try {
             const tx = db.transaction([config.storeName], "readonly");
@@ -355,6 +357,12 @@ export async function waitForLimitedSessionSeed(page: Page): Promise<void> {
             countReq.onerror = () => reject(new Error("Count failed"));
           } catch (e) {
             reject(e);
+          } finally {
+            try {
+              db.close();
+            } catch {
+              /* ignore */
+            }
           }
         };
         req.onerror = () => reject(new Error("DB open failed"));
@@ -369,7 +377,7 @@ export async function waitForLimitedSessionSeed(page: Page): Promise<void> {
 
   if (sessionCount === 0) {
     throw new Error(
-      `IndexedDB seeded but limited session count is ${sessionCount}`,
+      `IndexedDB has no limited session row yet — seed never wrote or was cleared`,
     );
   }
   console.log(`Limited session seed verified: ${sessionCount} row(s) found`);
