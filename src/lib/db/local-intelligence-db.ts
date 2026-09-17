@@ -186,3 +186,49 @@ export class LocalIntelligenceDB extends Dexie {
 
 // Export a singleton instance
 export const db = new LocalIntelligenceDB();
+
+// ============================================================================
+// BACKUP / RESTORE (issue #1812)
+// ============================================================================
+//
+// The persistent store the §5.6 backup scope table newly lists as in-scope
+// for backups is `match_records` (the per-(gameId, playerId) match-history
+// rows written by `use-p2p-connection.ts` from the `game-ended` GameMessage
+// — issue #1570 / #1572). The other tables (`embeddings`, `orama_snapshots`,
+// `game_history`, `player_decisions`, `game_embeddings`) are derived data
+// re-computable from the canonical sources, so they stay out of backup scope.
+// These two helpers give the backup pipeline narrow access to just
+// `match_records` without exposing the rest of the Dexie surface.
+// ============================================================================
+
+/**
+ * Issue #1812 — read every row from the `match_records` table for inclusion
+ * in a full backup. Returns `[]` when the read fails so the gather step is
+ * fail-soft (a broken match_records store never crashes an export).
+ */
+export async function getAllMatchRecordsForBackup(): Promise<MatchRecord[]> {
+  try {
+    return await db.match_records.toArray();
+  } catch (error) {
+    console.error("Failed to read match records for backup:", error);
+    return [];
+  }
+}
+
+/**
+ * Issue #1812 — restore `match_records` rows from a backup envelope into the
+ * live Dexie table. Uses `bulkPut` for a single-transaction write — keyed by
+ * the composite `${gameId}@${playerId}` (see {@link getMatchRecordKey}), so
+ * re-importing the same backup upserts in place without duplicating rows. An
+ * empty / missing array is a no-op.
+ */
+export async function restoreMatchRecordsForBackup(
+  rows: MatchRecord[],
+): Promise<void> {
+  if (!Array.isArray(rows) || rows.length === 0) return;
+  try {
+    await db.match_records.bulkPut(rows);
+  } catch (error) {
+    console.error("Failed to restore match records from backup:", error);
+  }
+}

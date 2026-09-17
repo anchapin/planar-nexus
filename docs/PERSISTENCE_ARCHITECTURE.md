@@ -43,16 +43,16 @@ names its owner module where the constant lives.
 
 | # | Database | Ver | Owner module | Stack | Object stores | #1709 open-lifecycle | In backup? |
 |---|----------|-----|--------------|-------|---------------|----------------------|------------|
-| 1 | `PlanarNexusStorage` | 3 | `src/lib/indexeddb-storage.ts` (`DEFAULT_STORAGE_CONFIG`, singleton `indexedDBStorage`) | raw wrapper class | `decks`, `saved-games` (legacy, retained for downgrade safety), `saved-games-meta`, `saved-games-payloads`, `preferences`, `usage-tracking`, `achievements`, `game-history` | ✅ `onblocked` → `IndexedDBBlockedError`; `onversionchange` → close + broadcast | ✅ source of `exportBackup` / `exportIncrementalBackup` |
+| 1 | `PlanarNexusStorage` | 4 | `src/lib/indexeddb-storage.ts` (`DEFAULT_STORAGE_CONFIG`, singleton `indexedDBStorage`) | raw wrapper class | `decks`, `saved-games` (legacy, retained for downgrade safety), `saved-games-meta`, `saved-games-payloads`, `preferences`, `usage-tracking`, `achievements`, `game-history`, `local-game-state`, `local-game-codes`, `search-preferences`, `search-presets`, `recent-searches` (last five folded in from the standalone DBs by #1811) | ✅ `onblocked` → `IndexedDBBlockedError`; `onversionchange` → close + broadcast | ✅ source of `exportBackup` / `exportIncrementalBackup`; envelope also carries the three scope fields (issue #1812) |
 | 2 | `PlanarNexusCardDB` | 2 | `src/lib/card-database.ts` | raw standalone open | `cards` (indexes `name`, `name_lower`, compound `format_legality`), `card_images` (v2) | ✅ + #1726 init retry | ❌ — re-importable from Scryfall by design |
-| 3 | `PlanarNexusCoach` | 1 | `src/lib/coach-conversation-storage.ts` (own `IndexedDBStorage` instance) | raw wrapper class (reused) | `coach-conversations` | ✅ (inherited from wrapper class) | ❌ — documented gap, see §7 |
+| 3 | `PlanarNexusCoach` | 1 | `src/lib/coach-conversation-storage.ts` (own `IndexedDBStorage` instance) | raw wrapper class (reused) | `coach-conversations` | ✅ (inherited from wrapper class) | ✅ since issue #1812 — store `coach-conversations` round-trips through `BackupData.coachConversations` |
 | 4 | `PlanarNexusGameDB` | 1 | `src/lib/local-game-storage.ts` | raw standalone open | `games` (keyPath `gameId`; indexes `gameCode` unique, `status`, `updatedAt`), `gameCodes` | ❌ none | ❌ — sessions semi-ephemeral |
 | 5 | `PlanarNexusReconnectTokens` | 1 | `src/lib/p2p-reconnect-store.ts` (`ReconnectTokenStore`) — **plus a second read-only open** in `src/hooks/use-reconnect-tokens.ts` (`openReconnectDb`) | raw standalone open | `tokens` (keyPath `id`, TTL-bounded rows) | ⚠️ warn-only `onblocked` in the store; none in the hook's open | ❌ — ephemeral by design |
 | 6 | `PlanarNexusSearchDB` | 1 | `src/lib/search/search-preferences.ts` | raw standalone open | `preferences` | ❌ none | ❌ |
 | 7 | `PlanarNexusPresetsDB` | 1 | `src/lib/search/search-presets.ts` | raw standalone open | `search-presets` | ❌ none | ❌ — user-created content; consolidation candidate (§6) |
 | 8 | `PlanarNexusRecentSearchesDB` | 1 | `src/lib/search/recent-searches.ts` | raw standalone open | `recent-searches` | ❌ none | ❌ — trivial |
-| 9 | `LocalIntelligenceDB` | 3 | `src/lib/db/local-intelligence-db.ts` (Dexie singleton; consumed by `src/hooks/use-p2p-connection.ts` for `match_records`) | **Dexie** | `embeddings`, `orama_snapshots`, `game_history`, `player_decisions`, `game_embeddings` (v2), `match_records` (v3) | ⚠️ Dexie defaults | ❌ — derived/recomputable analytics |
-| 10 | `PlanarNexusLimited` | 1 | `src/lib/limited/pool-storage.ts` | **Dexie** | `sessions` | ⚠️ Dexie defaults | ❌ — documented gap, see §7 |
+| 9 | `LocalIntelligenceDB` | 3 | `src/lib/db/local-intelligence-db.ts` (Dexie singleton; consumed by `src/hooks/use-p2p-connection.ts` for `match_records`) | **Dexie** | `embeddings`, `orama_snapshots`, `game_history`, `player_decisions`, `game_embeddings` (v2), `match_records` (v3) | ⚠️ Dexie defaults | ✅ for `match_records` since issue #1812 — round-trips through `BackupData.matchRecords`. Other tables remain out of scope (derived/recomputable). |
+| 10 | `PlanarNexusLimited` | 1 | `src/lib/limited/pool-storage.ts` | **Dexie** | `sessions` | ⚠️ Dexie defaults | ✅ since issue #1812 — store `sessions` round-trips through `BackupData.limitedSessions` |
 
 **Facades, not databases** (verified — they hold no `indexedDB.open` of their own):
 
@@ -251,9 +251,31 @@ decision, not an oversight:
 | `PlanarNexusStorage` | ✅ | User data of record — the whole point of backup |
 | `PlanarNexusPresetsDB` | ❌ today | Only user-*authored* content outside Tier 1; folding into the Tier 1 export is the stage-2 stretch goal (§6) |
 | `PlanarNexusCardDB` | ❌ | Re-importable from Scryfall; also potentially huge (would balloon export size) |
-| `PlanarNexusCoach` | ❌ | Accepted gap (§7 follow-up): conversations are user-authored; candidates for inclusion once stage-2 reopens the export format |
-| `LocalIntelligenceDB`, `PlanarNexusLimited` | ❌ | Derived / re-derivable; limited sessions could be promoted later if users report loss pain |
+| `PlanarNexusCoach` | ✅ since #1812 | Coach conversations are user-authored content; their inclusion closes the §7 "user-authored content loss on export/import cycle" gap. Carried on the wire envelope as the additive optional field `BackupData.coachConversations`. |
+| `LocalIntelligenceDB` | partial — `match_records` only since #1812 | The P2P match-history store (issue #1570) is user-authored and lives in Tier 3 because the rest of the DB (embeddings, snapshots, decisions) is derived / re-computable. Only `match_records` round-trips today, via `BackupData.matchRecords`. |
+| `PlanarNexusLimited` | ✅ since #1812 | Sealed/draft/rochester/winston pool sessions are user-authored content and were the other half of the §7 "user-authored content loss" gap. Carried as `BackupData.limitedSessions`. |
 | `PlanarNexusGameDB`, `PlanarNexusReconnectTokens`, search trio | ❌ | Ephemeral or trivial UX state |
+
+The wire envelope is `BackupData` (`src/lib/indexeddb-storage.ts`):
+
+- **Schema-versioned** as of #1812 (`BackupData.schemaVersion` defaults to
+  `1` for legacy envelopes; new envelopes are stamped with
+  `BACKUP_SCOPE_SCHEMA_VERSION = 2`). Unknown future schemaVersions warn
+  but import the recognised rows — see `importBackup`.
+- **Additive optional fields** for the three newly-included stores (issue
+  #1812): `coachConversations`, `matchRecords`, `limitedSessions`. A legacy
+  envelope that lacks any of these fields imports cleanly; the
+  corresponding external database is not touched.
+- **BackupManifest** (the `preferences` row that tracks last-backup time)
+  carries `version: 1` on first creation; legacy rows load with
+  `version === undefined` (read as `1` by the same convention).
+
+The single seam for adding/removing scope is
+`src/lib/backup/backup-scope.ts` (`collectBackupScopeData` /
+`restoreBackupScopeData`) plus a pair of narrow helpers per excluded
+database. Adding a fourth store to scope is a per-DB helper + a one-liner
+each in those two functions; a one-row addition to the table above; and a
+`BACKUP_SCOPE_SCHEMA_VERSION` bump if the wire shape changes.
 
 Any change to backup scope must update this table and
 `use-storage-backup.ts`'s `ImportOptions` in the same PR.
@@ -282,7 +304,7 @@ into the main DB (their isolation is load-bearing).
 |-----|-----------|-------------|
 | 6 of 10 opens lack full #1709 handling | Latent — all are v1 databases that have never version-bumped, so `blocked` cannot occur today | §6 stage 1; blocked-by-rule from bumping (§5.5 rule 3) |
 | `dexie-react-hooks` declared, never imported | Dependency bloat, misleading docs (the original #1722 symptom) | §6 stage 4 |
-| Coach conversations + limited sessions outside backup scope | User-authored content loss on export/import cycle | Documented decision (§5.6); revisit at stage 2 |
+| Coach conversations + limited sessions outside backup scope | ~~User-authored content loss on export/import cycle~~ | **Resolved by issue #1812** — `coach-conversations`, `match_records`, and `limited-sessions` now round-trip through `BackupData`. The envelope is schema-versioned (§5.6) so legacy backups still import. |
 | Duplicate reconnect open in `use-reconnect-tokens.ts` | Duplicated schema knowledge; no blocked handling | Fold into `ReconnectTokenStore` (expose a read-only `list()`) in stage 1 |
 | `p2p-reconnect-store.ts` warn-only `onblocked` | Open promise can pend forever under a future v2 | Stage 1 |
 

@@ -323,6 +323,69 @@ export async function clearAllCoachConversations(): Promise<void> {
 }
 
 // ============================================================================
+// BACKUP / RESTORE (issue #1812)
+// ============================================================================
+//
+// Coach conversations live on a dedicated `PlanarNexusCoach` IndexedDB database
+// (kept isolated from `PlanarNexusStorage` so a coach-store bump cannot
+// version-conflict with the main app stores — see the persistence ADR §1 /
+// §5.4). They are user-authored content that the §5.6 backup scope table marks
+// as included as of #1812: `exportBackup` gathers every row across every deck
+// via {@link getAllCoachConversationsForBackup}, and `importBackup` writes
+// them back via {@link restoreCoachConversationsForBackup}. Both helpers fail
+// soft (returning `[]` / no-op) when IndexedDB is unavailable so a backup
+// taken on a device that never opened the coach route still produces a valid
+// envelope (and a restore on a fresh device without the coach DB never
+// crashes).
+// ============================================================================
+
+/**
+ * Issue #1812 — read every persisted coach conversation, across every deck, for
+ * inclusion in a full backup. Returns `[]` when IndexedDB is unavailable or
+ * the read fails so {@link exportBackup} can include the field safely.
+ *
+ * Conversations are returned in their natural insertion order; the caller is
+ * responsible for sorting (the on-the-wire envelope preserves the array
+ * verbatim, and the deck-scoped load helper sorts newest-first at read time).
+ */
+export async function getAllCoachConversationsForBackup(): Promise<
+  CoachConversation[]
+> {
+  if (!indexedDBAvailable()) return [];
+  try {
+    return await coachStorage.getAll<CoachConversation>(
+      COACH_CONVERSATION_STORE,
+    );
+  } catch (error) {
+    console.error("Failed to read coach conversations for backup:", error);
+    return [];
+  }
+}
+
+/**
+ * Issue #1812 — restore coach conversation rows from a backup envelope into
+ * the live `PlanarNexusCoach` store. Each row is written with `set` (an
+ * upsert keyed by `id`), so re-importing the same backup is idempotent and a
+ * fresh import over rows that have been edited locally replaces the local
+ * copy with the backup copy.
+ *
+ * Messages keep their `Date` instance shape — the `saveConversation` path
+ * already round-trips `Date`-or-ISO-string normalisation; passing rows from a
+ * JSON-parsed envelope works because that helper handles both. Empty / missing
+ * arrays are a no-op; an IndexedDB-unavailable environment is a no-op.
+ */
+export async function restoreCoachConversationsForBackup(
+  rows: CoachConversation[],
+): Promise<void> {
+  if (!indexedDBAvailable()) return;
+  if (!Array.isArray(rows) || rows.length === 0) return;
+  for (const row of rows) {
+    if (!row || typeof row !== "object" || !row.id) continue;
+    await saveConversation(row);
+  }
+}
+
+// ============================================================================
 // FACTORY
 // ============================================================================
 
