@@ -1,6 +1,14 @@
 /**
  * Local Game State Storage Module
- * Replaces Firebase Realtime Database with IndexedDB for game state storage
+ * Replaces Firebase Realtime Database with IndexedDB for game state storage.
+ *
+ * Issue #1811 (PERSISTENCE_ARCHITECTURE §6 stage 1): this module no longer
+ * hand-rolls its own `indexedDB.open("PlanarNexusGameDB", 1)` — it
+ * delegates to the canonical `indexedDBStorage` singleton, which folds
+ * the `games` + `gameCodes` stores into `PlanarNexusStorage` v4 as
+ * `local-game-state` + `local-game-codes`. The legacy standalone DB is
+ * emptied by the v3 → v4 lazy migration in `indexeddb-storage.ts`, so a
+ * downgrade that still opens `PlanarNexusGameDB` v1 will find no rows.
  */
 
 import {
@@ -9,24 +17,29 @@ import {
   type SerializedGameState,
 } from "./game-state/serialization";
 import type { GameState, Phase, PlayerId } from "./game-state/types";
-
-// IndexedDB configuration
-const DB_NAME = "PlanarNexusGameDB";
-const DB_VERSION = 1;
-const GAMES_STORE_NAME = "games";
-const GAME_CODES_STORE_NAME = "gameCodes";
-
-// Database state
-let db: IDBDatabase | null = null;
-let isInitialized = false;
-let initPromise: Promise<void> | null = null;
+import {
+  indexedDBStorage,
+  LOCAL_GAME_CODES_STORE,
+  LOCAL_GAME_STATE_STORE,
+} from "./indexeddb-storage";
 
 /**
- * Game session info
+ * Game session info.
+ *
+ * Issue #1811: persisted rows now carry an `id` field that mirrors
+ * `gameId` (the wrapper class keys every store on `id`). The field is
+ * optional in the type so existing callers that construct sessions by
+ * hand do not need to change — the module fills it in at write time
+ * and ignores it at read time (callers keep reading `.gameId`).
  */
 export interface LocalGameSession {
-  /** Unique game ID */
+  /** Unique game ID. */
   gameId: string;
+  /**
+   * Storage primary key. Mirrors `gameId` for the wrapper class. Not
+   * required from callers; populated by `storeGameSession`.
+   */
+  id?: string;
   /** Game code for joining */
   gameCode: string;
   /** Host player ID */
@@ -86,7 +99,12 @@ export interface GameStorageCallbacks {
 
 /**
  * Local Game Storage Manager
- * Handles game state persistence using IndexedDB
+ * Handles game state persistence using IndexedDB.
+ *
+ * Issue #1811: all IndexedDB I/O now goes through the shared
+ * `indexedDBStorage` singleton (the canonical seam). The class still
+ * owns the sync interval + in-memory game state; it just no longer
+ * holds a private `IDBDatabase` handle.
  */
 class LocalGameStorageManager {
   private callbacks: GameStorageCallbacks | null = null;
@@ -97,61 +115,12 @@ class LocalGameStorageManager {
   private syncInterval: ReturnType<typeof setInterval> | null = null;
 
   /**
-   * Open IndexedDB and create schema
-   */
-  private async openDatabase(): Promise<IDBDatabase> {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => resolve(request.result);
-
-      request.onupgradeneeded = (event) => {
-        const database = (event.target as IDBOpenDBRequest).result;
-
-        // Create games object store
-        if (!database.objectStoreNames.contains(GAMES_STORE_NAME)) {
-          const gamesStore = database.createObjectStore(GAMES_STORE_NAME, {
-            keyPath: "gameId",
-          });
-          gamesStore.createIndex("gameCode", "gameCode", { unique: true });
-          gamesStore.createIndex("status", "status", { unique: false });
-          gamesStore.createIndex("updatedAt", "updatedAt", { unique: false });
-        }
-
-        // Create game codes object store for quick lookups
-        if (!database.objectStoreNames.contains(GAME_CODES_STORE_NAME)) {
-          database.createObjectStore(GAME_CODES_STORE_NAME, {
-            keyPath: "gameCode",
-          });
-        }
-      };
-    });
-  }
-
-  /**
-   * Initialize the storage manager
+   * Initialize the storage manager. Delegates to the canonical
+   * `indexedDBStorage.initialize()` which handles the v3 → v4 lazy
+   * consolidation on first call (issue #1811).
    */
   async initialize(): Promise<void> {
-    if (isInitialized) {
-      return initPromise || Promise.resolve();
-    }
-
-    if (initPromise) {
-      return initPromise;
-    }
-
-    initPromise = (async () => {
-      try {
-        db = await this.openDatabase();
-        isInitialized = true;
-      } catch (error) {
-        console.error("Failed to initialize game storage:", error);
-        throw error;
-      }
-    })();
-
-    return initPromise;
+    await indexedDBStorage.initialize();
   }
 
   /**
@@ -171,10 +140,6 @@ class LocalGameStorageManager {
     initialGameState?: GameState,
   ): Promise<LocalGameSession> {
     await this.initialize();
-
-    if (!db) {
-      throw new Error("Database not initialized");
-    }
 
     const gameId = this.generateGameId();
     const now = Date.now();
@@ -223,10 +188,6 @@ class LocalGameStorageManager {
   ): Promise<LocalGameSession> {
     await this.initialize();
 
-    if (!db) {
-      throw new Error("Database not initialized");
-    }
-
     // Look up game by game code
     const gameId = await this.lookupGameCode(gameCode);
     if (!gameId) {
@@ -270,10 +231,6 @@ class LocalGameStorageManager {
       throw new Error("No active game");
     }
 
-    if (!db) {
-      throw new Error("Database not initialized");
-    }
-
     const update: GameStateUpdate = {
       type: isFullSync ? "full-sync" : "delta",
       version: this.currentVersion + 1,
@@ -304,7 +261,7 @@ class LocalGameStorageManager {
    * Apply a game state update to storage
    */
   private async applyUpdate(update: GameStateUpdate): Promise<void> {
-    if (!this.currentGameId || !db) {
+    if (!this.currentGameId) {
       return;
     }
 
@@ -395,7 +352,7 @@ class LocalGameStorageManager {
   async updateStatus(
     status: "active" | "paused" | "completed" | "abandoned",
   ): Promise<void> {
-    if (!this.currentGameId || !db) {
+    if (!this.currentGameId) {
       return;
     }
 
@@ -435,7 +392,7 @@ class LocalGameStorageManager {
    * Leave the game
    */
   async leaveGame(): Promise<void> {
-    if (!this.currentGameId || !db) {
+    if (!this.currentGameId) {
       return;
     }
 
@@ -509,22 +466,14 @@ class LocalGameStorageManager {
   }
 
   /**
-   * Store game code mapping
+   * Store game code mapping (issue #1811: routes through the wrapper
+   * class's `set()` with `id = gameCode` so duplicate codes overwrite).
    */
   private async storeGameCode(gameCode: string, gameId: string): Promise<void> {
-    if (!db) throw new Error("Database not initialized");
-
-    const database = db;
-    return new Promise((resolve, reject) => {
-      const transaction = database.transaction(
-        [GAME_CODES_STORE_NAME],
-        "readwrite",
-      );
-      const store = transaction.objectStore(GAME_CODES_STORE_NAME);
-      const request = store.put({ gameCode, gameId });
-
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
+    await indexedDBStorage.set(LOCAL_GAME_CODES_STORE, {
+      id: gameCode,
+      gameCode,
+      gameId,
     });
   }
 
@@ -532,39 +481,21 @@ class LocalGameStorageManager {
    * Look up game by game code
    */
   private async lookupGameCode(gameCode: string): Promise<string | null> {
-    if (!db) throw new Error("Database not initialized");
-
-    const database = db;
-    return new Promise((resolve, reject) => {
-      const transaction = database.transaction(
-        [GAME_CODES_STORE_NAME],
-        "readonly",
-      );
-      const store = transaction.objectStore(GAME_CODES_STORE_NAME);
-      const request = store.get(gameCode);
-
-      request.onsuccess = () => {
-        const result = request.result;
-        resolve(result?.gameId || null);
-      };
-      request.onerror = () => reject(request.error);
-    });
+    const row = await indexedDBStorage.get<{ gameId: string }>(
+      LOCAL_GAME_CODES_STORE,
+      gameCode,
+    );
+    return row?.gameId ?? null;
   }
 
   /**
-   * Store game session
+   * Store game session (issue #1811: routes through the wrapper class
+   * with `id = gameId`).
    */
   private async storeGameSession(session: LocalGameSession): Promise<void> {
-    if (!db) throw new Error("Database not initialized");
-
-    const database = db;
-    return new Promise((resolve, reject) => {
-      const transaction = database.transaction([GAMES_STORE_NAME], "readwrite");
-      const store = transaction.objectStore(GAMES_STORE_NAME);
-      const request = store.put(session);
-
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
+    await indexedDBStorage.set(LOCAL_GAME_STATE_STORE, {
+      id: session.gameId,
+      ...session,
     });
   }
 
@@ -574,19 +505,11 @@ class LocalGameStorageManager {
   private async getGameSessionById(
     gameId: string,
   ): Promise<LocalGameSession | null> {
-    if (!db) throw new Error("Database not initialized");
-
-    const database = db;
-    return new Promise((resolve, reject) => {
-      const transaction = database.transaction([GAMES_STORE_NAME], "readonly");
-      const store = transaction.objectStore(GAMES_STORE_NAME);
-      const request = store.get(gameId);
-
-      request.onsuccess = () => {
-        resolve(request.result || null);
-      };
-      request.onerror = () => reject(request.error);
-    });
+    const row = await indexedDBStorage.get<LocalGameSession>(
+      LOCAL_GAME_STATE_STORE,
+      gameId,
+    );
+    return row ?? null;
   }
 
   /**
@@ -607,9 +530,6 @@ class LocalGameStorageManager {
     meta?: { resumeKey?: string; playerName?: string },
   ): Promise<LocalGameSession> {
     await this.initialize();
-    if (!db) {
-      throw new Error("Database not initialized");
-    }
 
     const resumeKey =
       meta?.resumeKey ?? `p2p_${gameState.gameId || Date.now().toString(36)}`;
@@ -660,29 +580,14 @@ class LocalGameStorageManager {
    * Remove player from session
    */
   private async removePlayerFromSession(gameId: string): Promise<void> {
-    if (!db) throw new Error("Database not initialized");
+    const session = await this.getGameSessionById(gameId);
+    if (!session) return;
 
-    const database = db;
-    return new Promise((resolve, reject) => {
-      const transaction = database.transaction([GAMES_STORE_NAME], "readwrite");
-      const store = transaction.objectStore(GAMES_STORE_NAME);
-      const request = store.get(gameId);
+    session.clientId = undefined;
+    session.clientName = undefined;
+    session.updatedAt = Date.now();
 
-      request.onsuccess = () => {
-        const session = request.result;
-        if (session) {
-          session.clientId = undefined;
-          session.clientName = undefined;
-          session.updatedAt = Date.now();
-          const updateRequest = store.put(session);
-          updateRequest.onsuccess = () => resolve();
-          updateRequest.onerror = () => reject(updateRequest.error);
-        } else {
-          resolve();
-        }
-      };
-      request.onerror = () => reject(request.error);
-    });
+    await this.storeGameSession(session);
   }
 }
 

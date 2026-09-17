@@ -131,9 +131,9 @@ describe("CardSearch source wiring — recent-search chips (issue #1544)", () =>
 
   it("persists only the raw query string — no card payload", () => {
     const src = readFileSync(STORAGE_FILE, "utf8");
-    // The put call stores exactly `{ query, lastUsedAt }`. Anything
-    // resembling a card object would fail this match.
-    expect(src).toMatch(/store\.put\(\{[\s\S]*?query: trimmed/);
+    // The set call (issue #1811) stores exactly `{ id, query, lastUsedAt }`.
+    // Anything resembling a card object would fail this match.
+    expect(src).toMatch(/indexedDBStorage\.set[\s\S]{0,200}?query: trimmed/);
     expect(src).toMatch(/lastUsedAt: Date\.now\(\)/);
   });
 });

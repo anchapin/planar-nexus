@@ -121,6 +121,50 @@ describe("ReconnectTokenStore — round trip", () => {
     expect(got!.lastDeliveredSeq).toBe(2);
   });
 
+  // Issue #1811 — list() is the public read-only enumeration API that
+  // replaces the second `indexedDB.open` use-reconnect-tokens.ts used
+  // to do. The semantics are "every token currently in the store"
+  // (no scoping / expiry filtering) — the caller decides what to do
+  // with stale rows.
+  it("list() returns every persisted token", async () => {
+    await store.save(baseToken());
+    await store.save(
+      baseToken({ peerId: "alice", sessionKey: "k-a", gameCode: "GAME-A" }),
+    );
+    await store.save(
+      baseToken({ peerId: "bob", sessionKey: "k-b", gameCode: "GAME-B" }),
+    );
+
+    const all = await store.list();
+    expect(all).toHaveLength(3);
+    const peerIds = all.map((t) => t.peerId).sort();
+    expect(peerIds).toEqual(["alice", "bob", "peer-1"]);
+  });
+
+  it("list() returns an empty array when the store is empty", async () => {
+    const all = await store.list();
+    expect(all).toEqual([]);
+  });
+
+  it("list() returns expired tokens alongside live ones (caller decides)", async () => {
+    // list() is intentionally unfiltered — issue #1811 leaves expiry
+    // handling to the caller (the hook calls purgeExpired() first,
+    // then list()). This test pins that contract so a future refactor
+    // does not silently re-introduce expiry filtering.
+    await store.save(baseToken()); // fresh
+    await store.save(
+      baseToken({
+        peerId: "stale",
+        sessionKey: "k-stale",
+        expiresAt: Date.now() - 1_000,
+      }),
+    );
+
+    const all = await store.list();
+    expect(all).toHaveLength(2);
+    expect(all.find((t) => t.peerId === "stale")).toBeDefined();
+  });
+
   it("defaults expiresAt to issuedAt + RECONNECT_TOKEN_TTL_MS", async () => {
     // Use a recent `issuedAt` so the default expiresAt lands inside the
     // TTL window — otherwise `get()` would lazily purge it before we can
@@ -195,17 +239,13 @@ describe("ReconnectTokenStore — expiry (issue #1254 AC)", () => {
   });
 
   it("hides expired tokens from get()", async () => {
-    await store.save(
-      baseToken({ expiresAt: Date.now() - 1_000 }),
-    );
+    await store.save(baseToken({ expiresAt: Date.now() - 1_000 }));
     const got = await store.get("GAME42", "peer-1");
     expect(got).toBeNull();
   });
 
   it("lazily purges expired tokens encountered during get()", async () => {
-    await store.save(
-      baseToken({ expiresAt: Date.now() - 1_000 }),
-    );
+    await store.save(baseToken({ expiresAt: Date.now() - 1_000 }));
     await store.get("GAME42", "peer-1"); // triggers lazy purge
 
     // After the lazy purge, a fresh save should succeed and the row

@@ -1,5 +1,12 @@
 /**
- * Search presets persistence with IndexedDB
+ * Search presets persistence with IndexedDB.
+ *
+ * Issue #1811 (PERSISTENCE_ARCHITECTURE section 6 stage 1): this module
+ * no longer hand-rolls its own indexedDB.open against a standalone
+ * PlanarNexusPresetsDB. All reads and writes go through the canonical
+ * indexedDBStorage singleton's 'search-presets' store. The legacy DB is
+ * emptied by the v3 to v4 lazy migration in indexeddb-storage.ts, so a
+ * downgrade that still opens PlanarNexusPresetsDB v1 will find no rows.
  *
  * Provides IndexedDB-based storage for saved filter presets including:
  * - Preset name and configuration
@@ -9,11 +16,14 @@
  *
  * Uses the same IndexedDB pattern as search-preferences.ts for consistency.
  */
-import type { FilterState } from './filter-types';
-import type { SortOption, SortDirection } from './sort-cards';
+import type { FilterState } from "./filter-types";
+import type { SortOption, SortDirection } from "./sort-cards";
+import { indexedDBStorage, SEARCH_PRESETS_STORE } from "../indexeddb-storage";
 
 /**
- * Search preset interface
+ * Search preset interface. Stored rows in the consolidated store carry
+ * an `id` field that mirrors this row's id (the wrapper class keys
+ * every store on 'id').
  */
 export interface SearchPreset {
   id: string;
@@ -26,15 +36,11 @@ export interface SearchPreset {
 }
 
 /**
- * IndexedDB configuration
- * Uses separate DB from card-database for cleaner separation
+ * Module-level init promise (mirrors the original `initPromise`
+ * lifecycle). IndexedDBStorage handles its own concurrency, so this
+ * only guards re-entrancy from the (now removed) module-level DB
+ * handle.
  */
-const DB_NAME = 'PlanarNexusPresetsDB';
-const DB_VERSION = 1;
-const STORE_NAME = 'search-presets';
-
-// Database state
-let db: IDBDatabase | null = null;
 let initPromise: Promise<void> | null = null;
 
 /**
@@ -45,31 +51,10 @@ function generateId(): string {
 }
 
 /**
- * Open IndexedDB and create schema if needed
- */
-async function openDatabase(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
-
-    request.onupgradeneeded = (event) => {
-      const database = (event.target as IDBOpenDBRequest).result;
-
-      // Create object store for presets with auto-incrementing key
-      if (!database.objectStoreNames.contains(STORE_NAME)) {
-        const store = database.createObjectStore(STORE_NAME, { keyPath: 'id' });
-        // Create index for name for quick lookups
-        store.createIndex('name', 'name', { unique: false });
-        store.createIndex('updatedAt', 'updatedAt', { unique: false });
-      }
-    };
-  });
-}
-
-/**
- * Initialize the presets database
+ * Initialize the presets database exactly once per module load.
+ * Delegates to the canonical indexedDBStorage singleton, which carries
+ * the v3 to v4 lazy consolidation that empties the legacy
+ * PlanarNexusPresetsDB (issue #1811).
  */
 async function initDB(): Promise<void> {
   if (initPromise) {
@@ -78,9 +63,9 @@ async function initDB(): Promise<void> {
 
   initPromise = (async () => {
     try {
-      db = await openDatabase();
+      await indexedDBStorage.initialize();
     } catch (error) {
-      console.error('Failed to initialize presets DB:', error);
+      console.error("Failed to initialize presets DB:", error);
       throw error;
     }
   })();
@@ -89,19 +74,15 @@ async function initDB(): Promise<void> {
 }
 
 /**
- * Save a new preset to IndexedDB
+ * Save a new preset to IndexedDB.
  *
  * @param preset - Preset data without id, createdAt, updatedAt
  * @returns The saved preset with generated id and timestamps
  */
 export async function savePreset(
-  preset: Omit<SearchPreset, 'id' | 'createdAt' | 'updatedAt'>
+  preset: Omit<SearchPreset, "id" | "createdAt" | "updatedAt">,
 ): Promise<SearchPreset> {
   await initDB();
-
-  if (!db) {
-    throw new Error('Presets DB not available');
-  }
 
   const now = Date.now();
   const newPreset: SearchPreset = {
@@ -111,47 +92,27 @@ export async function savePreset(
     updatedAt: now,
   };
 
-  return new Promise((resolve, reject) => {
-    const transaction = db!.transaction([STORE_NAME], 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-
-    const request = store.add(newPreset);
-
-    request.onsuccess = () => resolve(newPreset);
-    request.onerror = () => reject(request.error);
-  });
+  await indexedDBStorage.set<SearchPreset>(SEARCH_PRESETS_STORE, newPreset);
+  return newPreset;
 }
 
 /**
- * Load all presets from IndexedDB
+ * Load all presets from IndexedDB, sorted by updatedAt (newest first).
  *
- * @returns Array of presets sorted by updatedAt (newest first)
+ * @returns Array of presets sorted by updatedAt descending.
  */
 export async function loadPresets(): Promise<SearchPreset[]> {
   await initDB();
 
-  if (!db) {
-    console.warn('Presets DB not available, returning empty array');
+  try {
+    const presets =
+      await indexedDBStorage.getAll<SearchPreset>(SEARCH_PRESETS_STORE);
+    presets.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    return presets;
+  } catch (error) {
+    console.warn("Failed to load presets, returning empty array", error);
     return [];
   }
-
-  return new Promise((resolve, reject) => {
-    const transaction = db!.transaction([STORE_NAME], 'readonly');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.getAll();
-
-    request.onsuccess = () => {
-      const presets = request.result || [];
-      // Sort by updatedAt, newest first
-      presets.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-      resolve(presets);
-    };
-
-    request.onerror = () => {
-      console.warn('Failed to load presets, returning empty array');
-      resolve([]);
-    };
-  });
 }
 
 /**
@@ -163,25 +124,16 @@ export async function loadPresets(): Promise<SearchPreset[]> {
 export async function getPreset(id: string): Promise<SearchPreset | null> {
   await initDB();
 
-  if (!db) {
-    console.warn('Presets DB not available');
+  try {
+    const row = await indexedDBStorage.get<SearchPreset>(
+      SEARCH_PRESETS_STORE,
+      id,
+    );
+    return row ?? null;
+  } catch (error) {
+    console.warn("Failed to get preset", error);
     return null;
   }
-
-  return new Promise((resolve, reject) => {
-    const transaction = db!.transaction([STORE_NAME], 'readonly');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.get(id);
-
-    request.onsuccess = () => {
-      resolve(request.result || null);
-    };
-
-    request.onerror = () => {
-      console.warn('Failed to get preset');
-      resolve(null);
-    };
-  });
 }
 
 /**
@@ -191,19 +143,7 @@ export async function getPreset(id: string): Promise<SearchPreset | null> {
  */
 export async function deletePreset(id: string): Promise<void> {
   await initDB();
-
-  if (!db) {
-    throw new Error('Presets DB not available');
-  }
-
-  return new Promise((resolve, reject) => {
-    const transaction = db!.transaction([STORE_NAME], 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.delete(id);
-
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-  });
+  await indexedDBStorage.delete(SEARCH_PRESETS_STORE, id);
 }
 
 /**
@@ -215,13 +155,9 @@ export async function deletePreset(id: string): Promise<void> {
  */
 export async function updatePreset(
   id: string,
-  updates: Partial<Omit<SearchPreset, 'id' | 'createdAt'>>
+  updates: Partial<Omit<SearchPreset, "id" | "createdAt">>,
 ): Promise<SearchPreset> {
   await initDB();
-
-  if (!db) {
-    throw new Error('Presets DB not available');
-  }
 
   // Get existing preset first
   const existing = await getPreset(id);
@@ -237,15 +173,8 @@ export async function updatePreset(
     updatedAt: Date.now(),
   };
 
-  return new Promise((resolve, reject) => {
-    const transaction = db!.transaction([STORE_NAME], 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-
-    const request = store.put(updatedPreset);
-
-    request.onsuccess = () => resolve(updatedPreset);
-    request.onerror = () => reject(request.error);
-  });
+  await indexedDBStorage.set<SearchPreset>(SEARCH_PRESETS_STORE, updatedPreset);
+  return updatedPreset;
 }
 
 /**
@@ -253,17 +182,5 @@ export async function updatePreset(
  */
 export async function clearPresets(): Promise<void> {
   await initDB();
-
-  if (!db) {
-    return;
-  }
-
-  return new Promise((resolve, reject) => {
-    const transaction = db!.transaction([STORE_NAME], 'readwrite');
-    const store = transaction.objectStore(STORE_NAME);
-    const request = store.clear();
-
-    request.onsuccess = () => resolve();
-    request.onerror = () => reject(request.error);
-  });
+  await indexedDBStorage.clear(SEARCH_PRESETS_STORE);
 }

@@ -11,6 +11,13 @@
  * The persistence + scoping + TTL rules live in
  * {@link import("@/lib/p2p-reconnect-store").ReconnectTokenStore}. This
  * file is a thin React glue layer — no domain logic.
+ *
+ * Issue #1811 (PERSISTENCE_ARCHITECTURE section 6 stage 1, item 2):
+ * the listing flow previously opened a SECOND read-only
+ * `indexedDB.open("PlanarNexusReconnectTokens", 1)` directly here,
+ * duplicating the store's schema knowledge and lacking `onblocked`
+ * handling. It now goes through `reconnectTokenStore.list()`, the
+ * store's public read-only enumeration API.
  */
 
 "use client";
@@ -42,35 +49,26 @@ export function useReconnectTokens(): {
       // Sweep expired entries first so the returned list reflects what
       // `get()` would actually surface to a rejoin attempt.
       await reconnectTokenStore.purgeExpired();
-      // The store does not expose a public `getAll` to keep the public
-      // API narrow; we read each known entry via the (gameCode, peerId)
-      // pair returned by a fresh cursor sweep. For a store with at most
-      // a few live tokens per browser this is cheap.
-      const db = await openReconnectDb();
-      if (!db) {
-        setTokens([]);
-        return;
-      }
-      const all = await readAllLiveTokens(db);
-      setTokens(all);
+      // Issue #1811 — list() goes through the store singleton, not a
+      // second read-only open of the same DB. Filter out any rows
+      // whose TTL has passed since the purge (defensive: a token can
+      // race-expire between purgeExpired and list).
+      const all = await reconnectTokenStore.list();
+      const now = Date.now();
+      setTokens(all.filter((t) => t.expiresAt > now));
     } finally {
       setLoading(false);
     }
   }, []);
 
-  const remove = useCallback(
-    async (gameCode: string, peerId: string) => {
-      const ok = await reconnectTokenStore.delete(gameCode, peerId);
-      if (ok) {
-        setTokens((prev) =>
-          prev.filter(
-            (t) => !(t.gameCode === gameCode && t.peerId === peerId),
-          ),
-        );
-      }
-    },
-    [],
-  );
+  const remove = useCallback(async (gameCode: string, peerId: string) => {
+    const ok = await reconnectTokenStore.delete(gameCode, peerId);
+    if (ok) {
+      setTokens((prev) =>
+        prev.filter((t) => !(t.gameCode === gameCode && t.peerId === peerId)),
+      );
+    }
+  }, []);
 
   useEffect(() => {
     void refresh();
@@ -129,54 +127,4 @@ export function useReconnectToken(
   }, [gameCode, peerId]);
 
   return { token, loading, clear };
-}
-
-// ---------------------------------------------------------------------------
-// Internal helpers — kept here (not exported) because the public surface is
-// the hooks above. Re-exported only for tests.
-// ---------------------------------------------------------------------------
-
-async function openReconnectDb(): Promise<IDBDatabase | null> {
-  // Reuses the same DB name as the store singleton. The store does not
-  // expose its private handle, so we open our own read-only handle here
-  // for the listing flow. Concurrency-safe because IDB serializes
-  // transactions on the same store.
-  if (typeof indexedDB === "undefined") return null;
-  return new Promise((resolve) => {
-    let request: IDBOpenDBRequest;
-    try {
-      request = indexedDB.open("PlanarNexusReconnectTokens", 1);
-    } catch {
-      resolve(null);
-      return;
-    }
-    request.onupgradeneeded = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains("tokens")) {
-        db.createObjectStore("tokens", { keyPath: "id" });
-      }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => resolve(null);
-  });
-}
-
-async function readAllLiveTokens(
-  db: IDBDatabase,
-): Promise<ReconnectToken[]> {
-  return new Promise((resolve) => {
-    try {
-      const tx = db.transaction("tokens", "readonly");
-      const store = tx.objectStore("tokens");
-      const request = store.getAll();
-      request.onsuccess = () => {
-        const now = Date.now();
-        const all = (request.result || []) as ReconnectToken[];
-        resolve(all.filter((t) => t.expiresAt > now));
-      };
-      request.onerror = () => resolve([]);
-    } catch {
-      resolve([]);
-    }
-  });
 }

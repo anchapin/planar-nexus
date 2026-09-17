@@ -84,10 +84,7 @@ export interface ReconnectToken {
  * and consumers can compute the same id without duplicating the
  * separator choice.
  */
-export function getReconnectTokenKey(
-  gameCode: string,
-  peerId: string,
-): string {
+export function getReconnectTokenKey(gameCode: string, peerId: string): string {
   return `${gameCode}::${peerId}`;
 }
 
@@ -176,10 +173,7 @@ export class ReconnectTokenStore {
       };
 
       request.onerror = () => {
-        p2pLogger.warn(
-          "Reconnect-token DB open error",
-          String(request.error),
-        );
+        p2pLogger.warn("Reconnect-token DB open error", String(request.error));
         this.openPromise = null;
         resolve(null);
       };
@@ -209,8 +203,7 @@ export class ReconnectTokenStore {
     if (!db) return false;
 
     const issuedAt = input.issuedAt ?? Date.now();
-    const expiresAt =
-      input.expiresAt ?? issuedAt + RECONNECT_TOKEN_TTL_MS;
+    const expiresAt = input.expiresAt ?? issuedAt + RECONNECT_TOKEN_TTL_MS;
     const id = getReconnectTokenKey(input.gameCode, input.peerId);
     const token: ReconnectToken = {
       id,
@@ -253,10 +246,7 @@ export class ReconnectTokenStore {
    * Tokens are scoped to the (gameCode, peerId) pair so a token cannot be
    * reused for a different game (issue #1254 acceptance criteria).
    */
-  async get(
-    gameCode: string,
-    peerId: string,
-  ): Promise<ReconnectToken | null> {
+  async get(gameCode: string, peerId: string): Promise<ReconnectToken | null> {
     const db = await this.openDb();
     if (!db) return null;
 
@@ -339,6 +329,51 @@ export class ReconnectTokenStore {
       } catch (err) {
         p2pLogger.warn("Failed to delete reconnect token", String(err));
         resolve(false);
+      }
+    });
+  }
+
+  /**
+   * Issue #1811 — read-only `list()` of every token currently in the
+   * store. Replaces the second `indexedDB.open` that
+   * `use-reconnect-tokens.ts` used to perform in order to enumerate
+   * the tokens for the lobby UI (the hook now goes through this
+   * method, eliminating the duplicated schema knowledge and the
+   * missing `onblocked` handling that came with that second open).
+   *
+   * Returns an empty array when IndexedDB is unavailable or when the
+   * store has not been opened yet (the singleton's `save`/`get`
+   * surface already degrades gracefully in those cases, and the hook
+   * treats an empty array as "no resume tokens").
+   *
+   * Expiry handling is the caller's responsibility: the hook layer
+   * calls `purgeExpired()` first, then `list()`, so a freshly-stale
+   * token does not show up in the lobby list. This keeps `list()`
+   * itself a pure read so a future subscriber (broadcast channel,
+   * etc.) can rely on the snapshot being unfiltered.
+   */
+  async list(): Promise<ReconnectToken[]> {
+    const db = await this.openDb();
+    if (!db) return [];
+
+    return new Promise<ReconnectToken[]>((resolve) => {
+      try {
+        const tx = db.transaction(this.storeName, "readonly");
+        const store = tx.objectStore(this.storeName);
+        const request = store.getAll();
+        request.onsuccess = () => {
+          resolve((request.result || []) as ReconnectToken[]);
+        };
+        request.onerror = () => {
+          p2pLogger.warn(
+            "Failed to list reconnect tokens",
+            String(request.error),
+          );
+          resolve([]);
+        };
+      } catch (err) {
+        p2pLogger.warn("Failed to list reconnect tokens", String(err));
+        resolve([]);
       }
     });
   }
