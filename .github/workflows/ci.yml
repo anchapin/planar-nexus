@@ -839,12 +839,18 @@ jobs:
 
   engine-size-budget:
     # Issue #1725: no rules-engine module under src/lib/game-state/ may
-    # exceed 2,000 lines. The four top-churn monoliths (types.ts,
-    # spell-casting.ts, oracle-text-parser.ts, keyword-actions.ts) were
-    # decomposed into per-family modules; this guard blocks regrowth so
-    # size × churn risk cannot silently re-accumulate. Runs in plain Node
-    # (~10ms) — far cheaper than the suites that would otherwise carry
-    # the signal. Local equivalent: `npm run lint:engine-size`.
+    # exceed 2,000 lines. Issue #1808: no AI opponent/consumption
+    # module under src/ai/ may exceed 3,500 lines (the ai layer is
+    # structurally larger than the engine due to feature tables,
+    # weight-learning stores, and model-side state translators).
+    # Both gates share scripts/check-engine-size-budget.mjs and are
+    # evaluated by a single Node invocation. The four top-churn
+    # engine monoliths (types.ts, spell-casting.ts, oracle-text-parser.ts,
+    # keyword-actions.ts) were decomposed into per-family modules in
+    # #1725; this guard blocks regrowth so size × churn risk cannot
+    # silently re-accumulate. Runs in plain Node (~50ms for 167 files)
+    # — far cheaper than the suites that would otherwise carry the
+    # signal. Local equivalent: `npm run lint:engine-size`.
     name: Engine Size Budget
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
@@ -858,7 +864,7 @@ jobs:
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
 
-      - name: Assert engine module size budget (#1725)
+      - name: Assert engine/ai module size budget (#1725, #1808)
         run: node scripts/check-engine-size-budget.mjs
 
   no-prompt-in-engine-guard:
