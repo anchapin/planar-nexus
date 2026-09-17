@@ -456,6 +456,141 @@ describe("POST /api/chat/coach — resilience", () => {
   });
 });
 
+// ============================================================================
+// issue #1794 — error redaction (parity with /api/ai-proxy, issue #1585)
+// ============================================================================
+//
+// The coach route is the product's front door (v1.7 milestone) and previously
+// echoed `error.message` raw into:
+//   - the terminal `error` SSE event,
+//   - the outer 500 JSON response,
+//   - console.error logs.
+//
+// Provider SDK errors routinely embed key material, the full request URL, and
+// request-body / prompt fragments — see issue #1585. The fix wraps both paths
+// with `toSafeClientError` + `redactErrorMessage` + `newCorrelationId`, the
+// same machinery /api/ai-proxy uses. These tests force a provider failure
+// and assert the raw error string never appears on the wire or in the log.
+
+describe("POST /api/chat/coach — error redaction (issue #1794)", () => {
+  let consoleErrorSpy: jest.Spied<typeof console.error>;
+
+  beforeEach(() => {
+    consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+  });
+
+  /** Join every arg captured by the spy into one searchable string. */
+  function capturedLogOutput(): string {
+    return consoleErrorSpy.mock.calls
+      .map((call) =>
+        call
+          .map((arg) => {
+            if (typeof arg === "string") return arg;
+            try {
+              return JSON.stringify(arg);
+            } catch {
+              return String(arg);
+            }
+          })
+          .join(" "),
+      )
+      .join("\n");
+  }
+
+  it("emits a generic SSE error event when the stream throws (no raw provider message)", async () => {
+    const leakedKey = "sk-proj-abcdefghij0123456789abcdefghij";
+    // Provider SDK-style error embedding the key in the message.
+    const providerError = Object.assign(
+      new Error(
+        `401 Unauthorized: request headers {'Authorization': 'Bearer ${leakedKey}'} were rejected by OpenAI`,
+      ),
+      { statusCode: 401 },
+    );
+    jest.mocked(streamCoachResponse).mockImplementation(async function* () {
+      yield { type: "text", value: "partial" } as never;
+      throw providerError;
+    });
+
+    const res = await POST(
+      makeRequest({
+        messages: [{ role: "user", content: "hi" }],
+        digestedContext: { deckSummary: { totalCards: 60 } },
+        format: "commander",
+      }),
+    );
+
+    const text = await res.text();
+    // The wire carries only the generic message + correlation id + errorCode
+    // — never the raw provider error string or the leaked key.
+    expect(text).toContain('"type":"error"');
+    expect(text).toContain("errorCode");
+    expect(text).toContain("correlationId");
+    expect(text).not.toContain(leakedKey);
+    expect(text).not.toMatch(/Bearer\s+[A-Za-z0-9._-]+/);
+    expect(text).not.toContain("Authorization");
+    expect(text).not.toMatch(/sk-[A-Za-z0-9]{20,}/);
+
+    // Server log carries the redacted summary + correlation id so operators
+    // can match a client-reported failure back to the server-side error.
+    const logged = capturedLogOutput();
+    expect(logged).not.toContain(leakedKey);
+    expect(logged).not.toMatch(/sk-[A-Za-z0-9]{20,}/);
+    expect(logged).toMatch(/corr [A-Za-z0-9_-]+/);
+  });
+
+  it("returns a generic 502 with correlationId when the outer handler catches an AUTH error", async () => {
+    // Use an Authorization-Bearer-wrapped key (the most common provider-SDK
+    // echo shape) so the bearer-token pattern in the redactor matches it
+    // without relying on the structural `sk-[A-Za-z0-9]{20,}` regex. (A bare
+    // `sk-proj-…` style key without a Bearer wrapper is a separate redactor
+    // gap tracked outside this issue.)
+    const leakedKey = "sk-proj-zyxwabcdefghij0123456789abcdefghij";
+    const providerError = Object.assign(
+      new Error(
+        `403 Forbidden: request headers {'Authorization': 'Bearer ${leakedKey}'} were rejected by Anthropic`,
+      ),
+      { statusCode: 403 },
+    );
+    // Surface the error in the outer catch by making `streamCoachResponse`
+    // itself throw synchronously when called. This skips the SSE path and
+    // exercises the route's outer try/catch that owns the 500/502 JSON
+    // response.
+    jest.mocked(streamCoachResponse).mockImplementation((() => {
+      throw providerError;
+    }) as never);
+
+    const res = await POST(
+      makeRequest({
+        messages: [{ role: "user", content: "hi" }],
+        deckCards: [{ name: "Sol Ring", quantity: 1 }],
+        format: "commander",
+      }),
+    );
+
+    expect(res.status).toBe(502);
+    const data = await readJsonBody(res);
+    expect(data.success).toBe(false);
+    expect(data.errorCode).toBe("INVALID_API_KEY");
+    expect(data.error).toBe("Provider authentication failed");
+    expect(data.correlationId).toBeTruthy();
+
+    const responseBody = JSON.stringify(data);
+    expect(responseBody).not.toContain(leakedKey);
+    expect(responseBody).not.toMatch(/Bearer\s+[A-Za-z0-9._-]+/);
+    expect(responseBody).not.toMatch(/sk-[A-Za-z0-9]{20,}/);
+
+    // The server log line is redacted and carries the correlation id.
+    const logged = capturedLogOutput();
+    expect(logged).not.toContain(leakedKey);
+    expect(logged).not.toMatch(/sk-[A-Za-z0-9]{20,}/);
+    expect(logged).toMatch(/corr [A-Za-z0-9_-]+/);
+  });
+});
+
 describe("POST /api/chat/coach — structured analysis wiring (#923/#928)", () => {
   it("embeds the structured deck analysis into the system prompt", async () => {
     const captured = yieldEvents([{ type: "done" }]);

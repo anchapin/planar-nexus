@@ -72,7 +72,18 @@ type CoachStreamEventPayload =
       failures: string[];
     }
   | { type: "summary"; summary: CoachMemorySummary }
-  | { type: "error"; value: string }
+  | {
+      type: "error";
+      value: string;
+      /**
+       * Issue #1794: correlation id tying this client-visible error to the
+       * redacted server log line (issue #1585 contract). Optional so existing
+       * client code that doesn't surface it keeps working.
+       */
+      correlationId?: string;
+      /** Stable error code from the enumerated proxy-error vocabulary. */
+      errorCode?: string;
+    }
   | { type: "done" };
 
 /**
