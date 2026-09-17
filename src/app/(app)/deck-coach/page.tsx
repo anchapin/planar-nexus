@@ -92,6 +92,7 @@ export default function DeckCoachPage() {
   // self-contained (issue #1074).
   const {
     messages,
+    streamingDraft,
     isLoading: isChatLoading,
     sendMessage,
     cancelGeneration,
@@ -652,6 +653,7 @@ export default function DeckCoachPage() {
 
                 <DeckCoachChatPanel
                   messages={messages}
+                  streamingDraft={streamingDraft}
                   isLoading={isChatLoading}
                   onSendMessage={handleChatMessage}
                   onCancel={cancelGeneration}
