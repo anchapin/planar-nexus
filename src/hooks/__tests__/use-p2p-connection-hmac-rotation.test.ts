@@ -101,4 +101,42 @@ describe("rotateSessionKeyOnPromotion (issue #1391)", () => {
     expect(first).not.toBe(second);
     expect(conn.getSessionKey()).toBe(second);
   });
+
+  /**
+   * Issue #1796 regression — the hook previously defined its own
+   * `generateSessionKey()` that silently fell back to `Math.random`
+   * when `crypto.getRandomValues` was unavailable. A predictable key
+   * poisons the HMAC: any peer could forge envelopes and inject game
+   * actions. The hook now uses the canonical
+   * `generateSessionKey()` from `p2p-handshake.ts`, which throws
+   * (mirroring `generateGameCode` per #1568) instead of silently
+   * downgrading. This test pins that contract at the hook boundary —
+   * if the duplicate ever drifts back in, the throw disappears and
+   * this test fails.
+   *
+   * The deep `crypto.getRandomValues` removal is scoped to the test
+   * body via try/finally so other tests (which rely on the real
+   * CSPRNG) are not affected.
+   */
+  it("throws when crypto.getRandomValues is unavailable (issue #1796)", () => {
+    const originalGetRandomValues = crypto.getRandomValues;
+    try {
+      // Override (rather than `delete`, which Node treats as a no-op
+      // for non-configurable properties of the Web Crypto global) to
+      // simulate a host that lacks Web Crypto, so the throw path
+      // exercises the missing-CSPRNG branch.
+      (
+        crypto as {
+          getRandomValues:
+            ((a: ArrayBufferView) => ArrayBufferView) | undefined;
+        }
+      ).getRandomValues = undefined;
+      const conn = makeConnection();
+      expect(() => rotateSessionKeyOnPromotion(conn)).toThrow(
+        /crypto\.getRandomValues is unavailable/,
+      );
+    } finally {
+      crypto.getRandomValues = originalGetRandomValues;
+    }
+  });
 });
