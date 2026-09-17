@@ -25,6 +25,17 @@ export interface OramaSnapshot {
   id: string;
   data: any;
   timestamp: number;
+  /**
+   * Issue #1792: card corpus fingerprint (count + FNV-1a hash of sorted
+   * IDs) used to gate snapshot reuse. Optional — absent on the
+   * main-thread `cardSearchIndex` snapshot row, present on the worker
+   * snapshot row at id `"card_search_worker"`. The Dexie index definition
+   * on `orama_snapshots` does not list these columns (they are
+   * application-level metadata, not query keys), so they ride on the row
+   * without changing the schema.
+   */
+  cardCount?: number;
+  cardIdsHash?: string;
 }
 
 export interface GameHistory {

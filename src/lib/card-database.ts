@@ -8,6 +8,11 @@
 import { cardSearchIndex } from "./search/card-search-index";
 import { searchWorkerClient } from "./search/search-worker-client";
 import {
+  cardCorpusFingerprint,
+  loadWorkerSnapshot,
+  saveWorkerSnapshot,
+} from "./search/worker-snapshot";
+import {
   classifyWriteError,
   getStorageEstimate,
   predictQuotaHeadroom,
@@ -222,8 +227,7 @@ export async function initializeCardDatabase(): Promise<void> {
       // Issue #1726: clear the single-flight cache so the NEXT call
       // retries, and remember the failure for status reporting.
       initPromise = null;
-      lastInitError =
-        error instanceof Error ? error : new Error(String(error));
+      lastInitError = error instanceof Error ? error : new Error(String(error));
       throw error;
     }
   })();
@@ -313,14 +317,55 @@ async function getAllCardsFromDB(): Promise<MinimalCard[]> {
  * the worker supplements the main-thread index; searchCardsOffline falls
  * back to `cardSearchIndex.search` when the worker is not ready yet.
  *
+ * Issue #1792: persistence + single-flight. On a second visit with an
+ * unchanged card database, the worker restores from a persisted
+ * snapshot and performs zero `insertMultiple` calls over the full
+ * corpus — the 200–600 ms per-5k-cards reindex the prewarm module's
+ * docstring pegs becomes a single IndexedDB read. A module-level
+ * single-flight promise collapses concurrent prewarm + initialize calls
+ * into one build; a fingerprint (FNV-1a 32-bit hash of sorted card
+ * IDs + count) gates snapshot reuse so a corpus change triggers a
+ * full reindex instead of a stale warm-start.
+ *
  * @internal
  */
+let workerIndexPromise: Promise<void> | null = null;
+
 export async function indexCardsInWorker(): Promise<void> {
+  if (workerIndexPromise) return workerIndexPromise;
+  workerIndexPromise = doIndexCardsInWorker().finally(() => {
+    // Clear in `finally` (not `then`) so a rejection does not leave the
+    // single-flight slot permanently occupied and the next caller
+    // silently inherits the same failure. Mirrors the initPromise
+    // reset in `initializeCardDatabase()` at line 224.
+    workerIndexPromise = null;
+  });
+  return workerIndexPromise;
+}
+
+async function doIndexCardsInWorker(): Promise<void> {
   const api = searchWorkerClient.getSearchApi();
   if (!api) return;
   try {
     const allCards = await getAllCardsFromDB();
     if (allCards.length === 0) return;
+    const fingerprint = cardCorpusFingerprint(allCards);
+
+    // Warm-start path: if a snapshot exists for the current corpus,
+    // hand it to the worker and skip the full reindex entirely.
+    const persistedSnapshot = await loadWorkerSnapshot(fingerprint);
+    if (persistedSnapshot !== null) {
+      const restored = await api.init(persistedSnapshot);
+      if (restored) {
+        // Zero insertMultiple calls over the full corpus on the
+        // warm-start path (issue #1792 acceptance criterion 1).
+        return;
+      }
+      // `init()` returned false — the snapshot was unreadable (already
+      // handled inside the worker's try/catch around `restore`). Fall
+      // through to a full reindex below.
+    }
+
     const documents = allCards.map((card) => ({
       id: card.id,
       name: card.name,
@@ -332,6 +377,15 @@ export async function indexCardsInWorker(): Promise<void> {
     }));
     await api.clear();
     await api.index(documents);
+
+    // Persist for the next session. Best-effort: a serialization
+    // failure surfaces as `null` from `exportSnapshot()` (see
+    // search.worker.ts), in which case we skip persistence — the next
+    // session will rebuild from scratch, same as today.
+    const snapshotData = await api.exportSnapshot();
+    if (snapshotData !== null) {
+      await saveWorkerSnapshot(snapshotData, fingerprint);
+    }
   } catch (error) {
     console.warn("[card-database] worker indexing failed:", error);
   }
