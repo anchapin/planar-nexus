@@ -197,7 +197,10 @@ export async function POST(request: NextRequest) {
     //     budget.
     const clientIdentifier = getClientIdentifier(request);
     try {
-      enforceRateLimit(clientIdentifier, COACH_RATE_LIMIT);
+      // Issue #1782: `enforceRateLimit` is async (shared KV backend possible);
+      // awaiting here ensures the 429 path runs BEFORE any provider work
+      // (#1781 contract).
+      await enforceRateLimit(clientIdentifier, COACH_RATE_LIMIT);
     } catch (error) {
       if (error instanceof RateLimitError) {
         return NextResponse.json(

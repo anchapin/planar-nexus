@@ -194,10 +194,14 @@ beforeAll(() => {
   (globalThis as Record<string, unknown>).Response = TestResponse;
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   jest.clearAllMocks();
   usageLoggerInstances.length = 0;
-  clearAllRateLimits();
+  // Issue #1782: `clearAllRateLimits` is async — awaiting it so the next test
+  // starts with a guaranteed-empty bucket (without the await the LRU clear
+  // is queued in a microtask and a slow CI runner can leak state across
+  // tests).
+  await clearAllRateLimits();
   makeUsageLoggerMock();
   mockStream([{ type: "text", value: "Hello!" }, { type: "done" }]);
 });

@@ -186,10 +186,15 @@ export async function POST(
     // server-verified request metadata (Issue #1393).
     const clientId = getClientIdentifier(request);
 
-    // Check rate limit
+    // Check rate limit (issue #1782: `enforceRateLimit` is async because the
+    // backing store may be a shared KV — `await` so the throw surfaces inside
+    // the try/catch as a `RateLimitError` rejection, not an unhandled one).
     let rateLimitResult;
     try {
-      rateLimitResult = enforceRateLimit(clientId, providerConfig.rateLimit);
+      rateLimitResult = await enforceRateLimit(
+        clientId,
+        providerConfig.rateLimit,
+      );
     } catch (error) {
       if (error instanceof RateLimitError) {
         await usageLogger

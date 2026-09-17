@@ -257,14 +257,18 @@ beforeAll(() => {
   (globalThis as { Request?: unknown }).Request = TestRequest;
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   jest.mocked(streamCoachResponse).mockReset();
   clearCoachContextCache();
   // Issue #1781: the rate limiter is a module-level singleton keyed by
   // client identity — reset it between tests so each test starts with a
   // fresh bucket (requests in this file otherwise share the no-IP
   // `session:` fallback identity).
-  clearAllRateLimits();
+  //
+  // Issue #1782: `clearAllRateLimits` is async — await it so the LRU
+  // clear finishes before the next test runs (the un-awaited version was
+  // queued as a microtask and a slow runner could leak state across tests).
+  await clearAllRateLimits();
 });
 
 afterEach(() => {

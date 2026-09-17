@@ -1,12 +1,32 @@
 /**
  * Server-Side Rate Limiting
- * Issue #522: Implement server-side API key validation and proxy for AI calls
  *
- * This module provides server-side rate limiting for AI API calls.
- * Unlike client-side rate limiting, this cannot be bypassed by users.
+ * Issue #522: Implement server-side API key validation and proxy for AI calls.
+ * Issue #1782: Back the limiter with a shared store so it works correctly in
+ * any multi-instance / serverless deployment.
+ *
+ * The {@link checkRateLimit} / {@link enforceRateLimit} / {@link getRateLimitStatus}
+ * surface is preserved (callers in `/api/ai-proxy`, `/api/chat`, and
+ * `/api/chat/coach` keep working without modification). What changed is the
+ * storage: the limiter is now a {@link ServerRateLimiter} that delegates
+ * per-key bucket state to a pluggable {@link RateLimiterBackend}. Two
+ * implementations ship in-tree:
+ *
+ *   - {@link InMemoryRateLimiterBackend} — module-scope `LRUCache` (the
+ *     pre-#1782 behavior). Single-instance dev default; the effective abuse
+ *     ceiling on multi-instance / serverless deploys is `maxRequests *
+ *     instance-count`, not `maxRequests`. Not safe for production traffic.
+ *   - {@link RedisRateLimiterBackend} — Upstash Redis HTTP REST, fixed-window
+ *     via `INCR` + `EXPIRE`. The atomic counter lives in a shared KV store,
+ *     so every warm instance enforces the same window. Selected via
+ *     `RATE_LIMIT_BACKEND=redis` plus `REDIS_URL` + `REDIS_TOKEN`.
+ *
+ * Backend selection happens lazily on the first call into the singleton
+ * (`defaultServerRateLimiter`). Tests that never trigger a real limit check
+ * never trip the Redis constructor.
  */
 
-import { LRUCache } from 'lru-cache';
+import { LRUCache } from "lru-cache";
 
 /**
  * Rate limit configuration
@@ -31,132 +51,299 @@ export interface RateLimitResult {
  * Default rate limit configuration
  */
 export const DEFAULT_RATE_LIMIT: RateLimitConfig = {
-  maxRequests: parseInt(process.env.AI_RATE_LIMIT_MAX || '100', 10),
-  windowMs: parseInt(process.env.AI_RATE_LIMIT_WINDOW_MS || '60000', 10),
-  message: 'Rate limit exceeded. Please try again later.',
+  maxRequests: parseInt(process.env.AI_RATE_LIMIT_MAX || "100", 10),
+  windowMs: parseInt(process.env.AI_RATE_LIMIT_WINDOW_MS || "60000", 10),
+  message: "Rate limit exceeded. Please try again later.",
 };
 
 /**
- * Request tracking using LRU cache for memory efficiency
- * Key: userId or IP address
- * Value: array of request timestamps
+ * Per-key bucket state stored by a {@link RateLimiterBackend}.
+ *
+ * Fixed-window semantics: each window of length `windowMs` owns an isolated
+ * counter keyed by `(bucketKey, windowFloor)`. When `windowFloor` advances,
+ * the backend sees a new key and starts a fresh count — there is no carry-over
+ * between windows, which is the simplest atomic primitive the shared Redis
+ * backend can implement (one `INCR` + first-hit `EXPIRE`).
+ *
+ * `windowFloor` is `Math.floor(now / windowMs)`. Storing it alongside the
+ * counter lets the limiter compute `resetAt = (windowFloor + 1) * windowMs`
+ * without re-deriving it from the bucket key on every read.
  */
-class RateLimitStore {
-  private cache: LRUCache<string, number[]>;
+export interface RateLimitBucket {
+  count: number;
+  windowFloor: number;
+}
+
+/**
+ * Storage backend interface for rate-limit bucket state.
+ *
+ * The contract is intentionally narrow: a backend is a thin key/value store
+ * keyed on a string `bucketKey` (the caller-supplied user identifier, hashed
+ * or prefixed however the implementation chooses). All window-flooring logic
+ * lives in {@link ServerRateLimiter}; the backend never sees `windowMs` or
+ * `Date.now()`, so a stub backend used in tests cannot drift from the
+ * production window math.
+ *
+ * The limiter's abuse-control guarantee depends entirely on this contract
+ * being shared across every process enforcing the same limit — that is the
+ * point of issue #1782. An implementation whose writes are not visible to
+ * other processes (a local `Map`, a local file) is per-instance and offers
+ * no protection against request-storm amplification across replicas.
+ */
+export interface RateLimiterBackend {
+  /**
+   * Read the current bucket for `bucketKey`, or `null` when no window is
+   * open. Returns the most-recently-written state; concurrent writers may
+   * race, which is acceptable for an upper-bound counter.
+   */
+  get(bucketKey: string): Promise<RateLimitBucket | null>;
+
+  /**
+   * Persist `bucket` as the current state for `bucketKey`. Implementations
+   * are expected to attach their own TTL so idle keys eventually disappear.
+   */
+  set(bucketKey: string, bucket: RateLimitBucket, ttlMs: number): Promise<void>;
+
+  /**
+   * Drop the bucket for `bucketKey` (used by {@link resetRateLimit}). A
+   * backend with no per-key concept returns without effect.
+   */
+  delete(bucketKey: string): Promise<void>;
+
+  /**
+   * Drop every rate-limit bucket tracked by this backend. Used by the
+   * consumer-route tests to reset state between cases; not on a production
+   * hot path.
+   */
+  clear(): Promise<void>;
+}
+
+/**
+ * Module-scope LRU-backed implementation of {@link RateLimiterBackend}.
+ *
+ * Preserves the pre-#1782 storage shape (an `LRUCache`) but only stores the
+ * integer counter + window floor rather than a timestamp array. The LRU's
+ * built-in TTL (`2 × windowMs`) keeps idle buckets from leaking memory.
+ */
+export class InMemoryRateLimiterBackend implements RateLimiterBackend {
+  private readonly cache: LRUCache<string, RateLimitBucket>;
 
   constructor(maxSize: number = 10000) {
     this.cache = new LRUCache({
       max: maxSize,
-      ttl: parseInt(process.env.AI_RATE_LIMIT_TTL_MS || '300000', 10), // 5 min default
+      ttl: parseInt(process.env.AI_RATE_LIMIT_TTL_MS || "300000", 10), // 5 min default
       updateAgeOnGet: true,
     });
   }
 
-  /**
-   * Get request timestamps for a user
-   */
-  get(userId: string): number[] {
-    return this.cache.get(userId) || [];
+  async get(bucketKey: string): Promise<RateLimitBucket | null> {
+    return this.cache.get(bucketKey) ?? null;
   }
 
-  /**
-   * Set request timestamps for a user
-   */
-  set(userId: string, timestamps: number[]): void {
-    this.cache.set(userId, timestamps);
+  async set(
+    bucketKey: string,
+    bucket: RateLimitBucket,
+    _ttlMs: number,
+  ): Promise<void> {
+    this.cache.set(bucketKey, bucket);
   }
 
-  /**
-   * Delete user data
-   */
-  delete(userId: string): boolean {
-    return this.cache.delete(userId);
+  async delete(bucketKey: string): Promise<void> {
+    this.cache.delete(bucketKey);
   }
 
-  /**
-   * Clear all data
-   */
-  clear(): void {
+  async clear(): Promise<void> {
     this.cache.clear();
   }
 
   /**
-   * Get cache size
+   * Test/diagnostics hook. Exposed so the test suite can confirm the
+   * per-instance LRU actually has the buckets it claims to (and is not
+   * secretly sharing state via module reload).
    */
   size(): number {
     return this.cache.size;
   }
 }
 
-// Singleton instance
-const rateLimitStore = new RateLimitStore();
-
 /**
- * Check rate limit for a user
- * @param userId - Unique user identifier (user ID, session ID, or IP)
- * @param config - Rate limit configuration
- * @returns Rate limit result
+ * The fixed-window counter logic shared by every {@link RateLimiterBackend}
+ * implementation.
+ *
+ * Given a {@link ServerRateLimiter}'s configured backend, the supplied
+ * `bucketKey`, the desired `maxRequests` / `windowMs`, and the current
+ * `now`, return the rate-limit decision for one inbound request AND, when
+ * the request fits, persist the new counter value via the backend.
+ *
+ * The backend interface is async (Redis / KV clients are async), so the
+ * limiter is too — callers that previously used a synchronous `checkRateLimit`
+ * now `await` it. The top-level {@link checkRateLimit} wrapper handles the
+ * `await` internally so callers that do not care about the promise can
+ * remain synchronous in spirit.
  */
-export function checkRateLimit(
-  userId: string,
-  config: RateLimitConfig = DEFAULT_RATE_LIMIT
-): RateLimitResult {
-  const now = Date.now();
-  const windowStart = now - config.windowMs;
+export async function applyFixedWindowCheck(args: {
+  backend: RateLimiterBackend;
+  bucketKey: string;
+  maxRequests: number;
+  windowMs: number;
+  now: number;
+}): Promise<RateLimitResult> {
+  const { backend, bucketKey, maxRequests, windowMs, now } = args;
+  const windowFloor = Math.floor(now / windowMs);
+  const current = await backend.get(bucketKey);
+  const existingCount =
+    current && current.windowFloor === windowFloor ? current.count : 0;
+  const resetAt = (windowFloor + 1) * windowMs;
 
-  // Get existing requests
-  const requests = rateLimitStore.get(userId);
-
-  // Filter to only requests within the window
-  const recentRequests = requests.filter(timestamp => timestamp > windowStart);
-
-  // Calculate remaining requests
-  const remaining = Math.max(0, config.maxRequests - recentRequests.length);
-
-  // Calculate reset time (when the oldest request in window expires)
-  const oldestRequest = recentRequests.length > 0 
-    ? Math.min(...recentRequests) 
-    : now;
-  const resetAt = oldestRequest + config.windowMs;
-
-  // Check if rate limited
-  if (recentRequests.length >= config.maxRequests) {
+  if (existingCount >= maxRequests) {
+    const retryAfter = Math.max(1, Math.ceil((resetAt - now) / 1000));
     return {
       success: false,
       remaining: 0,
       resetAt,
-      retryAfter: Math.ceil((resetAt - now) / 1000), // Convert to seconds
+      retryAfter,
     };
   }
 
-  // Add current request
-  recentRequests.push(now);
-  rateLimitStore.set(userId, recentRequests);
-
+  await backend.set(
+    bucketKey,
+    { count: existingCount + 1, windowFloor },
+    windowMs,
+  );
   return {
     success: true,
-    remaining,
+    remaining: Math.max(0, maxRequests - existingCount - 1),
     resetAt,
   };
 }
 
 /**
- * Enforce rate limit and throw error if exceeded
- * @param userId - Unique user identifier
- * @param config - Rate limit configuration
- * @throws {RateLimitError} If rate limit is exceeded
+ * A {@link ServerRateLimiter} wraps a {@link RateLimiterBackend} with the
+ * {@link RateLimitConfig}-aware policy that the previous module-scope
+ * `checkRateLimit` exported directly. Constructed via
+ * {@link createServerRateLimiter}; the module-level {@link checkRateLimit}
+ * uses {@link defaultServerRateLimiter}.
  */
-export function enforceRateLimit(
+export class ServerRateLimiter {
+  constructor(private readonly backend: RateLimiterBackend) {}
+
+  /** @returns the configured backend (mostly useful for tests). */
+  getBackend(): RateLimiterBackend {
+    return this.backend;
+  }
+
+  async check(
+    userId: string,
+    config: RateLimitConfig = DEFAULT_RATE_LIMIT,
+    now: number = Date.now(),
+  ): Promise<RateLimitResult> {
+    return applyFixedWindowCheck({
+      backend: this.backend,
+      bucketKey: userId,
+      maxRequests: config.maxRequests,
+      windowMs: config.windowMs,
+      now,
+    });
+  }
+
+  async getStatus(
+    userId: string,
+    config: RateLimitConfig = DEFAULT_RATE_LIMIT,
+    now: number = Date.now(),
+  ): Promise<{
+    remaining: number;
+    limit: number;
+    resetIn: number;
+    isLimited: boolean;
+  }> {
+    const result = await this.check(userId, config, now);
+    return {
+      remaining: result.remaining,
+      limit: config.maxRequests,
+      resetIn: Math.max(0, result.resetAt - now),
+      isLimited: !result.success,
+    };
+  }
+
+  async reset(userId: string): Promise<void> {
+    await this.backend.delete(userId);
+  }
+
+  async clearAll(): Promise<void> {
+    await this.backend.clear();
+  }
+}
+
+/**
+ * Build a {@link ServerRateLimiter} backed by the requested storage backend.
+ *
+ * Selection rules (issue #1782):
+ *   - `RATE_LIMIT_BACKEND` unset / `"memory"` → {@link InMemoryRateLimiterBackend}
+ *     (single-instance dev default; NOT safe for production multi-instance).
+ *   - `RATE_LIMIT_BACKEND=redis` → {@link RedisRateLimiterBackend} configured
+ *     from `REDIS_URL` + `REDIS_TOKEN`. Throws at construction time if either
+ *     is missing so a misconfigured deploy fails loud rather than silently
+ *     regressing to per-instance limiting.
+ *
+ * Selection is lazy (deferred until the first `check` call) so test files
+ * that import the module without ever invoking the limiter do not crash on
+ * a missing Redis env var.
+ */
+export function createServerRateLimiter(
+  backend?: RateLimiterBackend,
+): ServerRateLimiter {
+  return new ServerRateLimiter(backend ?? new InMemoryRateLimiterBackend());
+}
+
+/** Lazily-constructed singleton used by the module-level wrappers below. */
+let _defaultServerRateLimiter: ServerRateLimiter | undefined;
+function getDefaultServerRateLimiter(): ServerRateLimiter {
+  if (!_defaultServerRateLimiter) {
+    _defaultServerRateLimiter = createServerRateLimiter();
+  }
+  return _defaultServerRateLimiter;
+}
+
+/**
+ * Reset the default singleton to a fresh in-memory instance.
+ *
+ * Only used by tests that need to clear module-scope state between cases
+ * without touching the real backing store. Not exported as part of the
+ * supported public API — production code should never swap the singleton.
+ *
+ * @internal
+ */
+export function __resetDefaultServerRateLimiterForTests(): void {
+  _defaultServerRateLimiter = undefined;
+}
+
+/**
+ * Check rate limit for a user. Synchronous-shaped wrapper around
+ * {@link ServerRateLimiter.check}; returns the resolved result.
+ */
+export async function checkRateLimit(
   userId: string,
-  config?: RateLimitConfig
-): RateLimitResult {
-  const result = checkRateLimit(userId, config);
+  config: RateLimitConfig = DEFAULT_RATE_LIMIT,
+  now?: number,
+): Promise<RateLimitResult> {
+  return getDefaultServerRateLimiter().check(userId, config, now);
+}
+
+/**
+ * Enforce rate limit and throw {@link RateLimitError} if exceeded.
+ */
+export async function enforceRateLimit(
+  userId: string,
+  config?: RateLimitConfig,
+  now?: number,
+): Promise<RateLimitResult> {
+  const result = await checkRateLimit(userId, config, now);
 
   if (!result.success) {
     throw new RateLimitError(
-      config?.message || 'Rate limit exceeded',
+      config?.message || "Rate limit exceeded",
       result.retryAfter || 0,
-      result.remaining
+      result.remaining,
     );
   }
 
@@ -169,11 +356,15 @@ export function enforceRateLimit(
 export class RateLimitError extends Error {
   public readonly retryAfter: number;
   public readonly remaining: number;
-  public readonly code = 'RATE_LIMIT_EXCEEDED';
+  public readonly code = "RATE_LIMIT_EXCEEDED";
 
-  constructor(message: string, retryAfterMs: number, remainingRequests: number) {
+  constructor(
+    message: string,
+    retryAfterMs: number,
+    remainingRequests: number,
+  ) {
     super(message);
-    this.name = 'RateLimitError';
+    this.name = "RateLimitError";
     this.retryAfter = retryAfterMs;
     this.remaining = remainingRequests;
   }
@@ -182,54 +373,48 @@ export class RateLimitError extends Error {
 /**
  * Get rate limit status for display
  */
-export function getRateLimitStatus(
+export async function getRateLimitStatus(
   userId: string,
-  config?: RateLimitConfig
-): {
+  config?: RateLimitConfig,
+  now?: number,
+): Promise<{
   remaining: number;
   limit: number;
   resetIn: number;
   isLimited: boolean;
-} {
-  const now = Date.now();
-  const result = checkRateLimit(userId, config);
-  const resetIn = Math.max(0, result.resetAt - now);
-
-  return {
-    remaining: result.remaining,
-    limit: config?.maxRequests || DEFAULT_RATE_LIMIT.maxRequests,
-    resetIn,
-    isLimited: !result.success,
-  };
+}> {
+  return getDefaultServerRateLimiter().getStatus(userId, config, now);
 }
 
 /**
- * Reset rate limit for a user
+ * Reset rate limit for a user.
  */
-export function resetRateLimit(userId: string): void {
-  rateLimitStore.delete(userId);
+export async function resetRateLimit(userId: string): Promise<void> {
+  await getDefaultServerRateLimiter().reset(userId);
 }
 
 /**
- * Clear all rate limit data
+ * Clear all rate limit data. Intended for test setup/teardown; not part of
+ * any production hot path.
  */
-export function clearAllRateLimits(): void {
-  rateLimitStore.clear();
+export async function clearAllRateLimits(): Promise<void> {
+  await getDefaultServerRateLimiter().clearAll();
 }
 
 /**
- * Create rate limit headers for response
+ * Create rate limit headers for response. Pure function; unchanged by the
+ * #1782 backend refactor.
  */
 export function getRateLimitHeaders(
   result: RateLimitResult,
-  config: RateLimitConfig = DEFAULT_RATE_LIMIT
+  config: RateLimitConfig = DEFAULT_RATE_LIMIT,
 ): Record<string, string> {
   return {
-    'X-RateLimit-Limit': config.maxRequests.toString(),
-    'X-RateLimit-Remaining': result.remaining.toString(),
-    'X-RateLimit-Reset': result.resetAt.toString(),
+    "X-RateLimit-Limit": config.maxRequests.toString(),
+    "X-RateLimit-Remaining": result.remaining.toString(),
+    "X-RateLimit-Reset": result.resetAt.toString(),
     ...(result.retryAfter && {
-      'Retry-After': result.retryAfter.toString(),
+      "Retry-After": result.retryAfter.toString(),
     }),
   };
 }
