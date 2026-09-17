@@ -39,6 +39,12 @@ import {
   type RateLimitConfig,
 } from "@/lib/server-rate-limiter";
 import { getClientIdentifier } from "@/lib/server-request-identity";
+import {
+  HTTP_STATUS_BY_CLASS,
+  newCorrelationId,
+  redactErrorMessage,
+  toSafeClientError,
+} from "@/lib/security/redact-error";
 
 /**
  * API Route for the Conversational AI Coach.
@@ -553,7 +559,14 @@ export async function POST(request: NextRequest) {
             // stream. Log and emit neither extra event — the message goes
             // through as unannotated assistant text, which is the safe
             // fallback.
-            console.error("Post-generation verification failed:", error);
+            //
+            // Issue #1794: provider SDK errors can embed key material /
+            // request URLs / prompt fragments. Redact before logging so the
+            // verification-failure path doesn't become a leak.
+            console.error(
+              "Post-generation verification failed:",
+              redactErrorMessage(error),
+            );
           }
         }
         yield event;
@@ -574,7 +587,17 @@ export async function POST(request: NextRequest) {
           }
           controller.close();
         } catch (error) {
-          console.error("Coach streaming error:", error);
+          // Issue #1794: provider SDK errors can embed key material / full
+          // request URLs / request-body fragments. Match the /api/ai-proxy
+          // (#1585) pattern: log a redacted summary tied to a correlation id
+          // and emit only the redacted summary + correlation id on the SSE
+          // channel. The raw `error.message` never reaches the client.
+          const correlationId = newCorrelationId();
+          const safe = toSafeClientError(error);
+          console.error(
+            `Coach streaming error [${safe.errorClass}] [corr ${correlationId}]:`,
+            redactErrorMessage(error),
+          );
           // Best-effort: emit a terminal error event before closing so the
           // client can surface a message instead of seeing a truncated stream.
           try {
@@ -582,10 +605,11 @@ export async function POST(request: NextRequest) {
               encoder.encode(
                 eventToSse({
                   type: "error",
-                  value:
-                    error instanceof Error
-                      ? error.message
-                      : "Internal streaming error",
+                  value: safe.error,
+                  // Carry the correlation id so operators can match a
+                  // client-reported error to the redacted server log line.
+                  correlationId,
+                  errorCode: safe.errorCode,
                 }),
               ),
             );
@@ -612,13 +636,25 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("Conversational Coach API error:", error);
+    // Issue #1794: provider SDK errors can embed key material / full
+    // request URLs / request-body fragments. Match the /api/ai-proxy (#1585)
+    // pattern: log a redacted summary tied to a correlation id and respond
+    // with a generic message + stable errorCode + correlation id. The raw
+    // `error.message` never reaches the client.
+    const correlationId = newCorrelationId();
+    const safe = toSafeClientError(error);
+    console.error(
+      `Conversational Coach API error [${safe.errorClass}] [corr ${correlationId}]:`,
+      redactErrorMessage(error),
+    );
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Internal server error",
+        error: safe.error,
+        errorCode: safe.errorCode,
+        correlationId,
       },
-      { status: 500 },
+      { status: HTTP_STATUS_BY_CLASS[safe.errorClass] },
     );
   }
 }
