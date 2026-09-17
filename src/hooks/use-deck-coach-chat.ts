@@ -115,6 +115,15 @@ export interface UseDeckCoachChatOptions {
 
 export interface UseDeckCoachChatReturn {
   messages: ChatMessage[];
+  /**
+   * In-flight assistant message being streamed into, or `null` when not
+   * streaming. Isolated from {@link messages} so the page-level
+   * `messages` state does not change token-by-token — only this draft
+   * updates during the stream, rAF-coalesced to bound re-renders
+   * (issue #1793). The draft is committed to {@link messages} on
+   * completion/cancel/error.
+   */
+  streamingDraft: ChatMessage | null;
   isLoading: boolean;
   isStreaming: boolean;
   /** Persisted conversations for the active deck, newest-first. */
@@ -174,8 +183,24 @@ export function useDeckCoachChat(
     string | null
   >(null);
   const [storageNotice, setStorageNotice] = useState<string | null>(null);
+  /**
+   * In-flight assistant message being streamed into (issue #1793). Kept out
+   * of {@link messages} so the page-level messages array — which lives at the
+   * 679-line `deck-coach/page.tsx` — does not commit per token. The draft
+   * re-renders only the chat-message-list subtree via rAF coalescing.
+   * `null` when no stream is in progress.
+   */
+  const [streamingDraft, setStreamingDraft] = useState<ChatMessage | null>(
+    null,
+  );
 
   const messagesRef = useRef(messages);
+  /**
+   * Synchronous mirror of {@link streamingDraft}. Read by the finally
+   * block when committing the finalised message to {@link messages} so the
+   * committed record carries the latest provider/usage/grounding flags.
+   */
+  const streamingDraftRef = useRef<ChatMessage | null>(null);
   const deckIdRef = useRef(options.deckId);
   /** Live deck context (format/archetype/strategy/cards) from options/overrides. */
   const deckContextRef = useRef<CoachConversationDeckContext>({});
@@ -199,8 +224,6 @@ export function useDeckCoachChat(
    * user-initiated stop rather than a failure (issue #1077).
    */
   const abortControllerRef = useRef<AbortController | null>(null);
-  /** id of the assistant message currently being streamed into. */
-  const streamingMessageIdRef = useRef<string | null>(null);
 
   /**
    * Apply a messages update and keep {@link messagesRef} in sync *synchronously*.
@@ -217,6 +240,25 @@ export function useDeckCoachChat(
       const next = updater(messagesRef.current);
       messagesRef.current = next;
       setMessages(next);
+    },
+    [],
+  );
+
+  /**
+   * Patch the streaming-draft state and keep {@link streamingDraftRef} in
+   * sync *synchronously* — same reasoning as {@link updateMessages}: the
+   * finally-block commit reads the ref to capture the finalised draft, and
+   * React's state setter is asynchronous so a bare `setStreamingDraft`
+   * would leave the ref stale at commit.
+   *
+   * `updater` may return `null` to clear the draft (used by resumeConversation,
+   * startNewConversation, clearMessages, and the post-commit path).
+   */
+  const updateStreamingDraft = useCallback(
+    (updater: (prev: ChatMessage | null) => ChatMessage | null): void => {
+      const next = updater(streamingDraftRef.current);
+      streamingDraftRef.current = next;
+      setStreamingDraft(next);
     },
     [],
   );
@@ -404,7 +446,10 @@ export function useDeckCoachChat(
       // 2. Prepare for assistant response
       setIsLoading(true);
 
-      // Create a placeholder for the assistant message that we'll stream into
+      // Create the in-flight assistant placeholder. The draft lives outside
+      // `messages` so the page-level `messages` state does not change token-by-
+      // token; only the chat-message-list subtree re-renders during the stream
+      // (issue #1793). It is committed to `messages` in the `finally` block.
       const assistantMsgId = crypto.randomUUID();
       const initialAssistantMsg: ChatMessage = {
         id: assistantMsgId,
@@ -413,24 +458,52 @@ export function useDeckCoachChat(
         timestamp: new Date(),
       };
 
-      updateMessages((prev) => [...prev, initialAssistantMsg]);
-      streamingMessageIdRef.current = assistantMsgId;
+      updateStreamingDraft(() => initialAssistantMsg);
 
       // AbortController enables the Cancel button (issue #1077).
       const abortController = new AbortController();
       abortControllerRef.current = abortController;
 
-      // Helper to patch the streaming assistant message immutably.
-      const patchAssistant = (patch: Partial<ChatMessage>) => {
-        const id = streamingMessageIdRef.current;
-        if (!id) return;
-        updateMessages((prev) =>
-          prev.map((msg) =>
-            msg.id === id && msg.role === "assistant"
-              ? { ...msg, ...patch }
-              : msg,
-          ),
+      // rAF coalescing for streaming text deltas (issue #1793). Without this,
+      // every SSE `text` event triggered a `setMessages` commit which
+      // re-rendered the 679-line `deck-coach/page.tsx` — 500 tokens → 500
+      // re-renders per turn. `assistantContent` accumulates in a closure-local
+      // string; only the rAF callback publishes the latest accumulated content
+      // to React state, capping commits at one per animation frame (~60Hz).
+      let assistantContent = "";
+      let rafId: number | null = null;
+      let draftDirty = false;
+
+      const flushDraftContent = () => {
+        rafId = null;
+        if (!draftDirty) return;
+        draftDirty = false;
+        const snapshot = assistantContent;
+        updateStreamingDraft((prev) =>
+          prev ? { ...prev, content: snapshot } : prev,
         );
+      };
+
+      const scheduleDraftFlush = () => {
+        draftDirty = true;
+        if (rafId !== null) return;
+        if (typeof globalThis.requestAnimationFrame === "function") {
+          rafId = globalThis.requestAnimationFrame(flushDraftContent);
+        } else {
+          // Test/SSR fallback: flush synchronously when rAF is unavailable.
+          rafId = -1;
+          flushDraftContent();
+        }
+      };
+
+      /**
+       * Patch the streaming draft immutably. Used for *discrete* events
+       * (provider / usage / grounding flags / cancelled) — these arrive
+       * once per message and don't benefit from batching. Text deltas use
+       * {@link scheduleDraftFlush} instead so they coalesce on the rAF.
+       */
+      const patchAssistant = (patch: Partial<ChatMessage>) => {
+        updateStreamingDraft((prev) => (prev ? { ...prev, ...patch } : prev));
       };
 
       // Persist the user's message immediately so it survives a refresh even if
@@ -530,7 +603,6 @@ export function useDeckCoachChat(
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
-        let assistantContent = "";
 
         const handleEvent = (event: CoachStreamEventPayload) => {
           switch (event.type) {
@@ -538,8 +610,9 @@ export function useDeckCoachChat(
               patchAssistant({ provider: event.value });
               break;
             case "text":
+              // Accumulate locally; rAF-batched publish (issue #1793).
               assistantContent += event.value;
-              patchAssistant({ content: assistantContent });
+              scheduleDraftFlush();
               break;
             case "usage": {
               const usage: ChatTokenUsage = {
@@ -559,9 +632,11 @@ export function useDeckCoachChat(
               memorySummaryRef.current = event.summary;
               break;
             case "error":
-              // Surface server-side errors inline (preserving any partial text).
+              // Surface server-side errors inline (preserving any partial
+              // text). Still goes through rAF coalescing so a flood of
+              // concurrent text+error deltas renders as one commit.
               assistantContent += `${assistantContent ? "\n\n" : ""}_${event.value}_`;
-              patchAssistant({ content: assistantContent });
+              scheduleDraftFlush();
               break;
             case "grounding": {
               // Issue #1419: the completed assistant message was flagged by
@@ -572,7 +647,7 @@ export function useDeckCoachChat(
               // below — the user keeps their answer, just clearly marked.
               if (event.caveat) {
                 assistantContent = `${assistantContent}${event.caveat}`;
-                patchAssistant({ content: assistantContent });
+                scheduleDraftFlush();
               }
               patchAssistant({
                 lowConfidence: Boolean(event.lowConfidence),
@@ -610,24 +685,58 @@ export function useDeckCoachChat(
           error instanceof DOMException && error.name === "AbortError";
 
         if (isAbort) {
-          // User-initiated cancel: mark the partial message instead of erroring.
+          // User-initiated cancel: mark the partial draft instead of erroring.
+          // Cancel any queued rAF — the finally block commits the partial
+          // draft (with `cancelled: true`) to messages synchronously.
+          if (rafId !== null && rafId !== -1) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+          }
+          draftDirty = false;
           patchAssistant({ cancelled: true });
         } else {
           console.error("Chat error:", error);
-          updateMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === assistantMsgId
-                ? {
-                    ...msg,
-                    content: "Sorry, I encountered an error. Please try again.",
-                  }
-                : msg,
-            ),
-          );
+          if (rafId !== null && rafId !== -1) {
+            cancelAnimationFrame(rafId);
+            rafId = null;
+          }
+          draftDirty = false;
+          patchAssistant({
+            content: "Sorry, I encountered an error. Please try again.",
+          });
         }
       } finally {
         abortControllerRef.current = null;
-        streamingMessageIdRef.current = null;
+
+        // Cancel any pending rAF and synchronously publish whatever text is
+        // still queued, so the committed message always reflects the full
+        // accumulated content (issue #1793).
+        if (rafId !== null && rafId !== -1) {
+          cancelAnimationFrame(rafId);
+          rafId = null;
+        }
+        if (draftDirty) {
+          draftDirty = false;
+          const snapshot = assistantContent;
+          updateStreamingDraft((prev) =>
+            prev ? { ...prev, content: snapshot } : prev,
+          );
+        }
+
+        // Commit the streaming draft (if any) to `messages` and clear the
+        // draft state. The ref is read synchronously so the committed record
+        // carries the latest provider/usage/grounding flags. Cancellation
+        // and error paths both arrive here with the draft intact.
+        const finalDraft = streamingDraftRef.current;
+        if (finalDraft && finalDraft.id === assistantMsgId) {
+          const committed: ChatMessage = {
+            ...finalDraft,
+            content: assistantContent || finalDraft.content,
+          };
+          updateMessages((prev) => [...prev, committed]);
+        }
+        updateStreamingDraft(() => null);
+
         setIsLoading(false);
         // Persist the finalized assistant message (with provider/usage/cancelled
         // attached by the stream). This is the single post-completion write — we
@@ -638,6 +747,7 @@ export function useDeckCoachChat(
     [
       addMessage,
       updateMessages,
+      updateStreamingDraft,
       options.deckCards,
       options.format,
       options.archetype,
@@ -660,6 +770,7 @@ export function useDeckCoachChat(
     interactedRef.current = true;
     messagesRef.current = [];
     setMessages([]);
+    updateStreamingDraft(() => null);
     // Issue #1417: dropping the visible history also drops the durable
     // summary — there is no longer any context to remember.
     memorySummaryRef.current = null;
@@ -672,35 +783,38 @@ export function useDeckCoachChat(
       // No active record to delete; still clear any deck-scoped legacy data.
       void deleteConversationsForDeck(getDeckId()).then(refreshConversations);
     }
-  }, [getDeckId, refreshConversations]);
+  }, [getDeckId, refreshConversations, updateStreamingDraft]);
 
-  const resumeConversation = useCallback(async (conversationId: string) => {
-    interactedRef.current = true;
-    // Abort any in-flight stream before switching context.
-    abortControllerRef.current?.abort();
-    abortControllerRef.current = null;
-    streamingMessageIdRef.current = null;
-    setIsLoading(false);
+  const resumeConversation = useCallback(
+    async (conversationId: string) => {
+      interactedRef.current = true;
+      // Abort any in-flight stream before switching context.
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = null;
+      updateStreamingDraft(() => null);
+      setIsLoading(false);
 
-    const conv = await loadConversation(conversationId);
-    if (!conv) return;
-    activeConversationIdRef.current = conv.id;
-    setActiveConversationId(conv.id);
-    messagesRef.current = conv.messages;
-    setMessages(conv.messages);
-    deckContextRef.current = conv.deckContext ?? {};
-    // Issue #1417: rehydrate the persisted coach-memory summary on resume so
-    // the next outbound request continues the durable memory across sessions.
-    memorySummaryRef.current = conv.memorySummary ?? null;
-    setStorageNotice(null);
-  }, []);
+      const conv = await loadConversation(conversationId);
+      if (!conv) return;
+      activeConversationIdRef.current = conv.id;
+      setActiveConversationId(conv.id);
+      messagesRef.current = conv.messages;
+      setMessages(conv.messages);
+      deckContextRef.current = conv.deckContext ?? {};
+      // Issue #1417: rehydrate the persisted coach-memory summary on resume so
+      // the next outbound request continues the durable memory across sessions.
+      memorySummaryRef.current = conv.memorySummary ?? null;
+      setStorageNotice(null);
+    },
+    [updateStreamingDraft],
+  );
 
   const startNewConversation = useCallback(() => {
     interactedRef.current = true;
     // Abort any in-flight stream before starting fresh.
     abortControllerRef.current?.abort();
     abortControllerRef.current = null;
-    streamingMessageIdRef.current = null;
+    updateStreamingDraft(() => null);
     setIsLoading(false);
     activeConversationIdRef.current = null;
     setActiveConversationId(null);
@@ -710,7 +824,7 @@ export function useDeckCoachChat(
     // next pruning pass will lazily populate it.
     memorySummaryRef.current = null;
     setStorageNotice(null);
-  }, []);
+  }, [updateStreamingDraft]);
 
   const removeConversation = useCallback(
     async (conversationId: string) => {
@@ -769,6 +883,7 @@ export function useDeckCoachChat(
 
   return {
     messages,
+    streamingDraft,
     isLoading,
     isStreaming: isLoading,
     conversations,

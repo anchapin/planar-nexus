@@ -10,6 +10,13 @@ import type { ChatMessage } from "@/types/chat";
 
 interface DeckCoachChatPanelProps {
   messages: ChatMessage[];
+  /**
+   * In-flight assistant message currently being streamed into, or `null`
+   * when not streaming. The panel renders this as the trailing bubble
+   * (issue #1793). Kept separate from `messages` so the page-level
+   * `messages` state does not change per token.
+   */
+  streamingDraft?: ChatMessage | null;
   isLoading?: boolean;
   onSendMessage: (content: string) => void;
   /** Abort the in-flight generation (issue #1077). Shown as a Cancel button. */
@@ -19,6 +26,7 @@ interface DeckCoachChatPanelProps {
 
 export function DeckCoachChatPanel({
   messages,
+  streamingDraft = null,
   isLoading = false,
   onSendMessage,
   onCancel,
@@ -27,16 +35,24 @@ export function DeckCoachChatPanel({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
 
+  // Effective messages: committed messages plus the in-flight streaming draft
+  // as a trailing bubble (when present). The draft lives outside of `messages`
+  // to keep page-level re-renders bounded (issue #1793).
+  const effectiveMessages = streamingDraft
+    ? [...messages, streamingDraft]
+    : messages;
+
   // Auto-scroll to bottom when new messages arrive or loading state changes
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isLoading]);
+  }, [effectiveMessages, isLoading]);
 
   // The most recent assistant message carries the latest token-usage telemetry
-  // surfaced by the stream (issue #1077).
-  const lastAssistant = [...messages]
-    .reverse()
-    .find((m) => m.role === "assistant");
+  // surfaced by the stream (issue #1077). Prefer the in-flight draft during
+  // streaming so the provider / token counts update live.
+  const lastAssistant =
+    streamingDraft ??
+    [...messages].reverse().find((m) => m.role === "assistant");
   const canCancel = isLoading && typeof onCancel === "function";
 
   return (
@@ -88,7 +104,7 @@ export function DeckCoachChatPanel({
 
       {/* Messages */}
       <ChatMessageList
-        messages={messages}
+        messages={effectiveMessages}
         isLoading={isLoading}
         className="flex-1"
       />

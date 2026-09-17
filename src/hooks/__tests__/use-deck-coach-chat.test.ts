@@ -9,6 +9,7 @@
  * so no Web Worker is spun up.
  */
 
+import React from "react";
 import {
   describe,
   it,
@@ -17,7 +18,7 @@ import {
   beforeEach,
   beforeAll,
 } from "@jest/globals";
-import { renderHook, act } from "@testing-library/react";
+import { renderHook, act, render } from "@testing-library/react";
 import {
   useDeckCoachChat,
   clearAllCoachConversations,
@@ -66,6 +67,37 @@ function makeSseBody(
 }
 
 const flush = () => new Promise<void>((r) => setTimeout(r, 0));
+
+/**
+ * Replace `globalThis.requestAnimationFrame` with a synchronous variant for
+ * the duration of the supplied callback. jsdom's default rAF is
+ * setTimeout-based and doesn't reliably flush inside `act()` — tests that
+ * exercise the rAF coalescing path (issue #1793) need a deterministic
+ * rAF to assert render counts and to observe the streaming draft's
+ * mid-flight content.
+ */
+function withSyncRaf<T>(fn: () => Promise<T> | T): Promise<T> {
+  const originalRAF = globalThis.requestAnimationFrame;
+  const originalCancel = globalThis.cancelAnimationFrame;
+  let rafCalls = 0;
+  (
+    globalThis as unknown as {
+      requestAnimationFrame: (cb: () => void) => number;
+    }
+  ).requestAnimationFrame = (cb: () => void) => {
+    rafCalls++;
+    cb();
+    return 0;
+  };
+  (
+    globalThis as unknown as { cancelAnimationFrame: (id: number) => void }
+  ).cancelAnimationFrame = () => {};
+  (globalThis as unknown as { __rafCalls?: number }).__rafCalls = rafCalls;
+  return Promise.resolve(fn()).finally(() => {
+    globalThis.requestAnimationFrame = originalRAF;
+    globalThis.cancelAnimationFrame = originalCancel;
+  });
+}
 
 let lastFetchOptions: { signal?: AbortSignal | null } = {};
 let lastRequestBody: { messages?: unknown[]; format?: string } = {};
@@ -1040,5 +1072,242 @@ describe("useDeckCoachChat — grounding guard wiring (#1419)", () => {
     expect(assistant?.needsReview).toBeUndefined();
     expect(assistant?.groundingFailures).toBeUndefined();
     expect(assistant?.content).toBe("Looks great.");
+  });
+});
+
+// ============================================================================
+// issue #1793 — render-count acceptance criteria
+// ============================================================================
+//
+// Acceptance: "non-chat panels do not re-render during a stream; deck-panel
+// components render at most once per completed message rather than once per
+// token." The hook now isolates the in-flight assistant message in a separate
+// `streamingDraft` state (rAF-coalesced) so the page-level `messages` array
+// does not change token-by-token — only the chat-message-list subtree
+// re-renders during the stream. This block verifies that contract.
+//
+// The test wraps a hook consumer in a render-counter and streams 100 text
+// tokens. Without the fix the counter would tick ~100 times; with the fix it
+// ticks at most a handful of times for the user-send + draft-created +
+// rAF-flushes + commit cycle.
+
+describe("useDeckCoachChat — render-count (issue #1793)", () => {
+  it("does not re-render the consumer once per text token", async () => {
+    // Stub rAF to be synchronous so the coalescing contract is testable in
+    // jsdom (the default setTimeout-based rAF doesn't reliably flush inside
+    // `act()`). With sync rAF, every text delta triggers a synchronous
+    // `setStreamingDraft` — and React 18+ auto-batches all synchronous state
+    // updates inside the stream loop into a single render. Without the fix
+    // (which used `setMessages` per token), each `await reader.read()` is a
+    // microtask boundary that breaks batching, yielding N renders for N
+    // tokens. With the fix, the rAF callback calls `setStreamingDraft` from
+    // a non-awaited, synchronous hot loop, so React commits once.
+    await withSyncRaf(async () => {
+      let capturedSend: ((content: string) => Promise<void>) | null = null;
+      let consumerRenders = 0;
+
+      function CountingConsumer() {
+        consumerRenders++;
+        const chat = useDeckCoachChat({
+          format: "commander",
+          deckId: "deck-render-count",
+        });
+        capturedSend = chat.sendMessage;
+        return null;
+      }
+
+      // Build an SSE body with N text events so the hook has many deltas to
+      // coalesce. We pick a large N (100) so the unfixed behaviour would tick
+      // the counter visibly.
+      const N = 100;
+      const events: string[] = [
+        'data: {"type":"provider","value":"openai"}\n\n',
+      ];
+      for (let i = 0; i < N; i++) {
+        events.push(`data: {"type":"text","value":"t${i} "}\n\n`);
+      }
+      events.push('data: {"type":"done"}\n\n');
+
+      (globalThis as unknown as { fetch: unknown }).fetch = jest.fn(
+        async (_url: string, init?: RequestInit) => {
+          try {
+            lastRequestBody = JSON.parse(String(init?.body ?? "{}"));
+          } catch {
+            lastRequestBody = {};
+          }
+          const body = makeSseBody(events, init?.signal);
+          return { ok: true, body };
+        },
+      ) as unknown as typeof fetch;
+
+      render(React.createElement(CountingConsumer));
+
+      // Establish the baseline (mount + auto-resume load).
+      await act(async () => {
+        await flush();
+      });
+      const baseline = consumerRenders;
+      expect(capturedSend).not.toBeNull();
+
+      // Stream the 100-token reply.
+      await act(async () => {
+        await capturedSend!("hi");
+      });
+      await act(async () => {
+        await flush();
+      });
+
+      // The pre-fix code would tick the counter ~N times. With the fix and
+      // synchronous rAF, every text delta triggers a synchronous
+      // setStreamingDraft and React 18+ auto-batches them — the consumer
+      // re-renders at most a handful of times for the user-send +
+      // draft-created + commit cycle, not once per token.
+      expect(consumerRenders - baseline).toBeLessThan(N / 4);
+
+      // Sanity: the committed assistant message reflects all N tokens.
+      // (countingConsumer doesn't expose result.current.messages, but
+      // capturedSend is the hook instance so we trust the commit via the
+      // parallel "commits the streaming draft" test in this block.)
+    });
+  });
+
+  it("commits the streaming draft to messages on completion with the full accumulated content", async () => {
+    const { result } = renderHook(() =>
+      useDeckCoachChat({
+        format: "commander",
+        deckId: "deck-draft-commit",
+      }),
+    );
+
+    expect(result.current.streamingDraft).toBeNull();
+
+    const events: string[] = [
+      'data: {"type":"text","value":"Hello"}\n\n',
+      'data: {"type":"text","value":" world"}\n\n',
+      'data: {"type":"usage","usage":{"promptTokens":1,"completionTokens":2,"totalTokens":3}}\n\n',
+      'data: {"type":"done"}\n\n',
+    ];
+    (globalThis as unknown as { fetch: unknown }).fetch = jest.fn(async () => ({
+      ok: true,
+      body: makeSseBody(events),
+    })) as unknown as typeof fetch;
+
+    await act(async () => {
+      await result.current.sendMessage("hi", {
+        deckCards: [{ name: "Sol Ring", count: 1 } as never],
+      });
+    });
+
+    // Draft cleared on completion; the full content lives in `messages`.
+    expect(result.current.streamingDraft).toBeNull();
+    const committed = result.current.messages.find(
+      (m) => m.role === "assistant",
+    );
+    expect(committed?.content).toBe("Hello world");
+    expect(committed?.usage?.totalTokens).toBe(3);
+  });
+
+  it("clears the streaming draft on cancel", async () => {
+    // Mirror the original cancel test's body shape: yield one delta, then
+    // block on an unresolved promise until the test releases it. The cancel
+    // signal causes the blocked read to throw AbortError, which the hook's
+    // catch handles by flagging the draft `cancelled: true`. We also force
+    // sync rAF so the draft's mid-flight content is observable (jsdom's
+    // default setTimeout-rAF doesn't flush inside `act()`).
+    await withSyncRaf(async () => {
+      let resolveBlock: () => void = () => {};
+      const block = new Promise<void>((r) => {
+        resolveBlock = r;
+      });
+      const encoder = new TextEncoder();
+      let yielded = false;
+      (globalThis as unknown as { fetch: unknown }).fetch = jest.fn(
+        async (_url: string, init?: RequestInit) => {
+          const body = {
+            getReader() {
+              return {
+                read: async () => {
+                  if (init?.signal?.aborted) {
+                    throw new DOMException("aborted", "AbortError");
+                  }
+                  if (!yielded) {
+                    yielded = true;
+                    return {
+                      done: false,
+                      value: encoder.encode(
+                        'data: {"type":"text","value":"partial"}\n\n',
+                      ),
+                    };
+                  }
+                  await block;
+                  if (init?.signal?.aborted) {
+                    throw new DOMException("aborted", "AbortError");
+                  }
+                  return { done: true };
+                },
+              };
+            },
+          };
+          return { ok: true, body };
+        },
+      ) as unknown as typeof fetch;
+
+      const { result } = renderHook(() =>
+        useDeckCoachChat({
+          format: "commander",
+          deckId: "deck-draft-cancel",
+        }),
+      );
+
+      // Kick off a stream that yields one chunk then blocks.
+      act(() => {
+        void result.current.sendMessage("hi", {
+          deckCards: [{ name: "Sol Ring", count: 1 } as never],
+        });
+      });
+      await act(async () => {
+        await flush();
+      });
+      expect(result.current.streamingDraft).not.toBeNull();
+      expect(result.current.streamingDraft?.content).toBe("partial");
+
+      // Cancel and let the AbortError path finish by unblocking the second read.
+      act(() => {
+        result.current.cancelGeneration();
+      });
+      await act(async () => {
+        resolveBlock();
+        await flush();
+      });
+
+      expect(result.current.streamingDraft).toBeNull();
+      const committed = result.current.messages.find(
+        (m) => m.role === "assistant",
+      );
+      expect(committed?.cancelled).toBe(true);
+      expect(committed?.content).toContain("partial");
+    });
+  });
+
+  it("clears the streaming draft on error and surfaces the fallback message", async () => {
+    (globalThis as unknown as { fetch: unknown }).fetch = jest.fn(async () => {
+      throw new Error("network down");
+    }) as unknown as typeof fetch;
+
+    const { result } = renderHook(() =>
+      useDeckCoachChat({ format: "commander", deckId: "deck-draft-error" }),
+    );
+
+    await act(async () => {
+      await result.current.sendMessage("hi", {
+        deckCards: [{ name: "Sol Ring", count: 1 } as never],
+      });
+    });
+
+    expect(result.current.streamingDraft).toBeNull();
+    const committed = result.current.messages.find(
+      (m) => m.role === "assistant",
+    );
+    expect(committed?.content).toMatch(/Sorry, I encountered an error/i);
   });
 });

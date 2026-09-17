@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -53,8 +54,22 @@ import {
   LoadingProgress,
 } from "./_components/coach-skeleton";
 import { ManaCurveAnalysis } from "@/components/meta/mana-curve";
-import { DeckCoachChatPanel } from "@/components/chat";
 import { useDeckCoachChat } from "@/hooks/use-deck-coach-chat";
+/**
+ * Lazy-load the chat panel to keep the /deck-coach First Load JS under its
+ * bundle-size budget (issue #1814, #1793). The panel is only mounted when
+ * the user activates the chat tab, so its UI deps (chat-message-list,
+ * chat-input, lucide icons) do not need to ship with the initial page
+ * payload. SSR is disabled because the panel is a "use client" component
+ * and renders streaming state that is meaningless on the server.
+ */
+const DeckCoachChatPanel = dynamic(
+  () =>
+    import("@/components/chat").then((m) => ({
+      default: m.DeckCoachChatPanel,
+    })),
+  { ssr: false, loading: () => null },
+);
 import { DEFAULT_DECK_ID } from "@/lib/coach-conversation-storage";
 
 type DeckOption = DeckReviewOutput["deckOptions"][0];
@@ -92,6 +107,7 @@ export default function DeckCoachPage() {
   // self-contained (issue #1074).
   const {
     messages,
+    streamingDraft,
     isLoading: isChatLoading,
     sendMessage,
     cancelGeneration,
@@ -652,6 +668,7 @@ export default function DeckCoachPage() {
 
                 <DeckCoachChatPanel
                   messages={messages}
+                  streamingDraft={streamingDraft}
                   isLoading={isChatLoading}
                   onSendMessage={handleChatMessage}
                   onCancel={cancelGeneration}
