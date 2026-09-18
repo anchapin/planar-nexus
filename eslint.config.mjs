@@ -220,6 +220,8 @@ const eslintConfig = [
       "scripts/check-coverage-docs-sync.mjs",
       // Plain Node ESM tooling for the issue #1725 engine size-budget gate.
       "scripts/check-engine-size-budget.mjs",
+      // Plain Node ESM tooling for the issue #1896 broken-link gate.
+      "scripts/check-broken-links.mjs",
       ".claude/skills/pr-automation/**",
     ],
   },

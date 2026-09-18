@@ -897,7 +897,7 @@ A common session moves across the four views in order:
 
 1. Open a deck in **AI Coach** as usual (see [Section 3](#3-ai-coach)).
 2. The page now shows a **chat panel** beside the structured report
-   ([`DeckCoachChatPanel`](../src/components/ai-coach/chat-panel.tsx), mounted
+   ([`DeckCoachChatPanel`](../src/components/chat/chat-panel.tsx), mounted
    on [`/deck-coach`](<../src/app/(app)/deck-coach/page.tsx>)).
 3. Type a question and press **Enter** to send.
 

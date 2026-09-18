@@ -19,7 +19,7 @@ pipeline, and how coverage is measured and enforced.
 5. [Component Tests (React Testing Library)](#5-component-tests-react-testing-library)
 6. [Integration Tests](#6-integration-tests)
 7. [E2E Tests (Playwright)](#7-e2e-tests-playwright)
-8. [Test Utilities (`@/test-utils`)](#8-test-utilities-testutils)
+8. [Test Utilities (`@/test-utils`)](#8-test-utilities-test-utils)
 9. [Video-Derived Fixture Pipeline](#9-video-derived-fixture-pipeline)
 10. [Coverage](#10-coverage)
 11. [Decision Guide](#11-decision-guide)
@@ -979,3 +979,35 @@ from the tokens it audits. If your PR is red on `a11y-contrast`, the job
 summary lists each failing pair with its computed ratio — fix the token
 pairing (lighten or darken one side) until the gate passes; do not weaken
 the thresholds.
+
+### Broken markdown link gate (`npm run lint:broken-links`)
+
+The `broken-links-guard` CI job (#1896) is merge-blocking — it sits in the
+`build` job's `needs:` list. It runs
+[`scripts/check-broken-links.mjs`](../scripts/check-broken-links.mjs),
+which walks every `.md` (plus `.mdx`/`.mdc` if present) under the repo
+root, parses both inline `[text](path)` and reference-style
+`[text][ref]` markdown links, and fails on missing relative file targets,
+missing same-file anchors, missing cross-file anchors, and repo-root
+paths that don't resolve. External URLs (`http`/`https`/`mailto`/`tel`/
+`file://`) are always skipped — per the issue's "Out of scope: validating
+external URLs" line. PR #1892 (closes #1804) hand-fixed 11 broken links;
+this guard keeps that fix from rotting again.
+
+```bash
+# Gate only — the same check CI enforces (exit 1 on any broken link):
+npm run lint:broken-links
+
+# Preview what would fail without gating the build:
+node scripts/check-broken-links.mjs --dry-run
+
+# Machine-readable envelope (for dashboards / PR-comment bots):
+node scripts/check-broken-links.mjs --json
+```
+
+If your PR is red on `broken-links-guard`, the job summary lists each
+broken link with its `file:line:target [reason]`. The reasons are
+stable: `missing-file` (target path doesn't resolve), `broken-anchor`
+(heading text was renamed / removed), or `escapes-repo` (the relative
+path walks out of the repo and the gate refuses to guess). Repair the
+link or the source path; do not weaken the gate.

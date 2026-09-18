@@ -1069,11 +1069,47 @@ jobs:
       - name: Assert per-route First Load JS budgets (#1814)
         run: node scripts/check-bundle-budget.mjs --check
 
+  broken-links-guard:
+    # Issue #1896: prevent the link-rot class of bug that PR #1892 just
+    # hand-fixed (11 broken relative links across CONTRIBUTING.md,
+    # RELEASE_RUNBOOK.md, TESTING.md, DEPLOYMENT_GUIDE.md,
+    # BRANCH_PROTECTION.md, and VIDEO_DERIVED_TESTS_WORKFLOW.md). The
+    # script walks every `.md` under the repo root (excluding
+    # `node_modules`, `.next`, `docs/implementation/`, `.planning/`,
+    # and other build-output dirs) and parses both inline `[text](path)`
+    # and reference-style `[text][ref]` link syntax. For each target:
+    #   - external URLs (http/https/mailto/tel/file://) are skipped
+    #     per the issue's "Out of scope" clause,
+    #   - repo-root paths (`/docs/foo.md`) resolve against REPO_ROOT,
+    #   - relative paths resolve against the source file's directory
+    #     and `existsSync` the result,
+    #   - an optional `#anchor` slugifies per the GFM algorithm and is
+    #     checked against the target's heading slugs.
+    # Exit 0/1 per the gate contract; `--json` and `--dry-run` are
+    # tooling affordances. Runs in plain Node (~200ms over the 300+
+    # markdown files in the repo) — fast enough to be merge-gating.
+    # Local equivalent: `npm run lint:broken-links`.
+    name: Broken Markdown Link Guard
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
+
+      - name: Assert no broken markdown links (#1896)
+        run: node scripts/check-broken-links.mjs
+
   build:
     name: Build
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
-    needs: [test, lint, typecheck, commitlint, mutation-smoke, security, cargo-audit, rust-checks, a11y-contrast, e2e, workflow-lint, tauri-updater-config, engine-size-budget, no-prompt-in-engine-guard, turn-credentials-guard, coverage-docs-guard, mutation-docs-guard, e2e-asserts-guard, jest-mock-boundary-guard]
+    needs: [test, lint, typecheck, commitlint, mutation-smoke, security, cargo-audit, rust-checks, a11y-contrast, e2e, workflow-lint, tauri-updater-config, engine-size-budget, no-prompt-in-engine-guard, turn-credentials-guard, coverage-docs-guard, mutation-docs-guard, e2e-asserts-guard, jest-mock-boundary-guard, broken-links-guard]
 
     steps:
       - name: Checkout code
