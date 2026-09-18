@@ -1,24 +1,20 @@
 /**
  * @fileoverview Card search worker client (issue #1389, fix #1894).
  *
- * Singleton that lazily initialises the Orama card-search Web Worker and
- * exposes a Comlink proxy.
+ * Worker URL resolution: production traffic uses the dedicated
+ * `search-worker-factory.ts` module loaded via dynamic `import()` —
+ * the factory captures `import.meta.url` at module top-level (the
+ * `new URL("./search.worker.ts", MODULE_URL)` shape that webpack /
+ * Turbopack statically analyse to emit the worker as its own chunk).
+ * The dynamic import keeps the `import.meta` token out of ts-jest's
+ * CJS parser.
  *
- * Issue #1894: the worker URL is resolved in `search-worker-factory.ts`
- * via a module-top-level `import.meta.url` capture. The factory is loaded
- * through a dynamic `import()` wrapped in try/catch so the `import.meta`
- * token never reaches the ts-jest CJS parser. When the factory chunk
- * fails to load (SSR, jsdom, unexpected bundler error), the client falls
- * back to a `self.location.href`-based URL — kept as a defense even
- * though Firefox/WebKit refuse that path's `text/html` MIME type
- * (#1894 acceptance criterion: preserve the fallback).
- *
- * When the worker cannot be initialised (no `Worker` global, init threw,
- * CSP blocked), `getSearchApi()` returns `null` and `getStatus()`
- * reports `"fallback"` so callers degrade gracefully to the main-thread
- * `cardSearchIndex`.
+ * Acceptance criterion (issue #1894): Firefox/WebKit must load the
+ * production worker — the prior `self.location.href` fallback
+ * resolved to an HTML page that the dev server returns for any
+ * unrecognised path, which those browsers refuse with a `text/html`
+ * MIME error.
  */
-
 import * as Comlink from "comlink";
 import type { searchWorker } from "./search.worker";
 
@@ -71,55 +67,38 @@ class SearchWorkerClient {
     }
   }
 
-  /**
-   * Construct the worker. Tries the factory first (proper
-   * `import.meta.url` resolution), then falls back to `self.location.href`
-   * for environments where the factory chunk failed to load.
-   *
-   * The dynamic `import()` is wrapped in a `Function` constructor so the
-   * bundler does not statically trace it as a chunk dependency and emit
-   * an eagerly-preloaded chunk loader for routes that pull in this
-   * client (issue #1894 follow-up — bundle-budget impact).
-   */
   private async init(): Promise<void> {
     try {
-      let worker: Worker | null = null;
+      let w: Worker | null = null;
       try {
-        const dynImport = new Function("p", "return import(p)") as (
-          p: string,
-        ) => Promise<{
+        const mod = (await import("./search-worker-factory")) as {
           createSearchWorker?: () => Worker | null;
-        }>;
-        const mod = await dynImport("./search-worker-factory");
-        worker = mod.createSearchWorker?.() ?? null;
-      } catch (err) {
-        console.warn("[search-worker] factory load failed:", err);
+        };
+        w = mod.createSearchWorker?.() ?? null;
+      } catch {
+        /* factory chunk failed to load — fall through to last-resort */
       }
-      if (!worker && typeof self !== "undefined" && self.location?.href) {
+      if (!w && typeof self !== "undefined" && self.location?.href) {
         try {
-          worker = new Worker(
+          w = new Worker(
             new URL("./search.worker.ts", self.location.href).href,
             { type: "module" },
           );
         } catch {
-          /* last-resort failed */
+          /* last-resort failed too */
         }
       }
-      if (!worker) {
+      if (!w) {
         this.status = "fallback";
         return;
       }
-      this.worker = worker;
+      this.worker = w;
       this.proxy = Comlink.wrap<SearchWorkerAPI>(this.worker);
       this.worker.addEventListener("error", (event) => {
         const message =
           (event as ErrorEvent).message ||
           `worker failed to load (${event.type})`;
         this.initError = new Error(`[search-worker] ${message}`);
-        console.warn(
-          "[search-worker] Worker error; falling back to main-thread Orama search:",
-          this.initError,
-        );
         this.status = "error";
         this.proxy = null;
         try {
