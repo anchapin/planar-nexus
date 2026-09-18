@@ -22,7 +22,7 @@
 
 Planar Nexus uses a minimal set of server-side route handlers for the features
 that genuinely need a server. The application is primarily client-side;
-`src/app/api/` exports exactly six route files exposing nine endpoints:
+`src/app/api/` exports seven route files exposing ten endpoints:
 
 - **AI proxy** — server-side relay to the four built-in LLM providers (Google,
   OpenAI, Anthropic, and Z.ai), keeping API keys off the
@@ -81,17 +81,18 @@ that genuinely need a server. The application is primarily client-side;
 
 ### Route map
 
-| Method | Path                     | Purpose                                                             | Handler                                                                   |
-| ------ | ------------------------ | ------------------------------------------------------------------- | ------------------------------------------------------------------------- |
-| GET    | `/api/ai-proxy`          | Proxy status + configured providers (use `?action=status` for full) | [`ai-proxy/route.ts`](../src/app/api/ai-proxy/route.ts)                   |
-| POST   | `/api/ai-proxy`          | Relay a provider chat request (streaming or one-shot)               | [`ai-proxy/route.ts`](../src/app/api/ai-proxy/route.ts)                   |
-| GET    | `/api/ai-proxy/validate` | Validate a server-side API key (`?provider=`)                       | [`ai-proxy/validate/route.ts`](../src/app/api/ai-proxy/validate/route.ts) |
-| POST   | `/api/chat`              | Unified streaming chat (Vercel AI SDK)                              | [`chat/route.ts`](../src/app/api/chat/route.ts)                           |
-| POST   | `/api/chat/coach`        | Conversational deck coach (Server-Sent Events stream)               | [`chat/coach/route.ts`](../src/app/api/chat/coach/route.ts)               |
-| POST   | `/api/deck-import`       | Fetch + parse a decklist from a supported hosting URL               | [`deck-import/route.ts`](../src/app/api/deck-import/route.ts)             |
-| GET    | `/api/signaling`         | Poll a multiplayer signaling session                                | [`signaling/route.ts`](../src/app/api/signaling/route.ts)                 |
-| POST   | `/api/signaling`         | Create / join / exchange offers+answers+ICE / close a session       | [`signaling/route.ts`](../src/app/api/signaling/route.ts)                 |
-| DELETE | `/api/signaling`         | Tear down a session (`?sessionId=`)                                 | [`signaling/route.ts`](../src/app/api/signaling/route.ts)                 |
+| Method | Path                              | Purpose                                                                                                                                                                                                                                                | Handler                                                                                     |
+| ------ | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- |
+| GET    | `/api/ai-proxy`                   | Proxy status + configured providers (use `?action=status` for full)                                                                                                                                                                                    | [`ai-proxy/route.ts`](../src/app/api/ai-proxy/route.ts)                                     |
+| POST   | `/api/ai-proxy`                   | Relay a provider chat request (streaming or one-shot)                                                                                                                                                                                                  | [`ai-proxy/route.ts`](../src/app/api/ai-proxy/route.ts)                                     |
+| GET    | `/api/ai-proxy/validate`          | Validate a server-side API key (`?provider=`)                                                                                                                                                                                                          | [`ai-proxy/validate/route.ts`](../src/app/api/ai-proxy/validate/route.ts)                   |
+| POST   | `/api/chat`                       | Unified streaming chat (Vercel AI SDK)                                                                                                                                                                                                                 | [`chat/route.ts`](../src/app/api/chat/route.ts)                                             |
+| POST   | `/api/chat/coach`                 | Conversational deck coach (Server-Sent Events stream)                                                                                                                                                                                                  | [`chat/coach/route.ts`](../src/app/api/chat/coach/route.ts)                                 |
+| POST   | `/api/deck-import`                | Fetch + parse a decklist from a supported hosting URL                                                                                                                                                                                                  | [`deck-import/route.ts`](../src/app/api/deck-import/route.ts)                               |
+| GET    | `/api/signaling`                  | Poll a multiplayer signaling session                                                                                                                                                                                                                   | [`signaling/route.ts`](../src/app/api/signaling/route.ts)                                   |
+| POST   | `/api/signaling`                  | Create / join / exchange offers+answers+ICE / close a session                                                                                                                                                                                          | [`signaling/route.ts`](../src/app/api/signaling/route.ts)                                   |
+| DELETE | `/api/signaling`                  | Tear down a session (`?sessionId=`)                                                                                                                                                                                                                    | [`signaling/route.ts`](../src/app/api/signaling/route.ts)                                   |
+| GET    | `/api/signaling/turn-credentials` | Mint short-lived TURN HMAC credentials (`?clientId=<id>`); rate-limited (returns `X-RateLimit-*` headers), response shape `{ iceServers: RTCIceServer[]; expiresAt: number }`; failure modes: 429 (rate limit), 503 (no `TURN_HMAC_SECRET` configured) | [`signaling/turn-credentials/route.ts`](../src/app/api/signaling/turn-credentials/route.ts) |
 
 ---
 
