@@ -285,15 +285,16 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
         );
       }
 
-      // Peers C and D receive all 3 within a short budget (well under 1s).
-      await waitForReceiveCount(peerC, 3, "game-state-sync", 1000);
-      await waitForReceiveCount(peerD, 3, "game-state-sync", 1000);
-      const cDoneAt = Date.now();
-      const cLatency = cDoneAt - start;
-      // C and D done within the budget — host broadcast is non-blocking.
-      expect(cLatency).toBeLessThan(1000);
-
-      // Peer B's slow pipe means it has not received all 3 yet.
+      // Issue #1881: sample B's in-flight state BEFORE waiting on C/D so
+      // the implicit "100ms after start" window isn't consumed by C/D's
+      // (potentially slow on a loaded CI runner) `waitForReceiveCount`
+      // trips. Under heavy load that consumed window can exceed B's
+      // 200ms inbound delay, after which B begins recording delayed
+      // messages and the original strict `<=1` assertion fails. We make
+      // the timing window explicit (`peerB.waitForTimeout(100)` after
+      // the broadcast loop, well below B's 200ms slow-pipe delay) so the
+      // assertion is deterministic regardless of CI load.
+      await peerB.waitForTimeout(100);
       const bAfter100ms = await peerB.evaluate(
         () =>
           (
@@ -303,7 +304,19 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
           ).__peer?.received?.filter((m) => m.type === "game-state-sync")
             .length ?? 0,
       );
+      // Peer B's slow pipe (200ms) means it has not recorded any of the
+      // 3 broadcasts yet at the +100ms mark — by construction.
       expect(bAfter100ms).toBeLessThanOrEqual(1);
+
+      // Peers C and D receive all 3 within a short budget (well under 1s).
+      await waitForReceiveCount(peerC, 3, "game-state-sync", 1000);
+      await waitForReceiveCount(peerD, 3, "game-state-sync", 1000);
+      const cDoneAt = Date.now();
+      const cLatency = cDoneAt - start;
+      // C and D done within the budget — host broadcast is non-blocking
+      // (the +100ms wait above is part of cLatency's window but still
+      // well under 1s even on a slow CI runner).
+      expect(cLatency).toBeLessThan(1000);
 
       // B finishes its delayed delivery within 1.5s total.
       await waitForReceiveCount(peerB, 3, "game-state-sync", 1500);
