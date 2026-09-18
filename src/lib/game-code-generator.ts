@@ -11,19 +11,19 @@ const CODE_LENGTH = 6;
  * Uses a reduced character set to avoid confusing characters
  */
 export function generateGameCode(): string {
-  let code = '';
-  const randomValues = new Uint8Array(CODE_LENGTH);
-
-  // Use crypto.getRandomValues for better randomness
-  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-    crypto.getRandomValues(randomValues);
-  } else {
-    // Fallback for older browsers
-    for (let i = 0; i < CODE_LENGTH; i++) {
-      randomValues[i] = Math.floor(Math.random() * 256);
-    }
+  // Issue #1906: refuse to silently fall back to Math.random(). A predictable
+  // game-code generator would let attackers brute-force lobby codes. Mirror the
+  // canonical contract from src/app/api/signaling/route.ts (#1568).
+  if (typeof crypto === 'undefined' || typeof crypto.getRandomValues !== 'function') {
+    throw new Error(
+      'generateGameCode requires crypto.getRandomValues — refusing to fall back to Math.random (issue #1906 contract)'
+    );
   }
 
+  const randomValues = new Uint8Array(CODE_LENGTH);
+  crypto.getRandomValues(randomValues);
+
+  let code = '';
   for (let i = 0; i < CODE_LENGTH; i++) {
     code += ALPHABET[randomValues[i] % ALPHABET.length];
   }

@@ -333,11 +333,22 @@ export class LocalSignalingClient {
    * Generate a short game code for manual sharing
    */
   static generateGameCode(length: number = 6): string {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Excluding confusing characters
-    let code = '';
+    // Issue #1906: refuse Math.random(). A predictable game-code generator would
+    // let attackers brute-force lobby codes. Mirror the canonical contract from
+    // src/app/api/signaling/route.ts (#1568).
+    if (typeof crypto === 'undefined' || typeof crypto.getRandomValues !== 'function') {
+      throw new Error(
+        'LocalSignalingClient.generateGameCode requires crypto.getRandomValues — refusing to fall back to Math.random (issue #1906 contract)'
+      );
+    }
 
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Excluding confusing characters
+    const randomValues = new Uint8Array(length);
+    crypto.getRandomValues(randomValues);
+
+    let code = '';
     for (let i = 0; i < length; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
+      code += chars.charAt(randomValues[i] % chars.length);
     }
 
     return code;
