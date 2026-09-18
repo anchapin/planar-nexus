@@ -130,7 +130,7 @@ export class ValidationService {
    */
   private static hasPriority(state: GameState, action: GameAction): boolean {
     // Some actions don't require priority (concede, etc.)
-    if (action.type === "concede" || action.type === "undo") {
+    if (action.type === "concede") {
       return true;
     }
 
