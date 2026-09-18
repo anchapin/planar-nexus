@@ -640,7 +640,7 @@ gh release create "v$VERSION" \
 
 ### Installation
 
-See [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) for installation instructions.
+See [Deployment Guide](./DEPLOYMENT_GUIDE.md) for installation instructions.
 ```
 
 ## Version Management

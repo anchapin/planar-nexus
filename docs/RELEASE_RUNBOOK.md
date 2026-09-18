@@ -1,7 +1,7 @@
 # Planar Nexus Release Runbook
 
 Operational runbook for cutting a Tauri desktop release. Companion to
-[`TAURI_BUILDS.md`](../../TAURI_BUILDS.md) (build mechanics) and
+[`TAURI_BUILDS.md`](../TAURI_BUILDS.md) (build mechanics) and
 [`/docs/RELEASE_DRY_RUN.md`](./RELEASE_DRY_RUN.md) (cold-start checklist).
 The release workflow lives at `.github/workflows/release.yml`.
 
@@ -25,7 +25,7 @@ The release workflow lives at `.github/workflows/release.yml`.
 - Maintainer role on `anchapin/planar-nexus` (push to `main`, tag push).
 - 1Password access to the `Planar Nexus — Release Engineering` vault.
 - Local: Node 22+, Rust stable, Tauri CLI 2.x, platform toolchain (see
-  [`TAURI_BUILDS.md`](../../TAURI_BUILDS.md) §Prerequisites).
+  [`TAURI_BUILDS.md`](../TAURI_BUILDS.md) §Prerequisites).
 - Read [`/docs/RELEASE_DRY_RUN.md`](./RELEASE_DRY_RUN.md) end-to-end once
   before your first release.
 
@@ -100,7 +100,7 @@ Hardened Runtime is permanently enabled in
 `src-tauri/tauri.conf.json` (`bundle.macOS.hardenedRuntime: true`) —
 without it, the notarization ticket Apple issues is unusable on a fresh
 macOS install. Entitlements live in
-[`/src-tauri/entitlements.plist`](../../src-tauri/entitlements.plist).
+[`/src-tauri/entitlements.plist`](../src-tauri/entitlements.plist).
 
 > **Status (issue #1399):** the workflow wiring (notarytool submit +
 > stapler + `hardenedRuntime: true`) is live. Until the four `APPLE_*`
@@ -167,7 +167,7 @@ signing:
 ## 7. Tauri Updater Endpoint & Pubkey Rotation
 
 The updater is enabled but `pubkey: ""` and `endpoints: []` in
-[`/src-tauri/tauri.conf.json`](../../src-tauri/tauri.conf.json) lines
+[`/src-tauri/tauri.conf.json`](../src-tauri/tauri.conf.json) lines
 81–85 are empty — auto-update will **not fire** until they are filled
 in.
 

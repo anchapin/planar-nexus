@@ -66,7 +66,7 @@ Before you begin, ensure you have the following installed:
 ### Optional (for Tauri builds)
 
 - **Rust toolchain**: For building desktop applications ([Install](https://rustup.rs/))
-- **Platform-specific build tools**: See [Deployment Guide](DEPLOYMENT_GUIDE.md)
+- **Platform-specific build tools**: See [Deployment Guide](docs/DEPLOYMENT_GUIDE.md)
 
 ---
 
@@ -320,7 +320,7 @@ The CSP is governed by **issue #1273** and **issue #1584**, and follows
 three principles:
 
 1. **Single source of truth.** The allow-list of external hosts lives in
-   [`src/lib/security/csp-allowlist.ts`](../src/lib/security/csp-allowlist.ts).
+   [`src/lib/security/csp-allowlist.ts`](src/lib/security/csp-allowlist.ts).
    Both `tauri.conf.json` (the runtime CSP) and `next.config.ts` (the
    Next.js Image Optimizer `remotePatterns`) consume that module. The
    regression test `tests/csp-audit.test.ts` parses the runtime CSP,
@@ -513,7 +513,7 @@ npm run lint -- --fix
 - Prefer **co-located unit tests** (`__tests__/*.test.ts` next to the module
   under test). Use repo-root `tests/` for integration tests and `e2e/` for
   Playwright specs.
-- Reuse the helpers in [`@/test-utils`](../src/test-utils) (factories, mocks,
+- Reuse the helpers in [`@/test-utils`](src/test-utils) (factories, mocks,
   MSW) rather than hand-rolling fixtures.
 - Bug fixes **must** include a regression test that fails before the fix and
   passes after.
@@ -624,8 +624,8 @@ toward 70% as coverage improves (tracked in issue #922).
 
 Game-state fixtures derived from recorded gameplay are auto-converted into Jest
 tests by `scripts/generate-test-fixture.ts` (CI: `.github/workflows/video-derived-tests.yml`).
-See [TESTING.md §9](./TESTING.md#9-video-derived-fixture-pipeline) and
-[VIDEO_DERIVED_TESTS_WORKFLOW.md](./VIDEO_DERIVED_TESTS_WORKFLOW.md) for details.
+See [TESTING.md §9](docs/TESTING.md#9-video-derived-fixture-pipeline) and
+[VIDEO_DERIVED_TESTS_WORKFLOW.md](docs/VIDEO_DERIVED_TESTS_WORKFLOW.md) for details.
 
 ---
 

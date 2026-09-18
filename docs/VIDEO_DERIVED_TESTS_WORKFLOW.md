@@ -179,4 +179,4 @@ To add custom behavior:
 
 - [Game State Module](../src/lib/game-state/README.md)
 - [Testing Guide](../TESTING.md)
-- [CI/CD Overview](../docs/CICD.md)
+- [CI/CD Overview](./DEPLOYMENT_GUIDE.md#cicd-pipeline)

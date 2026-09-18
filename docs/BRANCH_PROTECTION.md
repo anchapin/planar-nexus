@@ -120,4 +120,4 @@ By default, administrators should follow the same rules. However, in emergency s
 
 - [GitHub Branch Protection Documentation](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/defining-the-mergeability-of-pull-requests/about-protected-branches)
 - [GitHub Actions Workflows](../.github/workflows/ci.yml)
-- [CI Quality Gates Phase](./CI_QUALITY_GATES.md)
+- [CI Quality Gates Phase](./DEPLOYMENT_GUIDE.md#cicd-pipeline)
