@@ -571,10 +571,10 @@ npm test -- --testPathPattern=video-derived --coverage
 
 | Metric     | Project target | CI-enforced floor (`jest.config.js`) |
 | ---------- | -------------- | ------------------------------------ |
-| Lines      | **70%**        | 61%                                  |
-| Functions  | **70%**        | 53%                                  |
-| Statements | **70%**        | 61%                                  |
-| Branches   | **60%**        | 53%                                  |
+| Lines      | **70%**        | 64%                                  |
+| Functions  | **70%**        | 55%                                  |
+| Statements | **70%**        | 63%                                  |
+| Branches   | **60%**        | 54%                                  |
 
 <!-- coverage-floor:end -->
 
@@ -721,10 +721,12 @@ Issue #1711 is the remediation track lifting the two weakest baselines
 (layer-system + spell-casting) toward 70%; `break` is raised to 70 in a
 follow-up only after the nightly run confirms every module clears it.
 
-| Metric         | Project target | CI-enforced floor (Stryker `thresholds.break`)      |
-| -------------- | -------------- | --------------------------------------------------- |
+| Metric | Project target | CI-enforced floor (Stryker `thresholds.break`) |
+| ------ | -------------- | ---------------------------------------------- |
+
 <!-- mutation-floor:start -->
-| Mutation score | **70%**        | **50%** (ratcheted to 70 once all modules clear it) |
+
+| Mutation score | **70%** | **50%** (ratcheted to 70 once all modules clear it) |
 <!-- mutation-floor:end -->
 
 #### Running locally
