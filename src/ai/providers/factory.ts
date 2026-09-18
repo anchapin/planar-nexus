@@ -1,4 +1,5 @@
 import type { AIProvider } from "./types";
+import { AI_PROVIDER_IDS } from "./types";
 
 /**
  * Default models for each provider
@@ -89,11 +90,19 @@ export async function getAIModel(provider: string, modelId?: string) {
 /**
  * Whether a provider string is recognized by the factory.
  * Kept synchronous so callers can validate before awaiting `getAIModel`.
+ *
+ * Issue #1809: now uses the canonical {@link AI_PROVIDER_IDS} tuple,
+ * so adding a provider to the union automatically extends validation
+ * without copy-paste. Accepts the normalized `'z-ai'` input variant
+ * (lowercased) for backward compatibility with client-side aliases —
+ * the normalization lives here, NOT in the canonical tuple, since
+ * `'z-ai'` is an input-encoding quirk rather than an independent
+ * provider.
  */
 export function isSupportedProvider(provider: string): provider is AIProvider {
   const normalized = provider.toLowerCase();
-  return ["openai", "anthropic", "google", "zaic", "z-ai", "custom"].includes(
-    normalized,
+  return (
+    AI_PROVIDER_IDS.includes(normalized as AIProvider) || normalized === "z-ai"
   );
 }
 
