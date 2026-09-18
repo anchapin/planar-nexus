@@ -16,6 +16,8 @@
  */
 
 import { renderHook, act, waitFor } from "@testing-library/react";
+import { readFileSync } from "fs";
+import { join } from "path";
 import {
   useP2PConnection,
   rotateSessionKeyOnPromotion,
@@ -891,5 +893,44 @@ describe("rotateSessionKeyOnPromotion (#1391)", () => {
     expect(newKey).toMatch(/^[0-9a-f]{64}$/);
     expect(conn.setSessionKey).toHaveBeenCalledWith(newKey);
     expect(newKey).not.toBe("old-key");
+  });
+});
+
+describe("use-p2p-connection — single source of truth for match history (#1863)", () => {
+  // The P2P match-history surface is owned exclusively by
+  // `localIntelligenceDb.match_records` (Dexie). The historical
+  // `useLocalStorage` mirror in `use-social.ts` / `use-ranked-mode.ts`
+  // has been removed so the two paths cannot drift. This block pins
+  // the architectural choice with two complementary checks:
+
+  it("writes MatchRecord rows ONLY to localIntelligenceDb.match_records (no useLocalStorage mirror)", () => {
+    const source = readFileSync(
+      join(__dirname, "..", "use-p2p-connection.ts"),
+      "utf8",
+    );
+
+    // The hook must continue to call `match_records.put` so the runtime
+    // persistence path is exercised. The runtime tests above pin the
+    // call shape; this static check guards against any future writer
+    // being added in parallel.
+    expect(source).toMatch(/localIntelligenceDb\.match_records\.put/);
+
+    // The hook must NOT import or call `useLocalStorage` — the
+    // historical mirror was removed in #1863 and re-introducing it
+    // would re-create the duality. We scan for actual import and call
+    // shapes (paren / generic / destructure) to catch either
+    // re-introduction path while leaving documentation references
+    // (`"useLocalStorage mirror"`) in comments untouched.
+    expect(source).not.toMatch(/import\s*\{[^}]*useLocalStorage[^}]*\}\s*from/);
+    expect(source).not.toMatch(/\buseLocalStorage\s*[<(]/);
+
+    // Belt-and-suspenders: no `localStorage.setItem` calls touching
+    // match-history-shaped keys (`match-history`, `matchHistory`,
+    // `MATCH_HISTORY`). The IDB-fallback path in `use-local-storage.ts`
+    // itself is unchanged — this assertion is scoped to the hook so a
+    // future contributor adding a parallel writer here is caught
+    // immediately.
+    expect(source).not.toMatch(/localStorage\.setItem\([^)]*match/i);
+    expect(source).not.toMatch(/localStorage\.setItem\([^)]*game-ended/i);
   });
 });

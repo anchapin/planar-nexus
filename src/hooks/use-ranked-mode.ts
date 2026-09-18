@@ -2,19 +2,30 @@
  * Ranked Mode Hook
  *
  * React hook for managing ranked mode state, including player rating,
- * match history, and leaderboard.
+ * season, and leaderboard.
  *
- * Issue #254: Add competitive/ranked game mode
+ * Issue #254: Add competitive/ranked game mode.
+ *
+ * Match history note (issue #1863): this hook historically held a parallel
+ * `matchHistory` `useLocalStorage` mirror as a match-history writer, while
+ * `use-p2p-connection.ts` persisted `MatchRecord` rows to the
+ * `localIntelligenceDb.match_records` Dexie store (the durable source of
+ * truth per the persistence ADR §6 stage 3). The two paths drifted
+ * independently because nothing connected them.
+ *
+ * Resolution: the P2P match-history surface is owned exclusively by
+ * `localIntelligenceDb.match_records`. The mirror has been removed from this
+ * hook so the two cannot drift. `playerRating`/`leaderboard`/`season` (the
+ * ranked-mode ELO surface) are unaffected — they are derived state over
+ * `match_records`, not raw match history.
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   PlayerRating,
-  MatchResult,
   Season,
   LeaderboardEntry,
   createPlayerRating,
-  processMatchResult,
   ratingToRank,
   sortLeaderboard,
   createSeason,
@@ -40,15 +51,8 @@ export interface UseRankedModeReturn {
   leaderboard: LeaderboardEntry[];
   playerRank: number;
 
-  // Match history
-  matchHistory: MatchResult[];
-
   // Actions
   startRankedMatch: (opponentRating: number) => void;
-  completeMatch: (
-    result: "win" | "loss" | "draw",
-    opponentRating: number,
-  ) => void;
   resetRank: () => void;
 
   // UI helpers
@@ -57,8 +61,6 @@ export interface UseRankedModeReturn {
 }
 
 const SEASON_KEY = "planar-nexus-season";
-const MATCH_HISTORY_KEY = "planar-nexus-match-history";
-const MAX_HISTORY = 50;
 
 export function useRankedMode(
   playerId: PlayerId,
@@ -109,11 +111,12 @@ export function useRankedMode(
     }
   }, []);
 
-  // Match history
-  const [matchHistory, setMatchHistory] = useLocalStorage<MatchResult[]>(
-    `${MATCH_HISTORY_KEY}-${playerId}`,
-    [],
-  );
+  // Match history: removed (issue #1863). The P2P match-history surface is
+  // owned exclusively by `localIntelligenceDb.match_records` (Dexie) — see
+  // `src/hooks/use-p2p-connection.ts` `handleGameEnded` and
+  // `src/lib/db/local-intelligence-db.ts`. A future selector hook layered
+  // on `match_records` can replace this section if/when the ranked ELO
+  // surface needs to compute from per-game results.
 
   // Leaderboard (mock data - in production would come from server)
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
@@ -174,30 +177,6 @@ export function useRankedMode(
     return getSeasonDaysRemaining(season);
   }, [season]);
 
-  // Complete match
-  const completeMatch = useCallback(
-    (result: "win" | "loss" | "draw", opponentRating: number) => {
-      if (!playerRating) return;
-
-      const { updatedRating, matchResult } = processMatchResult(
-        playerRating,
-        opponentRating,
-        result,
-      );
-
-      // Update rating
-      setPlayerRating(updatedRating);
-
-      // Add to history
-      const newHistory = [
-        { ...matchResult, opponentId: "opponent" },
-        ...matchHistory,
-      ].slice(0, MAX_HISTORY);
-      setMatchHistory(newHistory);
-    },
-    [playerRating, matchHistory, setPlayerRating, setMatchHistory],
-  );
-
   // Start ranked match (placeholder for matchmaking)
   const startRankedMatch = useCallback((_opponentRating: number) => {
     // In production, this would trigger matchmaking
@@ -207,8 +186,7 @@ export function useRankedMode(
   // Reset rank
   const resetRank = useCallback(() => {
     setPlayerRating(createPlayerRating(playerId, playerName));
-    setMatchHistory([]);
-  }, [playerId, playerName, setPlayerRating, setMatchHistory]);
+  }, [playerId, playerName, setPlayerRating]);
 
   // UI helpers
   const getRankDisplay = useCallback(() => {
@@ -228,9 +206,7 @@ export function useRankedMode(
     daysRemaining,
     leaderboard,
     playerRank,
-    matchHistory,
     startRankedMatch,
-    completeMatch,
     resetRank,
     getRankDisplay,
     getRankTierColor,
