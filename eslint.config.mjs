@@ -222,6 +222,11 @@ const eslintConfig = [
       "scripts/check-engine-size-budget.mjs",
       // Plain Node ESM tooling for the issue #1896 broken-link gate.
       "scripts/check-broken-links.mjs",
+      // Plain Node ESM tooling for the issue #1902 test-count-docs gate.
+      "scripts/check-test-count-docs.mjs",
+      // Plain Node ESM tooling for the issue #1902 test-count-docs ratchet
+      // (rewrites `docs/onboarding.md` `<!-- TEST_COUNT:START -->` block).
+      "scripts/ratchet-test-count.mjs",
       ".claude/skills/pr-automation/**",
     ],
   },
