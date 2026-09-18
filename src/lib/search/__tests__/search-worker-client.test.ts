@@ -1,5 +1,6 @@
 /**
- * @fileoverview Tests for the Orama card-search worker client (issue #1389).
+ * @fileoverview Tests for the Orama card-search worker client (issue #1389,
+ * fix #1894).
  *
  * The client lazily constructs the Web Worker on first instantiation. In
  * jsdom there is no `Worker` global, so `getSearchApi()` must return
@@ -7,9 +8,18 @@
  * that is the signal `searchCardsOffline` uses to fall back to the
  * main-thread `cardSearchIndex.search()`.
  *
+ * Issue #1894 acceptance criterion: source-level guards pin the broken
+ * `new Function('... import.meta.url ...')` pattern out of the file and
+ * confirm the proper module-top-level `import.meta.url` capture lives
+ * in the dedicated `search-worker-factory.ts` module loaded via
+ * dynamic import. See `search-worker-factory.test.ts` for the matching
+ * factory-side guards.
+ *
  * Mirrors `backup-checksum-client.test.ts` (issue #1249).
  */
 import { describe, it, expect, afterEach, jest } from "@jest/globals";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import {
   SearchWorkerClient,
@@ -106,6 +116,87 @@ describe("search-worker-client (issue #1389)", () => {
       client.terminate(); // double-terminate is a no-op
       expect(client.getStatus()).toBe("fallback");
       expect(client.getSearchApi()).toBeNull();
+    });
+  });
+
+  describe("issue #1894 — worker URL resolution regression guards", () => {
+    it("client source no longer uses the broken `new Function('... import.meta.url ...')` pattern", () => {
+      // Issue #1894 root cause: the prior
+      // `resolveImportMetaUrl()` helper used
+      // `new Function('try { return ... import.meta.url ... }')()` —
+      // `new Function` builds a global-realm function where
+      // `import.meta` is undefined, so the helper ALWAYS returned
+      // null in production traffic and the client fell through to
+      // `self.location.href`, which Firefox/WebKit refused with a
+      // `text/html` MIME error.
+      //
+      // The fix moved URL resolution into
+      // `search-worker-factory.ts` (loaded via dynamic `import()`).
+      // A regression that re-introduces the `new Function`-realm
+      // trick here would re-introduce the cross-browser failure.
+      //
+      // Note: the current implementation uses `new Function("p",
+      // "return import(p)")` to bypass the bundler's static
+      // analysis and avoid an eagerly-preloaded chunk loader
+      // (issue #1894 follow-up — bundle-budget impact). That is
+      // NOT the broken pattern: it does not read `import.meta.url`
+      // and instead invokes a true dynamic `import()`. The guard
+      // here specifically rejects the import.meta.url trick.
+      const source = readFileSync(
+        join(__dirname, "..", "search-worker-client.ts"),
+        "utf8",
+      );
+      // Strip comments so the prose docstring that explains the bug
+      // does not trip the regex (it still references `new Function`
+      // and `import.meta.url` while describing what is no longer in
+      // the code).
+      const code = source
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/(^|[^:])\/\/.*$/gm, "$1");
+      // Specifically reject the import.meta.url trick; a generic
+      // `new Function(...)` for unrelated purposes (e.g. dynamic
+      // import indirection) is allowed.
+      expect(code).not.toMatch(/new\s+Function\s*\(\s*['"`].*import\.meta/);
+    });
+
+    it("client source delegates URL resolution to the dedicated factory module via dynamic import", () => {
+      // The fix relies on loading `./search-worker-factory` via a
+      // dynamic `import()`, with the production-catch surrounding it
+      // so a CJS-environment load failure (the `import.meta` parse
+      // error) is handled silently and the last-resort
+      // `self.location.href` branch takes over. The dynamic import
+      // is intentionally routed through a `Function("p", "return
+      // import(p)")` indirection so the bundler does not statically
+      // trace the dependency and emit an eagerly-preloaded chunk
+      // loader for every route that pulls in the client (issue
+      // #1894 follow-up — bundle-budget impact).
+      const source = readFileSync(
+        join(__dirname, "..", "search-worker-client.ts"),
+        "utf8",
+      );
+      // The factory chunk must be referenced (either via a literal
+      // dynamic `import("./search-worker-factory")` or via the
+      // Function-indirection pattern that wraps it).
+      const referencesFactory =
+        /import\s*\(\s*['"]\.\/search-worker-factory['"]\s*\)/.test(source) ||
+        /Function\s*\(\s*['"]p['"]\s*,\s*['"]return\s+import\s*\(\s*p\s*\)\s*['"]/.test(
+          source,
+        );
+      expect(referencesFactory).toBe(true);
+    });
+
+    it("client source keeps the last-resort self.location.href fallback (acceptance criterion)", () => {
+      // Acceptance criterion: "The fallback to `self.location.href`
+      // is preserved as a last-resort defense (not removed)". The
+      // factory dynamic import is the primary path; the
+      // `self.location.href` branch must remain in the client so a
+      // future bundle regression that breaks the dynamic import
+      // does not silently produce zero workers.
+      const source = readFileSync(
+        join(__dirname, "..", "search-worker-client.ts"),
+        "utf8",
+      );
+      expect(source).toMatch(/self\.location\.href/);
     });
   });
 });

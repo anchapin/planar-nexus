@@ -22,6 +22,8 @@ import {
   beforeEach,
   afterEach,
 } from "@jest/globals";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   embeddingWorkerManager,
   _setEmbeddingWorkerFactoryLoader,
@@ -189,5 +191,48 @@ describe("embeddingWorkerManager (issue #1813)", () => {
         { id: "c1", name: "Shock" },
       ] as never),
     ).not.toThrow();
+  });
+
+  describe("issue #1894 — worker URL resolution regression guards", () => {
+    it("factory source uses the canonical top-level `new URL(import.meta.url)` capture", () => {
+      // Issue #1894 follow-up: the previous version guarded the URL
+      // with `typeof import.meta !== "undefined"` and fell through
+      // to a hard-coded `/_next/static/chunks/...` path that the
+      // dev server does not serve. The canonical pattern — a
+      // module-top-level `new URL(import.meta.url)` capture — is
+      // what webpack / Turbopack statically analyse to emit the
+      // worker as its own chunk. Pin the literal shape so a future
+      // refactor cannot silently drop it.
+      const source = readFileSync(
+        join(__dirname, "..", "embedding-worker-factory.ts"),
+        "utf8",
+      );
+      // Strip comments so explanatory prose (which references the
+      // old `typeof import.meta !== "undefined"` shape while
+      // describing the prior bug) does not trip the assertion.
+      const code = source
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/(^|[^:])\/\/.*$/gm, "$1");
+      expect(code).toMatch(/new\s+URL\s*\(\s*import\.meta\.url\s*\)/);
+    });
+
+    it("factory source resolves the worker URL with the static-analysis-friendly shape", () => {
+      // Mirrors the search-worker-factory guard: the literal
+      //   new URL(RELATIVE, MODULE_URL)
+      // shape is what the bundler keys off to emit the worker as
+      // its own chunk. Dropping the relative form (e.g. switching
+      // to an absolute path) silently 404s again, with no error
+      // visible at the construction site.
+      const source = readFileSync(
+        join(__dirname, "..", "embedding-worker-factory.ts"),
+        "utf8",
+      );
+      const code = source
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/(^|[^:])\/\/.*$/gm, "$1");
+      expect(code).toMatch(
+        /new\s+URL\s*\(\s*['"]\.\.\/ai\/embedding-worker\.ts['"]\s*,\s*MODULE_URL\s*\)/,
+      );
+    });
   });
 });
