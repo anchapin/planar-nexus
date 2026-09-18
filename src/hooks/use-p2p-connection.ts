@@ -294,11 +294,11 @@ export interface UseP2PConnectionReturn {
    *
    * The hook ALSO persists a `MatchRecord` row to Dexie on receipt so
    * the durable source of truth for match history is
-   * `localIntelligenceDb.match_records`. The `gameEnded` field is for
-   * UI banner / state-update consumption (e.g. a "Game Over" toast
-   * before the user dismisses it), and is consumable by the existing
-   * `use-social.ts` `matchHistory` derivation via a future
-   * merge-into-existing-storage migration.
+   * `localIntelligenceDb.match_records` — there is no other store
+   * (issue #1863 closed the `useLocalStorage` mirror). The `gameEnded`
+   * field here is for UI banner / state-update consumption only
+   * (e.g. a "Game Over" toast before the user dismisses it); future
+   * match-history UI must read from `match_records` directly.
    */
   gameEnded: GameEndedPayload | null;
 }
@@ -391,10 +391,10 @@ export function useP2PConnection(
   // first terminal event arrives for this session. Reset by
   // `closeConnection` so a fresh session starts blank. The hook layer
   // ALSO persists a `MatchRecord` row to Dexie on receipt so the value
-  // survives a refresh and feeds the existing `use-social.ts`
-  // `matchHistory` derivation indirectly (the existing derivation reads
-  // from `useLocalStorage`; the new Dexie store is the durable source of
-  // truth for P2P matches and a future migration can fold the two).
+  // survives a refresh. As of issue #1863, the P2P match-history surface
+  // is owned exclusively by `localIntelligenceDb.match_records` — the
+  // historical `useLocalStorage` mirror in `use-social.ts` /
+  // `use-ranked-mode.ts` has been removed so the two paths cannot drift.
   const [gameEnded, setGameEnded] = useState<GameEndedPayload | null>(null);
   // Mirrors `playerId` / `playerName` into refs so the once-created
   // `onGameEnded` connection handler reads the latest identity without
@@ -810,6 +810,9 @@ export function useP2PConnection(
   // transport's `onGameEnded` event. The transport's anti-replay check
   // (issue #1091) deduplicates a re-delivered `game-ended` BEFORE this
   // runs, so the same `gameId` is written at most once per local peer.
+  // This Dexie `match_records` write is the ONLY writer of P2P match
+  // history (issue #1863); consumers must read from `match_records`
+  // rather than any `useLocalStorage` mirror.
   //
   // A peer that is NOT listed in the payload's `standings` (e.g. a
   // spectator who watched but did not play) still receives the event for
@@ -1443,7 +1446,8 @@ export function useP2PConnection(
     // Issue #1570: reset the latest game-ended payload so a fresh session
     // does not surface the previous match's "Game Over" banner. The Dexie
     // `match_records` rows are NOT cleared here — the user expects match
-    // history to survive a session boundary.
+    // history to survive a session boundary, and `match_records` is the
+    // sole persistent store for P2P match history (issue #1863).
     setGameEnded(null);
   }, [fallbackHostId]);
 
@@ -1655,7 +1659,9 @@ export function useP2PConnection(
      * (or after `closeConnection`). The hook ALSO persists a
      * `MatchRecord` row to Dexie on receipt so the value here is for
      * UI banner / state-update consumption, while the durable source of
-     * truth for match history is `localIntelligenceDb.match_records`.
+     * truth for match history is `localIntelligenceDb.match_records` —
+     * there is no second writer (issue #1863 closed the
+     * `useLocalStorage` mirror).
      *
      * Reset by `closeConnection`. A subsequent session starts blank.
      */

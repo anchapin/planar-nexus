@@ -1,24 +1,34 @@
 /**
  * Social Features Hook
  *
- * React hook for managing friends list and match history.
+ * React hook for managing friends list and player profile.
  *
- * Issue #255: Add social features - friends list and match history
+ * Issue #255: Add social features - friends list and match history.
+ *
+ * Match history note (issue #1863): this hook historically held a parallel
+ * `matchHistory` `useLocalStorage` mirror as the UI-facing match-history
+ * store, while `use-p2p-connection.ts` persisted `MatchRecord` rows to the
+ * `localIntelligenceDb.match_records` Dexie store (the durable source of
+ * truth per the persistence ADR §6 stage 3). The two paths drifted
+ * independently because nothing connected them.
+ *
+ * Resolution: the P2P match-history surface is owned exclusively by
+ * `localIntelligenceDb.match_records` (see `src/hooks/use-p2p-connection.ts`
+ * `handleGameEnded` and `src/lib/db/local-intelligence-db.ts`). The mirror
+ * in this hook has been removed so the two cannot drift. Future
+ * match-history consumers MUST read from `match_records` (or via a
+ * dedicated selector hook layered on top of it), NOT from `useLocalStorage`
+ * with a `match-history` key.
  */
 
-import { useEffect, useCallback, useMemo } from "react";
+import { useEffect, useCallback } from "react";
 import {
   Friend,
   FriendRequest,
-  MatchHistoryEntry,
   PlayerProfile,
   createFriend,
   createFriendRequest,
-  createMatchHistoryEntry,
   createPlayerProfile,
-  updateProfileWithResult,
-  getWinRateFromHistory,
-  getRecentResults,
   SOCIAL_STORAGE_KEYS,
 } from "@/lib/social";
 import { useLocalStorage } from "./use-local-storage";
@@ -29,12 +39,6 @@ export interface UseSocialReturn {
   friends: Friend[];
   friendRequests: FriendRequest[];
   blockedPlayers: PlayerId[];
-
-  // Match History
-  matchHistory: MatchHistoryEntry[];
-  recentMatches: MatchHistoryEntry[];
-  overallWinRate: number;
-  formatWinRates: Record<string, number>;
 
   // Profile
   profile: PlayerProfile | null;
@@ -52,22 +56,9 @@ export interface UseSocialReturn {
   blockPlayer: (playerId: PlayerId) => void;
   unblockPlayer: (playerId: PlayerId) => void;
 
-  // Match History Actions
-  addMatchResult: (
-    opponentId: PlayerId,
-    opponentName: string,
-    result: "win" | "loss" | "draw",
-    format: MatchHistoryEntry["format"],
-    yourDeckName?: string,
-    opponentDeckName?: string,
-    duration?: number,
-  ) => void;
-
   // Profile Actions
   updateProfile: (updates: Partial<PlayerProfile>) => void;
 }
-
-const MAX_HISTORY = 100;
 
 export function useSocial(
   playerId: PlayerId,
@@ -91,12 +82,6 @@ export function useSocial(
     [],
   );
 
-  // Match history
-  const [matchHistory, setMatchHistory] = useLocalStorage<MatchHistoryEntry[]>(
-    `${SOCIAL_STORAGE_KEYS.MATCH_HISTORY}-${playerId}`,
-    [],
-  );
-
   // Player profile
   const [profile, setProfile] = useLocalStorage<PlayerProfile | null>(
     `${SOCIAL_STORAGE_KEYS.PLAYER_PROFILE}-${playerId}`,
@@ -109,36 +94,6 @@ export function useSocial(
       setProfile(createPlayerProfile(playerId, playerName));
     }
   }, [playerId, playerName, profile, setProfile]);
-
-  // Recent matches
-  const recentMatches = useMemo(
-    () => getRecentResults(matchHistory, 10),
-    [matchHistory],
-  );
-
-  // Overall win rate
-  const overallWinRate = useMemo(
-    () => getWinRateFromHistory(matchHistory),
-    [matchHistory],
-  );
-
-  // Win rate by format
-  const formatWinRates = useMemo(() => {
-    const formats: Record<string, MatchHistoryEntry[]> = {};
-    matchHistory.forEach((m) => {
-      if (!formats[m.format]) {
-        formats[m.format] = [];
-      }
-      formats[m.format].push(m);
-    });
-
-    return Object.fromEntries(
-      Object.entries(formats).map(([format, matches]) => [
-        format,
-        getWinRateFromHistory(matches),
-      ]),
-    );
-  }, [matchHistory]);
 
   // Add friend
   const addFriend = useCallback(
@@ -218,41 +173,10 @@ export function useSocial(
     [setBlockedPlayers],
   );
 
-  // Add match result
-  const addMatchResult = useCallback(
-    (
-      opponentId: PlayerId,
-      opponentName: string,
-      result: "win" | "loss" | "draw",
-      format: MatchHistoryEntry["format"],
-      yourDeckName?: string,
-      opponentDeckName?: string,
-      duration: number = 0,
-    ) => {
-      const entry = createMatchHistoryEntry(
-        opponentId,
-        opponentName,
-        result,
-        format,
-        yourDeckName,
-        opponentDeckName,
-        duration,
-      );
-
-      setMatchHistory((prev) => [entry, ...prev].slice(0, MAX_HISTORY));
-
-      // Update profile stats
-      if (profile) {
-        setProfile(updateProfileWithResult(profile, result));
-      }
-    },
-    [profile, setMatchHistory, setProfile],
-  );
-
   // Update profile
   const updateProfile = useCallback(
     (updates: Partial<PlayerProfile>) => {
-      setProfile((prev) => (prev ? { ...prev, ...updates } : null));
+      setProfile((prev) => (prev ? { ...prev, ...updates } : prev));
     },
     [setProfile],
   );
@@ -261,10 +185,6 @@ export function useSocial(
     friends,
     friendRequests,
     blockedPlayers,
-    matchHistory,
-    recentMatches,
-    overallWinRate,
-    formatWinRates,
     profile,
     addFriend,
     removeFriend,
@@ -273,7 +193,6 @@ export function useSocial(
     rejectFriendRequest,
     blockPlayer,
     unblockPlayer,
-    addMatchResult,
     updateProfile,
   };
 }
