@@ -19,6 +19,10 @@
  */
 
 import { logger } from "./logger";
+import {
+  IndexedDBBlockedError,
+  registerVersionChangeClose,
+} from "./indexeddb-open-events";
 
 const p2pLogger = logger.child("P2PReconnectStore");
 
@@ -138,6 +142,26 @@ export class ReconnectTokenStore {
   /**
    * Open the database. Safe to call multiple times — concurrent callers
    * share a single in-flight open promise.
+   *
+   * Issue #1861 (resolves the §5.5 gap from issue #1722): the previous
+   * implementation logged a warn on `onblocked` and never settled, so the
+   * open would pend forever if another tab ever held an older version of
+   * `PlanarNexusReconnectTokens` open. Now matches the full #1709
+   * lifecycle shared by `IndexedDBStorage.initialize` and
+   * `card-database.openDatabase`:
+   *
+   *   - `onblocked` rejects with `IndexedDBBlockedError` (stable `name`,
+   *     actionable message — "another tab holds an older version") so
+   *     callers / retry layers can recover once the other tab closes,
+   *     instead of hanging for the rest of the session.
+   *   - `onsuccess` registers `onversionchange` via
+   *     `registerVersionChangeClose`, dropping the cached handle and
+   *     broadcasting `planar-nexus:db-versionchange` so other tabs'
+   *     upgrades are never wedged on us.
+   *   - The public API methods (`save`, `get`, `list`, …) catch the
+   *     rejection and degrade to `null` / `false` so the lobby UI can
+   *     still load when the store cannot open — preserving the
+   *     "connectivity errors never throw to the caller" contract.
    */
   private async openDb(): Promise<IDBDatabase | null> {
     if (this.db) return this.db;
@@ -148,7 +172,7 @@ export class ReconnectTokenStore {
       return null;
     }
 
-    this.openPromise = new Promise<IDBDatabase | null>((resolve) => {
+    this.openPromise = new Promise<IDBDatabase | null>((resolve, reject) => {
       let request: IDBOpenDBRequest;
       try {
         request = indexedDB.open(this.dbName, this.version);
@@ -166,24 +190,80 @@ export class ReconnectTokenStore {
         }
       };
 
-      request.onsuccess = () => {
-        this.db = request.result;
-        this.openPromise = null;
-        resolve(request.result);
-      };
-
+      // Issue #1709: a synchronous throw from `indexedDB.open` (e.g.
+      // quota, private-mode quirks) still rejects the promise so the
+      // public API can degrade to `null`/`false` in its `catch`.
       request.onerror = () => {
         p2pLogger.warn("Reconnect-token DB open error", String(request.error));
         this.openPromise = null;
         resolve(null);
       };
 
+      // Issue #1709 / #1861: the upgrade is blocked by an open
+      // connection in another tab. Reject with the stable, actionable
+      // error name so retry logic and tests can key off it instead of
+      // the open pending forever. If the other tab closes later and the
+      // request STILL succeeds, close that late connection instead of
+      // leaking it for the rest of the session.
       request.onblocked = () => {
-        p2pLogger.warn("Reconnect-token DB open blocked by another tab");
+        p2pLogger.warn(
+          "Reconnect-token DB open blocked by another tab (issue #1861)",
+        );
+        request.onsuccess = () => {
+          try {
+            request.result.close();
+          } catch {
+            // already closed — nothing to do
+          }
+        };
+        this.openPromise = null;
+        reject(new IndexedDBBlockedError(this.dbName));
+      };
+
+      request.onsuccess = () => {
+        const database = request.result;
+        this.db = database;
+        // Issue #1709 (reverse direction): another tab requesting a
+        // higher version must not stay blocked on us. Close on
+        // `versionchange`, drop the cached handle so the next openDb()
+        // call re-opens at the new version, and broadcast
+        // `planar-nexus:db-versionchange` so UI layers can offer a
+        // reload.
+        registerVersionChangeClose(database, () => {
+          if (this.db === database) {
+            this.db = null;
+          }
+        });
+        this.openPromise = null;
+        resolve(database);
       };
     });
 
     return this.openPromise;
+  }
+
+  /**
+   * Public-API facade over {@link openDb}: catches the
+   * `IndexedDBBlockedError` rejection (and any other open failure) so the
+   * store's "connectivity errors never throw to the caller" contract
+   * holds. Returns `null` on every failure mode so `save`/`get`/`list`/
+   * `delete`/`purgeExpired`/`clearForGame`/`clearAll` keep degrading
+   * gracefully when the upgrade is blocked by another tab.
+   *
+   * The {@link openDb} rejection IS still observable — code that wants
+   * to react to a blocked upgrade (e.g. surface a "close the other tab"
+   * affordance and retry) should call {@link openDb} directly and
+   * `instanceof IndexedDBBlockedError`-check the rejection. The lobby /
+   * hook layer does not need that signal today.
+   */
+  private async openDbOrNull(): Promise<IDBDatabase | null> {
+    try {
+      return await this.openDb();
+    } catch (err) {
+      // openDb() already logs the cause; nothing to add here.
+      void err;
+      return null;
+    }
   }
 
   /**
@@ -199,7 +279,7 @@ export class ReconnectTokenStore {
     input: Omit<ReconnectToken, "id" | "issuedAt" | "expiresAt"> &
       Partial<Pick<ReconnectToken, "issuedAt" | "expiresAt">>,
   ): Promise<boolean> {
-    const db = await this.openDb();
+    const db = await this.openDbOrNull();
     if (!db) return false;
 
     const issuedAt = input.issuedAt ?? Date.now();
@@ -247,7 +327,7 @@ export class ReconnectTokenStore {
    * reused for a different game (issue #1254 acceptance criteria).
    */
   async get(gameCode: string, peerId: string): Promise<ReconnectToken | null> {
-    const db = await this.openDb();
+    const db = await this.openDbOrNull();
     if (!db) return null;
 
     const id = getReconnectTokenKey(gameCode, peerId);
@@ -308,7 +388,7 @@ export class ReconnectTokenStore {
    * nothing to delete.
    */
   async delete(gameCode: string, peerId: string): Promise<boolean> {
-    const db = await this.openDb();
+    const db = await this.openDbOrNull();
     if (!db) return false;
 
     const id = getReconnectTokenKey(gameCode, peerId);
@@ -353,7 +433,7 @@ export class ReconnectTokenStore {
    * etc.) can rely on the snapshot being unfiltered.
    */
   async list(): Promise<ReconnectToken[]> {
-    const db = await this.openDb();
+    const db = await this.openDbOrNull();
     if (!db) return [];
 
     return new Promise<ReconnectToken[]>((resolve) => {
@@ -384,7 +464,7 @@ export class ReconnectTokenStore {
    * store does not accumulate stale entries.
    */
   async purgeExpired(now: number = Date.now()): Promise<number> {
-    const db = await this.openDb();
+    const db = await this.openDbOrNull();
     if (!db) return 0;
 
     return new Promise<number>((resolve) => {
@@ -428,7 +508,7 @@ export class ReconnectTokenStore {
    * 30-minute TTL for clean shutdowns).
    */
   async clearForGame(gameCode: string): Promise<number> {
-    const db = await this.openDb();
+    const db = await this.openDbOrNull();
     if (!db) return 0;
 
     return new Promise<number>((resolve) => {
@@ -472,7 +552,7 @@ export class ReconnectTokenStore {
    * state" affordances that should not affect decks or saved games.
    */
   async clearAll(): Promise<boolean> {
-    const db = await this.openDb();
+    const db = await this.openDbOrNull();
     if (!db) return false;
 
     return new Promise<boolean>((resolve) => {
