@@ -2,27 +2,35 @@
  * Game code generation utilities for lobby management
  */
 
-const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Removed similar-looking characters (0, O, I, 1)
+const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Removed similar-looking characters (0, O, I, 1)
 const CODE_LENGTH = 6;
 
 /**
  * Generate a unique game code for lobby identification
  * Format: 6-character alphanumeric string (e.g., "A3B7K9")
- * Uses a reduced character set to avoid confusing characters
+ * Uses a reduced character set to avoid confusing characters.
+ *
+ * SECURITY (issue #1906): never fall back to `Math.random()`. A silent
+ * fallback would defeat the security goal; a hard failure is the only
+ * observable signal that the environment is unsafe for game-code
+ * issuance. Mirrors the contract of the canonical implementation in
+ * `src/app/api/signaling/route.ts` (issue #1568): if
+ * `crypto.getRandomValues` is unavailable this function THROWS a
+ * descriptive error rather than downgrade to a non-CSPRNG.
  */
 export function generateGameCode(): string {
-  let code = '';
-  const randomValues = new Uint8Array(CODE_LENGTH);
-
-  // Use crypto.getRandomValues for better randomness
-  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
-    crypto.getRandomValues(randomValues);
-  } else {
-    // Fallback for older browsers
-    for (let i = 0; i < CODE_LENGTH; i++) {
-      randomValues[i] = Math.floor(Math.random() * 256);
-    }
+  if (
+    typeof globalThis.crypto === "undefined" ||
+    typeof globalThis.crypto.getRandomValues !== "function"
+  ) {
+    throw new Error(
+      "generateGameCode requires crypto.getRandomValues — refusing to fall back to Math.random (issue #1906 contract)",
+    );
   }
+
+  let code = "";
+  const randomValues = new Uint8Array(CODE_LENGTH);
+  globalThis.crypto.getRandomValues(randomValues);
 
   for (let i = 0; i < CODE_LENGTH; i++) {
     code += ALPHABET[randomValues[i] % ALPHABET.length];
@@ -43,7 +51,7 @@ export function formatGameCode(code: string): string {
  * Validate a game code format
  */
 export function isValidGameCode(code: string): boolean {
-  const cleanedCode = code.replace(/-/g, '').toUpperCase();
+  const cleanedCode = code.replace(/-/g, "").toUpperCase();
   if (cleanedCode.length !== CODE_LENGTH) return false;
 
   // Check all characters are valid
@@ -58,7 +66,7 @@ export function isValidGameCode(code: string): boolean {
  * Normalize a game code by removing hyphens and converting to uppercase
  */
 export function normalizeGameCode(code: string): string {
-  return code.replace(/-/g, '').toUpperCase();
+  return code.replace(/-/g, "").toUpperCase();
 }
 
 /**

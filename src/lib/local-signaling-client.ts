@@ -7,12 +7,15 @@
  * via QR code, copy-paste, or other out-of-band methods.
  */
 
-import type { RTCSessionDescriptionInit, RTCIceCandidateInit } from '@/lib/webrtc-types';
+import type {
+  RTCSessionDescriptionInit,
+  RTCIceCandidateInit,
+} from "@/lib/webrtc-types";
 import {
   FixedWindowLimiter,
   TokenBucket,
   type RateLimitOptions,
-} from '@/lib/security/rate-limit';
+} from "@/lib/security/rate-limit";
 
 /**
  * Issue #1277 — per-connection signaling rate-limit defaults. The signaling
@@ -38,19 +41,19 @@ export const SIGNALING_MAX_CONNECTION_STRING_BYTES = 8 * 1024;
  * Connection phase in the signaling process
  */
 export type ConnectionPhase =
-  | 'idle'
-  | 'creating-offer'
-  | 'waiting-for-answer'
-  | 'creating-answer'
-  | 'exchanging-ice'
-  | 'connecting'
-  | 'connected'
-  | 'failed';
+  | "idle"
+  | "creating-offer"
+  | "waiting-for-answer"
+  | "creating-answer"
+  | "exchanging-ice"
+  | "connecting"
+  | "connected"
+  | "failed";
 
 /**
  * Signaling role (host or joiner)
  */
-export type SignalingRole = 'host' | 'joiner';
+export type SignalingRole = "host" | "joiner";
 
 /**
  * Local signaling state
@@ -120,7 +123,7 @@ export class LocalSignalingClient {
 
   constructor(options: LocalSignalingClientOptions) {
     this.state = {
-      phase: 'idle',
+      phase: "idle",
       role: options.role,
       localIceCandidates: [],
       remoteIceCandidates: [],
@@ -137,7 +140,9 @@ export class LocalSignalingClient {
       onIceCandidate: () => {},
     };
 
-    this.events = options.events ? { ...defaultEvents, ...options.events } : defaultEvents;
+    this.events = options.events
+      ? { ...defaultEvents, ...options.events }
+      : defaultEvents;
 
     const cr = options.signalingLimits?.connectionRequest ?? {};
     const ice = options.signalingLimits?.iceCandidate ?? {};
@@ -161,13 +166,15 @@ export class LocalSignalingClient {
   /**
    * Initialize the connection process as host
    */
-  async initializeAsHost(peerConnection: RTCPeerConnection): Promise<RTCSessionDescriptionInit> {
-    if (this.state.role !== 'host') {
-      throw new Error('Cannot initialize as host when role is joiner');
+  async initializeAsHost(
+    peerConnection: RTCPeerConnection,
+  ): Promise<RTCSessionDescriptionInit> {
+    if (this.state.role !== "host") {
+      throw new Error("Cannot initialize as host when role is joiner");
     }
 
     this.peerConnection = peerConnection;
-    this.updatePhase('creating-offer');
+    this.updatePhase("creating-offer");
 
     try {
       // Create offer
@@ -175,12 +182,14 @@ export class LocalSignalingClient {
       await peerConnection.setLocalDescription(offer);
 
       this.state.localOffer = offer;
-      this.updatePhase('waiting-for-answer');
+      this.updatePhase("waiting-for-answer");
 
       this.events.onOfferCreated(offer);
       return offer;
     } catch (error) {
-      this.handleError(error instanceof Error ? error : new Error('Failed to create offer'));
+      this.handleError(
+        error instanceof Error ? error : new Error("Failed to create offer"),
+      );
       throw error;
     }
   }
@@ -190,31 +199,35 @@ export class LocalSignalingClient {
    */
   async initializeAsJoiner(
     peerConnection: RTCPeerConnection,
-    offer: RTCSessionDescriptionInit
+    offer: RTCSessionDescriptionInit,
   ): Promise<RTCSessionDescriptionInit> {
-    if (this.state.role !== 'joiner') {
-      throw new Error('Cannot initialize as joiner when role is host');
+    if (this.state.role !== "joiner") {
+      throw new Error("Cannot initialize as joiner when role is host");
     }
 
     this.peerConnection = peerConnection;
     this.state.remoteOffer = offer;
-    this.updatePhase('creating-answer');
+    this.updatePhase("creating-answer");
 
     try {
       // Set remote offer
-      await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+      await peerConnection.setRemoteDescription(
+        new RTCSessionDescription(offer),
+      );
 
       // Create answer
       const answer = await peerConnection.createAnswer();
       await peerConnection.setLocalDescription(answer);
 
       this.state.localAnswer = answer;
-      this.updatePhase('exchanging-ice');
+      this.updatePhase("exchanging-ice");
 
       this.events.onAnswerCreated(answer);
       return answer;
     } catch (error) {
-      this.handleError(error instanceof Error ? error : new Error('Failed to create answer'));
+      this.handleError(
+        error instanceof Error ? error : new Error("Failed to create answer"),
+      );
       throw error;
     }
   }
@@ -223,20 +236,24 @@ export class LocalSignalingClient {
    * Handle an answer received by the host
    */
   async handleAnswer(answer: RTCSessionDescriptionInit): Promise<void> {
-    if (this.state.role !== 'host') {
-      throw new Error('Only host can handle answer');
+    if (this.state.role !== "host") {
+      throw new Error("Only host can handle answer");
     }
 
     if (!this.peerConnection) {
-      throw new Error('Peer connection not initialized');
+      throw new Error("Peer connection not initialized");
     }
 
     try {
-      await this.peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+      await this.peerConnection.setRemoteDescription(
+        new RTCSessionDescription(answer),
+      );
       this.state.remoteAnswer = answer;
-      this.updatePhase('exchanging-ice');
+      this.updatePhase("exchanging-ice");
     } catch (error) {
-      this.handleError(error instanceof Error ? error : new Error('Failed to handle answer'));
+      this.handleError(
+        error instanceof Error ? error : new Error("Failed to handle answer"),
+      );
       throw error;
     }
   }
@@ -269,7 +286,10 @@ export class LocalSignalingClient {
       await this.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
       this.state.remoteIceCandidates.push(candidate);
     } catch (error) {
-      console.error('[LocalSignalingClient] Failed to add ICE candidate:', error);
+      console.error(
+        "[LocalSignalingClient] Failed to add ICE candidate:",
+        error,
+      );
       // Don't throw - some candidates may fail silently
     }
   }
@@ -277,7 +297,9 @@ export class LocalSignalingClient {
   /**
    * Set multiple remote ICE candidates at once
    */
-  async addRemoteIceCandidates(candidates: RTCIceCandidateInit[]): Promise<void> {
+  async addRemoteIceCandidates(
+    candidates: RTCIceCandidateInit[],
+  ): Promise<void> {
     for (const candidate of candidates) {
       await this.addRemoteIceCandidate(candidate);
     }
@@ -289,7 +311,7 @@ export class LocalSignalingClient {
    */
   getConnectionString(): string {
     const data = {
-      type: this.state.role === 'host' ? 'offer' : 'answer',
+      type: this.state.role === "host" ? "offer" : "answer",
       phase: this.state.phase,
       offer: this.state.localOffer,
       answer: this.state.localAnswer,
@@ -309,14 +331,14 @@ export class LocalSignalingClient {
    * behavior for malformed JSON).
    */
   static parseConnectionString(connectionString: string): {
-    type: 'offer' | 'answer';
+    type: "offer" | "answer";
     phase: ConnectionPhase;
     offer?: RTCSessionDescriptionInit;
     answer?: RTCSessionDescriptionInit;
     ice: RTCIceCandidateInit[];
   } | null {
     if (
-      typeof connectionString !== 'string' ||
+      typeof connectionString !== "string" ||
       connectionString.length === 0 ||
       connectionString.length > SIGNALING_MAX_CONNECTION_STRING_BYTES
     ) {
@@ -331,13 +353,32 @@ export class LocalSignalingClient {
 
   /**
    * Generate a short game code for manual sharing
+   *
+   * SECURITY (issue #1906): never fall back to `Math.random()`. A silent
+   * fallback would defeat the security goal; a hard failure is the only
+   * observable signal that the environment is unsafe for game-code
+   * issuance. Mirrors the contract of the canonical implementation in
+   * `src/app/api/signaling/route.ts` (issue #1568): if
+   * `crypto.getRandomValues` is unavailable this function THROWS a
+   * descriptive error rather than downgrade to a non-CSPRNG.
    */
   static generateGameCode(length: number = 6): string {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Excluding confusing characters
-    let code = '';
+    if (
+      typeof globalThis.crypto === "undefined" ||
+      typeof globalThis.crypto.getRandomValues !== "function"
+    ) {
+      throw new Error(
+        "generateGameCode requires crypto.getRandomValues — refusing to fall back to Math.random (issue #1906 contract)",
+      );
+    }
+
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Excluding confusing characters
+    let code = "";
+    const buf = new Uint8Array(length);
+    globalThis.crypto.getRandomValues(buf);
 
     for (let i = 0; i < length; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
+      code += chars.charAt(buf[i] % chars.length);
     }
 
     return code;
@@ -347,7 +388,7 @@ export class LocalSignalingClient {
    * Mark connection as successful
    */
   markConnected(): void {
-    this.updatePhase('connected');
+    this.updatePhase("connected");
     this.events.onConnected();
   }
 
@@ -356,7 +397,7 @@ export class LocalSignalingClient {
    */
   reset(): void {
     this.state = {
-      phase: 'idle',
+      phase: "idle",
       role: this.state.role,
       localIceCandidates: [],
       remoteIceCandidates: [],
@@ -388,7 +429,7 @@ export class LocalSignalingClient {
    * Handle an error
    */
   private handleError(error: Error): void {
-    this.state.phase = 'failed';
+    this.state.phase = "failed";
     this.state.error = error.message;
     this.events.onStateChange(this.state);
     this.events.onError(error);
@@ -399,7 +440,7 @@ export class LocalSignalingClient {
  * Create a local signaling client
  */
 export function createLocalSignalingClient(
-  options: LocalSignalingClientOptions
+  options: LocalSignalingClientOptions,
 ): LocalSignalingClient {
   return new LocalSignalingClient(options);
 }
@@ -410,7 +451,7 @@ export function createLocalSignalingClient(
  */
 export interface SignalingDataTransfer {
   version: string;
-  type: 'offer' | 'answer' | 'ice-candidates';
+  type: "offer" | "answer" | "ice-candidates";
   data: RTCSessionDescriptionInit | RTCIceCandidateInit | RTCIceCandidateInit[];
   timestamp: number;
 }
@@ -419,11 +460,11 @@ export interface SignalingDataTransfer {
  * Create a transfer object for sharing signaling data
  */
 export function createSignalingDataTransfer(
-  type: 'offer' | 'answer' | 'ice-candidates',
-  data: RTCSessionDescriptionInit | RTCIceCandidateInit | RTCIceCandidateInit[]
+  type: "offer" | "answer" | "ice-candidates",
+  data: RTCSessionDescriptionInit | RTCIceCandidateInit | RTCIceCandidateInit[],
 ): SignalingDataTransfer {
   return {
-    version: '1.0',
+    version: "1.0",
     type,
     data,
     timestamp: Date.now(),
@@ -442,7 +483,9 @@ export function serializeForQRCode(data: SignalingDataTransfer): string {
 /**
  * Deserialize signaling data from QR code
  */
-export function deserializeFromQRCode(encoded: string): SignalingDataTransfer | null {
+export function deserializeFromQRCode(
+  encoded: string,
+): SignalingDataTransfer | null {
   try {
     const json = atob(encoded);
     return JSON.parse(json) as SignalingDataTransfer;
@@ -454,7 +497,10 @@ export function deserializeFromQRCode(encoded: string): SignalingDataTransfer | 
 /**
  * Check if data string is too large for QR code
  */
-export function isDataTooLargeForQRCode(data: string, version: number = 40): boolean {
+export function isDataTooLargeForQRCode(
+  data: string,
+  version: number = 40,
+): boolean {
   // QR code version 40 supports up to 2953 bytes (numeric mode)
   // We'll use a more conservative estimate for alphanumeric mode
   const maxBytes = 2000;
@@ -465,7 +511,10 @@ export function isDataTooLargeForQRCode(data: string, version: number = 40): boo
 /**
  * Chunk large data for multi-step QR code sharing
  */
-export function chunkDataForQRCode(data: string, maxChunkSize: number = 1800): string[] {
+export function chunkDataForQRCode(
+  data: string,
+  maxChunkSize: number = 1800,
+): string[] {
   const chunks: string[] = [];
   for (let i = 0; i < data.length; i += maxChunkSize) {
     chunks.push(data.slice(i, i + maxChunkSize));
@@ -477,5 +526,5 @@ export function chunkDataForQRCode(data: string, maxChunkSize: number = 1800): s
  * Reassemble chunks into original data
  */
 export function assembleChunks(chunks: string[]): string {
-  return chunks.join('');
+  return chunks.join("");
 }
