@@ -1,4 +1,5 @@
 import {
+  type GameAction,
   type GameState,
   type Player,
   type CardInstance,
@@ -281,6 +282,23 @@ describe("ValidationService", () => {
       const result = ValidationService.canPassPriority(gameState, playerId);
       expect(result.isValid).toBe(false);
       expect(result.reason).toBe("You do not have priority.");
+    });
+  });
+
+  describe("undo action — issue #1901", () => {
+    it("rejects { type: 'undo' } at the type level (no longer in GameAction union)", () => {
+      // Type-level test: the `GameAction` union no longer includes the
+      // `"undo"` literal, so constructing an undo action must fail
+      // type-checking. The `@ts-expect-error` annotation is the assertion —
+      // if "undo" ever re-enters the union, tsc will fail this test.
+      const action: GameAction = {
+        // @ts-expect-error — issue #1901: "undo" is no longer in GameAction.
+        type: "undo",
+        playerId,
+      };
+      // Sanity: the value still exists at runtime (type was stripped); the
+      // important guarantee is the compile-time rejection above.
+      expect(action.type).toBe("undo");
     });
   });
 });

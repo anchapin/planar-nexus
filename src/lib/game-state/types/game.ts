@@ -4,16 +4,16 @@
  * Mechanically extracted from types.ts (issue #1725);
  * behavior pinned by the existing engine suites.
  */
-import type { ReplacementEffectManager } from '../replacement-effects';
-import type { LayerSystem } from '../layer-system';
-import { CardInstance, CardInstanceId } from './cards';
-import { WaitingChoice } from './choices';
-import { Combat } from './combat';
-import { LinkedEffectRegistry } from './linked-effects';
-import { Player, PlayerId } from './players';
-import { StackObject } from './stack';
-import { Turn } from './turn';
-import { Zone } from './zones';
+import type { ReplacementEffectManager } from "../replacement-effects";
+import type { LayerSystem } from "../layer-system";
+import { CardInstance, CardInstanceId } from "./cards";
+import { WaitingChoice } from "./choices";
+import { Combat } from "./combat";
+import { LinkedEffectRegistry } from "./linked-effects";
+import { Player, PlayerId } from "./players";
+import { StackObject } from "./stack";
+import { Turn } from "./turn";
+import { Zone } from "./zones";
 
 /**
  * The complete game state
@@ -150,8 +150,7 @@ export type ActionType =
   | "pay_mana"
   | "add_mana"
   | "mulligan"
-  | "concede"
-  | "undo";
+  | "concede";
 
 // ============================================================================
 // AI-Specific Unified Types
@@ -160,4 +159,3 @@ export type ActionType =
 // maintaining compatibility with the engine's detailed GameState format.
 // Use conversion functions in serialization.ts to translate between formats.
 // ============================================================================
-
