@@ -78,7 +78,19 @@ const ROUTES: ReadonlyArray<{
 for (const route of ROUTES) {
   test(`route ${route.name} produces zero long-tasks > 200ms during initial render (#1575)`, async ({
     page,
+    browserName,
   }) => {
+    // reason: #1895 — CDP `Emulation.setCPUThrottlingRate` is Chromium-only;
+    // Firefox/WebKit lack an equivalent throttling API exposed to Playwright's
+    // `BrowserContext.route` instrumentation, so the 4x CPU throttle cannot be
+    // applied cross-engine. The long-task API itself is supported on Firefox
+    // (the "Long-Task API support" test below verifies this), but without the
+    // throttle the regression-budget assertion becomes a no-op. The Chromium
+    // project continues to gate the long-task budget.
+    test.skip(
+      browserName !== "chromium",
+      "CPU-4x throttle via CDP is Chromium-only; #1895",
+    );
     test.setTimeout(30_000);
     await throttleCPU4x(page);
 

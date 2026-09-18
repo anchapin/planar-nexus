@@ -159,11 +159,25 @@ test.describe("Import/Export Round Trip", () => {
     await expect(page.getByTestId("deck-item-command-tower")).toBeVisible();
   });
 
-  test("should round-trip via clipboard", async ({ page, context }) => {
+  test("should round-trip via clipboard", async ({
+    page,
+    context,
+    browserName,
+  }) => {
     test.setTimeout(60000);
 
     // Grant clipboard permissions for the round trip.
-    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    // reason: #1895 — `clipboard-read` / `clipboard-write` are Chromium-only;
+    // Playwright's `grantPermissions` rejects these names on Firefox/WebKit
+    // and aborts the test before the round-trip body runs. The engine-native
+    // clipboard APIs (`navigator.clipboard.writeText` / `readText`) work on
+    // all three engines once the page has focus, so the round-trip body itself
+    // (export-copy → toast → app's internal readText → paste-deck) runs
+    // cross-engine; only the post-copy read-back assertion (which calls
+    // `navigator.clipboard.readText()` from `page.evaluate`) is Chromium-gated.
+    if (browserName === "chromium") {
+      await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+    }
     await selectFormat(page, /commander/i);
 
     // 1. Import a simple deck via the import dialog.
@@ -200,11 +214,19 @@ test.describe("Import/Export Round Trip", () => {
     await expect(
       page.getByText("Copied to clipboard", { exact: true }),
     ).toBeVisible({ timeout: 10000 });
-    const clipboardText = await page.evaluate(() =>
-      navigator.clipboard.readText(),
-    );
-    expect(clipboardText).toContain("Lightning Bolt");
-    expect(clipboardText).toContain("Sol Ring");
+    // The read-back verification needs clipboard-read permission, which is
+    // Chromium-only (see the gate above). On Firefox/WebKit the toast itself
+    // proves the app's `navigator.clipboard.writeText` ran without throwing;
+    // the paste-from-clipboard step below round-trips through the app's own
+    // internal readText, which works on all three engines without permissions
+    // and exercises the cross-engine clipboard surface end-to-end.
+    if (browserName === "chromium") {
+      const clipboardText = await page.evaluate(() =>
+        navigator.clipboard.readText(),
+      );
+      expect(clipboardText).toContain("Lightning Bolt");
+      expect(clipboardText).toContain("Sol Ring");
+    }
 
     // Close the export dialog via its Close (X) button before clearing the
     // deck. A direct click is more reliable than Escape, which a toast layer
