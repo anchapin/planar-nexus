@@ -1105,11 +1105,45 @@ jobs:
       - name: Assert no broken markdown links (#1896)
         run: node scripts/check-broken-links.mjs
 
+  test-count-docs-guard:
+    # Issue #1902: the contributor onboarding doc (`docs/onboarding.md`)
+    # documents the current Jest test counts in an
+    # `<!-- TEST_COUNT:START --> … <!-- TEST_COUNT:END -->` anchor block
+    # — **Test suites**, **Test cases** (total + passed + skipped), and
+    # **Snapshots**. The block is ratcheted upward by
+    # `scripts/ratchet-test-count.mjs` (`npm run ratchet:test-count`),
+    # so a normal contributor run cannot introduce drift. THIS guard
+    # is the backstop for hand edits, stale branches, and cherry-picks
+    # that land a test-count change without re-running the ratchet.
+    # Mirrors the broken-links guard (#1896) and coverage-docs guard
+    # (#1712): parses the anchored block, parses
+    # `npx jest --listTests` and `npm test --silent` ground truth, exits
+    # 1 on any drift / missing anchor / missing file. Plain Node + the
+    # shared `setup-node-npm-ci` composite; ~100ms of script overhead
+    # plus the ~100s of `npm test --silent` for ground truth (same
+    # contract as the existing test job). Local equivalent:
+    # `npm run lint:test-count-docs`.
+    name: Test Count Docs Guard
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
+
+      - name: Assert onboarding doc test-count block matches Jest (#1902)
+        run: node scripts/check-test-count-docs.mjs
+
   build:
     name: Build
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
-    needs: [test, lint, typecheck, commitlint, mutation-smoke, security, cargo-audit, rust-checks, a11y-contrast, e2e, workflow-lint, tauri-updater-config, engine-size-budget, no-prompt-in-engine-guard, turn-credentials-guard, coverage-docs-guard, mutation-docs-guard, e2e-asserts-guard, jest-mock-boundary-guard, broken-links-guard]
+    needs: [test, lint, typecheck, commitlint, mutation-smoke, security, cargo-audit, rust-checks, a11y-contrast, e2e, workflow-lint, tauri-updater-config, engine-size-budget, no-prompt-in-engine-guard, turn-credentials-guard, coverage-docs-guard, mutation-docs-guard, e2e-asserts-guard, jest-mock-boundary-guard, broken-links-guard, test-count-docs-guard]
 
     steps:
       - name: Checkout code

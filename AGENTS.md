@@ -26,7 +26,7 @@ Package manager is **npm** (`package-lock.json` + CI `npm ci`, Node 22). No `pnp
 
 ## CI gate (`.github/workflows/ci.yml`)
 
-The `build` job `needs:` **all** of: `test, lint, typecheck, commitlint, mutation-smoke, security, cargo-audit, rust-checks, a11y-contrast, e2e, workflow-lint, tauri-updater-config, turn-credentials-guard, engine-size-budget, coverage-docs-guard`. Failing any one blocks merge. Run `typecheck && lint && test` locally before pushing.
+The `build` job `needs:` **all** of: `test, lint, typecheck, commitlint, mutation-smoke, security, cargo-audit, rust-checks, a11y-contrast, e2e, workflow-lint, tauri-updater-config, turn-credentials-guard, engine-size-budget, coverage-docs-guard, test-count-docs-guard`. Failing any one blocks merge. Run `typecheck && lint && test` locally before pushing.
 
 - `mutation-smoke` runs a fast config guard only (`node scripts/check-mutation-config.mjs`, ~50ms) — **no Stryker on PRs** (#1762). All mutation testing (incl. layer-system) is gated **nightly** in `.github/workflows/mutation.yml` (aggregate `thresholds.break` + per-module floors); a layer-system score regression surfaces on the nightly run, not the PR.
 - `workflow-lint` enforces that every job bootstraps via the shared `.github/actions/setup-node-npm-ci` composite (Node 22 + `npm ci`, ≥11 uses repo-wide). It **rejects** direct `npm ci` and `actions/setup-node@v1-5`. When adding/editing a workflow, reuse that action — do not hand-roll setup.
@@ -67,5 +67,6 @@ Copy `.env.example` → `.env`. AI keys are optional (heuristic fallback works).
 
 ## Canonical docs (read these, don't guess)
 
+- `docs/onboarding.md` — quick contributor onboarding (what Planar Nexus is, project layout, current test count, where to start). The test-count block is ratcheted by `scripts/ratchet-test-count.mjs` and verified by `scripts/check-test-count-docs.mjs` (#1902).
 - `docs/TESTING.md` — canonical testing guide (root `TESTING.md` redirects there).
 - `CLAUDE.md` — broader architecture notes. Largely current (correctly states Next.js 16 and `src/lib/game-state/`). Trust code over `CLAUDE.md` where they differ.
