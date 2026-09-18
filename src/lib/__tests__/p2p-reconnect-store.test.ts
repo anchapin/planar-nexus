@@ -30,6 +30,12 @@ import {
   RECONNECT_TOKEN_TTL_MS,
   type ReconnectToken,
 } from "../p2p-reconnect-store";
+import {
+  DB_VERSIONCHANGE_EVENT,
+  INDEXEDDB_BLOCKED_ERROR_NAME,
+  IndexedDBBlockedError,
+  type DBVersionChangeEventDetail,
+} from "../indexeddb-open-events";
 
 function uniqueDbName(label: string): string {
   // Each test gets its own IDB so the in-memory store from one test
@@ -435,6 +441,235 @@ describe("ReconnectTokenStore — host-side seat reservation during rejoin windo
     await store.clearForGame("GAME42");
     expect(await store.get("GAME42", "peer-1")).toBeNull();
   });
+});
+
+describe("ReconnectTokenStore — open lifecycle (issue #1861, §1709)", () => {
+  /**
+   * Issue #1861 — `ReconnectTokenStore` used to log a warn on
+   * `onblocked` and never settle, so the open would pend forever the
+   * moment another tab held an older version of
+   * `PlanarNexusReconnectTokens` open. The full #1709 lifecycle now
+   * rejects with `IndexedDBBlockedError` (matching
+   * `IndexedDBStorage.initialize`) and registers `onversionchange` via
+   * `registerVersionChangeClose` so other tabs' upgrades never wedge
+   * on us. The `PERSISTENCE_ARCHITECTURE.md §5.5` rule 3 (no DB may
+   * ship its first version bump until rules 1–2 are in place) is now
+   * satisfied for this store.
+   *
+   * Mirrors the setup of `indexeddb-storage-blocked-upgrade.test.ts`:
+   * fake-indexeddb's real multi-connection semantics, plus explicit
+   * short jest timeouts so a regression back to a pending open fails
+   * fast instead of hanging the suite.
+   *
+   * Declared BEFORE the resilience describe block so the resilience
+   * test (which clobbers `global.indexedDB` and only restores a partial
+   * stub) runs last and does not poison the fake-indexeddb globals
+   * these tests rely on.
+   */
+
+  /** Raw open of `name` at `version`, resolving with the live connection. */
+  const openRaw = (name: string, version: number) =>
+    new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open(name, version);
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+      req.onupgradeneeded = () => {
+        /* schema content is irrelevant */
+      };
+    });
+
+  /** Delete `name` ignoring all outcomes (cleanup between tests). */
+  const deleteDb = (name: string) =>
+    new Promise<void>((resolve) => {
+      const req = indexedDB.deleteDatabase(name);
+      req.onsuccess = req.onerror = req.onblocked = () => resolve();
+    });
+
+  /** Let fake-indexeddb drain queued open/upgrade callbacks. */
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 20));
+
+  /** Capture `planar-nexus:db-versionchange` events on `window`. */
+  const captureVersionChangeEvents = () => {
+    const seen: DBVersionChangeEventDetail[] = [];
+    const listener = (event: Event) => {
+      seen.push((event as CustomEvent<DBVersionChangeEventDetail>).detail);
+    };
+    window.addEventListener(DB_VERSIONCHANGE_EVENT, listener);
+    return {
+      seen,
+      stop: () => window.removeEventListener(DB_VERSIONCHANGE_EVENT, listener),
+    };
+  };
+
+  // Issue #1861 mirror: openDb() must reject with the stable
+  // IndexedDBBlockedError name when another tab holds an older
+  // version open. The original implementation logged a warn and
+  // never settled (forever pending), so the test carries an
+  // explicit short timeout to fail fast on regression. ONE expect
+  // per blocked-state test: a second openDb() while oldTab is still
+  // open would queue behind the first blocked request in
+  // fake-indexeddb (sequential open queue), so the retry case is
+  // its own test below.
+  it("openDb() rejects with IndexedDBBlockedError when another tab holds an older version open", async () => {
+    const dbName = uniqueDbName("blocked");
+    // Tab A: open v1 and KEEP the connection open (never closes on
+    // versionchange — the pre-#1861 misbehaving tab).
+    const oldTab = await openRaw(dbName, 1);
+    try {
+      const store = new ReconnectTokenStore({ dbName, version: 2 });
+      // openDb() is private — reach in to assert the rejection contract.
+      await expect(
+        (
+          store as unknown as {
+            openDb: () => Promise<IDBDatabase | null>;
+          }
+        ).openDb(),
+      ).rejects.toMatchObject({ name: INDEXEDDB_BLOCKED_ERROR_NAME });
+      store.close();
+    } finally {
+      oldTab.close();
+    }
+  }, 4000);
+
+  // Issue #1861 synergy: once the blocking tab closes, a fresh
+  // openDb() succeeds — the rejection did not poison the singleton
+  // (matching the #1726 init-retry pattern on `card-database`).
+  it("openDb() succeeds on retry after the blocking tab closes", async () => {
+    const dbName = uniqueDbName("blocked-retry");
+    const oldTab = await openRaw(dbName, 1);
+    const store = new ReconnectTokenStore({ dbName, version: 2 });
+
+    await expect(
+      (
+        store as unknown as {
+          openDb: () => Promise<IDBDatabase | null>;
+        }
+      ).openDb(),
+    ).rejects.toMatchObject({ name: INDEXEDDB_BLOCKED_ERROR_NAME });
+
+    // The other tab goes away — the upgrade unblocks.
+    oldTab.close();
+    await tick();
+
+    await expect(
+      (
+        store as unknown as {
+          openDb: () => Promise<IDBDatabase | null>;
+        }
+      ).openDb(),
+    ).resolves.toBeDefined();
+
+    store.close();
+  }, 4000);
+
+  // Issue #1861: the public-API contract — connectivity errors never
+  // throw to the caller — must survive the new rejection. Each
+  // public method is asserted in its own `it()` because
+  // fake-indexeddb processes opens for a given db sequentially, and
+  // a single blocked request queues every subsequent open for the
+  // same db behind the older-version connection. Per-method isolation
+  // (fresh dbName + fresh oldTab) keeps each blocked round-trip
+  // independent. The contract under test is the graceful-degradation
+  // shape, not the open queueing behavior.
+
+  const blockedCases: Array<{
+    label: string;
+    run: (store: ReconnectTokenStore) => Promise<unknown>;
+    expect: (result: unknown) => void;
+  }> = [
+    {
+      label: "save",
+      run: (s) => s.save(baseToken()),
+      expect: (r) => expect(r).toBe(false),
+    },
+    {
+      label: "get",
+      run: (s) => s.get("GAME42", "peer-1"),
+      expect: (r) => expect(r).toBeNull(),
+    },
+    {
+      label: "list",
+      run: (s) => s.list(),
+      expect: (r) => expect(r).toEqual([]),
+    },
+    {
+      label: "delete",
+      run: (s) => s.delete("GAME42", "peer-1"),
+      expect: (r) => expect(r).toBe(false),
+    },
+    {
+      label: "purgeExpired",
+      run: (s) => s.purgeExpired(),
+      expect: (r) => expect(r).toBe(0),
+    },
+    {
+      label: "clearForGame",
+      run: (s) => s.clearForGame("GAME42"),
+      expect: (r) => expect(r).toBe(0),
+    },
+    {
+      label: "clearAll",
+      run: (s) => s.clearAll(),
+      expect: (r) => expect(r).toBe(false),
+    },
+  ];
+
+  for (const c of blockedCases) {
+    it(`public API method ${c.label}() degrades gracefully when openDb() rejects`, async () => {
+      const dbName = uniqueDbName(`blocked-${c.label}`);
+      const store = new ReconnectTokenStore({ dbName, version: 2 });
+      const oldTab = await openRaw(dbName, 1);
+      try {
+        const result = await c.run(store);
+        c.expect(result);
+      } finally {
+        oldTab.close();
+        store.close();
+      }
+    });
+  }
+
+  // Issue #1861 (reverse direction): when another tab requests a
+  // version upgrade, our open connection must auto-close (so the
+  // other tab's open completes), the cached handle must be cleared
+  // (so the next openDb() re-opens at the new version), and
+  // `planar-nexus:db-versionchange` must be broadcast so UI layers
+  // can offer a reload prompt.
+  it("auto-closes its connection, drops the cached handle, and broadcasts the versionchange event on upgrade", async () => {
+    const dbName = uniqueDbName("versionchange");
+    const store = new ReconnectTokenStore({ dbName, version: 1 });
+    const db = await (
+      store as unknown as { openDb: () => Promise<IDBDatabase | null> }
+    ).openDb();
+    expect(db).not.toBeNull();
+    // Grab the live handle so we can prove it gets closed.
+    const handle = db as IDBDatabase;
+    expect(handle.version).toBe(1);
+
+    const events = captureVersionChangeEvents();
+    try {
+      // Another tab upgrades to v2 — only completes because we close.
+      const upgraded = await openRaw(dbName, 2);
+      expect(upgraded.version).toBe(2);
+      upgraded.close();
+    } finally {
+      events.stop();
+    }
+
+    // UI layers get a reload prompt carrying the db name.
+    expect(events.seen).toEqual([{ dbName }]);
+
+    // The old connection is really closed: per spec a transaction on
+    // a closed connection throws InvalidStateError.
+    expect(() => handle.transaction("tokens")).toThrow();
+
+    // The cached handle was nulled so the next openDb() re-opens
+    // instead of routing transactions at a dead connection.
+    expect((store as unknown as { db: IDBDatabase | null }).db).toBeNull();
+
+    store.close();
+    await deleteDb(dbName);
+  }, 4000);
 });
 
 describe("ReconnectTokenStore — resilience", () => {
