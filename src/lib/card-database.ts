@@ -347,6 +347,31 @@ async function doIndexCardsInWorker(): Promise<void> {
   const api = searchWorkerClient.getSearchApi();
   if (!api) return;
   try {
+    // Issue #1780: the prewarm helper (`src/lib/search/prewarm-search-worker.ts`)
+    // schedules this call from the (app) layout's `useEffect`, which fires
+    // BEFORE any route component has called `initializeCardDatabase()`.
+    // Before this guard, the read fired immediately and threw
+    // "Database not initialized" (logged as `[card-database] worker indexing
+    // failed:`), which made every Playwright cross-browser session emit a
+    // noisy warning — and on Firefox/WebKit the worker's MIME-type failure
+    // surfaced the warning to the page console where the `forced-colors`
+    // smoke test asserted a clean console.
+    //
+    // Awaiting `initializeCardDatabase()` here collapses the race: the
+    // prewarm still fires early (best-case the DB is already open), but if
+    // not, we wait for the in-flight init instead of throwing. Init itself
+    // is best-effort here — a failed init is already surfaced via the
+    // `console.error` in `initializeCardDatabase()` and `getDatabaseStatus()`,
+    // so we silently bail rather than double-logging.
+    if (!db) {
+      try {
+        await initializeCardDatabase();
+      } catch {
+        return;
+      }
+    }
+    if (!db) return;
+
     const allCards = await getAllCardsFromDB();
     if (allCards.length === 0) return;
     const fingerprint = cardCorpusFingerprint(allCards);
