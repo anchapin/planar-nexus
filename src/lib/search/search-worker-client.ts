@@ -16,12 +16,21 @@
  * - `getStatus()` transitions through `"initializing"` -> `"ready"` on
  *   successful worker construction, or -> `"fallback"` / `"error"` on
  *   failure.
+ *
+ * Issue #1780: the `import.meta.url` resolution is intentionally
+ * double-guarded — see the long-form note on `resolveImportMetaUrl()` at
+ * the bottom of the file for the Firefox/WebKit MIME-type trap that the
+ * `worker-src` CSP and the dev server's 404 page conspire to produce.
+ * The fix scope for #1780 is the card-database side (waiting for
+ * `initializeCardDatabase()` before the prewarm reads); the Worker URL
+ * resolution is documented for a follow-up.
  */
 
 import * as Comlink from "comlink";
 import type { searchWorker } from "./search.worker";
 
-export type SearchWorkerStatus = "ready" | "initializing" | "fallback" | "error";
+export type SearchWorkerStatus =
+  "ready" | "initializing" | "fallback" | "error";
 
 export type SearchWorkerAPI = typeof searchWorker;
 
@@ -87,6 +96,17 @@ class SearchWorkerClient {
 
   /**
    * Initialise the Web Worker and Comlink proxy.
+   *
+   * Issue #1780 (cross-browser E2E follow-up): the constructor does not
+   * throw for the MIME-type failure mode that Firefox/WebKit exhibit when
+   * the dev server returns `text/html` for an unresolved worker path
+   * ("Loading Worker from ... was blocked because of a disallowed MIME
+   * type"). The browser surfaces that as an asynchronous console.error
+   * and fires the worker's `error` event — listening on that event gives
+   * us a clean signal to surface in `initError` and `getStatus()`. The
+   * underlying URL resolution is still broken in dev (see
+   * `resolveImportMetaUrl()` docstring); the event-listener wiring here
+   * is the diagnostic complement, not a fix for the URL resolution.
    */
   private init(): void {
     try {
@@ -109,6 +129,34 @@ class SearchWorkerClient {
 
       this.worker = new Worker(workerUrl, { type: "module" });
       this.proxy = Comlink.wrap<SearchWorkerAPI>(this.worker);
+
+      // Issue #1780: surface async worker failures (MIME-type rejection,
+      // 404, network drop) via `initError` + the `"error"` status, so the
+      // prewarm helper and any UI subscriber can react. The constructor's
+      // try/catch only sees synchronous failures; the `error` event covers
+      // the rest.
+      this.worker.addEventListener("error", (event) => {
+        const message =
+          (event as ErrorEvent).message ||
+          `worker failed to load (${event.type})`;
+        this.initError = new Error(`[search-worker] ${message}`);
+        console.warn(
+          "[search-worker] Worker error; falling back to main-thread Orama search:",
+          this.initError,
+        );
+        this.status = "error";
+        // The proxy is still attached but every Comlink call would now
+        // throw. Drop it so callers fall back to `cardSearchIndex` cleanly
+        // instead of seeing raw Comlink errors.
+        this.proxy = null;
+        try {
+          this.worker?.terminate();
+        } catch {
+          // already terminated — nothing to do
+        }
+        this.worker = null;
+      });
+
       this.status = "ready";
     } catch (error) {
       this.initError =
@@ -146,6 +194,24 @@ class SearchWorkerClient {
  *
  * Returns `null` when the host has no ESM module URL — callers fall back
  * to `self.location.href` or a plain string path.
+ *
+ * Issue #1780 note: in the browser the `new Function(...)` body runs in
+ * the global-scope realm where `import.meta` is undefined (it is a
+ * module-scoped concept). So this helper returns `null` in the browser,
+ * which means production traffic always falls through to the
+ * `self.location.href` branch. That branch resolves to a path the Next.js
+ * dev server does not serve as a JavaScript module (the `.ts` extension
+ * is not in any recognized route), so Firefox/WebKit refuse the Worker
+ * construct with the "disallowed MIME type" error — Chromium is lenient
+ * and accepts `text/html` for the same URL. The proper fix is to follow
+ * the `src/lib/synergy/embedding-worker-factory.ts` pattern: extract the
+ * `new URL("./search.worker.ts", import.meta.url)` line into a separate
+ * factory module loaded via dynamic `import()`, so webpack's worker
+ * loader can statically analyse it and emit the worker as its own chunk.
+ * That refactor is intentionally deferred from #1780 — the card-database
+ * side of the fix (waiting for `initializeCardDatabase()` before reading)
+ * is the user-visible behaviour change; the Worker URL resolution is a
+ * longer-term follow-up that affects every worker in the app.
  */
 function resolveImportMetaUrl(): string | null {
   try {
