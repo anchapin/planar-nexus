@@ -11,7 +11,16 @@
  */
 
 // Import types from separate file (to avoid circular dependencies)
-import { DEFAULT_CONFIGS, DEFAULT_MODELS, type AIProviderConfig, type AIProvider, type SubscriptionTier, type SubscriptionPlan, type SubscriptionDetection } from './types';
+import {
+  DEFAULT_CONFIGS,
+  DEFAULT_MODELS,
+  AI_PROVIDER_IDS,
+  type AIProviderConfig,
+  type AIProvider,
+  type SubscriptionTier,
+  type SubscriptionPlan,
+  type SubscriptionDetection,
+} from "./types";
 
 // Re-export types
 export { DEFAULT_CONFIGS, DEFAULT_MODELS };
@@ -20,22 +29,22 @@ export type {
   AIProvider,
   SubscriptionTier,
   SubscriptionPlan,
-  SubscriptionDetection
+  SubscriptionDetection,
 };
 
 // Re-export providers with server-side proxy support (Issue #522)
-export * from './openai';
-export * from './zaic';
-export * from './google';
+export * from "./openai";
+export * from "./zaic";
+export * from "./google";
 
 // Re-export subscription detection (Issue #52)
-export * from './subscription-detection';
+export * from "./subscription-detection";
 
 /**
  * Current active provider configuration
  */
 let currentConfig: AIProviderConfig = {
-  provider: 'google',
+  provider: "google",
   ...DEFAULT_CONFIGS.google,
 };
 
@@ -61,17 +70,17 @@ export function setProvider(provider: AIProvider, model?: string): void {
  * Get available providers
  */
 export function getAvailableProviders(): AIProvider[] {
-  return ['google', 'openai', 'zaic'];
+  return ["google", "openai", "zaic"];
 }
 
 /**
  * Google model options (static list)
  */
 const GOOGLE_MODELS = [
-  'gemini-1.5-flash-latest',
-  'gemini-1.5-flash-8b',
-  'gemini-1.5-pro-latest',
-  'gemini-2.0-flash-exp',
+  "gemini-1.5-flash-latest",
+  "gemini-1.5-flash-8b",
+  "gemini-1.5-pro-latest",
+  "gemini-2.0-flash-exp",
 ];
 
 /**
@@ -79,15 +88,15 @@ const GOOGLE_MODELS = [
  */
 export function getModelOptions(provider: AIProvider): string[] {
   switch (provider) {
-    case 'google':
+    case "google":
       return GOOGLE_MODELS;
-    case 'openai':
+    case "openai":
       // Lazy import to avoid bundling issues in browser
       return getOpenAIModelOptionsStatic();
-    case 'zaic':
+    case "zaic":
       // Lazy import to avoid bundling issues in browser
       return getZAIModelOptionsStatic();
-    case 'custom':
+    case "custom":
       return [DEFAULT_MODELS.google];
     default:
       return [];
@@ -99,20 +108,20 @@ export function getModelOptions(provider: AIProvider): string[] {
  */
 function getOpenAIModelOptionsStatic(): string[] {
   return [
-    'gpt-4o',
-    'gpt-4o-2024-05-13',
-    'gpt-4o-2024-08-06',
-    'gpt-4o-mini',
-    'gpt-4o-mini-2024-07-18',
-    'gpt-4-turbo',
-    'gpt-4-turbo-2024-04-09',
-    'gpt-4',
-    'gpt-4-0613',
-    'gpt-4-32k',
-    'gpt-4-32k-0613',
-    'gpt-3.5-turbo',
-    'gpt-3.5-turbo-0125',
-    'gpt-3.5-turbo-1106',
+    "gpt-4o",
+    "gpt-4o-2024-05-13",
+    "gpt-4o-2024-08-06",
+    "gpt-4o-mini",
+    "gpt-4o-mini-2024-07-18",
+    "gpt-4-turbo",
+    "gpt-4-turbo-2024-04-09",
+    "gpt-4",
+    "gpt-4-0613",
+    "gpt-4-32k",
+    "gpt-4-32k-0613",
+    "gpt-3.5-turbo",
+    "gpt-3.5-turbo-0125",
+    "gpt-3.5-turbo-1106",
   ];
 }
 
@@ -120,12 +129,7 @@ function getOpenAIModelOptionsStatic(): string[] {
  * Get Z.ai model options (statically defined to avoid require)
  */
 function getZAIModelOptionsStatic(): string[] {
-  return [
-    'default',
-    'zaiclient-7b',
-    'zaiclient-14b',
-    'zaiclient-72b',
-  ];
+  return ["default", "zaiclient-7b", "zaiclient-14b", "zaiclient-72b"];
 }
 
 /**
@@ -133,14 +137,31 @@ function getZAIModelOptionsStatic(): string[] {
  * This can be used in prompt templates to make them provider-agnostic
  */
 export function getModelString(): string {
-  return currentConfig.model || DEFAULT_MODELS[currentConfig.provider] || DEFAULT_MODELS.google;
+  return (
+    currentConfig.model ||
+    DEFAULT_MODELS[currentConfig.provider] ||
+    DEFAULT_MODELS.google
+  );
 }
 
 /**
- * Validate provider configuration
+ * Validate provider configuration.
+ *
+ * Issue #1809: previously hand-copied the provider allowlist as
+ * `['google', 'openai', 'zaic', 'custom']` — which had DRIFTED from
+ * the {@link AIProvider} union (it omitted `'anthropic'`). Now
+ * delegates to the canonical {@link AI_PROVIDER_IDS} tuple, so a
+ * future addition to the union automatically extends this check.
+ *
+ * The function has no callers in the repo today (verified during the
+ * #1809 audit). Kept exported for backward compatibility with any
+ * external consumer that might import it from the barrel; if you find
+ * a use for it inside the repo, prefer {@link isSupportedProvider}
+ * from `./factory` (which also accepts the normalized `'z-ai'`
+ * input variant).
  */
 export function isValidProvider(provider: string): provider is AIProvider {
-  return ['google', 'openai', 'zaic', 'custom'].includes(provider);
+  return (AI_PROVIDER_IDS as readonly string[]).includes(provider);
 }
 
 /**
@@ -149,17 +170,19 @@ export function isValidProvider(provider: string): provider is AIProvider {
  */
 export function getAI(): never {
   throw new Error(
-    'AI functionality is not available in the browser. ' +
-    'Use AI features only in Server Actions or API routes.'
+    "AI functionality is not available in the browser. " +
+      "Use AI features only in Server Actions or API routes.",
   );
 }
 
 /**
  * Initialize the AI provider - for server-side use only
  */
-export function initializeAIProvider(_config?: Partial<AIProviderConfig>): never {
+export function initializeAIProvider(
+  _config?: Partial<AIProviderConfig>,
+): never {
   throw new Error(
-    'AI provider initialization is not available in the browser. ' +
-    'Use AI features only in Server Actions or API routes.'
+    "AI provider initialization is not available in the browser. " +
+      "Use AI features only in Server Actions or API routes.",
   );
 }

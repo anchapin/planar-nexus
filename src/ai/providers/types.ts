@@ -11,12 +11,48 @@
 /**
  * Supported AI providers
  */
-export type AIProvider = 'google' | 'openai' | 'anthropic' | 'zaic' | 'custom';
+export type AIProvider = "google" | "openai" | "anthropic" | "zaic" | "custom";
+
+/**
+ * Canonical, runtime-accessible list of the {@link AIProvider} union.
+ *
+ * Issue #1809: the canonical provider set was previously hand-copied in
+ * three places — `src/ai/providers/factory.ts` (`isSupportedProvider`'s
+ * inline array, plus a normalized `'z-ai'` variant), the `/api/ai-proxy`
+ * route (two inline `["google", "openai", "anthropic", "zaic", "custom"]`
+ * literals in the body), and the `/api/chat` route (a local
+ * `KNOWN_PROVIDERS` Set). Adding or renaming a provider required
+ * touching every copy; a missed one yielded inconsistent
+ * accept/reject behavior across the AI surface depending on which
+ * route a client hit. `isValidProvider` in `src/ai/providers/index.ts`
+ * was a fourth copy that had DRIFTED — it omitted `'anthropic'` even
+ * though `'anthropic'` is in the union.
+ *
+ * This tuple is the single source of truth outside the type itself.
+ * The `satisfies` annotation makes the literal type-checked against
+ * the `AIProvider` union: adding a value to the union without
+ * updating this tuple is now a compile-time error. Callers that need
+ * a Set (e.g. for `.has()`) should derive it from this tuple via
+ * `new Set(AI_PROVIDER_IDS)`.
+ *
+ * Note: `isSupportedProvider` continues to accept a normalized
+ * `'z-ai'` input variant for backward compatibility with client-side
+ * aliases. The normalization lives in the type-guard, NOT in this
+ * canonical tuple — the tuple is the wire/in-memory fact, the
+ * normalization is the input parsing concern.
+ */
+export const AI_PROVIDER_IDS = [
+  "google",
+  "openai",
+  "anthropic",
+  "zaic",
+  "custom",
+] as const satisfies readonly AIProvider[];
 
 /**
  * Subscription tier levels
  */
-export type SubscriptionTier = 'free' | 'pro' | 'team' | 'enterprise';
+export type SubscriptionTier = "free" | "pro" | "team" | "enterprise";
 
 /**
  * Detected subscription plan information
@@ -43,7 +79,7 @@ export interface SubscriptionDetection {
 /**
  * AI message role types
  */
-export type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
+export type MessageRole = "system" | "user" | "assistant" | "tool";
 
 /**
  * AI message structure
@@ -120,7 +156,7 @@ export interface ToolFunction {
  * Tool definition for AI calls
  */
 export interface AITool {
-  type: 'function';
+  type: "function";
   function: ToolFunction;
 }
 
@@ -131,9 +167,13 @@ export interface AIRequestOptions {
   messages: AIMessage[];
   temperature?: number;
   maxTokens?: number;
-  responseFormat?: { type: 'json_object' } | { type: 'text' };
+  responseFormat?: { type: "json_object" } | { type: "text" };
   tools?: AITool[];
-  toolChoice?: 'auto' | 'none' | 'required' | { type: 'function'; function: { name: string } };
+  toolChoice?:
+    | "auto"
+    | "none"
+    | "required"
+    | { type: "function"; function: { name: string } };
 }
 
 /**
@@ -174,7 +214,7 @@ export interface AIDeckAnalysisResponse {
   deckWeaknesses: string[];
   cardSuggestions: Array<{
     cardName: string;
-    action: 'add' | 'remove';
+    action: "add" | "remove";
     quantity: number;
     reason: string;
   }>;
@@ -206,13 +246,13 @@ export interface AIDraftAnalysisResponse {
  * Type guard to check if a value is a valid AIResponse
  */
 export function isAIResponse(value: unknown): value is AIResponse {
-  if (typeof value !== 'object' || value === null) return false;
+  if (typeof value !== "object" || value === null) return false;
   const response = value as Record<string, unknown>;
   return (
-    typeof response.id === 'string' &&
-    typeof response.object === 'string' &&
-    typeof response.created === 'number' &&
-    typeof response.model === 'string' &&
+    typeof response.id === "string" &&
+    typeof response.object === "string" &&
+    typeof response.created === "number" &&
+    typeof response.model === "string" &&
     Array.isArray(response.choices)
   );
 }
@@ -221,26 +261,28 @@ export function isAIResponse(value: unknown): value is AIResponse {
  * Type guard to check if a value is a valid AIMessage
  */
 export function isAIMessage(value: unknown): value is AIMessage {
-  if (typeof value !== 'object' || value === null) return false;
+  if (typeof value !== "object" || value === null) return false;
   const message = value as Record<string, unknown>;
   return (
-    (message.role === 'system' ||
-      message.role === 'user' ||
-      message.role === 'assistant' ||
-      message.role === 'tool') &&
-    typeof message.content === 'string'
+    (message.role === "system" ||
+      message.role === "user" ||
+      message.role === "assistant" ||
+      message.role === "tool") &&
+    typeof message.content === "string"
   );
 }
 
 /**
  * Type guard to check if a value is a valid AIEvaluationResult
  */
-export function isAIEvaluationResult(value: unknown): value is AIEvaluationResult {
-  if (typeof value !== 'object' || value === null) return false;
+export function isAIEvaluationResult(
+  value: unknown,
+): value is AIEvaluationResult {
+  if (typeof value !== "object" || value === null) return false;
   const result = value as Record<string, unknown>;
   return (
-    typeof result.score === 'number' &&
-    typeof result.reasoning === 'string' &&
+    typeof result.score === "number" &&
+    typeof result.reasoning === "string" &&
     Array.isArray(result.recommendations)
   );
 }
@@ -249,10 +291,10 @@ export function isAIEvaluationResult(value: unknown): value is AIEvaluationResul
  * Default model configurations
  */
 export const DEFAULT_MODELS: Record<string, string> = {
-  google: 'gemini-1.5-flash-latest',
-  openai: 'gpt-4o-mini',
-  anthropic: 'claude-3-5-sonnet-20241022',
-  zaic: 'default',
+  google: "gemini-1.5-flash-latest",
+  openai: "gpt-4o-mini",
+  anthropic: "claude-3-5-sonnet-20241022",
+  zaic: "default",
 };
 
 /**

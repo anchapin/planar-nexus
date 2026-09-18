@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { streamText, generateText } from "ai";
 import { getAIModel } from "@/ai/providers/factory";
-import { AIProvider } from "@/ai/providers/types";
+import { AIProvider, AI_PROVIDER_IDS } from "@/ai/providers/types";
 import { searchCardsTool } from "@/ai/tools/card-search";
 import {
   getProviderConfig,
@@ -75,7 +75,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         success: true,
         serverProxyEnabled: true,
         configuredProviders,
-        availableProviders: ["google", "openai", "anthropic", "zaic", "custom"],
+        availableProviders: [...AI_PROVIDER_IDS],
       });
     }
 
@@ -142,7 +142,7 @@ export async function POST(
     // Validate provider
     if (
       !provider ||
-      !["google", "openai", "anthropic", "zaic", "custom"].includes(provider)
+      !(AI_PROVIDER_IDS as readonly string[]).includes(provider)
     ) {
       return NextResponse.json(
         {

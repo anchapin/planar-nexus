@@ -7,6 +7,7 @@ import {
 } from "@/ai/flows/coach-stream";
 import { getProviderFailoverChain } from "@/ai/providers/factory";
 import type { AIProvider } from "@/ai/providers/types";
+import { coerceToKnownProvider } from "@/ai/providers/coerce";
 import { SECURITY_PREAMBLE, sanitizeUserInput } from "@/ai/prompt-security";
 import {
   enforceRateLimit,
@@ -115,18 +116,14 @@ function sanitizeChatMessages(raw: unknown[]): CoachStreamMessage[] {
     .filter((m): m is CoachStreamMessage => m !== null);
 }
 
-const KNOWN_PROVIDERS: ReadonlySet<string> = new Set([
-  "google",
-  "openai",
-  "anthropic",
-  "zaic",
-  "custom",
-]);
-
-/** Narrow a failover-chain provider name to the {@link AIProvider} union. */
-function asAIProvider(provider: string): AIProvider {
-  return KNOWN_PROVIDERS.has(provider) ? (provider as AIProvider) : "custom";
-}
+/**
+ * Local alias for {@link coerceToKnownProvider} — kept so the existing
+ * call sites (`withUsageLogging`, downstream route handlers) read
+ * naturally. Issue #1809 lifted both the helper and its source set
+ * into {@link coerceToKnownProvider}'s shared module so the coercion
+ * behavior is no longer hand-copied.
+ */
+const asAIProvider = coerceToKnownProvider;
 
 /**
  * Wrap the shared coach stream so completed usage is logged through the
