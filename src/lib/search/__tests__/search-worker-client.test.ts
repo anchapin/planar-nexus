@@ -1,5 +1,6 @@
 /**
- * @fileoverview Tests for the Orama card-search worker client (issue #1389).
+ * @fileoverview Tests for the Orama card-search worker client (issue #1389,
+ * fix #1894).
  *
  * The client lazily constructs the Web Worker on first instantiation. In
  * jsdom there is no `Worker` global, so `getSearchApi()` must return
@@ -7,9 +8,18 @@
  * that is the signal `searchCardsOffline` uses to fall back to the
  * main-thread `cardSearchIndex.search()`.
  *
+ * Issue #1894 acceptance criterion: source-level guards pin the broken
+ * `new Function('... import.meta.url ...')` pattern out of the file and
+ * confirm the proper module-top-level `import.meta.url` capture lives
+ * in the dedicated `search-worker-factory.ts` module loaded via
+ * dynamic import. See `search-worker-factory.test.ts` for the matching
+ * factory-side guards.
+ *
  * Mirrors `backup-checksum-client.test.ts` (issue #1249).
  */
 import { describe, it, expect, afterEach, jest } from "@jest/globals";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import {
   SearchWorkerClient,
@@ -106,6 +116,65 @@ describe("search-worker-client (issue #1389)", () => {
       client.terminate(); // double-terminate is a no-op
       expect(client.getStatus()).toBe("fallback");
       expect(client.getSearchApi()).toBeNull();
+    });
+  });
+
+  describe("issue #1894 — worker URL resolution regression guards", () => {
+    it("client source no longer uses the broken `new Function('... import.meta.url ...')` pattern", () => {
+      // Issue #1894 root cause: the prior
+      // `resolveImportMetaUrl()` helper used
+      // `new Function('try { return ... import.meta.url ... }')()` —
+      // `new Function` builds a global-realm function where
+      // `import.meta` is undefined, so the helper ALWAYS returned
+      // null in production traffic and the client fell through to
+      // `self.location.href`, which Firefox/WebKit refused with a
+      // `text/html` MIME error.
+      //
+      // The fix moved URL resolution into
+      // `search-worker-factory.ts` (loaded via dynamic `import()`).
+      // A regression that re-introduces the `new Function`-realm
+      // trick here would re-introduce the cross-browser failure.
+      const source = readFileSync(
+        join(__dirname, "..", "search-worker-client.ts"),
+        "utf8",
+      );
+      // Strip comments so the prose docstring that explains the bug
+      // does not trip the regex (it still references `new Function`
+      // and `import.meta.url` while describing what is no longer in
+      // the code).
+      const code = source
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/(^|[^:])\/\/.*$/gm, "$1");
+      expect(code).not.toMatch(/new\s+Function\s*\(/);
+    });
+
+    it("client source delegates URL resolution to the dedicated factory module via dynamic import", () => {
+      // The fix relies on a dynamic `import()` of
+      // `./search-worker-factory`, with the production-catch
+      // surrounding it so a CJS-environment load failure (the
+      // `import.meta` parse error) is handled silently and the
+      // last-resort `self.location.href` branch takes over.
+      const source = readFileSync(
+        join(__dirname, "..", "search-worker-client.ts"),
+        "utf8",
+      );
+      expect(source).toMatch(
+        /import\s*\(\s*\/\*[^]*?\*\/\s*['"]\.\/search-worker-factory['"]\s*\)/,
+      );
+    });
+
+    it("client source keeps the last-resort self.location.href fallback (acceptance criterion)", () => {
+      // Acceptance criterion: "The fallback to `self.location.href`
+      // is preserved as a last-resort defense (not removed)". The
+      // factory dynamic import is the primary path; the
+      // `self.location.href` branch must remain in the client so a
+      // future bundle regression that breaks the dynamic import
+      // does not silently produce zero workers.
+      const source = readFileSync(
+        join(__dirname, "..", "search-worker-client.ts"),
+        "utf8",
+      );
+      expect(source).toMatch(/self\.location\.href/);
     });
   });
 });

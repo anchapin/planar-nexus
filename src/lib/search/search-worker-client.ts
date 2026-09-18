@@ -1,29 +1,42 @@
 /**
- * @fileoverview Card search worker client (issue #1389).
+ * @fileoverview Card search worker client (issue #1389, fix #1894).
  *
  * Singleton that lazily initialises the Orama card-search Web Worker and
  * exposes a Comlink proxy. Mirrors the pattern in
  * `src/lib/backup/backup-checksum-client.ts` (issue #1249) and
  * `src/ai/worker/ai-worker-client.ts` (issue #1079):
  *
- * - Worker URL is resolved with `import.meta.url` so Next.js / Vite can
- *   bundle the worker module correctly under ESM. We fall back to a plain
- *   string path if `import.meta` is unavailable (Jest CJS, older runtimes).
- * - When the worker cannot be initialised (no `Worker` global — jsdom, SSR,
- *   server tests, CSP-blocked), `getSearchApi()` returns `null` and
- *   `getStatus()` reports `"fallback"` so callers degrade gracefully to the
- *   main-thread `cardSearchIndex`.
+ * - Worker URL is resolved in `search-worker-factory.ts` via a
+ *   module-top-level `import.meta.url` capture — the literal
+ *   `new URL("./search.worker.ts", MODULE_URL)` shape that webpack /
+ *   Turbopack statically analyse to emit the worker as its own chunk.
+ *   The factory is loaded through a dynamic `import()` wrapped in
+ *   try/catch so the `import.meta` token never reaches the parser in
+ *   ts-jest CJS, SSR, or any other non-ESM context.
+ * - A last-resort `self.location.href` branch stays in place for the
+ *   case where the dynamic import fails for an unexpected reason in
+ *   the browser — Firefox/WebKit refused the broken-path worker with
+ *   a `text/html` MIME error (issue #1894 acceptance criterion: keep
+ *   the fallback, do not remove it).
+ * - When the worker cannot be initialised (no `Worker` global — jsdom,
+ *   SSR, server tests, CSP-blocked), `getSearchApi()` returns `null`
+ *   and `getStatus()` reports `"fallback"` so callers degrade
+ *   gracefully to the main-thread `cardSearchIndex`.
  * - `getStatus()` transitions through `"initializing"` -> `"ready"` on
  *   successful worker construction, or -> `"fallback"` / `"error"` on
  *   failure.
  *
- * Issue #1780: the `import.meta.url` resolution is intentionally
- * double-guarded — see the long-form note on `resolveImportMetaUrl()` at
- * the bottom of the file for the Firefox/WebKit MIME-type trap that the
- * `worker-src` CSP and the dev server's 404 page conspire to produce.
- * The fix scope for #1780 is the card-database side (waiting for
- * `initializeCardDatabase()` before the prewarm reads); the Worker URL
- * resolution is documented for a follow-up.
+ * Issue #1894 follows up on #1780. The previous
+ * `resolveImportMetaUrl()` helper used `new Function(...)` to recover
+ * the calling module's URL, but `new Function` builds a global-realm
+ * function where `import.meta` is undefined — so the helper always
+ * returned `null` in production traffic and the client fell through
+ * to `self.location.href`, which resolved to a path the Next.js dev
+ * server does not serve as a JavaScript module. Firefox/WebKit
+ * refused that path's `text/html` MIME type; Chromium was lenient and
+ * silent. The split into `search-worker-factory.ts` + dynamic import
+ * is the proper fix: the literal `import.meta.url` is read in the
+ * actual module realm and survives both dev and production builds.
  */
 
 import * as Comlink from "comlink";
@@ -97,44 +110,55 @@ class SearchWorkerClient {
   /**
    * Initialise the Web Worker and Comlink proxy.
    *
-   * Issue #1780 (cross-browser E2E follow-up): the constructor does not
-   * throw for the MIME-type failure mode that Firefox/WebKit exhibit when
-   * the dev server returns `text/html` for an unresolved worker path
-   * ("Loading Worker from ... was blocked because of a disallowed MIME
-   * type"). The browser surfaces that as an asynchronous console.error
-   * and fires the worker's `error` event — listening on that event gives
-   * us a clean signal to surface in `initError` and `getStatus()`. The
-   * underlying URL resolution is still broken in dev (see
-   * `resolveImportMetaUrl()` docstring); the event-listener wiring here
-   * is the diagnostic complement, not a fix for the URL resolution.
+   * Issue #1894 fix: the worker URL is now produced by
+   * `search-worker-factory.ts` (loaded via dynamic `import()` so the
+   * `import.meta` token never reaches the ts-jest CJS parser). The
+   * `self.location.href` branch is preserved as a last-resort fallback
+   * for the rare case where the dynamic import fails in the browser
+   * for an unrelated reason.
+   *
+   * Issue #1780 (cross-browser E2E follow-up): the constructor does
+   * not throw for the MIME-type failure mode that Firefox/WebKit
+   * exhibit when the dev server returns `text/html` for an
+   * unresolved worker path ("Loading Worker from ... was blocked
+   * because of a disallowed MIME type"). The browser surfaces that
+   * as an asynchronous console.error and fires the worker's `error`
+   * event — listening on that event gives us a clean signal to
+   * surface in `initError` and `getStatus()`. The URL resolution
+   * itself is no longer broken in production builds (issue #1894),
+   * so the `error` event should now only fire for genuinely
+   * unexpected load failures.
    */
   private init(): void {
-    try {
-      let workerUrl: string | URL;
+    // Kick off the async factory load. The status stays at
+    // `"initializing"` until the promise settles. Callers poll
+    // `getStatus()` (see `use-search-worker.ts`) or check
+    // `getSearchApi()` directly.
+    void this.initAsync();
+  }
 
-      const metaUrl = resolveImportMetaUrl();
-      if (metaUrl) {
-        workerUrl = new URL("./search.worker.ts", metaUrl).href;
-      } else if (
-        typeof self !== "undefined" &&
-        (self as unknown as { location?: Location }).location?.href
-      ) {
-        workerUrl = new URL(
-          "./search.worker.ts",
-          (self as unknown as { location: Location }).location.href,
-        ).href;
-      } else {
-        workerUrl = "./search.worker.ts";
+  private async initAsync(): Promise<void> {
+    try {
+      const worker = await this.loadWorker();
+      if (!worker) {
+        // Factory returned null (no `Worker` global — jsdom/SSR) or
+        // the last-resort fallback path also failed. The synchronous
+        // constructor already set status to `"initializing"`; flip it
+        // to `"fallback"` so callers degrade gracefully.
+        this.worker = null;
+        this.proxy = null;
+        this.status = "fallback";
+        return;
       }
 
-      this.worker = new Worker(workerUrl, { type: "module" });
+      this.worker = worker;
       this.proxy = Comlink.wrap<SearchWorkerAPI>(this.worker);
 
-      // Issue #1780: surface async worker failures (MIME-type rejection,
-      // 404, network drop) via `initError` + the `"error"` status, so the
-      // prewarm helper and any UI subscriber can react. The constructor's
-      // try/catch only sees synchronous failures; the `error` event covers
-      // the rest.
+      // Issue #1780: surface async worker failures (MIME-type
+      // rejection, 404, network drop) via `initError` + the `"error"`
+      // status, so the prewarm helper and any UI subscriber can
+      // react. The constructor's try/catch only sees synchronous
+      // failures; the `error` event covers the rest.
       this.worker.addEventListener("error", (event) => {
         const message =
           (event as ErrorEvent).message ||
@@ -172,6 +196,71 @@ class SearchWorkerClient {
   }
 
   /**
+   * Resolves a `Worker` for the card-search module. Returns `null`
+   * if no worker can be constructed in this environment. The
+   * resolution order is:
+   *
+   *  1. Dynamic import of `search-worker-factory.ts` — the proper
+   *     production path. The factory uses a top-level
+   *     `import.meta.url` capture so the worker URL is statically
+   *     analysable by the bundler.
+   *  2. Last-resort `self.location.href` — kept so the
+   *     acceptance-criterion "fallback is preserved" holds even if
+   *     step 1 fails for an unexpected reason in the browser.
+   *  3. Plain string path — used when neither `self.location.href`
+   *     nor the factory is available (e.g. exotic SSR setup).
+   */
+  private async loadWorker(): Promise<Worker | null> {
+    // Step 1: proper ESM factory. The dynamic `import()` is wrapped
+    // in try/catch: ts-jest CJS will throw on the `import.meta`
+    // inside the factory, SSR will throw on the missing `Worker`,
+    // and any unexpected bundler error is surfaced as a clean null
+    // instead of a thrown exception out of the constructor.
+    try {
+      const mod = (await import(
+        /* webpackChunkName: "search-worker-factory" */
+        "./search-worker-factory"
+      )) as {
+        createSearchWorker?: () => Worker | null;
+      };
+      const factoryWorker = mod.createSearchWorker?.() ?? null;
+      if (factoryWorker) return factoryWorker;
+    } catch (factoryError) {
+      // Non-browser environment (ts-jest, SSR) or unexpected bundle
+      // error — fall through to the last-resort path.
+      console.warn(
+        "[search-worker] factory load failed; trying last-resort path:",
+        factoryError,
+      );
+    }
+
+    // Step 2 (last-resort fallback — issue #1894 acceptance
+    // criterion): `self.location.href`. This is the path that
+    // Firefox/WebKit refused with a `text/html` MIME error in #1894,
+    // but we keep it as a defense so the client never silently
+    // produces zero workers in a real browser if the dynamic import
+    // is unexpectedly broken.
+    if (
+      typeof self !== "undefined" &&
+      (self as unknown as { location?: Location }).location?.href
+    ) {
+      try {
+        return new Worker(
+          new URL(
+            "./search.worker.ts",
+            (self as unknown as { location: Location }).location.href,
+          ).href,
+          { type: "module" },
+        );
+      } catch {
+        // Last resort failed too — give up.
+      }
+    }
+
+    return null;
+  }
+
+  /**
    * Terminate the worker. Called from `_resetForTesting` and from any
    * long-lived consumer that wants to free the worker thread.
    */
@@ -182,44 +271,6 @@ class SearchWorkerClient {
       this.proxy = null;
     }
     this.status = "fallback";
-  }
-}
-
-/**
- * Resolve `import.meta.url` at runtime in a way that survives both ESM
- * (browser / Next.js worker loader) and CJS (Jest ts-jest, Node SSR)
- * contexts. Uses a `Function` constructor so the `import.meta` token is
- * only evaluated in the host realm — Node's CommonJS parser would
- * otherwise reject it as a SyntaxError.
- *
- * Returns `null` when the host has no ESM module URL — callers fall back
- * to `self.location.href` or a plain string path.
- *
- * Issue #1780 note: in the browser the `new Function(...)` body runs in
- * the global-scope realm where `import.meta` is undefined (it is a
- * module-scoped concept). So this helper returns `null` in the browser,
- * which means production traffic always falls through to the
- * `self.location.href` branch. That branch resolves to a path the Next.js
- * dev server does not serve as a JavaScript module (the `.ts` extension
- * is not in any recognized route), so Firefox/WebKit refuse the Worker
- * construct with the "disallowed MIME type" error — Chromium is lenient
- * and accepts `text/html` for the same URL. The proper fix is to follow
- * the `src/lib/synergy/embedding-worker-factory.ts` pattern: extract the
- * `new URL("./search.worker.ts", import.meta.url)` line into a separate
- * factory module loaded via dynamic `import()`, so webpack's worker
- * loader can statically analyse it and emit the worker as its own chunk.
- * That refactor is intentionally deferred from #1780 — the card-database
- * side of the fix (waiting for `initializeCardDatabase()` before reading)
- * is the user-visible behaviour change; the Worker URL resolution is a
- * longer-term follow-up that affects every worker in the app.
- */
-function resolveImportMetaUrl(): string | null {
-  try {
-    return new Function(
-      'try { return typeof import.meta !== "undefined" && import.meta && import.meta.url ? import.meta.url : null; } catch (_) { return null; }',
-    )() as string | null;
-  } catch {
-    return null;
   }
 }
 
