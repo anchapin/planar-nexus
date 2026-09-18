@@ -449,7 +449,15 @@ test.describe("Sealed Mode - Limited Deck Builder", () => {
     await expect(saveButton).toBeEnabled();
     // Click it — toast appears.
     await saveButton.click();
-    await expect(page.getByText(/Deck Saved/i)).toBeVisible({ timeout: 5000 });
+    // Issue #1881: Radix's <Toast> renders the visible title inside a
+    // <div class="text-sm font-semibold"> AND exposes a parallel
+    // aria-live="assertive" announcer span that concatenates the full
+    // toast text for screen readers. The strict-mode `getByText` matches
+    // BOTH, so disambiguate with `.first()` (project convention — see
+    // e2e/deck-builder.spec.ts:87).
+    await expect(page.getByText(/Deck Saved/i).first()).toBeVisible({
+      timeout: 5000,
+    });
   });
 });
 

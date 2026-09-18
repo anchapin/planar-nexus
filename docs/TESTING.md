@@ -392,6 +392,50 @@ It requires webkit2gtk system deps, a headless WebDriver binary, and root in
 the CI image — a far heavier, flakier surface for the same UI coverage. The
 dev-server path covers every desktop-aware branch without any of that.
 
+### Known tracked E2E flakes
+
+E2E failures fall into three distinct categories that share zero remediation
+steps. When triaging a flake, **identify which category it belongs to
+before proposing a fix** — conflating them leads to fixes that target the
+wrong code path.
+
+| Category                | Where it runs                              | Browser                                                    | Tracking issue |
+| ----------------------- | ------------------------------------------ | ---------------------------------------------------------- | -------------- |
+| **chromium-flake**      | primary CI `e2e` job (every PR)            | chromium only                                              | #1881          |
+| **cross-browser-flake** | nightly cross-browser job                  | firefox + webkit (chromium is stable here)                 | #1780          |
+| **cyan-flake**          | Tauri/desktop-fallback Playwright variants | the chrome-headless shell used by the cross-browser runner | #1780          |
+
+- **chromium-flake (#1881)** — fails on the primary Playwright `e2e` CI
+  job against chromium, but passes consistently on a local re-run. Wave
+  8 surfaced two specific flakes with full reproduction logs:
+  `e2e/sealed-mode.spec.ts:452` (Radix Toast title + announcer share the
+  text "Deck Saved", so `getByText` matches two elements in strict
+  mode — fix is `.first()`) and `e2e/multiplayer-mesh.spec.ts:219`
+  (the slow-peer test's timing-window sample gets consumed by
+  `waitForReceiveCount` for C/D under heavy CI load, allowing B's
+  200ms-delayed recordings to fire before the assertion — fix is to
+  enforce the +100ms window explicitly before the C/D waits). Both
+  fixes are in the PR that closes #1881; subsequent waves with
+  different failing specs should open a new issue, not pile onto
+  #1881.
+- **cross-browser-flake (#1780)** — same test scripts, different
+  browsers. The firefox and webkit runners in the nightly cross-browser
+  job fail on a different set of selectors and timing assumptions than
+  chromium. Fixes here require per-browser workarounds or browser-agnostic
+  refactors; chromium-targeted fixes will not help.
+- **cyan-flake** — a specific class of cross-browser-flake that
+  reproduces inside the chrome-headless shell the nightly cross-browser
+  job reuses for setup. Distinguished from cross-browser-flake only by
+  the runner; remediations are the same shape.
+
+Do **not** treat a single failing run as a regression in the PR under
+test. The empirically validated cycle for both #1780 and #1881 is up
+to three `gh run rerun <run-id> --failed` reruns — both have
+demonstrated that they eventually produce a green run without PR
+changes. If a flake persists past three reruns, **then** open a
+follow-up issue with the captured failing log and triage it into the
+correct category above.
+
 ### E2E flake detector (`npm run test:e2e:flake`)
 
 ```bash
@@ -427,6 +471,10 @@ detectors are triaged in follow-up issues — #1779 currently tracks the
 Jest-detector findings (see
 [Flakiness and the nightly Jest flake detector](#4-unit-tests-jest));
 this detector is its Playwright sibling for `e2e/`.
+
+For a triage-ready taxonomy of known chromium-only / cross-browser /
+cyan-flake categories tracked against the primary E2E job, see
+[Known tracked E2E flakes](#known-tracked-e2e-flakes) directly above.
 
 ---
 
@@ -721,10 +769,12 @@ Issue #1711 is the remediation track lifting the two weakest baselines
 (layer-system + spell-casting) toward 70%; `break` is raised to 70 in a
 follow-up only after the nightly run confirms every module clears it.
 
-| Metric         | Project target | CI-enforced floor (Stryker `thresholds.break`)      |
-| -------------- | -------------- | --------------------------------------------------- |
+| Metric | Project target | CI-enforced floor (Stryker `thresholds.break`) |
+| ------ | -------------- | ---------------------------------------------- |
+
 <!-- mutation-floor:start -->
-| Mutation score | **70%**        | **50%** (ratcheted to 70 once all modules clear it) |
+
+| Mutation score | **70%** | **50%** (ratcheted to 70 once all modules clear it) |
 <!-- mutation-floor:end -->
 
 #### Running locally
