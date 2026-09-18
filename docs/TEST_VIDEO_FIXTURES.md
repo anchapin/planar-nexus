@@ -106,8 +106,11 @@ rg 'TODO: Implement validation' src/lib/game-state/__tests__/video-derived/   # 
 rg 'expect\([a-z_]+\.gameState\)\.toBeDefined\(\)' src/lib/game-state/__tests__/video-derived/   # → 0
 
 # Full test suite
-npm test
-# → 380 test suites passed, 11 skipped, 48 todo, 7867 passed, 7926 total
+npm test --silent
+<!-- TEST_COUNT:START -->
+# → Test Suites: 539 passed, 539 total  (--listTests: 539 files)
+# → Tests: 11189 passed, 14 skipped, 11203 total
+<!-- TEST_COUNT:END -->
 
 # Guard test alone
 npm test -- --testPathPatterns video-derived/__guard__

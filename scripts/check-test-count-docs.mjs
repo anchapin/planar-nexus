@@ -1,277 +1,324 @@
 #!/usr/bin/env node
 /**
- * Test-count docs sync guard — Issue #1902.
+ * Test-Count Docs Sync Guard — Issue #1910.
  *
- * The `<!-- TEST_COUNT:START --> … <!-- TEST_COUNT:END -->` comment
- * block in `docs/onboarding.md` documents four counts:
- *   - **Test suites**     — `npx jest --listTests | wc -l`
- *   - **Test cases**      — totals parsed from `npm test --silent` `Tests:` line
- *                           (formatted as `<total> (<passed> passed + <skipped> skipped)`)
- *   - **Snapshots**       — totals parsed from `npm test --silent` `Snapshots:` line
+ * The `# Full test suite` snippet in `docs/TEST_VIDEO_FIXTURES.md`
+ * documented Jest's summary line (#1397 commit, frozen at 380/7867).
+ * The number drifted the same way the coverage floors did before #1712:
+ * every merge added tests, the doc summary never moved, and the
+ * README/#1397 verification block was reporting a number from weeks
+ * ago. This guard is the drift backstop:
  *
- * `scripts/ratchet-test-count.mjs` rewrites the block on every bump, so
- * a normal contributor run cannot introduce drift. THIS guard is the
- * backstop for any hand-edit, stale branch, or `main` cherry-pick that
- * lands a test-count change without re-running the ratchet. It runs in
- * plain Node (~100ms + the ~100s of `npm test --silent` it shells out
- * to for ground truth) and exits 1 on any drift, missing anchor, or
- * missing file. Mirrors the contract of `scripts/check-broken-links.mjs`
- * (#1896) and `scripts/check-coverage-docs-sync.mjs` (#1712) —
- * read-then-compare, fail fast in its own CI job.
+ *   1. `scripts/ratchet-test-count.mjs` rewrites the anchored block
+ *      (`<!-- TEST_COUNT:START -->` … `<!-- TEST_COUNT:END -->`) on
+ *      every bump, so a normal ratchet can no longer introduce drift.
+ *   2. THIS script re-measures live Jest in CI and compares the
+ *      anchored block against it; exits 1 on any mismatch, missing
+ *      anchor, or missing file — so a stale summary fails the build
+ *      instead of shipping.
  *
- * CI wiring: `.github/workflows/ci.yml` →
- *   `test-count-docs-guard`. Local equivalent: `npm run lint:test-count-docs`.
+ * Mirrors `scripts/check-coverage-docs-sync.mjs` (#1712) in shape
+ * (plain Node, fast fail-fast guard, dedicated CI job).
  *
  * Usage:
- *   node scripts/check-test-count-docs.mjs [--docs <path>] [--dry-run] [--json]
+ *   node scripts/check-test-count-docs.mjs
+ *   node scripts/check-test-count-docs.mjs --doc <path>
  *
- * Flags:
- *   --docs=<path>   Override the onboarding doc path (default: docs/onboarding.md)
- *   --dry-run       Print the violation report that WOULD fire but always exit 0
- *   --json          Emit a JSON envelope on stdout for tooling
- *
- * Exit codes: 0 = clean, 1 = drift / missing anchor / missing file.
- * Built-in Node modules + `node:child_process` + `node:fs` only.
+ * Exit codes: 0 = pass, 1 = violation. The `--doc` flag exists for the
+ * fixture-based tests (no flag = check the committed repo state, which
+ * is what CI does).
  */
 
-import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { spawnSync } from "node:child_process";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
 const REPO_ROOT = path.resolve(__dirname, "..");
+const DEFAULT_DOC_PATH = path.join(REPO_ROOT, "docs", "TEST_VIDEO_FIXTURES.md");
 
-const BLOCK_PATTERN =
-  /<!-- TEST_COUNT:START -->\n([\s\S]*?)\n<!-- TEST_COUNT:END -->/;
+const START_ANCHOR = "<!-- TEST_COUNT:START -->";
+const END_ANCHOR = "<!-- TEST_COUNT:END -->";
 
-const LINE_PATTERNS = {
-  suites: /^\*\*Test suites:\*\*\s+(\d+)\s*$/m,
-  cases:
-    /^\*\*Test cases:\*\*\s+(\d+)\s+\((\d+)\s+passed\s+\+\s+(\d+)\s+skipped\)\s*$/m,
-  snapshots: /^\*\*Snapshots:\*\*\s+(\d+)\s*$/m,
-};
+/**
+ * Run a command and return merged stdout+stderr as a trimmed string.
+ * Jest writes its summary line to stderr, so we have to combine the
+ * two streams or the parser sees nothing.
+ *
+ * @param {string} cmd
+ * @param {string[]} args
+ * @returns {string}
+ */
+function runCmd(cmd, args) {
+  const result = spawnSync(cmd, args, {
+    cwd: REPO_ROOT,
+    env: { ...process.env, CI: "1" },
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(
+      `${cmd} ${args.join(" ")} exited with status ${result.status}:\n` +
+        (result.stderr || result.stdout || "").slice(0, 2000),
+    );
+  }
+  return (result.stdout + "\n" + result.stderr).trim();
+}
+
+/**
+ * Capture live Jest numbers — same parser as the ratchet, kept
+ * deliberately duplicated so the guard stays standalone (no cross-
+ * module require that would need a build step or CJS/ESM bridging).
+ *
+ * @returns {{ suites: number; total: number; passed: number; skipped: number; todo: number }}
+ */
+export function captureJestCounts() {
+  const summary = runCmd("npm", ["test", "--silent"]);
+  const suitesMatch = summary.match(/^Test Suites:\s+(\d+)\s+passed,\s+(\d+)\s+total/m);
+  if (!suitesMatch) {
+    throw new Error(
+      "Could not parse `Test Suites:` line from `npm test --silent` " +
+        "output. Expected a line like 'Test Suites: 539 passed, 539 total'.",
+    );
+  }
+  const testsMatch = summary.match(/^Tests:\s+(.+)$/m);
+  if (!testsMatch) {
+    throw new Error("Could not parse `Tests:` line from `npm test --silent` output.");
+  }
+  const tail = testsMatch[1];
+  const totalMatch = tail.match(/(\d+)\s+total/);
+  const passedMatch = tail.match(/(\d+)\s+passed/);
+  const skippedMatch = tail.match(/(\d+)\s+skipped/);
+  const todoMatch = tail.match(/(\d+)\s+todo/);
+  if (!totalMatch || !passedMatch) {
+    throw new Error(
+      `Could not extract totals from Tests line: ${JSON.stringify(tail)}`,
+    );
+  }
+  return {
+    suites: parseInt(suitesMatch[2], 10),
+    total: parseInt(totalMatch[1], 10),
+    passed: parseInt(passedMatch[1], 10),
+    skipped: skippedMatch ? parseInt(skippedMatch[1], 10) : 0,
+    todo: todoMatch ? parseInt(todoMatch[1], 10) : 0,
+  };
+}
+
+/**
+ * Discover the suite-file count via `npx jest --listTests | wc -l`.
+ *
+ * @returns {number}
+ */
+export function captureListTestsCount() {
+  const out = runCmd("npx", ["jest", "--listTests"]);
+  return out.split(/\r?\n/).filter((l) => l.trim().length > 0).length;
+}
+
+/**
+ * Parse the anchored block out of the doc.
+ *
+ * @param {string} source
+ * @returns {{ ok: true; suites: number; total: number; passed: number; skipped: number; todo: number; listed: number } | { ok: false; error: string }}
+ */
+export function parseDocBlock(source) {
+  const startIdx = source.indexOf(START_ANCHOR);
+  const endIdx = source.indexOf(END_ANCHOR, startIdx);
+  if (startIdx === -1 || endIdx === -1 || endIdx < startIdx) {
+    return {
+      ok: false,
+      error:
+        `missing "${START_ANCHOR}" / "${END_ANCHOR}" anchors ` +
+        `around the test-count summary. Wrap the suite summary lines ` +
+        `in those HTML comments so scripts/ratchet-test-count.mjs can ` +
+        `keep them in sync (issue #1910).`,
+    };
+  }
+  const inner = source.slice(startIdx + START_ANCHOR.length, endIdx);
+
+  // Suites line: "# → Test Suites: 539 passed, 539 total  (--listTests: 539 files)"
+  const suitesLine = inner.match(/(?:^|\s)Test Suites:\s+(\d+)\s+passed,\s+(\d+)\s+total/);
+  if (!suitesLine) {
+    return {
+      ok: false,
+      error:
+        `anchored block has no "Test Suites: N passed, N total" line. ` +
+        `Run \`npm run ratchet:test-count\` to regenerate it.`,
+    };
+  }
+  // Tests line: "# → Tests: 11189 passed, 14 skipped, 11203 total"
+  const testsLine = inner.match(/(?:^|\s)Tests:\s+(.+)/);
+  if (!testsLine) {
+    return {
+      ok: false,
+      error: `anchored block has no "Tests:" line.`,
+    };
+  }
+  const tail = testsLine[1];
+  const totalMatch = tail.match(/(\d+)\s+total/);
+  const passedMatch = tail.match(/(\d+)\s+passed/);
+  const skippedMatch = tail.match(/(\d+)\s+skipped/);
+  const todoMatch = tail.match(/(\d+)\s+todo/);
+  if (!totalMatch || !passedMatch) {
+    return {
+      ok: false,
+      error: `could not parse Tests breakdown from line: ${JSON.stringify(tail)}`,
+    };
+  }
+  // Listed-count is optional but expected; treat missing as a violation.
+  const listedMatch = inner.match(/--listTests:\s+(\d+)\s+files/);
+  if (!listedMatch) {
+    return {
+      ok: false,
+      error:
+        `anchored block has no "--listTests: N files" suffix. ` +
+        `Run \`npm run ratchet:test-count\` to regenerate it.`,
+    };
+  }
+
+  return {
+    ok: true,
+    suites: parseInt(suitesLine[2], 10),
+    total: parseInt(totalMatch[1], 10),
+    passed: parseInt(passedMatch[1], 10),
+    skipped: skippedMatch ? parseInt(skippedMatch[1], 10) : 0,
+    todo: todoMatch ? parseInt(todoMatch[1], 10) : 0,
+    listed: parseInt(listedMatch[1], 10),
+  };
+}
+
+/**
+ * Compare the parsed doc block against the freshly measured Jest totals.
+ *
+ * @param {ReturnType<typeof parseDocBlock>} doc
+ * @param {{ suites: number; total: number; passed: number; skipped: number; todo: number }} live
+ * @param {number} liveListed
+ * @returns {string[]} violations (empty = pass)
+ */
+export function diff(doc, live, liveListed) {
+  if (!doc.ok) return [doc.error];
+  /** @type {string[]} */
+  const errs = [];
+  if (doc.suites !== live.suites) {
+    errs.push(
+      `Test Suites: doc=${doc.suites}, live=${live.suites}. ` +
+        `Run \`npm run ratchet:test-count\` to regenerate.`,
+    );
+  }
+  if (doc.total !== live.total) {
+    errs.push(
+      `Tests total: doc=${doc.total}, live=${live.total}. ` +
+        `Run \`npm run ratchet:test-count\` to regenerate.`,
+    );
+  }
+  if (doc.passed !== live.passed) {
+    errs.push(
+      `Tests passed: doc=${doc.passed}, live=${live.passed}. ` +
+        `Run \`npm run ratchet:test-count\` to regenerate.`,
+    );
+  }
+  if (doc.skipped !== live.skipped) {
+    errs.push(
+      `Tests skipped: doc=${doc.skipped}, live=${live.skipped}. ` +
+        `Run \`npm run ratchet:test-count\` to regenerate.`,
+    );
+  }
+  if (doc.todo !== live.todo) {
+    errs.push(
+      `Tests todo: doc=${doc.todo}, live=${live.todo}. ` +
+        `Run \`npm run ratchet:test-count\` to regenerate.`,
+    );
+  }
+  if (doc.listed !== liveListed) {
+    errs.push(
+      `--listTests count: doc=${doc.listed}, live=${liveListed}. ` +
+        `Run \`npm run ratchet:test-count\` to regenerate.`,
+    );
+  }
+  return errs;
+}
 
 function parseArgs(argv) {
-  const opts = { docs: undefined, dryRun: false, json: false };
-  for (const arg of argv) {
-    if (arg === "--dry-run") opts.dryRun = true;
-    else if (arg === "--json") opts.json = true;
-    else if (arg.startsWith("--docs=")) opts.docs = arg.slice("--docs=".length);
-    else if (arg === "--help" || arg === "-h") {
-      process.stdout.write(
-        [
-          "Usage: node scripts/check-test-count-docs.mjs [--docs <path>] [--dry-run] [--json]",
-          "",
-          "Options:",
-          "  --docs=<path>   Override the onboarding doc path (default: docs/onboarding.md)",
-          "  --dry-run       Print the violation report that WOULD fire but always exit 0",
-          "  --json          Emit a JSON envelope on stdout for tooling",
-          "",
-          "Reads the <!-- TEST_COUNT:START --> ... <!-- TEST_COUNT:END --> anchor",
-          "block in docs/onboarding.md and compares it against",
-          "`npx jest --listTests` and `npm test --silent` (#1902).",
-        ].join("\n") + "\n",
-      );
-      process.exit(0);
+  const opts = { docPath: DEFAULT_DOC_PATH };
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    const next = argv[i + 1];
+    if (arg === "--doc") {
+      if (!next) throw new Error("--doc requires a path");
+      opts.docPath = path.resolve(process.cwd(), next);
+      i++;
     } else {
-      process.stderr.write(`check-test-count-docs: unknown flag: ${arg}\n`);
-      process.exit(2);
+      throw new Error(`Unknown argument: ${arg}`);
     }
   }
   return opts;
 }
 
-function readGroundTruth() {
-  const suitesOut = execSync(
-    "npx --no-install jest --listTests 2>/dev/null",
-    { cwd: REPO_ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
-  );
-  const suites = suitesOut
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean).length;
-
-  const testOut = execSync("npm test --silent 2>&1", {
-    cwd: REPO_ROOT,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  const summary = {};
-  for (const line of testOut.split("\n")) {
-    const m = /^(Tests|Test Suites|Snapshots):\s+(.+)$/.exec(line.trim());
-    if (m) summary[m[1]] = m[2].trim();
+/**
+ * @param {{ docPath: string }} opts
+ * @returns {number} exit code (0 pass, 1 fail)
+ */
+function runGuard(opts) {
+  let live;
+  let liveListed;
+  try {
+    live = captureJestCounts();
+    liveListed = captureListTestsCount();
+  } catch (err) {
+    console.error(`[check-test-count-docs] FAIL: ${err.message}`);
+    return 1;
   }
-  if (!summary["Tests"]) {
-    throw new Error(
-      "check-test-count-docs: could not parse `Tests:` line from `npm test` output",
+
+  let source;
+  try {
+    source = fs.readFileSync(opts.docPath, "utf8");
+  } catch (err) {
+    console.error(
+      `[check-test-count-docs] FAIL: could not read ${opts.docPath}: ${err.message}`,
     );
+    return 1;
   }
-  const totalMatch = /(\d+) total/.exec(summary["Tests"]);
-  const passedMatch = /(\d+) passed/.exec(summary["Tests"]);
-  const skippedMatch = /(\d+) skipped/.exec(summary["Tests"]);
-  if (!totalMatch || !passedMatch || !skippedMatch) {
-    throw new Error(
-      `check-test-count-docs: malformed Tests: line — ${JSON.stringify(summary["Tests"])}`,
+
+  const doc = parseDocBlock(source);
+  const errs = diff(doc, live, liveListed);
+
+  if (errs.length === 0) {
+    console.log(
+      `[check-test-count-docs] PASS: ${path.relative(process.cwd(), opts.docPath) || opts.docPath} ` +
+        `matches live Jest (suites=${live.suites}, tests=${live.total}, ` +
+        `${live.passed} passed + ${live.skipped} skipped, --listTests=${liveListed}).`,
     );
-  }
-  const cases = {
-    total: Number(totalMatch[1]),
-    passed: Number(passedMatch[1]),
-    skipped: Number(skippedMatch[1]),
-  };
-
-  let snapshots = null;
-  if (summary["Snapshots"]) {
-    const snap = /(\d+) passed,\s*(\d+) total/.exec(summary["Snapshots"]);
-    if (snap) snapshots = Number(snap[2]);
+    return 0;
   }
 
-  return { suites, cases, snapshots };
-}
-
-function readDocBlock(docsPath) {
-  if (!fs.existsSync(docsPath)) {
-    return { error: `docs file not found: ${docsPath}` };
-  }
-  const md = fs.readFileSync(docsPath, "utf8");
-  const match = BLOCK_PATTERN.exec(md);
-  if (!match) {
-    return { error: "TEST_COUNT comment block not found" };
-  }
-  const inner = match[1];
-
-  const suitesMatch = LINE_PATTERNS.suites.exec(inner);
-  const casesMatch = LINE_PATTERNS.cases.exec(inner);
-  const snapshotsMatch = LINE_PATTERNS.snapshots.exec(inner);
-
-  if (!suitesMatch || !casesMatch) {
-    return {
-      error:
-        "TEST_COUNT block is missing or malformed (need `**Test suites:** N` and `**Test cases:** T (P passed + S skipped)` lines)",
-    };
-  }
-
-  return {
-    error: null,
-    suites: Number(suitesMatch[1]),
-    cases: {
-      total: Number(casesMatch[1]),
-      passed: Number(casesMatch[2]),
-      skipped: Number(casesMatch[3]),
-    },
-    snapshots: snapshotsMatch ? Number(snapshotsMatch[1]) : null,
-  };
-}
-
-function run(opts) {
-  const docsPath = path.resolve(REPO_ROOT, opts.docs ?? "docs/onboarding.md");
-  const truth = readGroundTruth();
-  const doc = readDocBlock(docsPath);
-
-  const violations = [];
-  if (doc.error) {
-    violations.push({ kind: "missing-block", message: doc.error });
-  } else {
-    if (doc.suites !== truth.suites) {
-      violations.push({
-        kind: "suites-drift",
-        field: "Test suites",
-        doc: doc.suites,
-        truth: truth.suites,
-        message: `Test suites drift: doc=${doc.suites}, ground truth=${truth.suites}`,
-      });
-    }
-    if (doc.cases.total !== truth.cases.total) {
-      violations.push({
-        kind: "cases-total-drift",
-        field: "Test cases (total)",
-        doc: doc.cases.total,
-        truth: truth.cases.total,
-        message: `Test cases total drift: doc=${doc.cases.total}, ground truth=${truth.cases.total}`,
-      });
-    }
-    if (doc.cases.passed !== truth.cases.passed) {
-      violations.push({
-        kind: "cases-passed-drift",
-        field: "Test cases (passed)",
-        doc: doc.cases.passed,
-        truth: truth.cases.passed,
-        message: `Test cases passed drift: doc=${doc.cases.passed}, ground truth=${truth.cases.passed}`,
-      });
-    }
-    if (doc.cases.skipped !== truth.cases.skipped) {
-      violations.push({
-        kind: "cases-skipped-drift",
-        field: "Test cases (skipped)",
-        doc: doc.cases.skipped,
-        truth: truth.cases.skipped,
-        message: `Test cases skipped drift: doc=${doc.cases.skipped}, ground truth=${truth.cases.skipped}`,
-      });
-    }
-    if (truth.snapshots !== null && doc.snapshots !== truth.snapshots) {
-      violations.push({
-        kind: "snapshots-drift",
-        field: "Snapshots",
-        doc: doc.snapshots,
-        truth: truth.snapshots,
-        message: `Snapshots drift: doc=${doc.snapshots}, ground truth=${truth.snapshots}`,
-      });
-    }
-  }
-
-  return { violations, truth, doc, docsPath };
-}
-
-function printUsage() {
-  process.stdout.write(
-    [
-      "Usage: node scripts/check-test-count-docs.mjs [--docs <path>] [--dry-run] [--json]",
-    ].join("\n") + "\n",
+  console.error(
+    `[check-test-count-docs] FAIL: ${path.relative(process.cwd(), opts.docPath) || opts.docPath} ` +
+      `is out of sync with live Jest:`,
   );
+  for (const e of errs) {
+    console.error(`  - ${e}`);
+  }
+  console.error(
+    "See https://github.com/anchapin/planar-nexus/issues/1910 and " +
+      "docs/TEST_VIDEO_FIXTURES.md § Verification.",
+  );
+  return 1;
 }
 
+// Run only when invoked directly, not when imported by a test.
 const invokedDirectly =
-  process.argv[1] &&
-  path.resolve(process.argv[1]) === path.resolve(__filename);
-
+  process.argv[1] && path.resolve(process.argv[1]) === __filename;
 if (invokedDirectly) {
-  const opts = parseArgs(process.argv.slice(2));
-  printUsage();
-  const result = run(opts);
-
-  if (opts.json) {
-    const envelope = {
-      ok: result.violations.length === 0,
-      violations: result.violations,
-      truth: result.truth,
-      doc: result.doc,
-      docsPath: result.docsPath,
-    };
-    process.stdout.write(JSON.stringify(envelope, null, 2) + "\n");
-    process.exit(opts.dryRun ? 0 : envelope.ok ? 0 : 1);
+  let opts;
+  try {
+    opts = parseArgs(process.argv.slice(2));
+  } catch (err) {
+    console.error(`[check-test-count-docs] FAIL: ${err.message}`);
+    process.exit(1);
   }
-
-  if (result.violations.length === 0) {
-    process.stdout.write(
-      `test-count-docs: OK — docs/onboarding.md matches jest --listTests (${result.truth.suites} suites, ${result.truth.cases.total} cases).\n`,
-    );
-    process.exit(0);
-  }
-
-  const header = opts.dryRun
-    ? `test-count-docs: DRY-RUN — ${result.violations.length} violation(s) WOULD FAIL (not gating):`
-    : `test-count-docs: FAILED — ${result.violations.length} violation(s):`;
-  process.stderr.write(`${header}\n`);
-  for (const v of result.violations) {
-    process.stderr.write(`  ${result.docsPath}  ${v.message}\n`);
-  }
-  process.stderr.write(
-    `\nFix: run \`npm run ratchet:test-count\` locally and re-commit the updated docs/onboarding.md block — the ratchet rewrites ONLY the comment fences and leaves the rest of the file untouched (#1902).\n`,
-  );
-
-  process.exit(opts.dryRun ? 0 : 1);
+  process.exit(runGuard(opts));
 }
-
-export { run, parseArgs, readGroundTruth, readDocBlock };

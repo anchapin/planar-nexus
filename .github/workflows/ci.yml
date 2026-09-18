@@ -1106,23 +1106,18 @@ jobs:
         run: node scripts/check-broken-links.mjs
 
   test-count-docs-guard:
-    # Issue #1902: the contributor onboarding doc (`docs/onboarding.md`)
-    # documents the current Jest test counts in an
-    # `<!-- TEST_COUNT:START --> … <!-- TEST_COUNT:END -->` anchor block
-    # — **Test suites**, **Test cases** (total + passed + skipped), and
-    # **Snapshots**. The block is ratcheted upward by
-    # `scripts/ratchet-test-count.mjs` (`npm run ratchet:test-count`),
-    # so a normal contributor run cannot introduce drift. THIS guard
-    # is the backstop for hand edits, stale branches, and cherry-picks
-    # that land a test-count change without re-running the ratchet.
-    # Mirrors the broken-links guard (#1896) and coverage-docs guard
-    # (#1712): parses the anchored block, parses
-    # `npx jest --listTests` and `npm test --silent` ground truth, exits
-    # 1 on any drift / missing anchor / missing file. Plain Node + the
-    # shared `setup-node-npm-ci` composite; ~100ms of script overhead
-    # plus the ~100s of `npm test --silent` for ground truth (same
-    # contract as the existing test job). Local equivalent:
-    # `npm run lint:test-count-docs`.
+    # Issue #1910: the `# Full test suite` snippet in
+    # docs/TEST_VIDEO_FIXTURES.md documented Jest's summary line
+    # (issue #1397 commit, frozen at 380 test suites / 7867 tests).
+    # Every merge added tests but the doc summary never moved, so the
+    # verification block carried a number from weeks ago. Mirrors the
+    # coverage-docs guard (#1712) and the mutation-docs guard (#1785):
+    # `scripts/ratchet-test-count.mjs` rewrites the anchored block
+    # (`<!-- TEST_COUNT:START -->` … `<!-- TEST_COUNT:END -->`) on
+    # every bump; this job re-measures live Jest and fails fast when
+    # the doc drifts. Runs in plain Node, with Jest as the only
+    # external dependency (~80s on a warm cache). Local equivalent:
+    # `npm run lint:test-count`.
     name: Test Count Docs Guard
     if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
@@ -1136,7 +1131,7 @@ jobs:
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
 
-      - name: Assert onboarding doc test-count block matches Jest (#1902)
+      - name: Assert test-count doc block matches live Jest (#1910)
         run: node scripts/check-test-count-docs.mjs
 
   build:
