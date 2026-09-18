@@ -48,6 +48,8 @@ export interface RatchetResult {
 export const METRICS: Metric[];
 export const DEFAULT_MARGIN: number;
 export const BLOCK_RE: RegExp;
+export const MEASURED_DATE_RE: RegExp;
+export const MEASURED_VALUES_RE: RegExp;
 export const DOC_START_ANCHOR: string;
 export const DOC_END_ANCHOR: string;
 export const DOC_PATHS: string[];
@@ -77,6 +79,11 @@ export function applyRatchet(
   measured: Metrics,
   margin: number,
 ): RatchetResult;
+
+export function applyMeasuredHeaderToComment(
+  source: string,
+  measured: Metrics,
+): string;
 
 export type DocSyncStatus = "updated" | "in-sync" | "missing" | "unanchored";
 

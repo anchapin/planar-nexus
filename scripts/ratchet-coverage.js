@@ -257,12 +257,16 @@ function applyRatchet(configSource, measured, margin) {
 
   const { propIndent, closeIndent } = detectIndents(inner);
   const newInner = renderInner(floors, propIndent, closeIndent);
-  const nextSource =
+  const baseSource =
     configSource.slice(0, match.index) +
     prefix +
     newInner +
     close +
     configSource.slice(match.index + match[0].length);
+  // Issue #1819: refresh the "Measured <date>" + values line in the comment
+  // immediately above `coverageThreshold:` so the comment can never drift
+  // behind the ratchet. Silent no-op if the comment format is missing.
+  const nextSource = applyMeasuredHeaderToComment(baseSource, measured);
   return { kind: "bump", current, floors, bumps, regressions, nextSource };
 }
 
@@ -282,6 +286,41 @@ function applyRatchet(configSource, measured, margin) {
  * numbers; the ratchet only rewrites docs that carry the anchors and
  * reports the rest as skipped (it never fails because of a doc).
  */
+
+/**
+ * jest.config.js comment-header sync (issue #1819).
+ *
+ * The coverage-threshold comment block immediately above `coverageThreshold:`
+ * carries a dated snapshot of the measured coverage that the floors were
+ * set against — e.g. `Measured 2026-06-26: statements 37.66% | ...`. Without
+ * rewriting it, that line drifts behind the ratchet the same way the
+ * README/CONTRIBUTING/TESTING tables used to (fixed in #1712). On every
+ * bump we replace the date with today (UTC ISO) and the four percentages
+ * with the run's `measured` values; both regexes are anchored to the
+ * comment marker and the literal "Measured" token so unrelated content is
+ * untouched. If the comment is missing or has drifted in format, the
+ * helpers silently no-op — the ratchet never fails because of a comment.
+ */
+const MEASURED_DATE_RE = /(Measured[ \t]+)\d{4}-\d{2}-\d{2}/;
+const MEASURED_VALUES_RE =
+  /([ \t]*\/\/[ \t]*)statements[ \t]+[\d.]+%[ \t]*\|[ \t]*branches[ \t]+[\d.]+%[ \t]*\|[ \t]*functions[ \t]+[\d.]+%[ \t]*\|[ \t]*lines[ \t]+[\d.]+%/;
+
+/**
+ * Rewrite the "Measured <date>" + values line in the jest.config.js
+ * coverage-threshold comment to reflect the run that produced the new
+ * floor. Never throws; returns the (possibly unchanged) source.
+ */
+function applyMeasuredHeaderToComment(source, measured) {
+  const today = new Date().toISOString().slice(0, 10);
+  const nextDate = source.replace(MEASURED_DATE_RE, `$1${today}`);
+  const valuesLine =
+    `statements ${measured.statements.toFixed(2)}% | ` +
+    `branches ${measured.branches.toFixed(2)}% | ` +
+    `functions ${measured.functions.toFixed(2)}% | ` +
+    `lines ${measured.lines.toFixed(2)}%`;
+  return nextDate.replace(MEASURED_VALUES_RE, `$1${valuesLine}`);
+}
+
 const DOC_START_ANCHOR = "<!-- coverage-floor:start -->";
 const DOC_END_ANCHOR = "<!-- coverage-floor:end -->";
 const DOC_PATHS = ["README.md", "CONTRIBUTING.md", "docs/TESTING.md"];
@@ -507,6 +546,8 @@ module.exports = {
   METRICS,
   DEFAULT_MARGIN,
   BLOCK_RE,
+  MEASURED_DATE_RE,
+  MEASURED_VALUES_RE,
   DOC_START_ANCHOR,
   DOC_END_ANCHOR,
   DOC_PATHS,
@@ -517,6 +558,7 @@ module.exports = {
   readCurrentValues,
   computeFloors,
   applyRatchet,
+  applyMeasuredHeaderToComment,
   applyFloorsToDocBlock,
   syncCoverageDocTables,
   main,
