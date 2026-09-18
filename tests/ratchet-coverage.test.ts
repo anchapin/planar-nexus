@@ -14,6 +14,7 @@ import {
   computeFloors,
   applyRatchet,
   readCurrentValues,
+  applyMeasuredHeaderToComment,
   applyFloorsToDocBlock,
   syncCoverageDocTables,
 } from "../scripts/ratchet-coverage";
@@ -186,6 +187,105 @@ describe("ratchet-coverage applyRatchet", () => {
     expect(() => applyRatchet(broken, MEASURED, 1)).toThrow(
       /coverageThreshold\.global/,
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// jest.config.js comment-header sync (issue #1819)
+// ---------------------------------------------------------------------------
+
+// Real-world jest.config.js layout with the Measured header. The floor
+// numbers below are intentionally below the MEASURED constant so that
+// applyRatchet always bumps in this test.
+const SAMPLE_CONFIG_WITH_HEADER = `/** @type {import('jest').Config} */
+module.exports = {
+  preset: "ts-jest",
+  // Coverage thresholds — ENFORCED by CI (ci.yml "Run unit tests with coverage").
+  // Values are set just below MEASURED coverage so the gate catches real
+  // regressions without being flaky. Measured 2026-06-26 (jest --coverage):
+  //   statements 37.66% | branches 29.97% | functions 31.09% | lines 37.98%
+  // DO NOT raise a threshold above measured coverage or CI will fail.
+  coverageThreshold: {
+    global: {
+      branches: 22,
+      functions: 23,
+      lines: 29,
+      statements: 29,
+    },
+  },
+};
+`;
+
+describe("ratchet-coverage applyMeasuredHeaderToComment (issue #1819)", () => {
+  it("replaces the Measured date with today's ISO date", () => {
+    const out = applyMeasuredHeaderToComment(
+      SAMPLE_CONFIG_WITH_HEADER,
+      MEASURED,
+    );
+    expect(out).not.toMatch(/2026-06-26/);
+    expect(out).toMatch(/Measured \d{4}-\d{2}-\d{2}/);
+  });
+
+  it("replaces the four measured percentages with the run's values", () => {
+    const out = applyMeasuredHeaderToComment(
+      SAMPLE_CONFIG_WITH_HEADER,
+      MEASURED,
+    );
+    expect(out).not.toMatch(/37\.66%/);
+    expect(out).not.toMatch(/29\.97%/);
+    expect(out).not.toMatch(/31\.09%/);
+    expect(out).not.toMatch(/37\.98%/);
+    expect(out).toMatch(
+      /statements 32\.86% \| branches 25\.58% \| functions 26\.99% \| lines 33\.19%/,
+    );
+  });
+
+  it("is a no-op when the comment header is missing", () => {
+    const out = applyMeasuredHeaderToComment(SAMPLE_CONFIG, MEASURED);
+    expect(out).toBe(SAMPLE_CONFIG);
+  });
+
+  it("never throws when given an empty string", () => {
+    expect(() => applyMeasuredHeaderToComment("", MEASURED)).not.toThrow();
+  });
+});
+
+describe("ratchet-coverage applyRatchet (issue #1819 comment header)", () => {
+  it("refreshes the Measured date + values on a bump", () => {
+    const res = applyRatchet(SAMPLE_CONFIG_WITH_HEADER, MEASURED, 1);
+    expect(res.kind).toBe("bump");
+    if (!res.nextSource) throw new Error("expected a bump");
+    expect(res.nextSource).not.toMatch(/2026-06-26/);
+    expect(res.nextSource).not.toMatch(/37\.66%/);
+    expect(res.nextSource).toMatch(
+      /statements 32\.86% \| branches 25\.58% \| functions 26\.99% \| lines 33\.19%/,
+    );
+    expect(res.nextSource).toMatch(/Measured \d{4}-\d{2}-\d{2}/);
+    // Threshold numbers still bumped.
+    expect(res.nextSource).toContain("branches: 24,");
+    expect(res.nextSource).toContain("functions: 25,");
+    expect(res.nextSource).toContain("lines: 32,");
+    expect(res.nextSource).toContain("statements: 31,");
+  });
+
+  it("is byte-stable on noop (re-running leaves the comment alone)", () => {
+    const first = applyRatchet(SAMPLE_CONFIG_WITH_HEADER, MEASURED, 1);
+    if (!first.nextSource) throw new Error("expected a bump");
+    const second = applyRatchet(first.nextSource, MEASURED, 1);
+    expect(second.kind).toBe("noop");
+    expect(second.nextSource).toBe(first.nextSource);
+  });
+
+  it("leaves jest.config.js untouched on a regression", () => {
+    const regressed: Metrics = {
+      branches: 21,
+      functions: 26.99,
+      lines: 33.19,
+      statements: 32.86,
+    };
+    const res = applyRatchet(SAMPLE_CONFIG_WITH_HEADER, regressed, 1);
+    expect(res.kind).toBe("regression");
+    expect(res.nextSource).toBeNull();
   });
 });
 

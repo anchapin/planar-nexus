@@ -55,14 +55,17 @@ module.exports = {
   ],
   // Coverage thresholds — ENFORCED by CI (ci.yml "Run unit tests with coverage").
   // Values are set just below MEASURED coverage so the gate catches real
-  // regressions without being flaky. Measured 2026-06-26 (jest --coverage):
-  //   statements 37.66% | branches 29.97% | functions 31.09% | lines 37.98%
-  // The documented project target is 70% (README/TESTING/CONTRIBUTING). This
-  // floor is ratcheted upward automatically by `scripts/ratchet-coverage.js`
-  // (`npm run test:coverage:ratchet`, issue #1099) — the floor moves toward 70%
-  // as coverage improves and can never silently decay. DO NOT raise a threshold
-  // above measured coverage or CI will fail. Re-measure with
-  // `npm run test:coverage` before adjusting by hand.
+  // regressions without being flaky. Measured 2026-09-17 (jest --coverage):
+  //   statements 62.00% | branches 54.00% | functions 54.00% | lines 62.00%
+  // The "last measured" snapshot above is refreshed automatically by
+  // `scripts/ratchet-coverage.js` on every bump (issue #1819) and therefore
+  // stays consistent with the floors below. The documented project target
+  // is 70% (README/TESTING/CONTRIBUTING). The floor is ratcheted upward
+  // automatically by `scripts/ratchet-coverage.js` (`npm run
+  // test:coverage:ratchet`, issue #1099) — it moves toward 70% as coverage
+  // improves and can never silently decay. DO NOT raise a threshold above
+  // measured coverage or CI will fail. Re-measure with `npm run
+  // test:coverage` before adjusting by hand.
   // See: https://github.com/anchapin/planar-nexus/issues/922
   coverageThreshold: {
     global: {
