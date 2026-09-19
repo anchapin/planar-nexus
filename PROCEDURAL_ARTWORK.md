@@ -54,49 +54,49 @@ Generated artwork includes:
 #### Using CardArt Component
 
 ```tsx
-import { CardArt } from '@/components/card-art';
+import { CardArt } from "@/components/card-art";
 
 <CardArt
   cardName="Crimson Dragon"
   scryfallCard={{
-    id: 'card-001',
-    name: 'Crimson Dragon',
-    color_identity: ['R'],
-    type_line: 'Legendary Creature — Dragon',
+    id: "card-001",
+    name: "Crimson Dragon",
+    color_identity: ["R"],
+    type_line: "Legendary Creature — Dragon",
     cmc: 5,
-    colors: ['R'],
+    colors: ["R"],
   }}
   useProcedural={true}
   size="normal"
-/>
+/>;
 ```
 
 #### Using ProceduralCard Component (Simplified)
 
 ```tsx
-import { ProceduralCard } from '@/components/procedural-card';
+import { ProceduralCard } from "@/components/procedural-card";
 
 <ProceduralCard
   cardName="Crimson Dragon"
   cardId="card-001"
-  colors={['R']}
+  colors={["R"]}
   typeLine="Legendary Creature — Dragon"
   cmc={5}
   size="normal"
-/>
+/>;
 ```
 
 ### Using the Hook Directly
 
 ```tsx
-import { useAutoStyledArtwork } from '@/hooks/use-procedural-artwork';
+import { useAutoStyledArtwork } from "@/hooks/use-procedural-artwork";
 
 function MyComponent() {
   const { artworkUrl } = useAutoStyledArtwork({
-    cardName: 'Crimson Dragon',
-    cardId: 'card-001',
-    colors: ['R'],
-    typeLine: 'Legendary Creature — Dragon',
+    cardName: "Crimson Dragon",
+    cardId: "card-001",
+    colors: ["R"],
+    typeLine: "Legendary Creature — Dragon",
     cmc: 5,
     width: 244,
     height: 340,
@@ -109,17 +109,17 @@ function MyComponent() {
 ### Custom Configuration
 
 ```tsx
-import { generateArtwork, svgToDataUrl } from '@/lib/procedural-art-generator';
+import { generateArtwork, svgToDataUrl } from "@/lib/procedural-art-generator";
 
 const { svg } = generateArtwork({
-  cardName: 'Crimson Dragon',
-  cardId: 'card-001',
-  colors: ['R'],
-  typeLine: 'Legendary Creature — Dragon',
+  cardName: "Crimson Dragon",
+  cardId: "card-001",
+  colors: ["R"],
+  typeLine: "Legendary Creature — Dragon",
   cmc: 5,
-  style: 'fantasy',
-  complexity: 'complex',
-  mood: 'aggressive',
+  style: "fantasy",
+  complexity: "complex",
+  mood: "aggressive",
   width: 244,
   height: 340,
 });
@@ -136,7 +136,7 @@ import {
   getProceduralArtworkConfig,
   updateProceduralArtworkConfig,
   setProceduralArtworkEnabled,
-} from '@/lib/procedural-art-config';
+} from "@/lib/procedural-art-config";
 
 // Get current config
 const config = getProceduralArtworkConfig();
@@ -144,8 +144,8 @@ const config = getProceduralArtworkConfig();
 // Update specific settings
 updateProceduralArtworkConfig({
   enabled: true,
-  defaultStyle: 'fantasy',
-  defaultComplexity: 'medium',
+  defaultStyle: "fantasy",
+  defaultComplexity: "medium",
 });
 
 // Enable/disable globally
@@ -185,21 +185,18 @@ Artwork is automatically cached using the cache key:
 ### Pre-generating Artwork
 
 ```tsx
-import { pregenerateArtwork } from '@/lib/procedural-art-generator';
+import { pregenerateArtwork } from "@/lib/procedural-art-generator";
 
 // Pre-generate artwork for multiple cards
-pregenerateArtwork(
-  cardConfigs,
-  (progress, total) => {
-    console.log(`Progress: ${progress}/${total}`);
-  }
-);
+pregenerateArtwork(cardConfigs, (progress, total) => {
+  console.log(`Progress: ${progress}/${total}`);
+});
 ```
 
 ### Clearing Cache
 
 ```tsx
-import { clearArtworkCache } from '@/lib/procedural-art-generator';
+import { clearArtworkCache } from "@/lib/procedural-art-generator";
 
 clearArtworkCache();
 ```
@@ -214,32 +211,9 @@ The `CardArt` component now supports procedural artwork:
 <CardArt
   cardName={card.name}
   scryfallCard={card}
-  useProcedural={true}  // Enable procedural artwork
+  useProcedural={true} // Enable procedural artwork
   size="normal"
 />
-```
-
-### Image Resolver
-
-Use the procedural artwork resolver:
-
-```tsx
-import {
-  getProceduralArtworkUrl,
-  getArtworkWithFallback,
-  shouldUseProceduralArtwork,
-} from '@/lib/card-image-resolver-procedural';
-
-// Get procedural artwork URL
-const url = getProceduralArtworkUrl(card, 'normal');
-
-// Get with fallback to original images
-const url = getArtworkWithFallback(card, 'normal', true);
-
-// Check if should use procedural
-if (shouldUseProceduralArtwork(card)) {
-  // Use procedural artwork
-}
 ```
 
 ## Demo Page
@@ -333,6 +307,5 @@ When modifying the procedural artwork system:
 - `/src/lib/procedural-art-generator.ts` - Core generation logic
 - `/src/lib/procedural-art-config.ts` - Configuration management
 - `/src/hooks/use-procedural-artwork.ts` - React hook
-- `/src/lib/card-image-resolver-procedural.ts` - Image resolver integration
 - `/src/components/card-art.tsx` - Card display component
 - `/src/app/(app)/procedural-art-demo/page.tsx` - Demo page
