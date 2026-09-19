@@ -397,121 +397,23 @@ export const RECENT_SEARCHES_STORE = "recent-searches";
 // INDEXEDDB STORAGE CLASS
 // ============================================================================
 
-/**
- * Split every row of the legacy monolithic `saved-games` store into the new
- * `saved-games-meta` + `saved-games-payloads` pair (issue #1572, v2 → v3).
- *
- * The onupgradeneeded handler only creates the v3 stores and indexes —
- * it does NOT do the data move. fake-indexeddb's upgrade transaction
- * commits via `setImmediate` after the handler returns, which makes it
- * impossible to keep the transaction alive long enough for async reads
- * (getAll.onsuccess) + follow-up writes; any nested request ends up
- * landing on an aborted transaction. We sidestep the limitation by
- * running the migration in a normal readwrite transaction AFTER the
- * upgrade completes, gated by {@link ensureLegacyV3Split}.
- *
- * Idempotent: rows already present in the meta store are skipped so a
- * re-run of the migration (e.g. after a partial run or a process
- * crash mid-migration) can't overwrite fresh data with stale legacy
- * bytes. The legacy rows are deleted from the `saved-games` store in
- * the same transaction so the v3 split is atomic — if any write fails
- * the entire move rolls back and the next `initialize()` retries.
- *
- * The legacy store itself remains in the schema so a user who
- * downgrades back to a v2 build still finds the meta + payload rows
- * through `exportBackup` / `exportIncrementalBackup` (issue
- * acceptance criterion: "existing restore paths continue to round-trip
- * byte-identically" — the envelope still carries `savedGames: StoredGame[]`,
- * rehydrated from the v3 split via {@link collectSavedGamesForExport}).
- */
-async function ensureLegacyV3Split(storage: IndexedDBStorage): Promise<void> {
-  if (!storage.hasStore(SAVED_GAMES_META_STORE)) return;
-  if (!storage.hasStore(SAVED_GAMES_PAYLOAD_STORE)) return;
-  if (!storage.hasStore("saved-games")) return;
-
-  // Cheap fast-path: if meta is non-empty, assume already migrated.
-  const existingMeta = await storage.count(SAVED_GAMES_META_STORE);
-  if (existingMeta > 0) return;
-
-  const legacyCount = await storage.count("saved-games");
-  if (legacyCount === 0) return;
-
-  const legacy = await storage.getAll<StoredGame>("saved-games");
-  if (legacy.length === 0) return;
-
-  // Open a readwrite transaction across all three stores and move
-  // every legacy row. Skips rows that already have a meta twin so the
-  // migration is safe to re-run. The legacy store is cleared in the
-  // same transaction so the split is atomic — if any write fails the
-  // entire move rolls back and the next `initialize()` retries.
-  await new Promise<void>((resolve, reject) => {
-    const db = (storage as unknown as { db: IDBDatabase | null }).db;
-    if (!db) {
-      resolve();
-      return;
-    }
-    const tx = db.transaction(
-      ["saved-games", SAVED_GAMES_META_STORE, SAVED_GAMES_PAYLOAD_STORE],
-      "readwrite",
-    );
-    const legacyStore = tx.objectStore("saved-games");
-    const meta = tx.objectStore(SAVED_GAMES_META_STORE);
-    const payload = tx.objectStore(SAVED_GAMES_PAYLOAD_STORE);
-
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error ?? new Error("v3 split tx failed"));
-    tx.onabort = () => reject(tx.error ?? new Error("v3 split tx aborted"));
-
-    for (const row of legacy) {
-      // Idempotency probe — same transaction so the read is consistent
-      // with the writes.
-      const probe = meta.getKey(row.id);
-      probe.onsuccess = () => {
-        if (probe.result !== undefined) {
-          // Already split (re-run / pre-existing v3 row). Drop the
-          // stale legacy copy so the store ends up empty.
-          legacyStore.delete(row.id);
-          return;
-        }
-        const metaRow: StoredGameMeta = {
-          id: row.id,
-          name: row.name,
-          format: row.format,
-          playerNames: row.playerNames,
-          savedAt: row.savedAt,
-          createdAt: row.createdAt,
-          turnNumber: row.turnNumber,
-          currentPhase: row.currentPhase,
-          status: row.status,
-          winners: row.winners,
-          isAutoSave: row.isAutoSave,
-          autoSaveSlot: row.autoSaveSlot,
-          hasReplay:
-            typeof row.replayJson === "string" && row.replayJson.length > 0,
-        };
-        const payloadRow: StoredGamePayload = {
-          id: row.id,
-          gameStateJson: row.gameStateJson,
-          replayJson: row.replayJson,
-        };
-        meta.put(metaRow);
-        payload.put(payloadRow);
-        legacyStore.delete(row.id);
-      };
-    }
-  });
-}
-
 // ============================================================================
-// V4 CONSOLIDATION (issue #1811) — lazy-loaded module.
+// LAZY MIGRATION MODULES (issues #1572 / #1811 / #1937 — see #1946).
 //
-// The migration code (≈300 lines of IndexedDB cursor + delete logic) lives
-// in `./migrations/indexeddb-v4-consolidation.ts` and is dynamically
-// imported from `initialize()` below. This keeps the migration out of the
-// shared client chunk so every route does not pay ~3 kB minified for code
-// that only runs once per user, on first open after the v3 → v4 upgrade.
-// See `scripts/check-bundle-budget.mjs` for the per-route shared-chunk
-// budget that motivated the split.
+// The one-shot migration + recovery code lives in separate modules under
+// `./migrations/` and is dynamically imported at its point of use:
+//   - `indexeddb-saved-games-split.ts` (≈80 lines, issue #1572):
+//     v2 → v3 saved-games split, imported from `initialize()`.
+//   - `indexeddb-v4-consolidation.ts` (≈300 lines, issue #1811):
+//     v3 → v4 consolidation of the four standalone legacy DBs, imported
+//     from `initialize()`.
+//   - `indexeddb-schema-heal.ts` (issue #1937): torn-schema self-heal +
+//     VersionError re-open recovery, imported from
+//     `openWithSchemaHeal()` on its rare paths only.
+// This keeps the one-shot code out of the shared client chunk so every
+// route does not pay minified bytes for logic that runs at most once
+// per user. See `scripts/check-bundle-budget.mjs` for the per-route
+// shared-chunk budget that motivated the splits.
 // ============================================================================
 
 /**
@@ -552,8 +454,14 @@ export class IndexedDBStorage {
     // The migration is gated by the meta store being empty, so re-opens
     // are no-ops. Errors are swallowed and logged so a corrupt legacy
     // store can't take the rest of the app down with it.
+    //
+    // Issue #1946: the migration module is dynamically imported (same
+    // pattern as the v4 consolidation below) so its code lives in a
+    // separate chunk and does not bloat the shared client bundle.
     if (this.hasStore(SAVED_GAMES_META_STORE)) {
       try {
+        const { ensureLegacyV3Split } =
+          await import("./migrations/indexeddb-saved-games-split");
         await ensureLegacyV3Split(this);
       } catch (error) {
         console.warn(
@@ -605,22 +513,41 @@ export class IndexedDBStorage {
    * re-open at `db.version + 1` — the upgrade handler's
    * create-missing-store loop rebuilds the torn schema in one
    * transaction. Healed databases then live at a version ABOVE
-   * `config.version`, so the `VersionError` retry in
-   * {@link openDatabaseAt} re-opens at the on-disk version on every
-   * later session (a lower-version open is a hard IndexedDB error).
+   * `config.version`, so the `VersionError` recovery re-opens at the
+   * on-disk version on every later session (a lower-version open is a
+   * hard IndexedDB error).
+   *
+   * Issue #1946: both recovery paths are rare (a healed or
+   * higher-version database, once per user — not per open), so their
+   * code lives in `./migrations/indexeddb-schema-heal` behind a dynamic
+   * `import()`, keeping the #1937 bytes out of the shared client
+   * chunk. The eager hot path keeps only the `VersionError` name check
+   * and the store-list comparison.
    */
   private async openWithSchemaHeal(): Promise<void> {
-    let db = await this.openDatabaseAt(this.config.version);
+    const open = (version: number) => this.openDatabaseRequest(version);
+    let db: IDBDatabase;
+    try {
+      db = await open(this.config.version);
+    } catch (error) {
+      if ((error as { name?: string }).name !== "VersionError") {
+        throw error;
+      }
+      // On-disk database is NEWER than `config.version` — an earlier
+      // session self-healed a torn schema past it. Re-open at the
+      // on-disk version via the lazy heal module.
+      const { reopenAtDiskVersion } =
+        await import("./migrations/indexeddb-schema-heal");
+      db = await reopenAtDiskVersion(open, this.config.dbName);
+    }
 
     const missing = this.config.stores.filter(
       (storeName) => !db.objectStoreNames.contains(storeName),
     );
     if (missing.length > 0) {
-      console.warn(
-        `[indexeddb-storage] schema self-heal (#1937): store(s) missing at version ${db.version} (${missing.join(", ")}) — re-opening at version ${db.version + 1} to rebuild`,
-      );
-      db.close();
-      db = await this.openDatabaseAt(db.version + 1);
+      const { healTornSchema } =
+        await import("./migrations/indexeddb-schema-heal");
+      db = await healTornSchema(open, db, missing);
     }
 
     this.db = db;
@@ -630,44 +557,6 @@ export class IndexedDBStorage {
     // `ensureInitialized()` re-opens, and notify the UI.
     registerVersionChangeClose(db, () => {
       this.db = null;
-    });
-  }
-
-  /**
-   * Open the database at `version` with the full upgrade handler. A
-   * `VersionError` — the on-disk database is NEWER than `version`, e.g.
-   * after an earlier session self-healed a torn schema past
-   * `DEFAULT_STORAGE_CONFIG.version` — is retried once at the on-disk
-   * version instead of failing every subsequent open (issue #1937).
-   */
-  private async openDatabaseAt(version: number): Promise<IDBDatabase> {
-    try {
-      return await this.openDatabaseRequest(version);
-    } catch (error) {
-      if ((error as { name?: string }).name === "VersionError") {
-        return this.openDatabaseRequest(await this.probeCurrentVersion());
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * Unversioned open used only to discover the on-disk version (it
-   * never upgrades and never creates stores). Closed immediately.
-   */
-  private async probeCurrentVersion(): Promise<number> {
-    return new Promise<number>((resolve, reject) => {
-      const probe = indexedDB.open(this.config.dbName);
-      probe.onsuccess = () => {
-        const current = probe.result.version;
-        probe.result.close();
-        resolve(current);
-      };
-      probe.onerror = () => {
-        const error = new Error(`Failed to open IndexedDB: ${probe.error}`);
-        error.name = probe.error?.name ?? "Error";
-        reject(error);
-      };
     });
   }
 
@@ -683,8 +572,8 @@ export class IndexedDBStorage {
       request.onerror = () => {
         const error = new Error(`Failed to open IndexedDB: ${request.error}`);
         // Preserve the native DOMException name (VersionError,
-        // AbortError, …) so the VersionError retry in
-        // {@link openDatabaseAt} can branch on it (issue #1937).
+        // AbortError, …) so the VersionError recovery in
+        // `openWithSchemaHeal` can branch on it (issue #1937).
         error.name = request.error?.name ?? "Error";
         reject(error);
       };
