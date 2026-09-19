@@ -1052,11 +1052,13 @@ describe("streamCoachResponse — context-length prune-and-retry (#1537)", () =>
 
     // 5. Sanity: a fresh failure (e.g. next coach turn) starts at the
     // base cooldown again, proving the entry was cleared. Allow a
-    // 1ms decrement because cooldownRemaining returns the remaining
+    // 20ms decrement because cooldownRemaining returns the remaining
     // milliseconds since `recordFailure` and the test setup may yield
-    // between the call and the assert on slow runners (#1779 family).
+    // several ms between the call and the assert on slow/loaded
+    // runners (#1779 family — 1ms budget still flaked under full-suite
+    // load; see #1938's order/state isolation follow-up).
     health.recordFailure("openai", "context-length");
-    expect(health.cooldownRemaining("openai")).toBeGreaterThanOrEqual(499);
+    expect(health.cooldownRemaining("openai")).toBeGreaterThanOrEqual(480);
   });
 
   it("forwards the tightened history to streamText on retry (observable via call args)", async () => {
