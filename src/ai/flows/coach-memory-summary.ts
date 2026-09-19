@@ -39,6 +39,12 @@
  *    into the prompt. It is "trusted" in the sense that it is
  *    server-maintained and stable across turns, not in the sense that the
  *    model should obey directives embedded inside it.
+ *  - Inbound summaries (request body, IndexedDB loads, imports) are
+ *    per-entry sanitized at the trust boundary (issue #1905): any entry
+ *    carrying a known injection signature is replaced wholesale, and every
+ *    other entry is control-char-stripped and length-capped before the
+ *    summary object is returned to callers. The render-time whole-body
+ *    sanitizer remains as defense in depth.
  */
 
 import { z } from "zod";
@@ -47,7 +53,10 @@ import {
   DEFAULT_CHARS_PER_TOKEN,
   estimateTokens,
 } from "@/ai/flows/context-builder";
-import { sanitizeUserInput } from "@/ai/prompt-security";
+import {
+  containsInjectionAttempt,
+  sanitizeUserInput,
+} from "@/ai/prompt-security";
 
 // ============================================================================
 // SCHEMA
@@ -698,6 +707,13 @@ export function renderCoachMemorySummaryForPrompt(
  * Backward compatibility: a missing/undefined field returns `null` (older
  * conversations pre-date this field), and the caller is expected to lazily
  * populate it on the next pruning pass.
+ *
+ * Issue #1905: every category entry is untrusted string data. The zod schema
+ * only shape-checks, so each entry is additionally passed through
+ * {@link sanitizeMemoryEntry} before the summary is returned. A poisoned
+ * entry therefore never survives past this boundary — it is replaced by a
+ * redaction marker (and benign entries pass through substantively unchanged,
+ * modulo control-char stripping and the length cap).
  */
 export function parseCoachMemorySummary(
   raw: unknown,
@@ -705,7 +721,72 @@ export function parseCoachMemorySummary(
   if (raw == null) return null;
   const parsed = CoachMemorySummarySchema.safeParse(raw);
   if (!parsed.success) return null;
-  return parsed.data;
+  return sanitizeSummaryEntries(parsed.data);
+}
+
+/**
+ * Hard cap applied to a single inbound memory entry at the trust boundary
+ * (issue #1905). Generous relative to the builder-side
+ * {@link SUMMARY_ENTRY_MAX_CHARS} cap so legitimately-built summaries never
+ * lose content here, while a hostile single entry cannot dominate the
+ * rendered block.
+ */
+export const MEMORY_ENTRY_SANITIZE_MAX_CHARS = 500;
+
+/**
+ * Replacement returned for an inbound entry that matches a known injection
+ * signature. The whole entry is discarded rather than partially redacted:
+ * memory entries are short factual strings, so an entry carrying an
+ * injection signature has no trustworthy remainder worth preserving.
+ * Matches the issue #1905 acceptance example.
+ */
+const INJECTION_ENTRY_REPLACEMENT =
+  "[redacted: possible instruction-override attempt]";
+
+/**
+ * Sanitize a single inbound coach-memory entry (issue #1905).
+ *
+ * Order of operations:
+ *   1. Whole-entry replacement when {@link containsInjectionAttempt} fires —
+ *      an instruction-override, exfiltration, role-hijack or tag-spoof
+ *      signature invalidates the entire entry.
+ *   2. Otherwise the standard {@link sanitizeUserInput} treatment (control /
+ *      bidi / zero-width stripping, injection redaction — a no-op here since
+ *      step 1 already tested negative — and a per-entry length cap).
+ *
+ * Exposed for tests and for any future ingress site that composes entries
+ * outside the persisted envelope.
+ */
+export function sanitizeMemoryEntry(entry: string): string {
+  if (containsInjectionAttempt(entry)) {
+    return INJECTION_ENTRY_REPLACEMENT;
+  }
+  return sanitizeUserInput(entry, {
+    redactInjection: true,
+    maxLength: MEMORY_ENTRY_SANITIZE_MAX_CHARS,
+  });
+}
+
+/**
+ * Apply {@link sanitizeMemoryEntry} to every category of a shape-valid
+ * summary. The cached `tokenEstimate` is intentionally left as-is: it is an
+ * upper-ish estimate, and sanitization only ever shrinks entries, so a stale
+ * value over-reserves budget rather than under-reserving it.
+ */
+function sanitizeSummaryEntries(
+  summary: CoachMemorySummary,
+): CoachMemorySummary {
+  const sanitize = (entries: string[]): string[] =>
+    entries.map((entry) => sanitizeMemoryEntry(entry));
+  return {
+    ...summary,
+    goals: sanitize(summary.goals),
+    constraints: sanitize(summary.constraints),
+    acceptedSwaps: sanitize(summary.acceptedSwaps),
+    rejectedSwaps: sanitize(summary.rejectedSwaps),
+    matchupTargets: sanitize(summary.matchupTargets),
+    unresolvedQuestions: sanitize(summary.unresolvedQuestions),
+  };
 }
 
 /**

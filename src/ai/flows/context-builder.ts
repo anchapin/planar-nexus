@@ -536,6 +536,10 @@ export function prepareConversationHistoryWithSummary(
  * Convenience: validate a raw summary payload (e.g. from the request body or
  * IndexedDB) and return either a typed summary or `null`. Re-exported here
  * so callers using the conversation-history API have a single import site.
+ *
+ * Issue #1905: the returned summary is per-entry sanitized — every category
+ * string has been control-char-stripped, length-capped and checked against
+ * the prompt-security injection signatures before it reaches any caller.
  */
 export function validateCoachMemorySummary(
   raw: unknown,

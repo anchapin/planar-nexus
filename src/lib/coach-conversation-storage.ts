@@ -25,9 +25,15 @@
 import type { ChatMessage } from "@/types/chat";
 import type { DeckCard } from "@/lib/card-database";
 import type { CoachMemorySummary } from "@/ai/flows/coach-memory-summary";
-import { parseCoachMemorySummary } from "@/ai/flows/coach-memory-summary";
 import { IndexedDBStorage } from "./indexeddb-storage";
 import { withQuotaGuard, type QuotaGuardResult } from "./storage-quota";
+
+// The #1905 summary parser (and its transitive prompt-security / regex
+// tables) is loaded lazily at each async ingress point below. Routes that
+// only manage conversation records (deck-builder) do not need it eagerly,
+// and the summary module stays out of their First Load JS (bundle budget,
+// issue #1905 follow-up). Sanitization semantics are unchanged — the same
+// `parseCoachMemorySummary` runs at every trust boundary.
 
 // ============================================================================
 // TYPES
@@ -218,6 +224,10 @@ export async function loadConversation(
     // Issue #1417: defensively validate the persisted coach-memory summary.
     // A poisoned / cross-version value is dropped (treated as absent) rather
     // than crashing the resume path; the next pruning pass re-populates it.
+    // Issue #1905: per-entry sanitization happens inside the parser; it is
+    // loaded lazily so the summary module stays out of eager route chunks.
+    const { parseCoachMemorySummary } =
+      await import("@/ai/flows/coach-memory-summary");
     const validatedSummary = parseCoachMemorySummary(conv.memorySummary);
     return {
       ...conv,
@@ -428,6 +438,7 @@ export function createConversationRecord(opts: {
 function sanitiseImportedConversation(
   raw: unknown,
   fallbackDeckId: string,
+  parseSummary: (raw: unknown) => CoachMemorySummary | null,
 ): { ok: true; value: CoachConversation } | { ok: false; reason: string } {
   if (!raw || typeof raw !== "object") {
     return { ok: false, reason: "not an object" };
@@ -493,8 +504,9 @@ function sanitiseImportedConversation(
   // Issue #1417: preserve a persisted coach-memory summary on import, but
   // validate it through the zod schema first so a poisoned/foreign envelope
   // is dropped rather than crashing import. Conversations without one
-  // (including all pre-#1417 exports) load as `undefined`.
-  const importedSummary = parseCoachMemorySummary(rec.memorySummary);
+  // (including all pre-#1417 exports) load as `undefined`. Issue #1905: the
+  // parser (with per-entry sanitization) is injected by the async caller.
+  const importedSummary = parseSummary(rec.memorySummary);
   const result: { ok: true; value: CoachConversation } = {
     ok: true,
     value: {
@@ -632,10 +644,19 @@ export async function importConversationsFromJSON(
   };
   const { targetDeckId = null, replace = false } = opts;
   const fallbackDeckId = targetDeckId ?? DEFAULT_DECK_ID;
+  // Issue #1905: load the summary parser (with per-entry sanitization) once
+  // for the whole import; dynamic so routes that never import conversations
+  // do not eagerly bundle the summary module (bundle budget follow-up).
+  const { parseCoachMemorySummary: parseSummary } =
+    await import("@/ai/flows/coach-memory-summary");
 
   for (let i = 0; i < envelope.conversations.length; i++) {
     const raw = envelope.conversations[i];
-    const sanitised = sanitiseImportedConversation(raw, fallbackDeckId);
+    const sanitised = sanitiseImportedConversation(
+      raw,
+      fallbackDeckId,
+      parseSummary,
+    );
     if (!sanitised.ok) {
       result.skipped += 1;
       result.errors.push(`conversation #${i + 1}: ${sanitised.reason}`);
