@@ -42,6 +42,10 @@ import {
 } from "./p2p-json-validation";
 import { P2PRateLimiter, type P2PRateLimitOptions } from "./p2p-rate-limiter";
 import {
+  classifyConnectionFailure,
+  type ConnectionFailureDiagnostic,
+} from "./p2p-failure-diagnostics";
+import {
   PeerSendQueue,
   classifyMessagePriority,
   type PeerQueueStats,
@@ -1645,6 +1649,41 @@ export class WebRTCConnection {
    */
   getDataChannelState(): RTCDataChannelState | null {
     return this.dataChannel?.readyState ?? null;
+  }
+
+  /**
+   * Current attempt count of the transport-owned reconnection loop.
+   * Read-only accessor (issue #1927) so integration layers can render an
+   * "attempt N of M" indicator without reaching into private fields.
+   */
+  getReconnectAttempts(): number {
+    return this.reconnectAttempts;
+  }
+
+  /**
+   * Maximum number of reconnection attempts this transport will make
+   * before giving up (defaults to 3; overridable via
+   * `P2PConnectionOptions.maxReconnectAttempts`). Read-only accessor —
+   * issue #1927.
+   */
+  getMaxReconnectAttempts(): number {
+    return this.maxReconnectAttempts;
+  }
+
+  /**
+   * Get the last failure diagnostic with an actionable reason and
+   * remediation hint (issue #926 vocabulary). Classified on demand from
+   * the RTC configuration in use; returns `null` unless the transport is
+   * in the `failed` state. Read-only accessor — issue #1927.
+   */
+  getLastFailureDiagnostic(): ConnectionFailureDiagnostic | null {
+    if (this.connectionState !== "failed") {
+      return null;
+    }
+    return classifyConnectionFailure({
+      rtcConfig: this.rtcConfig,
+      failureContext: "ice",
+    });
   }
 
   /**

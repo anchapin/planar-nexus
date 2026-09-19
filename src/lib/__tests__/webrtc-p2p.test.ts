@@ -713,8 +713,94 @@ describe("WebRTCConnection transport surface (#1788)", () => {
     // Simulate the host receiving our channel, then us opening it.
     conn["dataChannel"] = channel as unknown as RTCDataChannel;
     conn.sendChat("hello");
-    conn.sendEmote("thumbsup");
+    conn.sendEmote("thumbs up");
     const kinds = channel.sent.map((raw) => JSON.parse(raw).type);
     expect(kinds).toEqual(["chat", "emote"]);
+  });
+});
+
+// =============================================================================
+// Issue #1927 — read-only reconnect/failure accessors. These form the typed
+// surface that replaces the `as any` bracket-access casts previously used by
+// src/hooks/use-p2p-connection.ts.
+// =============================================================================
+
+describe("WebRTCConnection reconnect/failure accessors (issue #1927)", () => {
+  let originals: ReturnType<typeof installWebrtcGlobals>;
+  let errorSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    originals = installWebrtcGlobals();
+    errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    uninstallWebrtcGlobals(originals);
+    errorSpy.mockRestore();
+  });
+
+  function makeAccessorConn(
+    opts: { maxReconnectAttempts?: number } = {},
+  ): WebRTCConnection {
+    return new WebRTCConnection({
+      playerId: "p1",
+      playerName: "P1",
+      isHost: true,
+      enableICEMonitoring: false,
+      // Keep pings driven by the test — no real interval handles.
+      externalPing: true,
+      maxReconnectAttempts: opts.maxReconnectAttempts,
+    });
+  }
+
+  it("exposes the configured maxReconnectAttempts and a zero initial attempt count", () => {
+    const conn = makeAccessorConn({ maxReconnectAttempts: 5 });
+    expect(conn.getMaxReconnectAttempts()).toBe(5);
+    expect(conn.getReconnectAttempts()).toBe(0);
+    conn.close();
+  });
+
+  it("defaults maxReconnectAttempts to 3 when unset", () => {
+    const conn = makeAccessorConn();
+    expect(conn.getMaxReconnectAttempts()).toBe(3);
+    conn.close();
+  });
+
+  it("getLastFailureDiagnostic returns null unless the transport is failed", async () => {
+    const conn = makeAccessorConn();
+    expect(conn.getLastFailureDiagnostic()).toBeNull();
+
+    await conn.initialize();
+    // Initialized but healthy (connecting/signaling) — no diagnostic yet.
+    expect(conn.getLastFailureDiagnostic()).toBeNull();
+    conn.close();
+  });
+
+  it("getLastFailureDiagnostic classifies an actionable diagnostic once failed", async () => {
+    const conn = new WebRTCConnection({
+      playerId: "p1",
+      playerName: "P1",
+      isHost: true,
+      enableICEMonitoring: false,
+      externalPing: true,
+      rtcConfig: { failConstruction: true } as unknown as RTCConfiguration,
+      events: { onError: jest.fn() },
+    });
+    await expect(conn.initialize()).rejects.toThrow(
+      "MockRTCPeerConnection: construction failed (test)",
+    );
+    expect(conn.getConnectionState()).toBe("failed");
+
+    const diag = conn.getLastFailureDiagnostic();
+    expect(diag).not.toBeNull();
+    expect(typeof diag?.reason).toBe("string");
+    expect(typeof diag?.remediation).toBe("string");
+    expect([
+      "TURN_UNCONFIGURED",
+      "ICE_FAILED",
+      "SIGNALING_UNREACHABLE",
+      "PEER_UNREACHABLE",
+      "UNKNOWN",
+    ]).toContain(diag?.category);
   });
 });
