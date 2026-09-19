@@ -735,6 +735,41 @@ describe("Trigger-system — detectRenownEtbTriggers (CR 702.100)", () => {
     expect(triggers).toHaveLength(0);
   });
 
+  it("synthesises no trigger for a non-creature permanent carrying Renown text", () => {
+    const id = putOnBattlefield(
+      f.state,
+      f.aliceId,
+      makeCard({
+        id: "mock-renown-enchantment",
+        name: "Serrated Bindings",
+        type_line: "Enchantment — Aura",
+        oracle_text:
+          "Renown 2 (When this creature deals combat damage to a player, if it isn't renowned, put two +1/+1 counters on it.)",
+      }),
+    );
+    const triggers = detectRenownEtbTriggers(f.state, id, f.aliceId);
+    expect(triggers).toHaveLength(0);
+  });
+
+  it("synthesises no trigger when the card exists but is off the battlefield (graveyard)", () => {
+    const card = createCardInstance(renownCreature(2), f.aliceId, f.aliceId);
+    f.state.cards.set(card.id, card);
+    const gy = f.state.zones.get(`${f.aliceId}-graveyard`)!;
+    f.state.zones.set(`${f.aliceId}-graveyard`, {
+      ...gy,
+      cardIds: [...gy.cardIds, card.id],
+    });
+
+    const triggers = detectRenownEtbTriggers(f.state, card.id, f.aliceId);
+    expect(triggers).toHaveLength(0);
+  });
+
+  it("synthesises no trigger for Renown 0 (count <= 0 guard)", () => {
+    const id = putOnBattlefield(f.state, f.aliceId, renownCreature(0));
+    const triggers = detectRenownEtbTriggers(f.state, id, f.aliceId);
+    expect(triggers).toHaveLength(0);
+  });
+
   it("synthesises no trigger when the card is not on the battlefield", () => {
     // Card never added to state.
     const triggers = detectRenownEtbTriggers(
@@ -769,6 +804,41 @@ describe("Trigger-system — detectTributeEtbTriggers (CR 702.101)", () => {
 
   it("synthesises no trigger for a creature without Tribute", () => {
     const id = putOnBattlefield(f.state, f.aliceId, chaffCreature("a"));
+    const triggers = detectTributeEtbTriggers(f.state, id, f.aliceId);
+    expect(triggers).toHaveLength(0);
+  });
+
+  it("synthesises no trigger for a non-creature permanent carrying Tribute text", () => {
+    const id = putOnBattlefield(
+      f.state,
+      f.aliceId,
+      makeCard({
+        id: "mock-tribute-artifact",
+        name: "Offering Vessel",
+        type_line: "Artifact",
+        oracle_text:
+          "Tribute 2 (As this creature enters the battlefield, an opponent of your choice may pay 2. If they don't, sacrifice this permanent.)",
+      }),
+    );
+    const triggers = detectTributeEtbTriggers(f.state, id, f.aliceId);
+    expect(triggers).toHaveLength(0);
+  });
+
+  it("synthesises no trigger when the card exists but is off the battlefield (graveyard)", () => {
+    const card = createCardInstance(tributeCreature(2), f.aliceId, f.aliceId);
+    f.state.cards.set(card.id, card);
+    const gy = f.state.zones.get(`${f.aliceId}-graveyard`)!;
+    f.state.zones.set(`${f.aliceId}-graveyard`, {
+      ...gy,
+      cardIds: [...gy.cardIds, card.id],
+    });
+
+    const triggers = detectTributeEtbTriggers(f.state, card.id, f.aliceId);
+    expect(triggers).toHaveLength(0);
+  });
+
+  it("synthesises no trigger for Tribute 0 (count <= 0 guard)", () => {
+    const id = putOnBattlefield(f.state, f.aliceId, tributeCreature(0));
     const triggers = detectTributeEtbTriggers(f.state, id, f.aliceId);
     expect(triggers).toHaveLength(0);
   });
