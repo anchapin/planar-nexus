@@ -52,9 +52,12 @@ const CONTROL_CHARS =
  * for redaction. Patterns target multi-word override phrases so legitimate MTG
  * vocabulary ("ignore", "rules", "system") is not false-positive matched.
  */
-const INJECTION_PATTERNS: ReadonlyArray<{ source: string; replacement: string }> = [
+const INJECTION_PATTERNS: ReadonlyArray<{
+  source: string;
+  replacement: string;
+}> = [
   {
-    source: String.raw`\b(?:ignore|disregard|forget)\s+(?:all\s+|the\s+|any\s+|of\s+(?:your|the)\s+)?(?:previous|prior|above|earlier(?:-mentioned)?)\s+(?:instructions?|rules?|prompts?|directives?|messages?|constraints?|guidelines?)\b`,
+    source: String.raw`\b(?:ignore|disregard|forget)\s+(?:all\s+|the\s+|any\s+|your\s+|of\s+(?:your|the)\s+)?(?:previous|prior|above|earlier(?:-mentioned)?)\s+(?:instructions?|rules?|prompts?|directives?|messages?|constraints?|guidelines?)\b`,
     replacement: "[redacted: possible instruction-override attempt]",
   },
   {
@@ -95,7 +98,9 @@ const INJECTION_PATTERNS: ReadonlyArray<{ source: string; replacement: string }>
 export function containsInjectionAttempt(text: unknown): boolean {
   const str = typeof text === "string" ? text : "";
   if (!str) return false;
-  return INJECTION_PATTERNS.some(({ source }) => new RegExp(source, "i").test(str));
+  return INJECTION_PATTERNS.some(({ source }) =>
+    new RegExp(source, "i").test(str),
+  );
 }
 
 function escapeRegex(value: string): string {
@@ -113,10 +118,15 @@ function escapeRegex(value: string): string {
  * This is the first layer of defense; it must always be paired with
  * {@link wrapUntrusted} and {@link SECURITY_PREAMBLE}.
  */
-export function sanitizeUserInput(text: unknown, options: SanitizeOptions = {}): string {
-  const { maxLength = DEFAULT_MAX_INPUT_LENGTH, redactInjection = true } = options;
+export function sanitizeUserInput(
+  text: unknown,
+  options: SanitizeOptions = {},
+): string {
+  const { maxLength = DEFAULT_MAX_INPUT_LENGTH, redactInjection = true } =
+    options;
 
-  let value = typeof text === "string" ? text : text == null ? "" : String(text);
+  let value =
+    typeof text === "string" ? text : text == null ? "" : String(text);
 
   // Strip smuggle/hide characters.
   value = value.replace(CONTROL_CHARS, "");
@@ -141,7 +151,8 @@ export function sanitizeUserInput(text: unknown, options: SanitizeOptions = {}):
  * Used for trusted model output that still needs a sane upper bound.
  */
 export function clampString(text: unknown, max: number): string {
-  const value = typeof text === "string" ? text : text == null ? "" : String(text);
+  const value =
+    typeof text === "string" ? text : text == null ? "" : String(text);
   return value.length <= max ? value : value.slice(0, max) + "…[truncated]";
 }
 
@@ -193,7 +204,9 @@ export const SECURITY_PREAMBLE = [
  * back to the heuristic coach instead of being rendered as trusted text.
  * Strings are control-stripped and length-clamped.
  */
-export function validateDeckReviewOutput(raw: unknown): DeckReviewOutput | null {
+export function validateDeckReviewOutput(
+  raw: unknown,
+): DeckReviewOutput | null {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     return null;
   }
@@ -217,8 +230,12 @@ export function validateDeckReviewOutput(raw: unknown): DeckReviewOutput | null 
         .map((opt): DeckReviewOutput["deckOptions"][number] | null => {
           if (typeof opt !== "object" || opt === null) return null;
           const p = opt as Record<string, unknown>;
-          const title = typeof p.title === "string" ? cleanStr(p.title, 300) : "";
-          const description = typeof p.description === "string" ? cleanStr(p.description, 4000) : "";
+          const title =
+            typeof p.title === "string" ? cleanStr(p.title, 300) : "";
+          const description =
+            typeof p.description === "string"
+              ? cleanStr(p.description, 4000)
+              : "";
           if (!title && !description) return null;
           return {
             title,
@@ -233,7 +250,11 @@ export function validateDeckReviewOutput(raw: unknown): DeckReviewOutput | null 
   const result: DeckReviewOutput = { reviewSummary, deckOptions };
 
   const archetype = o.archetype;
-  if (typeof archetype === "object" && archetype !== null && !Array.isArray(archetype)) {
+  if (
+    typeof archetype === "object" &&
+    archetype !== null &&
+    !Array.isArray(archetype)
+  ) {
     const a = archetype as Record<string, unknown>;
     result.archetype = {
       primary: cleanStr(a.primary, 200),
@@ -252,8 +273,14 @@ function parseCardList(
   for (const entry of raw) {
     if (typeof entry !== "object" || entry === null) continue;
     const e = entry as Record<string, unknown>;
-    const name = typeof e.name === "string" ? sanitizeUserInput(e.name, { redactInjection: false }) : "";
-    const quantity = typeof e.quantity === "number" && Number.isFinite(e.quantity) ? Math.max(0, Math.floor(e.quantity)) : 0;
+    const name =
+      typeof e.name === "string"
+        ? sanitizeUserInput(e.name, { redactInjection: false })
+        : "";
+    const quantity =
+      typeof e.quantity === "number" && Number.isFinite(e.quantity)
+        ? Math.max(0, Math.floor(e.quantity))
+        : 0;
     if (name) out.push({ name: clampString(name, 200), quantity });
   }
   return out.length > 0 ? out : undefined;
