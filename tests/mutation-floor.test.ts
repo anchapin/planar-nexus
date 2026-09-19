@@ -39,7 +39,10 @@ const floorConfigSource = floorConfigModule as {
   defaultFloor: number;
   floors: Record<string, number>;
 };
-const strykerConfig = strykerConfigModule as { mutate: string[] };
+const strykerConfig = strykerConfigModule as {
+  mutate: string[];
+  thresholds: { break: number };
+};
 
 // ─────────────────────────────────────────────────────────────────────────
 // Fixture helpers
@@ -251,12 +254,18 @@ describe("floor config sanity", () => {
   });
 
   it("keeps every floor at or above the aggregate break (lower floors would be dead letters)", () => {
-    // Below `break: 50` Stryker's own gate already fails first, so a
-    // per-module floor under 50 could never be the deciding signal.
+    // Below Stryker's aggregate `break` its own gate already fails first, so a
+    // per-module floor under the break could never be the deciding signal.
+    // The break is re-baselined when measured scores honestly land below it
+    // (e.g. issue #1939: trigger-system 45.00% → break 50→44) — always derive
+    // the lower bound from the config instead of hardcoding it.
+    const breakThreshold = strykerConfig.thresholds.break;
     for (const floor of Object.values(floorConfigSource.floors)) {
-      expect(floor).toBeGreaterThanOrEqual(50);
+      expect(floor).toBeGreaterThanOrEqual(breakThreshold);
     }
-    expect(floorConfigSource.defaultFloor).toBeGreaterThanOrEqual(50);
+    expect(floorConfigSource.defaultFloor).toBeGreaterThanOrEqual(
+      breakThreshold,
+    );
   });
 
   it("pins the documented baselines to the derivation rule floor(measured − 1pt)", () => {
