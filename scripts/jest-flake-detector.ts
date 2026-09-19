@@ -363,7 +363,15 @@ export function aggregateReport(
   let stable = 0;
   for (const s of specs) {
     if (s.total === 0) continue;
-    if (s.passes === 0) {
+    if (s.failures === 0) {
+      // Never failed in any run — stable. This deliberately includes specs
+      // that were SKIPPED in every run (#1938): a deterministically absent
+      // test (conditionally skipped live-integration / simulation suites)
+      // is not breakage. The previous `passes === 0 → always broken` bucket
+      // swallowed them and kept the nightly permanently red on a healthy
+      // suite.
+      stable += 1;
+    } else if (s.passes === 0) {
       alwaysBroken.push(s);
     } else if (s.passes < args.threshold) {
       flaky.push(s);

@@ -461,10 +461,11 @@ describe("ReconnectTokenStore — open lifecycle (issue #1861, §1709)", () => {
    * short jest timeouts so a regression back to a pending open fails
    * fast instead of hanging the suite.
    *
-   * Declared BEFORE the resilience describe block so the resilience
-   * test (which clobbers `global.indexedDB` and only restores a partial
-   * stub) runs last and does not poison the fake-indexeddb globals
-   * these tests rely on.
+   * Issue #1938: the resilience describe block below used to clobber
+   * `global.indexedDB` and restore only a partial stub, so this block
+   * had to be declared first to avoid the poison. The resilience test
+   * now restores the original global reference, so declaration order
+   * no longer matters under `--randomize`.
    */
 
   /** Raw open of `name` at `version`, resolving with the live connection. */
@@ -674,9 +675,14 @@ describe("ReconnectTokenStore — open lifecycle (issue #1861, §1709)", () => {
 
 describe("ReconnectTokenStore — resilience", () => {
   it("save() returns false (not throws) when IndexedDB open fails", async () => {
-    const originalOpen = global.indexedDB.open;
+    // Issue #1938: jest `--randomize` shuffles tests within a file, so this
+    // test can run anywhere. Hold the ORIGINAL global reference and restore
+    // that exact reference afterwards — a spread copy ({...indexedDB}) is a
+    // hollow object because fake-indexeddb's methods live on the prototype,
+    // and restoring such a stub poisoned every test that ran after this one
+    // (open() recursed → the store's try/catch turned it into null tokens).
+    const originalIndexedDB = global.indexedDB;
     (global as { indexedDB: { open: unknown } }).indexedDB = {
-      ...(global as { indexedDB: { open: unknown } }).indexedDB,
       open: () => {
         throw new Error("blocked");
       },
@@ -689,25 +695,7 @@ describe("ReconnectTokenStore — resilience", () => {
       expect(ok).toBe(false);
       store.close();
     } finally {
-      (global as { indexedDB: { open: unknown } }).indexedDB = {
-        ...originalIndexedDBStub(),
-      };
+      (global as { indexedDB: unknown }).indexedDB = originalIndexedDB;
     }
   });
 });
-
-// Stub for restoring the global indexedDB after the resilience test
-// pokes it (fake-indexeddb/auto installs the real stub at jest.setup
-// load time, but jest.runAllTimers or import order can swap the
-// reference, so we always restore from this helper).
-function originalIndexedDBStub(): {
-  open: (name: string, version?: number) => IDBOpenDBRequest;
-} {
-  return {
-    open: ((name: string, version?: number) =>
-      indexedDB.open(name, version)) as (
-      name: string,
-      version?: number,
-    ) => IDBOpenDBRequest,
-  };
-}

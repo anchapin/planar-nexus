@@ -12,7 +12,14 @@
  *   - Ban list survives closeLobby → createLobby cycle for the same code
  */
 
-import { describe, it, expect, beforeEach, afterEach, jest } from "@jest/globals";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  jest,
+} from "@jest/globals";
 
 // Mocks must be installed BEFORE the lobby-manager import.
 jest.mock("../public-lobby-browser", () => ({
@@ -31,7 +38,13 @@ jest.mock("../game-code-generator", () => ({
 }));
 
 jest.mock("../format-validator", () => ({
-  validateDeckForLobby: jest.fn(() => ({ valid: true, errors: [], warnings: [], isValid: true, canPlay: true })),
+  validateDeckForLobby: jest.fn(() => ({
+    valid: true,
+    errors: [],
+    warnings: [],
+    isValid: true,
+    canPlay: true,
+  })),
 }));
 
 jest.mock("../game-mode", () => ({
@@ -112,7 +125,11 @@ describe("Issue #1257 — lobby host moderation", () => {
   describe("banPeer / isPeerBanned / unbanPeer", () => {
     it("adds a peer to the session ban list with a 30-minute expiry", () => {
       lobbyManager.createLobby(baseConfig, "Host");
-      const banned = lobbyManager.banPeer("misbehaving-peer", "session", "spam");
+      const banned = lobbyManager.banPeer(
+        "misbehaving-peer",
+        "session",
+        "spam",
+      );
       expect(banned.added).toBe(true);
       expect(banned.entry).not.toBeNull();
       expect(banned.entry!.scope).toBe("session");
@@ -189,7 +206,9 @@ describe("Issue #1257 — lobby host moderation", () => {
       // 5 minutes in — remaining drops to 25 minutes.
       now += 5 * 60 * 1000;
       const refreshed = lobbyManager.getBanList();
-      expect(refreshed[0].remainingMs).toBe(LOBBY_BAN_DURATION_MS - 5 * 60 * 1000);
+      expect(refreshed[0].remainingMs).toBe(
+        LOBBY_BAN_DURATION_MS - 5 * 60 * 1000,
+      );
     });
 
     it("purgeExpiredBans returns the number of entries removed", () => {
@@ -267,7 +286,9 @@ describe("Issue #1257 — lobby host moderation", () => {
       expect(lobbyManager.isPeerBanned("expired-peer")).toBe(false);
       expect(lobbyManager.isPeerBanned("live-peer")).toBe(true);
       // The expired entry is pruned from the persisted store.
-      const after = JSON.parse(localStorage.getItem("planar_nexus_lobby_bans")!);
+      const after = JSON.parse(
+        localStorage.getItem("planar_nexus_lobby_bans")!,
+      );
       expect(after["ABC123"]).toHaveLength(1);
       expect(after["ABC123"][0].peerId).toBe("live-peer");
     });
@@ -281,6 +302,14 @@ describe("Issue #1257 — lobby host moderation", () => {
     });
 
     it("no-op when no lobby is active (returns false / empty list)", () => {
+      // Issue #1938: closeLobby intentionally PRESERVES the in-memory ban
+      // map (bans survive a close→reopen cycle) and only createLobby
+      // re-hydrates it from localStorage. Under randomized test order a
+      // sibling test's bans would still be resident — rehydrate from the
+      // beforeEach-cleared localStorage so this test observes an empty map.
+      lobbyManager.createLobby(baseConfig, "Host");
+      lobbyManager.closeLobby();
+
       expect(lobbyManager.banPeer("peer-1", "session").added).toBe(false);
       expect(lobbyManager.isPeerBanned("peer-1")).toBe(false);
       expect(lobbyManager.unbanPeer("peer-1")).toBe(false);

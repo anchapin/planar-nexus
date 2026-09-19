@@ -324,9 +324,7 @@ describe("Game Rules - validateDeckFormat", () => {
     });
 
     it("should include specific color names in the violation error message", () => {
-      const deck = [
-        { name: "Counterspell", count: 1, color_identity: ["U"] },
-      ];
+      const deck = [{ name: "Counterspell", count: 1, color_identity: ["U"] }];
       const result = validateDeckFormat(deck, "legendary-commander", {
         name: "Ghired, Shell of the Ghireds",
         color_identity: ["R", "W"],
@@ -357,7 +355,10 @@ describe("Game Rules - validateDeckFormat", () => {
   describe("Color identity helpers", () => {
     describe("getViolatedColors", () => {
       it("returns colors in the card but not the commander", () => {
-        expect(getViolatedColors(["R", "U", "B"], ["R", "W"])).toEqual(["U", "B"]);
+        expect(getViolatedColors(["R", "U", "B"], ["R", "W"])).toEqual([
+          "U",
+          "B",
+        ]);
       });
 
       it("returns an empty array when fully contained", () => {
@@ -387,13 +388,19 @@ describe("Game Rules - validateDeckFormat", () => {
     describe("getCardColorIdentityStatus", () => {
       it("returns null when no commander identity is provided", () => {
         expect(
-          getCardColorIdentityStatus({ name: "X", color_identity: ["U"] }, undefined),
+          getCardColorIdentityStatus(
+            { name: "X", color_identity: ["U"] },
+            undefined,
+          ),
         ).toBeNull();
       });
 
       it("returns null for basic lands", () => {
         expect(
-          getCardColorIdentityStatus({ name: "Swamp", color_identity: ["B"] }, ["R", "W"]),
+          getCardColorIdentityStatus({ name: "Swamp", color_identity: ["B"] }, [
+            "R",
+            "W",
+          ]),
         ).toBeNull();
       });
 
@@ -420,8 +427,16 @@ describe("Game Rules - validateDeckFormat", () => {
       it("returns the first legendary creature", () => {
         const deck = [
           { name: "Sol Ring", type_line: "Artifact", color_identity: [] },
-          { name: "Ghired", type_line: "Legendary Creature", color_identity: ["R", "W", "G"] },
-          { name: "Other Legend", type_line: "Legendary Creature", color_identity: ["U"] },
+          {
+            name: "Ghired",
+            type_line: "Legendary Creature",
+            color_identity: ["R", "W", "G"],
+          },
+          {
+            name: "Other Legend",
+            type_line: "Legendary Creature",
+            color_identity: ["U"],
+          },
         ];
         const commander = getCommanderFromDeck(deck);
         expect(commander?.name).toBe("Ghired");
@@ -431,7 +446,11 @@ describe("Game Rules - validateDeckFormat", () => {
       it("returns undefined when no legendary creature is present", () => {
         const deck = [
           { name: "Sol Ring", type_line: "Artifact", color_identity: [] },
-          { name: "Forest", type_line: "Basic Land — Forest", color_identity: ["G"] },
+          {
+            name: "Forest",
+            type_line: "Basic Land — Forest",
+            color_identity: ["G"],
+          },
         ];
         expect(getCommanderFromDeck(deck)).toBeUndefined();
       });
@@ -439,7 +458,12 @@ describe("Game Rules - validateDeckFormat", () => {
 
     describe("getColorIdentityFixSuggestions", () => {
       it("returns an empty array when there is no commander identity", () => {
-        expect(getColorIdentityFixSuggestions([{ name: "X", color_identity: ["U"] }], undefined)).toEqual([]);
+        expect(
+          getColorIdentityFixSuggestions(
+            [{ name: "X", color_identity: ["U"] }],
+            undefined,
+          ),
+        ).toEqual([]);
       });
 
       it("sorts hard violations before warnings, then alphabetically", () => {
@@ -449,7 +473,11 @@ describe("Game Rules - validateDeckFormat", () => {
           { name: "Apple", color_identity: ["U", "B"] }, // violation
         ];
         const suggestions = getColorIdentityFixSuggestions(deck, ["R", "W"]);
-        expect(suggestions.map((s) => s.name)).toEqual(["Alpha", "Apple", "Zebra"]);
+        expect(suggestions.map((s) => s.name)).toEqual([
+          "Alpha",
+          "Apple",
+          "Zebra",
+        ]);
       });
 
       it("excludes compliant cards", () => {
@@ -598,7 +626,13 @@ describe("Game Rules - validateDeckFormat", () => {
       const formats = Object.keys(gameModes) as Format[];
       Object.keys(BANNED_CARD_ALTERNATIVES).forEach((bannedCard) => {
         formats.forEach((fmt) => {
-          const fmtBanList = banLists[fmt].map((c) => c.toLowerCase());
+          // Issue #1938: sibling `registerGameMode` tests extend the
+          // module-level `gameModes` registry with custom formats that have
+          // no curated `banLists` entry — skip them instead of crashing, so
+          // this test holds under randomized test order.
+          const rawBanList = banLists[fmt];
+          if (!Array.isArray(rawBanList)) return;
+          const fmtBanList = rawBanList.map((c) => c.toLowerCase());
           if (!fmtBanList.includes(bannedCard)) return;
           const alts = getBannedCardAlternatives(bannedCard, fmt);
           alts.forEach((alt) => {
@@ -626,7 +660,9 @@ describe("Game Rules - validateDeckFormat", () => {
       const result = validateDeckFormat(deck, "legendary-commander");
 
       expect(result.isValid).toBe(false);
-      expect(result.errors).toContain("balance is banned in Legendary Commander");
+      expect(result.errors).toContain(
+        "balance is banned in Legendary Commander",
+      );
       expect(result.bannedCardSuggestions).toBeUndefined();
     });
 
@@ -639,7 +675,9 @@ describe("Game Rules - validateDeckFormat", () => {
 
       expect(result.bannedCardSuggestions).toHaveLength(2);
       const banned = result.bannedCardSuggestions!.map((s) => s.bannedCard);
-      expect(banned).toEqual(expect.arrayContaining(["black lotus", "time walk"]));
+      expect(banned).toEqual(
+        expect.arrayContaining(["black lotus", "time walk"]),
+      );
     });
 
     it("validateSideboard surfaces suggestions for banned sideboard cards", () => {
@@ -650,7 +688,9 @@ describe("Game Rules - validateDeckFormat", () => {
 
       expect(result.isValid).toBe(false);
       expect(result.bannedCardSuggestions).toBeDefined();
-      expect(result.bannedCardSuggestions![0].alternatives.length).toBeGreaterThanOrEqual(2);
+      expect(
+        result.bannedCardSuggestions![0].alternatives.length,
+      ).toBeGreaterThanOrEqual(2);
     });
   });
 });
@@ -1228,9 +1268,9 @@ describe("Game Rules - Standard Rotation Awareness (Issue #996)", () => {
         expect(entry.releaseDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
         expect(entry.rotationDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
         // rotation must come after release
-        expect(
-          new Date(entry.rotationDate).getTime(),
-        ).toBeGreaterThan(new Date(entry.releaseDate).getTime());
+        expect(new Date(entry.rotationDate).getTime()).toBeGreaterThan(
+          new Date(entry.releaseDate).getTime(),
+        );
       });
     });
   });
@@ -1303,7 +1343,9 @@ describe("Game Rules - Standard Rotation Awareness (Issue #996)", () => {
       expect(result.rotatedCards).toEqual([]);
       expect(result.unknownSetCards).toHaveLength(1);
       expect(result.warnings.length).toBeGreaterThan(0);
-      expect(result.warnings[0]).toMatch(/not tracked by the rotation schedule/i);
+      expect(result.warnings[0]).toMatch(
+        /not tracked by the rotation schedule/i,
+      );
     });
 
     it("should ignore basic lands", () => {
@@ -1369,9 +1411,7 @@ describe("Game Rules - Standard Rotation Awareness (Issue #996)", () => {
         { name: "Forest", count: 56 },
       ];
       const result = validateDeckFormat(deck, "standard");
-      expect(
-        result.warnings.some((w) => /rotated set/i.test(w)),
-      ).toBe(true);
+      expect(result.warnings.some((w) => /rotated set/i.test(w))).toBe(true);
     });
 
     it("should not add rotation warnings to non-Standard formats", () => {
@@ -1380,9 +1420,7 @@ describe("Game Rules - Standard Rotation Awareness (Issue #996)", () => {
         { name: "Forest", count: 56 },
       ];
       const result = validateDeckFormat(deck, "constructed-legacy");
-      expect(
-        result.warnings.some((w) => /rotated set/i.test(w)),
-      ).toBe(false);
+      expect(result.warnings.some((w) => /rotated set/i.test(w))).toBe(false);
     });
   });
 });

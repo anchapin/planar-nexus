@@ -27,6 +27,7 @@ import {
   COACH_FLOW_FALLBACK_TEXT,
   type CoachFlowChunk,
 } from "../genkit-coach-flow";
+import { providerHealth } from "../../providers/provider-health";
 
 // Mock the Vercel AI SDK so the real `ai` module (which references stream
 // globals absent in the test env) is never loaded.
@@ -104,6 +105,12 @@ function streamCall(index = 0): {
 
 beforeEach(() => {
   jest.resetAllMocks();
+  // Issue #1938: the provider-health tracker is intentionally module-scope
+  // (process-local cooldown memory, #1418/#1537). Without this reset, the
+  // failover test records an "openai" failure whose cooldown pushes every
+  // later test onto "anthropic" — an order dependency that `--randomize`
+  // exposes.
+  providerHealth.clear();
 });
 
 describe("coachFlow — factory wiring (issue #1071)", () => {

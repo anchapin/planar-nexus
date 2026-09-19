@@ -4,6 +4,11 @@ import type { HeuristicRecord } from "../types";
 jest.mock("@orama/orama", () => {
   const inserted = new Map<string, any>();
   return {
+    // Issue #1938: the mocked index is shared module state — expose a
+    // reset hook so each test starts with an empty index under randomized
+    // test order (accumulated docs otherwise push later queries past the
+    // mocked `limit` slice and change which records are returned).
+    __resetMockIndex: () => inserted.clear(),
     create: jest.fn().mockResolvedValue({ mockOrama: true }),
     insert: jest.fn().mockImplementation((_orama: any, doc: any) => {
       inserted.set(doc.id, doc);
@@ -89,6 +94,9 @@ describe("KnowledgeVectorStore", () => {
   let store: KnowledgeVectorStore;
 
   beforeEach(() => {
+    (
+      jest.requireMock("@orama/orama") as { __resetMockIndex: () => void }
+    ).__resetMockIndex();
     store = new KnowledgeVectorStore();
   });
 

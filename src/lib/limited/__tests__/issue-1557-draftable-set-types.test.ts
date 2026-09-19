@@ -76,6 +76,7 @@ const SCRYFALL_SETS_PAYLOAD = {
 
 import { createDraftSession } from "../draft-generator";
 import { createSealedSession } from "../sealed-generator";
+import { saveDraftSession } from "../pool-storage";
 import type { DraftSession } from "../draft-generator";
 import type { LimitedSession } from "../types";
 
@@ -88,6 +89,11 @@ describe("issue #1557: createDraftSession rejects non-draftable set codes", () =
       status: 200,
       json: () => Promise.resolve(SCRYFALL_SETS_PAYLOAD),
     } as unknown as Response);
+    // Issue #1938: saveDraftSession is a module-level jest.fn shared by the
+    // whole file — a "still creates a draft session" test running before
+    // "does not produce a pool" would leave calls behind and fail its
+    // not-called assertion under randomized test order.
+    jest.mocked(saveDraftSession).mockClear();
   });
 
   afterEach(() => {

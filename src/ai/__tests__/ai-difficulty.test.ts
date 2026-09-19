@@ -9,6 +9,13 @@ import {
 } from "../ai-difficulty";
 
 describe("AIDifficultyManager", () => {
+  // Issue #1938: `aiDifficultyManager` is a module-level singleton and jest
+  // `--randomize` shuffles tests within a file — every test must start from
+  // the default global difficulty instead of relying on declaration order.
+  beforeEach(() => {
+    aiDifficultyManager.setDifficulty("medium");
+  });
+
   test("should initialize with default difficulty (medium)", () => {
     expect(aiDifficultyManager.getLevel()).toBe("medium");
   });
@@ -20,6 +27,8 @@ describe("AIDifficultyManager", () => {
   });
 
   test("should handle player-specific difficulty", () => {
+    // Set the global baseline HERE — a previous test may not have run.
+    aiDifficultyManager.setDifficulty("hard");
     aiDifficultyManager.setDifficulty("easy", "player1");
     expect(aiDifficultyManager.getDifficulty("player1").level).toBe("easy");
     expect(aiDifficultyManager.getLevel()).toBe("hard"); // Global should remain hard
