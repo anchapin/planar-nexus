@@ -39,6 +39,7 @@ import {
   SEARCH_PRESETS_STORE,
   type StorageConfig,
 } from "../indexeddb-storage";
+import { ensureLegacyV4Consolidation } from "../migrations/indexeddb-v4-consolidation";
 
 const DB_NAME = "TestPlanarNexusMigrationV4";
 
@@ -521,5 +522,76 @@ describe("IndexedDB schema migration (v3 to v4, issue #1811 consolidation)", () 
     expect(recents).toHaveLength(2);
 
     await second.close();
+  });
+});
+
+describe("v4 consolidation + torn schema (issue #1937)", () => {
+  it("skips without NotFoundError when the 'preferences' marker store is missing", async () => {
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+
+    // Minimal stand-in exposing only the surface the migration uses.
+    // A torn schema (Firefox/WebKit aborted the v4 versionchange on
+    // document teardown) has no `preferences` store for the marker
+    // row — the unguarded `get()` threw NotFoundError on every open.
+    const tornStorage = {
+      hasStore: (name: string) => name !== "preferences",
+      get: async () => null,
+      set: async () => undefined,
+    } as unknown as IndexedDBStorage;
+
+    await expect(
+      ensureLegacyV4Consolidation(tornStorage),
+    ).resolves.toBeUndefined();
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain("preferences");
+  });
+
+  it("initialize() self-heals a torn v4 schema and the migration completes", async () => {
+    // Hand-craft the torn state: the database sits at v4 with only a
+    // subset of the stores (version committed, stores rolled back).
+    const idb: IDBFactory = (globalThis as unknown as { indexedDB: IDBFactory })
+      .indexedDB;
+    await new Promise<void>((resolve, reject) => {
+      const req = idb.open(DB_NAME, 4);
+      req.onupgradeneeded = () => {
+        req.result.createObjectStore("decks", { keyPath: "id" });
+        // Every other store (incl. `preferences`) is missing.
+      };
+      req.onsuccess = () => {
+        req.result.close();
+        resolve();
+      };
+      req.onerror = () => reject(req.error ?? new Error("torn seed failed"));
+    });
+
+    const storage = new IndexedDBStorage(V4_CONFIG);
+    await storage.initialize();
+
+    // The self-heal re-opened at version+1 and rebuilt every store.
+    for (const store of V4_CONFIG.stores) {
+      expect(storage.hasStore(store)).toBe(true);
+    }
+
+    // The marker row is readable — the migration ran against the
+    // healed schema instead of throwing NotFoundError.
+    const marker = await storage.get<Record<string, unknown>>(
+      "preferences",
+      "v4-consolidation-done",
+    );
+    expect(marker).not.toBeNull();
+    await storage.close();
+
+    // The healed database now lives ABOVE config.version — a plain
+    // config open must take the VersionError retry path and succeed.
+    const reopened = new IndexedDBStorage(V4_CONFIG);
+    await reopened.initialize();
+    expect(reopened.hasStore("preferences")).toBe(true);
+    const reopenedMarker = await reopened.get(
+      "preferences",
+      "v4-consolidation-done",
+    );
+    expect(reopenedMarker).not.toBeNull();
+    await reopened.close();
   });
 });

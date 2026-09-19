@@ -9,11 +9,20 @@
  * dependent UI (deck selector, archetype, synergies, …) per issue
  * #1786's acceptance criterion #1.
  *
- * Production schema (see `src/lib/indexeddb-storage.ts` lines 537-551,
- * `DEFAULT_STORAGE_CONFIG` at line 1438):
- *   - DB:    "PlanarNexusStorage"  v3
+ * Production schema (see `DEFAULT_STORAGE_CONFIG` in
+ * `src/lib/indexeddb-storage.ts` — DB "PlanarNexusStorage", currently
+ * v4 with 13 stores):
  *   - store: "decks"  keyPath: "id"
  *   - idx:   "name", "format", "createdAt", "updatedAt" (non-unique)
+ *
+ * Issue #1937: the seed previously pinned the open at v3 — a stale
+ * version — which forced every fresh context through a v3→v4 upgrade
+ * race against the app's open and VersionError'd on every subsequent
+ * navigation. The seed now opens WITHOUT a version: it never forces an
+ * upgrade or an intermediate version, `upgradeneeded` only fires when
+ * the database is brand new (creating just the `decks` store, which
+ * the app's next open upgrades to the full schema), and re-navigations
+ * are plain readwrite seeds against whatever version is on disk.
  *
  * The localStorage fallback (`planar_nexus_decks`, JSON-encoded ARRAY
  * of StoredDeck rows) is seeded too — `deckStorage.getAllDecks()` in
@@ -43,7 +52,6 @@ const testDeck = JSON.parse(
 );
 
 const DECK_DB_NAME = "PlanarNexusStorage";
-const DECK_DB_VERSION = 3;
 const DECK_STORE = "decks";
 const SAVED_DECKS_LOCALSTORAGE_KEY = "saved-decks";
 const DECK_LOCALSTORAGE_KEY = "planar_nexus_decks";
@@ -126,7 +134,7 @@ export async function loadDeck(
 
   await page.addInitScript(
     (config) => {
-      const { dbName, version, storeName, localStorageKey, deck } = config;
+      const { dbName, storeName, localStorageKey, deck } = config;
 
       // Seed localStorage fallback first — synchronous, race-free.
       // The `useLocalStorage` hook falls back to localStorage when
@@ -166,10 +174,13 @@ export async function loadDeck(
       }
 
       // Open the production IndexedDB once on init, seed the `decks`
-      // store, and close. Closing releases the connection so the
-      // page's React `useLocalStorage` open can succeed without
-      // hitting an IndexedDB-blocked error from another tab.
-      const seedDb = indexedDB.open(dbName, version);
+      // store, and close. Unversioned open (issue #1937): never forces
+      // an upgrade or a stale intermediate version; `upgradeneeded`
+      // only fires when the DB is brand new. Closing releases the
+      // connection so the page's React `useLocalStorage` open can
+      // succeed without hitting an IndexedDB-blocked error from
+      // another tab.
+      const seedDb = indexedDB.open(dbName);
       seedDb.addEventListener("upgradeneeded", (event) => {
         const db = (event.target as IDBOpenDBRequest).result;
         if (!db.objectStoreNames.contains(storeName)) {
@@ -217,7 +228,6 @@ export async function loadDeck(
     },
     {
       dbName: DECK_DB_NAME,
-      version: DECK_DB_VERSION,
       storeName: DECK_STORE,
       localStorageKey: DECK_LOCALSTORAGE_KEY,
       deck: deckRow,
@@ -252,7 +262,10 @@ export async function waitForDeckSeed(page: Page): Promise<void> {
   const cardCount = await page.evaluate(
     async (config) => {
       return new Promise<number>((resolve, reject) => {
-        const req = indexedDB.open(config.dbName, config.version);
+        // Unversioned open — read whatever version is on disk (issue
+        // #1937: pinning a stale version VersionError'd once the app
+        // upgraded the DB past it).
+        const req = indexedDB.open(config.dbName);
         req.onsuccess = (event) => {
           const db = (event.target as IDBOpenDBRequest).result;
           try {
@@ -270,7 +283,6 @@ export async function waitForDeckSeed(page: Page): Promise<void> {
     },
     {
       dbName: DECK_DB_NAME,
-      version: DECK_DB_VERSION,
       storeName: DECK_STORE,
     },
   );

@@ -256,6 +256,22 @@ export async function deleteLegacyDatabase(
 export async function ensureLegacyV4Consolidation(
   storage: IndexedDBStorage,
 ): Promise<void> {
+  // Issue #1937 — the marker row lives in `preferences`, a store this
+  // migration does NOT create (it predates v4; the upgrade handler in
+  // indexeddb-storage.ts creates it). On a torn schema — Firefox/WebKit
+  // can abort the versionchange transaction on document teardown and
+  // leave the database at v4 with only part of the store set — the
+  // `get()` below threw a native NotFoundError on EVERY open, flooding
+  // the console. Skip with a reason instead; the schema self-heal in
+  // `IndexedDBStorage.initialize()` rebuilds the store and the next
+  // open retries the migration.
+  if (!storage.hasStore("preferences")) {
+    console.warn(
+      "[indexeddb-storage] v4 consolidation skipped: 'preferences' store is missing (torn schema; retrying after self-heal)",
+    );
+    return;
+  }
+
   // Skip if the marker is already set OR any target store is missing.
   if (await storage.get("preferences", "v4-consolidation-done")) {
     return;

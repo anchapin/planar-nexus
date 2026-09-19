@@ -49,13 +49,30 @@ export function createSearchWorker(): Worker | null {
   if (typeof Worker === "undefined") return null;
 
   try {
-    const workerUrl = new URL("./search.worker.ts", MODULE_URL).href;
-    return new Worker(workerUrl, { type: "module" });
+    const workerUrl = new URL("./search.worker.ts", MODULE_URL);
+
+    // Issue #1937 (residual from #1894): only a bundled asset URL can
+    // actually load as a module worker. Next.js DEV builds resolve
+    // `import.meta.url` to shapes that CANNOT serve the worker — the
+    // `file:///ROOT/...` server placeholder, or a route-relative path
+    // the dev server answers with `text/plain`. Firefox/WebKit surface
+    // the failed construction as a page-level error, tripping the
+    // zero-console-error e2e assertions (forced-colors). Production
+    // builds statically rewrite the `new URL(..., MODULE_URL)` shape
+    // to a real `/_next/static/...` chunk URL and are unaffected.
+    // Degrade to the existing main-thread fallback in dev instead of
+    // spawning a worker that can never load.
+    if (!workerUrl.href.includes("/_next/")) {
+      console.warn(
+        "[search-worker-factory] worker URL is not a bundled asset (dev build?) — falling back to main-thread search:",
+        workerUrl.href,
+      );
+      return null;
+    }
+
+    return new Worker(workerUrl.href, { type: "module" });
   } catch (error) {
-    console.warn(
-      "[search-worker-factory] failed to construct worker:",
-      error,
-    );
+    console.warn("[search-worker-factory] failed to construct worker:", error);
     return null;
   }
 }

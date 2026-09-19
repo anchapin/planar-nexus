@@ -39,8 +39,24 @@ export function createEmbeddingWorker(): EmbeddingWorkerLike | null {
   if (typeof Worker === "undefined") return null;
 
   try {
-    const workerUrl = new URL("../ai/embedding-worker.ts", MODULE_URL).href;
-    return new Worker(workerUrl);
+    const workerUrl = new URL("../ai/embedding-worker.ts", MODULE_URL);
+
+    // Issue #1937 (mirrors search-worker-factory): only a bundled
+    // `/_next/` asset URL can load as a worker. Next.js DEV builds
+    // resolve `import.meta.url` to unusable shapes (the
+    // `file:///ROOT/...` placeholder, or a route-relative path served
+    // as text/plain); Firefox/WebKit log the failed construction as a
+    // page-level error. Degrade to the non-worker path in dev;
+    // production builds emit the real chunk URL.
+    if (!workerUrl.href.includes("/_next/")) {
+      console.warn(
+        "[embedding-worker-factory] worker URL is not a bundled asset (dev build?) — skipping worker:",
+        workerUrl.href,
+      );
+      return null;
+    }
+
+    return new Worker(workerUrl.href);
   } catch (error) {
     console.error("Failed to create synergy embedding worker:", error);
     return null;

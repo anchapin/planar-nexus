@@ -545,11 +545,148 @@ export class IndexedDBStorage {
    *     a reload. No UI is rendered from this storage layer.
    */
   async initialize(): Promise<void> {
-    await new Promise<void>((resolve, reject) => {
-      const request = indexedDB.open(this.config.dbName, this.config.version);
+    await this.openWithSchemaHeal();
+
+    // Issue #1572 — once the upgrade (if any) has committed, lazily
+    // migrate any remaining legacy saved-games rows into the v3 split.
+    // The migration is gated by the meta store being empty, so re-opens
+    // are no-ops. Errors are swallowed and logged so a corrupt legacy
+    // store can't take the rest of the app down with it.
+    if (this.hasStore(SAVED_GAMES_META_STORE)) {
+      try {
+        await ensureLegacyV3Split(this);
+      } catch (error) {
+        console.warn(
+          "[indexeddb-storage] v3 saved-games split migration failed:",
+          error,
+        );
+      }
+    }
+
+    // Issue #1811 — PERSISTENCE_ARCHITECTURE §6 stage 1. Once the v4
+    // upgrade has committed, lazily fold every row of the four
+    // standalone legacy DBs (PlanarNexusGameDB, PlanarNexusSearchDB,
+    // PlanarNexusPresetsDB, PlanarNexusRecentSearchesDB) into the new
+    // consolidated stores, then delete the legacy DBs. Gated by a
+    // marker row in `preferences`, so re-opens are no-ops. Errors are
+    // swallowed and logged (a corrupt legacy store cannot take the
+    // rest of the app down).
+    //
+    // The migration module is dynamically imported so its code lives in
+    // a separate webpack chunk and does not bloat the shared client
+    // bundle. Re-runs of `initialize()` pay this cost only when the
+    // marker row is absent (i.e. the user is mid-upgrade).
+    try {
+      const { ensureLegacyV4Consolidation } =
+        await import("./migrations/indexeddb-v4-consolidation");
+      await ensureLegacyV4Consolidation(this);
+    } catch (error) {
+      console.warn(
+        "[indexeddb-storage] v4 consolidation migration failed:",
+        error,
+      );
+    }
+  }
+
+  /**
+   * Issue #1937 — open the database, then self-heal a torn schema.
+   *
+   * Firefox and WebKit abort an in-flight versionchange transaction
+   * when the document is destroyed mid-upgrade, and that abort path can
+   * leave the database at the NEW version with only part of the store
+   * set committed. A same-version re-open never re-runs
+   * `onupgradeneeded`, so the database stays broken forever — observed
+   * as `NotFoundError: 'preferences' is not a known object store name`
+   * flooding every subsequent open (issue #1937's firefox/webkit e2e
+   * job).
+   *
+   * The heal: after a successful open, compare the on-disk store list
+   * against `config.stores`. When any store is missing, close and
+   * re-open at `db.version + 1` — the upgrade handler's
+   * create-missing-store loop rebuilds the torn schema in one
+   * transaction. Healed databases then live at a version ABOVE
+   * `config.version`, so the `VersionError` retry in
+   * {@link openDatabaseAt} re-opens at the on-disk version on every
+   * later session (a lower-version open is a hard IndexedDB error).
+   */
+  private async openWithSchemaHeal(): Promise<void> {
+    let db = await this.openDatabaseAt(this.config.version);
+
+    const missing = this.config.stores.filter(
+      (storeName) => !db.objectStoreNames.contains(storeName),
+    );
+    if (missing.length > 0) {
+      console.warn(
+        `[indexeddb-storage] schema self-heal (#1937): store(s) missing at version ${db.version} (${missing.join(", ")}) — re-opening at version ${db.version + 1} to rebuild`,
+      );
+      db.close();
+      db = await this.openDatabaseAt(db.version + 1);
+    }
+
+    this.db = db;
+    // Issue #1709 (reverse direction): another tab requesting a
+    // higher version must not stay blocked on us. Close on
+    // `versionchange`, drop the cached handle so the next
+    // `ensureInitialized()` re-opens, and notify the UI.
+    registerVersionChangeClose(db, () => {
+      this.db = null;
+    });
+  }
+
+  /**
+   * Open the database at `version` with the full upgrade handler. A
+   * `VersionError` — the on-disk database is NEWER than `version`, e.g.
+   * after an earlier session self-healed a torn schema past
+   * `DEFAULT_STORAGE_CONFIG.version` — is retried once at the on-disk
+   * version instead of failing every subsequent open (issue #1937).
+   */
+  private async openDatabaseAt(version: number): Promise<IDBDatabase> {
+    try {
+      return await this.openDatabaseRequest(version);
+    } catch (error) {
+      if ((error as { name?: string }).name === "VersionError") {
+        return this.openDatabaseRequest(await this.probeCurrentVersion());
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Unversioned open used only to discover the on-disk version (it
+   * never upgrades and never creates stores). Closed immediately.
+   */
+  private async probeCurrentVersion(): Promise<number> {
+    return new Promise<number>((resolve, reject) => {
+      const probe = indexedDB.open(this.config.dbName);
+      probe.onsuccess = () => {
+        const current = probe.result.version;
+        probe.result.close();
+        resolve(current);
+      };
+      probe.onerror = () => {
+        const error = new Error(`Failed to open IndexedDB: ${probe.error}`);
+        error.name = probe.error?.name ?? "Error";
+        reject(error);
+      };
+    });
+  }
+
+  /**
+   * Raw open at an explicit version, carrying the schema upgrade
+   * handler. Resolves with the opened database; the caller owns
+   * assigning `this.db` and registering the versionchange close.
+   */
+  private openDatabaseRequest(version: number): Promise<IDBDatabase> {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(this.config.dbName, version);
 
       request.onerror = () => {
-        reject(new Error(`Failed to open IndexedDB: ${request.error}`));
+        const error = new Error(`Failed to open IndexedDB: ${request.error}`);
+        // Preserve the native DOMException name (VersionError,
+        // AbortError, …) so the VersionError retry in
+        // {@link openDatabaseAt} can branch on it (issue #1937).
+        error.name = request.error?.name ?? "Error";
+        reject(error);
       };
 
       // Issue #1709: the upgrade is blocked by an open connection in
@@ -570,21 +707,7 @@ export class IndexedDBStorage {
         reject(new IndexedDBBlockedError(this.config.dbName));
       };
 
-      request.onsuccess = () => {
-        this.db = request.result;
-        // Issue #1709 (reverse direction): another tab requesting a
-        // higher version must not stay blocked on us. Close on
-        // `versionchange`, drop the cached handle so the next
-        // `ensureInitialized()` re-opens, and notify the UI.
-        registerVersionChangeClose(request.result, () => {
-          this.db = null;
-        });
-        resolve();
-      };
-
-      // request.onupgradeneeded fires below.
-
-      // request.onupgradeneeded fires below.
+      request.onsuccess = () => resolve(request.result);
 
       // ============================================================================
       // SCHEMA AUDIT (Phase 34)
@@ -771,46 +894,6 @@ export class IndexedDBStorage {
         }
       };
     });
-
-    // Issue #1572 — once the upgrade (if any) has committed, lazily
-    // migrate any remaining legacy saved-games rows into the v3 split.
-    // The migration is gated by the meta store being empty, so re-opens
-    // are no-ops. Errors are swallowed and logged so a corrupt legacy
-    // store can't take the rest of the app down with it.
-    if (this.hasStore(SAVED_GAMES_META_STORE)) {
-      try {
-        await ensureLegacyV3Split(this);
-      } catch (error) {
-        console.warn(
-          "[indexeddb-storage] v3 saved-games split migration failed:",
-          error,
-        );
-      }
-    }
-
-    // Issue #1811 — PERSISTENCE_ARCHITECTURE §6 stage 1. Once the v4
-    // upgrade has committed, lazily fold every row of the four
-    // standalone legacy DBs (PlanarNexusGameDB, PlanarNexusSearchDB,
-    // PlanarNexusPresetsDB, PlanarNexusRecentSearchesDB) into the new
-    // consolidated stores, then delete the legacy DBs. Gated by a
-    // marker row in `preferences`, so re-opens are no-ops. Errors are
-    // swallowed and logged (a corrupt legacy store cannot take the
-    // rest of the app down).
-    //
-    // The migration module is dynamically imported so its code lives in
-    // a separate webpack chunk and does not bloat the shared client
-    // bundle. Re-runs of `initialize()` pay this cost only when the
-    // marker row is absent (i.e. the user is mid-upgrade).
-    try {
-      const { ensureLegacyV4Consolidation } =
-        await import("./migrations/indexeddb-v4-consolidation");
-      await ensureLegacyV4Consolidation(this);
-    } catch (error) {
-      console.warn(
-        "[indexeddb-storage] v4 consolidation migration failed:",
-        error,
-      );
-    }
   }
 
   /**
@@ -1595,9 +1678,7 @@ export class IndexedDBStorage {
     //
     // Dynamic import for the same cycle-avoidance reason as in
     // {@link exportBackup}.
-    const { restoreBackupScopeData } = await import(
-      "./backup/backup-scope"
-    );
+    const { restoreBackupScopeData } = await import("./backup/backup-scope");
     await restoreBackupScopeData({
       coachConversations: backupData.coachConversations ?? [],
       matchRecords: backupData.matchRecords ?? [],
