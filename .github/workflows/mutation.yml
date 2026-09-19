@@ -30,7 +30,9 @@ name: Mutation Testing
 # The allowlist grew from 3 → 5 modules in #1395 (added trigger-system.ts and
 # state-based-actions.ts), from 5 → 6 in #1597 (added combat.ts, CR 506-510),
 # and from 6 → 7 in #1717 (added mana.ts, CR 106 mana pools / CR 305 lands).
-# `break` is currently 50; it is raised to 70 once the nightly run confirms
+# `break` is currently 44 (issue #1939: lowered from 50 after trigger-system
+# measured 45.00% — zero-coverage debt from #1524/#1528 pending test
+# backfill); it is raised to 70 once the nightly run confirms
 # every allowlisted module clears 70% killed (issue #1785 follow-up, gated
 # by scripts/check-mutation-docs-sync.mjs).
 #

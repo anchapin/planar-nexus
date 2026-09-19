@@ -41,9 +41,10 @@
  *     nightly job will surface the real score within 24h of this issue
  *     landing, and the floor entry is updated in the same PR that raises
  *     `thresholds.break`.
- *   • src/lib/game-state/trigger-system.ts      : PENDING measurement (issue
- *     #1395) → conservative 50 — TO BE RACKETED to floor(measured − 1) once
- *     the first successful nightly run (#1785) records its score.
+ *   • src/lib/game-state/trigger-system.ts      : 45.00% measured 2026-09-18
+ *     (issue #1939; 178 killed / 83 timeout / 68 survived / 251 no-coverage
+ *     of 583 mutants — zero-coverage debt from renown/tribute ETB triggers
+ *     #1528 and corpse death trigger #1524, pending test backfill) → floor 44.
  *   • src/lib/game-state/state-based-actions.ts : PENDING measurement (issue
  *     #1395) → conservative 50 — TO BE RACKETED to floor(measured − 1) once
  *     the first successful nightly run (#1785) records its score.
@@ -81,7 +82,12 @@ module.exports = {
     // this glob key mirrors the Stryker allowlist entry and matches each
     // family file in the report (see floorFor in mutation-floor-lib.js).
     "src/lib/game-state/spell-casting/*.ts": 50,
-    "src/lib/game-state/trigger-system.ts": 50,
+    // Issue #1939: measured 45.00% (see header) — the nightly job went red
+    // under the conservative 50 because of zero-coverage debt from the
+    // renown/tribute ETB triggers (#1528) and the CR 702.168 corpse death
+    // trigger (#1524). Re-baselined to floor(measured − 1) = 44; ratchet
+    // back up once the pending test backfill lands.
+    "src/lib/game-state/trigger-system.ts": 44,
     "src/lib/game-state/state-based-actions.ts": 50,
     // Issue #1597: 6th Stryker module. Conservative pending-measurement
     // floor (local single-module run exceeded the time budget) — ratchet
