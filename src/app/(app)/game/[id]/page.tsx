@@ -2122,6 +2122,21 @@ function GameBoardContent() {
       // Check state-based actions
       const sba = checkStateBasedActions(newState);
       newState = sba.state;
+
+      // #1914: End Turn sweeps straight through the combat damage step —
+      // resolve combat damage on the way or the whole attack is silently
+      // skipped. Mirrors the guard in handleAdvancePhase/handlePassPriority.
+      // resolveCombatDamage clears combat state, making repeat calls no-ops.
+      if (newState.turn.currentPhase === "combat_damage") {
+        const combatResult = resolveCombatDamage(newState);
+        if (combatResult.success) {
+          newState = combatResult.state;
+          toast({
+            title: "Combat Resolved",
+            description: combatResult.description,
+          });
+        }
+      }
     }
 
     setGameState(newState);
@@ -2380,6 +2395,22 @@ function GameBoardContent() {
       newState = passPriority(newState, currentPlayer.id);
       const result = checkStateBasedActions(newState);
       newState = result.state;
+
+      // #1914: resolve combat damage whenever the passes land in the damage
+      // step. In self-play the final pass into combat_damage can only come
+      // from this button (the defender's seat has no Pass Priority control),
+      // so without this guard self-play combat damage never resolved.
+      // resolveCombatDamage clears combat state, making repeat calls no-ops.
+      if (newState.turn.currentPhase === "combat_damage") {
+        const combatResult = resolveCombatDamage(newState);
+        if (combatResult.success) {
+          newState = combatResult.state;
+          toast({
+            title: "Combat Resolved",
+            description: combatResult.description,
+          });
+        }
+      }
 
       // Check if phase changed
       if (newState.turn.currentPhase !== gameState.turn.currentPhase) {
