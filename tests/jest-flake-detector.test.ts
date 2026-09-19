@@ -268,6 +268,41 @@ describe("aggregateReport", () => {
     expect(agg.alwaysBroken.map((s) => s.title)).toEqual(["broken"]);
   });
 
+  it("treats a spec skipped in every run as stable, not always broken (#1938)", () => {
+    // Conditionally-skipped suites (live-Redis integration, simulation
+    // runs, ...) are deterministic absences — they must not fail the job.
+    const args = baseArgs({ runs: 5, threshold: 4 });
+    const specs = [
+      mkSpec("all-skipped", [
+        "skipped",
+        "skipped",
+        "skipped",
+        "skipped",
+        "skipped",
+      ]),
+      mkSpec("passed-when-run", [
+        "passed",
+        "skipped",
+        "passed",
+        "skipped",
+        "skipped",
+      ]),
+    ];
+    const agg = aggregateReport(args, [], specs, "t0", "t1");
+    expect(agg.alwaysBroken).toEqual([]);
+    expect(agg.flaky).toEqual([]);
+    expect(agg.stable).toBe(2);
+  });
+
+  it("still buckets a skipped-then-failed spec with 0 passes as always broken", () => {
+    const args = baseArgs({ runs: 5, threshold: 4 });
+    const specs = [
+      mkSpec("died", ["skipped", "failed", "failed", "skipped", "failed"]),
+    ];
+    const agg = aggregateReport(args, [], specs, "t0", "t1");
+    expect(agg.alwaysBroken.map((s) => s.title)).toEqual(["died"]);
+  });
+
   it("marks runs without captured outcomes as failed setup runs", () => {
     const agg = aggregateReport(
       baseArgs(),

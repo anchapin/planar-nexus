@@ -92,9 +92,8 @@ describe("issue #1277 — public-lobby-browser rate limits + row-cap", () => {
   });
 
   it("imports cleanly and uses the configured read budget", async () => {
-    const { publicLobbyBrowser, LOBBY_LIST_READ_LIMIT } = await import(
-      "../public-lobby-browser"
-    );
+    const { publicLobbyBrowser, LOBBY_LIST_READ_LIMIT } =
+      await import("../public-lobby-browser");
     expect(publicLobbyBrowser.readDropped).toBe(0);
 
     const limit = LOBBY_LIST_READ_LIMIT.maxEvents;
@@ -109,10 +108,8 @@ describe("issue #1277 — public-lobby-browser rate limits + row-cap", () => {
   });
 
   it("caps the returned rows at LOBBY_MAX_ROWS_PER_READ", async () => {
-    const {
-      publicLobbyBrowser,
-      LOBBY_MAX_ROWS_PER_READ,
-    } = await import("../public-lobby-browser");
+    const { publicLobbyBrowser, LOBBY_MAX_ROWS_PER_READ } =
+      await import("../public-lobby-browser");
 
     // Manufacture 1000 public games in localStorage.
     const games = [];
@@ -132,15 +129,14 @@ describe("issue #1277 — public-lobby-browser rate limits + row-cap", () => {
         createdAt: Date.now(),
       });
     }
-    localStorage.setItem(
-      "planar_nexus_public_lobbies",
-      JSON.stringify(games),
-    );
+    localStorage.setItem("planar_nexus_public_lobbies", JSON.stringify(games));
 
     // give the public-lobby-browser its budget up-front
-    (publicLobbyBrowser as unknown as {
-      readLimiter: { reset: () => void };
-    }).readLimiter.reset();
+    (
+      publicLobbyBrowser as unknown as {
+        readLimiter: { reset: () => void };
+      }
+    ).readLimiter.reset();
 
     const visible = publicLobbyBrowser.getPublicGames();
     expect(visible.length).toBe(LOBBY_MAX_ROWS_PER_READ);
@@ -153,6 +149,20 @@ describe("issue #1277 — public-lobby-browser rate limits + row-cap", () => {
 
 describe("issue #1277 — lobby manager row-cap on maxPlayers", () => {
   beforeEach(() => {
+    jest.resetModules();
+  });
+
+  // Issue #1938: the jest.doMock registrations below persist for the REST
+  // of the file. Under randomized test order the earlier describes run
+  // their `await import("../public-lobby-browser")` AFTER this block and
+  // received the partial stub (no readLimiter/readDropped/getPublicGames).
+  // Undo the doMocks and reset the registry so later tests re-import the
+  // real modules.
+  afterEach(() => {
+    jest.dontMock("../public-lobby-browser");
+    jest.dontMock("../game-code-generator");
+    jest.dontMock("../format-validator");
+    jest.dontMock("../game-mode");
     jest.resetModules();
   });
 

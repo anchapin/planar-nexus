@@ -23,7 +23,7 @@
  * `card-search.tsx` mount path that uses it).
  */
 
-import { describe, it, expect, jest } from "@jest/globals";
+import { describe, it, expect, jest, beforeEach } from "@jest/globals";
 import { render, screen, fireEvent } from "@testing-library/react";
 import "@testing-library/jest-dom/jest-globals";
 import React from "react";
@@ -149,6 +149,13 @@ describe("CardSearch source wiring — CardArt adoption (issue #1247)", () => {
 });
 
 describe("CardArt lazy-load contract exercised through a render harness", () => {
+  // Issue #1938: `cardArtCalls` is module-level state filled by the mock on
+  // every render, and jest `--randomize` shuffles tests within a file —
+  // each test must observe only its own invocations.
+  beforeEach(() => {
+    cardArtCalls.length = 0;
+  });
+
   // Render a single result tile using exactly the same JSX the migrated
   // card-search.tsx uses. If the wiring is correct, this harness will
   // mount a <CardArt> per fake card with the expected props.

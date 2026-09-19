@@ -1,6 +1,6 @@
 import React from "react";
 import { render } from "@testing-library/react";
-import { describe, it, expect } from "@jest/globals";
+import { describe, it, expect, beforeEach } from "@jest/globals";
 import { arePlayerAreaPropsEqual } from "../game-board";
 import type { PlayerState } from "@/types/game";
 
@@ -71,14 +71,19 @@ describe("arePlayerAreaPropsEqual — direct predicate", () => {
     const stable = { onCardClick, onZoneClick, allPlayers };
     // Same player reference + same callbacks + same allPlayers → equal even
     // though the props object itself is new.
-    expect(arePlayerAreaPropsEqual(makeProps(player, stable), makeProps(player, stable))).toBe(
-      true,
-    );
+    expect(
+      arePlayerAreaPropsEqual(
+        makeProps(player, stable),
+        makeProps(player, stable),
+      ),
+    ).toBe(true);
   });
 
   it("re-renders when the battlefield array reference changes", () => {
     const prev = makeProps(makePlayer({ battlefield: [] }));
-    const next = makeProps(makePlayer({ battlefield: [{ id: "c1" } as never] }));
+    const next = makeProps(
+      makePlayer({ battlefield: [{ id: "c1" } as never] }),
+    );
     expect(arePlayerAreaPropsEqual(prev, next)).toBe(false);
   });
 
@@ -95,9 +100,7 @@ describe("arePlayerAreaPropsEqual — direct predicate", () => {
   it("re-renders when exile/library/commandZone change", () => {
     const base = makePlayer();
     for (const zone of ["exile", "library", "commandZone"] as (
-      | "exile"
-      | "library"
-      | "commandZone"
+      "exile" | "library" | "commandZone"
     )[]) {
       const next = makePlayer({ ...base, [zone]: [{ id: "x" } as never] });
       expect(arePlayerAreaPropsEqual(makeProps(base), makeProps(next))).toBe(
@@ -173,6 +176,11 @@ function resetCount() {
 }
 
 describe("PlayerArea memo boundary — render counting", () => {
+  // Issue #1938: jest `--randomize` shuffles tests within a file, and
+  // `renderCount` is module-level state. Every counting test must start
+  // from zero regardless of which tests ran before it.
+  beforeEach(resetCount);
+
   it("renders once on mount, then bails out when props are unchanged references", () => {
     const onCardClick = jest.fn();
     const onZoneClick = jest.fn();
@@ -192,7 +200,6 @@ describe("PlayerArea memo boundary — render counting", () => {
   });
 
   it("re-renders exactly once more when a single zone array reference changes", () => {
-    resetCount();
     const onCardClick = jest.fn();
     const onZoneClick = jest.fn();
     const allPlayers: PlayerState[] = [];
@@ -213,7 +220,6 @@ describe("PlayerArea memo boundary — render counting", () => {
   });
 
   it("does not re-render when an unrelated player prop changes that the comparator ignores", () => {
-    resetCount();
     const onCardClick = jest.fn();
     const onZoneClick = jest.fn();
     const allPlayers: PlayerState[] = [];
