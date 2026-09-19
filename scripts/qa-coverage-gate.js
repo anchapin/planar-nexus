@@ -23,7 +23,7 @@ const TEST_FILE = path.join(
   "qa-coverage-holes.test.ts",
 );
 
-const EXPECTED_BLOCKS = 13;
+const EXPECTED_BLOCKS = 14;
 
 if (!fs.existsSync(TEST_FILE)) {
   console.error(`[qa-coverage-gate] FAIL: ${TEST_FILE} does not exist`);
