@@ -155,6 +155,31 @@ async function installDeterministicPeerApi(page: Page) {
   }, FAKE_SDP);
 }
 
+/**
+ * #1950: WebKit (dev-mode, slow hydration) can let a `fill()` land before
+ * React attaches its listeners on these multiplayer pages — the controlled
+ * input then snaps back to empty state and every name-gated button stays
+ * disabled forever (the CI failure: "Create Lobby" never became clickable).
+ * Re-fill inside `toPass` until the gated button reports enabled, so the
+ * spec is correct no matter when hydration completes.
+ */
+async function fillUntilButtonEnabled(
+  page: Page,
+  fields: Array<{ label: string; value: string }>,
+  buttonName: string,
+): Promise<void> {
+  await expect(async () => {
+    for (const field of fields) {
+      await page.getByLabel(field.label).fill(field.value);
+    }
+    // Short inner timeout: fail fast so the outer loop re-fills, which is
+    // what recovers a fill that was swallowed by the pre-hydration page.
+    await expect(page.getByRole("button", { name: buttonName })).toBeEnabled({
+      timeout: 500,
+    });
+  }).toPass({ timeout: 15_000 });
+}
+
 test.describe("QR join flow (#1728)", () => {
   test("host renders connection QR; join falls back gracefully and joins with the real code", async ({
     page,
@@ -165,8 +190,14 @@ test.describe("QR join flow (#1728)", () => {
     await page.goto("/multiplayer/p2p-host");
     await page.waitForLoadState("networkidle");
 
-    await page.getByLabel("Your Name *").fill("Host Alice");
-    await page.getByLabel("Game Name *").fill("QR E2E Game");
+    await fillUntilButtonEnabled(
+      page,
+      [
+        { label: "Your Name *", value: "Host Alice" },
+        { label: "Game Name *", value: "QR E2E Game" },
+      ],
+      "Create Lobby",
+    );
     await page.getByRole("button", { name: "Create Lobby" }).click();
 
     await expect(
@@ -189,7 +220,11 @@ test.describe("QR join flow (#1728)", () => {
     await page.goto("/multiplayer/p2p-join");
     await page.waitForLoadState("networkidle");
 
-    await page.getByLabel("Your Name *").fill("Join Bob");
+    await fillUntilButtonEnabled(
+      page,
+      [{ label: "Your Name *", value: "Join Bob" }],
+      "Scan QR Code",
+    );
     await page.getByRole("button", { name: "Scan QR Code" }).click();
 
     // The pre-fix bug: this tap silently flipped to manual entry with no
@@ -199,7 +234,11 @@ test.describe("QR join flow (#1728)", () => {
     ).toBeVisible();
 
     // …and manual entry completes the join with the host's real code.
-    await page.getByLabel("Connection Code *").fill(connectionCode);
+    await fillUntilButtonEnabled(
+      page,
+      [{ label: "Connection Code *", value: connectionCode }],
+      "Join Game",
+    );
     await page.getByRole("button", { name: "Join Game" }).click();
 
     await expect(page.getByRole("heading", { name: "Connected!" })).toBeVisible(
