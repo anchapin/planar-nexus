@@ -57,19 +57,13 @@ jobs:
         # actions              -> this and other workflow files.
         language: [javascript-typescript, actions]
     steps:
-      - name: Configure git
-        run: |
-          git config --global --add safe.directory '*'
-
-      - name: Checkout code
-        uses: actions/checkout@v7
-
-      - name: Setup Node.js
-        if: matrix.language == 'javascript-typescript'
-        uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-          cache: 'npm'
+      - name: Setup repository
+        # Issue #1923: bootstrap via the repo-standard composite (Node 22 +
+        # npm ci) instead of a direct actions/setup-node call. The composite
+        # also configures git and checks out the repo, which both matrix
+        # legs need; the JS toolchain it installs feeds autobuild on the
+        # javascript-typescript leg.
+        uses: ./.github/actions/setup-node-npm-ci
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
