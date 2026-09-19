@@ -29,6 +29,7 @@ import {
   checkStateBasedActions,
   parseCycling,
   parseFlashback,
+  declareBlockers as engineDeclareBlockers,
   type GameState,
   type ManaPool,
   type Target,
@@ -115,6 +116,106 @@ export interface FreeCastDeps {
   setState: (state: GameState) => void;
 }
 
+/** Resolve the human ("Player") and AI player IDs. */
+function resolvePlayerIds(state: GameState): { human: PlayerId; ai: PlayerId } {
+  const players = Array.from(state.players.values());
+  const human = players.find((p) => !p.name.includes("AI")) ?? players[0];
+  const ai =
+    players.find((p) => p.name.includes("AI")) ?? players[1] ?? players[0];
+  return { human: human.id, ai: ai.id };
+}
+
+/**
+ * Shared cast core for {@link FreeCastTestApi.freeCast} and
+ * {@link FreeCastTestApi.castOnStack}: grants effectively-unlimited mana,
+ * builds targets, and runs the REAL `castSpell`. Does NOT touch priority —
+ * callers decide whether to resolve.
+ */
+function performFreeCast(
+  deps: FreeCastDeps,
+  cardId: CardInstanceId,
+  options: FreeCastOptions,
+):
+  | {
+      success: false;
+      error?: string;
+    }
+  | {
+      success: true;
+      state: GameState;
+      casterId: PlayerId;
+      cardName: string;
+      alternativeCostsUsed?: string[];
+    } {
+  const { getState, setState } = deps;
+  const state = getState();
+  if (!state) return { success: false, error: "Game state not initialized" };
+  const ids = resolvePlayerIds(state);
+  const playerId = options.playerId ?? ids.human;
+  const card = state.cards.get(cardId);
+  if (!card) return { success: false, error: `Card ${cardId} not found` };
+
+  // Give the caster effectively-unlimited mana so the REAL mana-payment
+  // path in castSpell runs without being blocked. This is what makes the
+  // cast "free" — the validation + spend still executes against a full pool.
+  const players = new Map(state.players);
+  const caster = players.get(playerId);
+  if (!caster) return { success: false, error: "Caster not found" };
+  players.set(playerId, {
+    ...caster,
+    manaPool: {
+      colorless: 50,
+      white: 50,
+      blue: 50,
+      black: 50,
+      red: 50,
+      green: 50,
+      generic: 0,
+    },
+  });
+  const working: GameState = { ...state, players };
+
+  const targets: Target[] = [];
+  if (options.targetCardId) {
+    targets.push({
+      type: "card",
+      targetId: options.targetCardId,
+      isValid: true,
+    });
+  } else if (options.targetPlayerId) {
+    targets.push({
+      type: "player",
+      targetId: options.targetPlayerId,
+      isValid: true,
+    });
+  }
+
+  const result = castSpell(
+    working,
+    playerId,
+    cardId,
+    targets,
+    [],
+    0,
+    false,
+    options.alternativeCost,
+  );
+  if (!result.success) {
+    // Roll back the mana grant so the visible pool is unchanged on failure.
+    setState(state);
+    return { success: false, error: result.error };
+  }
+
+  const top = result.state.stack[result.state.stack.length - 1];
+  return {
+    success: true,
+    state: result.state,
+    casterId: playerId,
+    cardName: card.cardData.name,
+    alternativeCostsUsed: top?.alternativeCostsUsed,
+  };
+}
+
 /**
  * Create the free-cast API object. Every method calls into the real rules
  * engine so the genuine code paths (mana payment, zone moves, cycling draw,
@@ -128,17 +229,6 @@ export function createFreeCastApi(deps: FreeCastDeps): FreeCastTestApi {
     const resolved = checkStateBasedActions(next).state;
     setState(resolved);
     return resolved;
-  };
-
-  /** Find the human ("Player") and AI player IDs. */
-  const resolvePlayerIds = (
-    state: GameState,
-  ): { human: PlayerId; ai: PlayerId } => {
-    const players = Array.from(state.players.values());
-    const human = players.find((p) => !p.name.includes("AI")) ?? players[0];
-    const ai =
-      players.find((p) => p.name.includes("AI")) ?? players[1] ?? players[0];
-    return { human: human.id, ai: ai.id };
   };
 
   return {
@@ -272,82 +362,84 @@ export function createFreeCastApi(deps: FreeCastDeps): FreeCastTestApi {
     },
 
     freeCast(cardId, options = {}) {
-      const state = getState();
-      if (!state)
-        return { success: false, error: "Game state not initialized" };
-      const ids = resolvePlayerIds(state);
-      const playerId = options.playerId ?? ids.human;
-      const card = state.cards.get(cardId);
-      if (!card) return { success: false, error: `Card ${cardId} not found` };
-
-      // Give the caster effectively-unlimited mana so the REAL mana-payment
-      // path in castSpell runs without being blocked. This is what makes the
-      // cast "free" — the validation + spend still executes against a full pool.
-      const players = new Map(state.players);
-      const caster = players.get(playerId);
-      if (!caster) return { success: false, error: "Caster not found" };
-      players.set(playerId, {
-        ...caster,
-        manaPool: {
-          colorless: 50,
-          white: 50,
-          blue: 50,
-          black: 50,
-          red: 50,
-          green: 50,
-          generic: 0,
-        },
-      });
-      const working: GameState = { ...state, players };
-
-      const targets: Target[] = [];
-      if (options.targetCardId) {
-        targets.push({
-          type: "card",
-          targetId: options.targetCardId,
-          isValid: true,
-        });
-      } else if (options.targetPlayerId) {
-        targets.push({
-          type: "player",
-          targetId: options.targetPlayerId,
-          isValid: true,
-        });
-      }
-
-      const result = castSpell(
-        working,
-        playerId,
-        cardId,
-        targets,
-        [],
-        0,
-        false,
-        options.alternativeCost,
-      );
-      if (!result.success) {
-        // Roll back the mana grant so the visible pool is unchanged on failure.
-        setState(state);
-        return { success: false, error: result.error };
-      }
+      const result = performFreeCast(deps, cardId, options);
+      if (!result.success) return result;
 
       // Two passes of priority resolve a single top-of-stack spell in a
       // 2-player game (opponent passes, caster passes → resolve). Mirrors the
       // existing handleCardClick resolution path.
-      let resolved = result.state;
-      const opponent = playerId === ids.human ? ids.ai : ids.human;
+      let resolved = result.state!;
+      const ids = resolvePlayerIds(resolved);
+      const opponent = result.casterId === ids.human ? ids.ai : ids.human;
       if (resolved.stack.length > 0) {
         resolved = passPriority(resolved, opponent);
-        resolved = passPriority(resolved, playerId);
+        resolved = passPriority(resolved, result.casterId);
       }
       commit(resolved);
 
-      const top = result.state.stack[result.state.stack.length - 1];
       return {
         success: true,
-        description: `Free-cast ${card.cardData.name}`,
-        alternativeCostsUsed: top?.alternativeCostsUsed,
+        description: `Free-cast ${result.cardName}`,
+        alternativeCostsUsed: result.alternativeCostsUsed,
       };
+    },
+
+    /**
+     * Cast a spell via the real `castSpell` WITHOUT resolving it — the spell
+     * stays on the stack so a test can exercise the response window (another
+     * player responding, LIFO order assertions, CR 117.4). Pair with
+     * `resolveStack()` to resolve afterwards.
+     */
+    castOnStack(cardId, options = {}) {
+      const result = performFreeCast(deps, cardId, options);
+      if (!result.success) return result;
+      commit(result.state!);
+      return {
+        success: true,
+        description: `Cast ${result.cardName} onto the stack (unresolved)`,
+      };
+    },
+
+    /**
+     * Declare blockers via the real engine `declareBlockers` (CR 509). The
+     * self-play UI only lets the named human seat interact, so tests covering
+     * the defender seat declare through here.
+     */
+    declareBlockers(assignments) {
+      const state = getState();
+      if (!state)
+        return { success: false, error: "Game state not initialized" };
+      const blockersByAttacker = new Map(
+        Object.entries(assignments).map(([attackerId, blockerIds]) => [
+          attackerId as CardInstanceId,
+          blockerIds as CardInstanceId[],
+        ]),
+      );
+      const result = engineDeclareBlockers(state, blockersByAttacker);
+      if (result.success) {
+        commit(result.state);
+      }
+      return {
+        success: result.success,
+        error: result.errors?.join(", "),
+        description: result.description,
+      };
+    },
+
+    /**
+     * Read-only view of the stack (top-last, i.e. index 0 = bottom / first
+     * cast). Exposes stack OBJECT ids so a responding spell can target the
+     * exact object it wants to counter.
+     */
+    getStackInfo() {
+      const state = getState();
+      if (!state) return [];
+      return state.stack.map((s) => ({
+        id: s.id,
+        name: s.name,
+        sourceCardId: s.sourceCardId,
+        controllerId: s.controllerId,
+      }));
     },
 
     cycle(cardId, playerId) {
@@ -449,6 +541,29 @@ export interface FreeCastTestApi {
    * stamped on the resulting stack object (e.g. `["flashback"]`).
    */
   freeCast(cardId: CardInstanceId, options?: FreeCastOptions): HookResult;
+  /**
+   * Cast a spell via the real `castSpell` but LEAVE it on the stack (no
+   * priority passes) so tests can exercise the response window (CR 117.4)
+   * and LIFO ordering. Resolve afterwards with `resolveStack()`.
+   */
+  castOnStack(cardId: CardInstanceId, options?: FreeCastOptions): HookResult;
+  /**
+   * Declare blockers via the real engine `declareBlockers` (CR 509) — keyed
+   * attacker card id → blocker card ids. For the defender seat, which the
+   * self-play UI cannot act as.
+   */
+  declareBlockers(assignments: { [attackerId: string]: string[] }): HookResult;
+  /**
+   * Read-only stack listing (index 0 = bottom = first cast). Stack OBJECT ids
+   * differ from card ids — pass one as `castOnStack`'s `targetCardId` to
+   * counter that exact spell.
+   */
+  getStackInfo(): Array<{
+    id: string;
+    name: string;
+    sourceCardId: string | null;
+    controllerId: PlayerId;
+  }>;
   /** Activate cycling on a hand card via the real `cycleCard` (CR 702.30). */
   cycle(cardId: CardInstanceId, playerId?: PlayerId): HookResult;
   /** Pass priority twice to resolve the top of the stack. */

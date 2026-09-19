@@ -103,6 +103,35 @@ export interface FreeCastApi {
     description?: string;
     alternativeCostsUsed?: string[];
   }>;
+  /**
+   * Cast a spell via the real engine but LEAVE it on the stack (issue #1914)
+   * so a test can exercise the response window / LIFO order. Resolve
+   * afterwards with `resolveStack()`.
+   */
+  castOnStack(
+    cardId: string,
+    options?: {
+      playerId?: string;
+      targetCardId?: string;
+      targetPlayerId?: string;
+    },
+  ): Promise<{ success: boolean; error?: string; description?: string }>;
+  /**
+   * Declare blockers via the real engine (CR 509) for the defender seat the
+   * self-play UI cannot act as (issue #1914).
+   */
+  declareBlockers(assignments: {
+    [attackerId: string]: string[];
+  }): Promise<{ success: boolean; error?: string; description?: string }>;
+  /** Read-only stack listing (index 0 = bottom = first cast). */
+  getStackInfo(): Promise<
+    Array<{
+      id: string;
+      name: string;
+      sourceCardId: string | null;
+      controllerId: string;
+    }>
+  >;
   /** Activate cycling (CR 702.30) via the real engine. */
   cycle(
     cardId: string,
@@ -155,6 +184,9 @@ export function freeCastApi(page: Page): FreeCastApi {
     tapCard: call("tapCard"),
     untapCard: call("untapCard"),
     freeCast: call("freeCast"),
+    castOnStack: call("castOnStack"),
+    declareBlockers: call("declareBlockers"),
+    getStackInfo: call("getStackInfo"),
     cycle: call("cycle"),
     resolveStack: call("resolveStack"),
     parseCyclingInfo: call("parseCyclingInfo"),
