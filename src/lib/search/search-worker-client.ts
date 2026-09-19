@@ -76,18 +76,15 @@ class SearchWorkerClient {
         };
         w = mod.createSearchWorker?.() ?? null;
       } catch {
-        /* factory chunk failed to load — fall through to last-resort */
+        /* factory chunk failed to load — fall through to fallback */
       }
-      if (!w && typeof self !== "undefined" && self.location?.href) {
-        try {
-          w = new Worker(
-            new URL("./search.worker.ts", self.location.href).href,
-            { type: "module" },
-          );
-        } catch {
-          /* last-resort failed too */
-        }
-      }
+      // Issue #1937: no self.location-based last-resort. Resolving the
+      // worker from the PAGE URL (`…/single-player/search.worker.ts`)
+      // can never load — the dev server answers unknown paths with
+      // text/plain and production serves them as HTML — and
+      // Firefox/WebKit log the failed load as a page-level error
+      // (this was the original #1780 bug). When the factory declines
+      // (dev builds, SSR), go straight to the main-thread fallback.
       if (!w) {
         this.status = "fallback";
         return;
