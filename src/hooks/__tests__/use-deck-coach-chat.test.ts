@@ -172,6 +172,62 @@ describe("useDeckCoachChat — progressive streaming render", () => {
     ]);
     expect(lastRequestBody.format).toBe("commander");
   });
+
+  /**
+   * #1950 regression: the read loop must reassemble SSE events delivered as
+   * arbitrary byte slices — chunks that split a multibyte UTF-8 code point in
+   * half and cut events mid-JSON before their `\n\n` separator. WebKit's
+   * network stack delivers the mocked route body as differently-framed
+   * chunks than Chromium/Firefox; the `TextDecoder` stream mode plus the
+   * `\n\n` buffering in the hook is what keeps the streamed answer intact.
+   */
+  it("reassembles SSE events split across byte-level chunk boundaries with multibyte UTF-8 (#1950)", async () => {
+    const STREAMED = "Libre ⚡ éclair!";
+    const sse = [
+      'data: {"type":"provider","value":"mock-provider"}\n\n',
+      `data: ${JSON.stringify({ type: "text", value: STREAMED })}\n\n`,
+      'data: {"type":"done"}\n\n',
+    ].join("");
+
+    // Encode once, then serve fixed-size byte slices. ⚡ is 3 bytes (E2 9A
+    // A1) and é is 2 bytes (C3 A9), so a 5-byte slice is guaranteed to split
+    // code points and slice events mid-line before the separator.
+    const bytes = new TextEncoder().encode(sse);
+    const SLICE = 5;
+    let offset = 0;
+    (globalThis as unknown as { fetch: unknown }).fetch = jest.fn(async () => ({
+      ok: true,
+      body: {
+        getReader: () => ({
+          read: async () => {
+            if (offset >= bytes.length) return { done: true };
+            const value = bytes.slice(offset, offset + SLICE);
+            offset += SLICE;
+            return { done: false, value };
+          },
+        }),
+      },
+    })) as unknown as typeof fetch;
+
+    const { result } = renderHook(() =>
+      useDeckCoachChat({ format: "commander" }),
+    );
+
+    await act(async () => {
+      await result.current.sendMessage("multibyte question");
+    });
+
+    const messages = result.current.messages;
+    expect(messages).toHaveLength(2);
+    const assistant = messages[1];
+    expect(assistant.role).toBe("assistant");
+    // The multibyte text must survive the byte-level slicing verbatim —
+    // a decoder without `{ stream: true }` would emit U+FFFD replacements,
+    // and buffering without `\n\n` reassembly would drop split events.
+    expect(assistant.content).toBe(STREAMED);
+    expect(assistant.content).not.toContain("\uFFFD");
+    expect(assistant.provider).toBe("mock-provider");
+  });
 });
 
 describe("useDeckCoachChat — cancel/abort", () => {

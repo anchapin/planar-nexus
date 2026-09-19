@@ -9,11 +9,20 @@ import { test, expect, type Page } from "@playwright/test";
  * reloads the page and asserts the conversation history persists (IndexedDB
  * auto-resume — the v1.7 continuity acceptance).
  *
- * Route mocking copies the ai-streaming.spec.ts approach, aimed at the coach
- * endpoint the deck-coach page actually calls (`/api/chat/coach`, consumed by
- * use-deck-coach-chat). The onboarding tour is already suppressed for every
- * test by the shared `storageState` in playwright.config.ts
- * (`planar-nexus:onboarded=true`, see AGENTS.md).
+ * Mocking strategy (#1950): the coach endpoint is stubbed via
+ * `window.fetch` replacement (addInitScript), NOT `page.route`. WebKit does
+ * not offer fetches issued from a form submit-button click to Playwright
+ * network interception — and under load it intermittently skips
+ * keyboard-submitted fetches too — so `page.route` could never fulfill the
+ * "persists the conversation" test's button-submitted request in webkit.
+ * The unintercepted POST then followed the `trailingSlash: true` 308 to
+ * /api/chat/coach/ and was answered by the real route (its "no LLM provider"
+ * fallback text showed up in the transcript instead of the mocked stream).
+ * Stubbing inside the page intercepts in JS, identically in every browser.
+ *
+ * The onboarding tour is already suppressed for every test by the shared
+ * `storageState` in playwright.config.ts (`planar-nexus:onboarded=true`,
+ * see AGENTS.md).
  *
  * #1786 lesson: every assertion is an unconditional `await expect(...)`.
  * No `if (await el.isVisible())` guards anywhere in this file.
@@ -24,20 +33,35 @@ const QUESTION = "How can I improve my aggro matchup?";
 const STREAMED_ANSWER = "Lightning Strike keeps aggressive decks honest.";
 
 async function mockCoachStream(page: Page): Promise<void> {
-  await page.route("**/api/chat/coach", async (route) => {
-    const chunks = [
-      'data: {"type":"provider","value":"mock-provider"}\n\n',
-      'data: {"type":"text","value":"Lightning "}\n\n',
-      'data: {"type":"text","value":"Strike keeps aggressive decks honest."}\n\n',
-      'data: {"type":"done"}\n\n',
-    ];
+  const chunks = [
+    'data: {"type":"provider","value":"mock-provider"}\n\n',
+    'data: {"type":"text","value":"Lightning "}\n\n',
+    'data: {"type":"text","value":"Strike keeps aggressive decks honest."}\n\n',
+    'data: {"type":"done"}\n\n',
+  ];
 
-    await route.fulfill({
-      status: 200,
-      contentType: "text/event-stream",
-      body: Buffer.from(chunks.join("")),
-    });
-  });
+  await page.addInitScript((sseBody: string) => {
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      // Match both /api/chat/coach and the trailing-slash variant the
+      // app never fetches but the redirect chain would produce.
+      if (url.includes("/api/chat/coach")) {
+        return Promise.resolve(
+          new Response(sseBody, {
+            status: 200,
+            headers: { "Content-Type": "text/event-stream" },
+          }),
+        );
+      }
+      return originalFetch(input, init);
+    };
+  }, chunks.join(""));
 }
 
 interface StoredConversation {
