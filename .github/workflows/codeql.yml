@@ -57,12 +57,20 @@ jobs:
         # actions              -> this and other workflow files.
         language: [javascript-typescript, actions]
     steps:
+      - name: Checkout code
+        # The composite action does NOT check out the repo — it only installs
+        # Node 22 + npm ci — so the local action must be preceded by checkout
+        # (mirrors stubs-inventory.yml; found via PR CI: "Can't find
+        # 'action.yml' under .github/actions/setup-node-npm-ci").
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
       - name: Setup repository
         # Issue #1923: bootstrap via the repo-standard composite (Node 22 +
-        # npm ci) instead of a direct actions/setup-node call. The composite
-        # also configures git and checks out the repo, which both matrix
-        # legs need; the JS toolchain it installs feeds autobuild on the
-        # javascript-typescript leg.
+        # npm ci) instead of a direct actions/setup-node call. The JS
+        # toolchain it installs feeds autobuild on the javascript-typescript
+        # leg.
         uses: ./.github/actions/setup-node-npm-ci
 
       - name: Initialize CodeQL
