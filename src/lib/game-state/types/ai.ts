@@ -4,9 +4,9 @@
  * Mechanically extracted from types.ts (issue #1725);
  * behavior pinned by the existing engine suites.
  */
-import { CardInstanceId } from './cards';
-import { PlayerId } from './players';
-import { Phase } from './turn';
+import { CardInstanceId } from "./cards";
+import { PlayerId } from "./players";
+import { Phase } from "./turn";
 
 /**
  * Simplified permanent representation for AI evaluation
@@ -42,6 +42,14 @@ export interface AIPermanent {
   summoningSickness?: boolean;
   /** Damage marked on this creature */
   damage?: number;
+  /**
+   * Oracle (rules) text of the card, when the state builder surfaces it.
+   * Mirrors `AIHandCard.oracleText`. Optional projection metadata: converters
+   * that only project stat fields may omit it, so AI readers must treat it as
+   * best-effort (issue #1928 — replaces an `(x as any).oracleText` cast in
+   * `src/ai/stack-interaction-ai.ts`).
+   */
+  oracleText?: string;
 }
 
 /**
@@ -208,4 +216,3 @@ export const PHASE_MAPPING: Record<Phase, AITurnInfo["phase"]> = {
   [Phase.END]: "end",
   [Phase.CLEANUP]: "end",
 };
-

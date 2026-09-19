@@ -2753,10 +2753,10 @@ export class StackInteractionAI {
           controller: permanent.controller,
           type: permanent.type as BoardPermanent["type"],
           keywords: permanent.keywords,
-          manaValue: (permanent as any).manaValue,
+          manaValue: permanent.manaValue,
           power: permanent.power,
-          toughness: (permanent as any).toughness,
-          oracleText: (permanent as any).oracleText,
+          toughness: permanent.toughness,
+          oracleText: permanent.oracleText,
         });
       }
     }
@@ -2829,8 +2829,13 @@ export class StackInteractionAI {
    * Score a target based on priority
    */
   private scoreTarget(targetId: string): number {
-    const battlefield = (this.gameState as any).battlefield || [];
-    const permanent = battlefield.find((p: any) => p.id === targetId);
+    // The AI-facing state has no top-level battlefield: permanents live on
+    // each player's `battlefield` (mirrors `getBattlefieldFromAI` in
+    // `src/lib/sync/delta-sync.ts`).
+    const battlefield = Object.values(this.gameState.players).flatMap(
+      (player) => player.battlefield,
+    );
+    const permanent = battlefield.find((p) => p.id === targetId);
     if (!permanent) return 0.3; // Player target or unknown
 
     let score = 0.5;
@@ -2945,11 +2950,20 @@ export class StackInteractionAI {
 
   /**
    * Calculate available mana for variable cost decisions
+   *
+   * Sums the player's current mana pool — the AI-facing projection of the
+   * engine mana pool (`AIPlayerState.manaPool`), same computation as
+   * `GameStateEvaluator.evaluateManaAvailable`. An empty pool is a valid
+   * zero-mana state (issue #1928: the old `(player as any).manaAvailable || 7`
+   * fallback masked it with a magic 7).
    */
   private calculateAvailableMana(context: StackContext): number {
-    // Simplified mana calculation - in real implementation would check actual mana pool
     const player = this.gameState.players[this.playerId];
-    return player ? (player as any).manaAvailable || 7 : 7;
+    if (!player) return 0;
+    return Object.values(player.manaPool).reduce(
+      (sum, amount) => sum + amount,
+      0,
+    );
   }
 
   /**

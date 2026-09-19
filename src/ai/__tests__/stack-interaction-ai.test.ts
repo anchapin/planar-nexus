@@ -627,7 +627,12 @@ describe("StackInteractionAI", () => {
       "evaluateStackResponse honors the %s tier through the public helper",
       (tier) => {
         const { context } = buildHighThreatContext();
-        const decision = evaluateStackResponse(gameState, playerId, context, tier);
+        const decision = evaluateStackResponse(
+          gameState,
+          playerId,
+          context,
+          tier,
+        );
         expect(decision).toBeDefined();
         expect(decision.shouldRespond).toBe(true);
       },
@@ -706,7 +711,12 @@ describe("StackInteractionAI", () => {
 
     test("hard sits between medium and expert (no regression to lower tiers)", () => {
       const { context } = buildHighThreatContext();
-      const medium = evaluateStackResponse(gameState, playerId, context, "medium");
+      const medium = evaluateStackResponse(
+        gameState,
+        playerId,
+        context,
+        "medium",
+      );
       const hard = evaluateStackResponse(gameState, playerId, context, "hard");
       const expert = evaluateStackResponse(
         gameState,
@@ -754,7 +764,8 @@ describe("StackInteractionAI", () => {
 
       const mediumThreat = await probe.assessActionThreatWithTriggers(context);
       const expertAi = new StackInteractionAI(gameState, playerId, "expert");
-      const expertThreat = await expertAi.assessActionThreatWithTriggers(context);
+      const expertThreat =
+        await expertAi.assessActionThreatWithTriggers(context);
 
       // Both clamped to [0, 1] (no regression of the clamp invariant).
       expect(mediumThreat).toBeGreaterThanOrEqual(0);
@@ -1142,6 +1153,107 @@ describe("StackInteractionAI", () => {
       expect(implicit.evaluateResponse(context)).toEqual(
         explicit.evaluateResponse(context),
       );
+    });
+  });
+
+  describe("Typed engine access (#1928)", () => {
+    const buildContext = (): StackContext => {
+      const action: StackAction = {
+        id: "stack_x",
+        cardId: "x_spell",
+        name: "Hydra Broodmaster",
+        controller: "player2",
+        type: "spell",
+        manaValue: 6,
+        isInstantSpeed: false,
+        timestamp: Date.now(),
+      };
+      return {
+        currentAction: action,
+        stackSize: 1,
+        actionsAbove: [],
+        availableMana: { blue: 3, colorless: 0 },
+        availableResponses: [],
+        opponentsRemaining: [],
+        isMyTurn: false,
+        phase: "precombat_main",
+        step: "main",
+        respondingToOpponent: true,
+      };
+    };
+
+    const xResponse = (manaValue: number): AvailableResponse => ({
+      cardId: "x_spell_resp",
+      name: "X Spell",
+      type: "instant",
+      manaValue,
+      manaCost: { blue: 1 },
+      canCounter: false,
+      canTarget: ["spell"],
+      effect: { type: "other", value: 3, targets: ["stack_x"] },
+      hasXCost: true,
+    });
+
+    test("available mana is the mana pool total, not the legacy magic 7", () => {
+      // Fixture: player1 manaPool { blue: 3, colorless: 0 } = 3 total, which
+      // cannot cover the 6-mana base cost of the X spell, so no X is added.
+      // (The old `(player as any).manaAvailable || 7` read a field that does
+      // not exist on AIPlayerState and always fell back to 7.)
+      const ai = new StackInteractionAI(gameState, playerId, "medium");
+      const result = ai.evaluateVariableCost(xResponse(6), buildContext());
+
+      expect(result.xValue).toBeUndefined();
+      expect(result.recommendedCost).toBe(6);
+    });
+
+    test("an empty mana pool is a valid zero-mana state (no || 7 override)", () => {
+      gameState.players[playerId].manaPool = { blue: 0, colorless: 0 };
+      const ai = new StackInteractionAI(gameState, playerId, "medium");
+      const result = ai.evaluateVariableCost(xResponse(2), buildContext());
+
+      expect(result.xValue).toBeUndefined();
+      expect(result.recommendedCost).toBe(2);
+    });
+
+    test("X value is bounded by the mana pool total when the pool covers the base cost", () => {
+      const ai = new StackInteractionAI(gameState, playerId, "medium");
+      const result = ai.evaluateVariableCost(xResponse(2), buildContext());
+
+      // 3 total − 2 base = at most 1 extra mana into X.
+      expect(result.xValue).toBeDefined();
+      expect(result.xValue ?? 0).toBeLessThanOrEqual(1);
+      expect(result.recommendedCost).toBeLessThanOrEqual(3);
+    });
+
+    test("multi-target ordering ranks battlefield permanents above unknown targets", () => {
+      // scoreTarget reads permanents from the players' battlefields (the
+      // AI-facing state has no top-level `battlefield` — the old
+      // `(gameState as any).battlefield` read always came back empty).
+      gameState.players.player2.battlefield.push({
+        id: "opp_creature",
+        cardInstanceId: "opp_creature",
+        name: "Hill Giant",
+        type: "creature",
+        controller: "player2",
+        tapped: false,
+        power: 4,
+        toughness: 4,
+        keywords: ["flying"],
+      });
+      const response: AvailableResponse = {
+        cardId: "tgt_spell",
+        name: "Targeted Spell",
+        type: "instant",
+        manaValue: 2,
+        manaCost: { blue: 2 },
+        canCounter: false,
+        canTarget: ["unknown_target", "opp_creature"],
+        effect: { type: "other", value: 3, targets: [] },
+      };
+      const ai = new StackInteractionAI(gameState, playerId, "medium");
+      const targets = ai.evaluateMultiTargetResponse(response, buildContext());
+
+      expect(targets).toEqual(["opp_creature", "unknown_target"]);
     });
   });
 });
