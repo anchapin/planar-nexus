@@ -35,7 +35,11 @@ import {
   counterSpell,
   addCounterToCard,
 } from "../keyword-actions";
-import { getLoyaltyAbilities, canActivateLoyaltyAbility } from "../abilities";
+import {
+  getLoyaltyAbilities,
+  canActivateLoyaltyAbility,
+  detectTriggeredAbilities,
+} from "../abilities";
 import { advancePhase, startNextTurn, addExtraTurn } from "../turn-phases";
 import {
   declareAttackers,
@@ -1169,5 +1173,75 @@ describe("GS-RT-13: drawCard wired to drawWithSBAChecking (CR 704.5c)", () => {
     // The real draw is delegated to drawCard / drawCards.
     const newHand = result.state.zones.get(`${playerId}-hand`)!;
     expect(newHand.cardIds.length).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GS-RT-14 — end-of-turn triggered-ability detection was only it.skip()ed
+//         CR 603.4 — delayed triggers fire at the beginning of the next end
+//         step ("At the beginning of your/each/the/next end step")
+// ---------------------------------------------------------------------------
+
+describe("GS-RT-14: endOfTurn event trigger routing (CR 603.4, issue #1915)", () => {
+  function createMockEndStepCard(oracle_text: string): ScryfallCard {
+    return {
+      id: `mock-end-step-${Math.random().toString(36).slice(2, 9)}`,
+      name: "End Step Test",
+      type_line: "Creature — Test",
+      oracle_text,
+      mana_cost: "{1}",
+      cmc: 1,
+      colors: ["R"],
+      color_identity: ["R"],
+      legalities: { standard: "legal", commander: "legal" },
+      layout: "normal",
+    } as ScryfallCard;
+  }
+
+  function setupStateWithCard(
+    oracle_text: string,
+  ): ReturnType<typeof createInitialGameState> {
+    let state = createInitialGameState(["Alice", "Bob"], 20, false);
+    state = startGame(state);
+    state.turn.activePlayerId = Array.from(state.players.keys())[0];
+    addCreatureToBattlefield(
+      state,
+      state.turn.activePlayerId,
+      createMockEndStepCard(oracle_text),
+    );
+    return state;
+  }
+
+  it("regression: 'at end of turn' text fires turnEnds on the endOfTurn event", () => {
+    const state = setupStateWithCard("At end of turn, destroy this creature.");
+    const triggers = detectTriggeredAbilities(state, "endOfTurn");
+    expect(triggers.length).toBe(1);
+    expect(triggers[0].triggerCondition).toBe("turnEnds");
+  });
+
+  it("regression: 'beginning of your end step' text fires phaseEnds on the endOfTurn event", () => {
+    const state = setupStateWithCard(
+      "At the beginning of your end step, draw a card.",
+    );
+    const triggers = detectTriggeredAbilities(state, "endOfTurn");
+    expect(triggers.length).toBe(1);
+    expect(triggers[0].triggerCondition).toBe("phaseEnds");
+  });
+
+  it("regression: CR 603.4 delayed wording 'beginning of the next end step' fires phaseEnds", () => {
+    const state = setupStateWithCard(
+      "At the beginning of the next end step, sacrifice this creature.",
+    );
+    const triggers = detectTriggeredAbilities(state, "endOfTurn");
+    expect(triggers.length).toBe(1);
+    expect(triggers[0].triggerCondition).toBe("phaseEnds");
+  });
+
+  it("regression: upkeep triggers must NOT fire on the endOfTurn event (CR 603.2 routing)", () => {
+    const state = setupStateWithCard(
+      "At the beginning of your upkeep, scry 1.",
+    );
+    const triggers = detectTriggeredAbilities(state, "endOfTurn");
+    expect(triggers.length).toBe(0);
   });
 });

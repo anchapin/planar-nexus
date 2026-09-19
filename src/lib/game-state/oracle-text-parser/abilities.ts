@@ -4,9 +4,9 @@
  * Mechanically extracted from oracle-text-parser.ts (issue #1725);
  * behavior pinned by the existing engine suites.
  */
-import type { ScryfallCard } from '../types';
-import { AbilityType } from './core';
-import { ParsedManaCost, parseManaCost } from './mana-cost';
+import type { ScryfallCard } from "../types";
+import { AbilityType } from "./core";
+import { ParsedManaCost, parseManaCost } from "./mana-cost";
 
 /**
  * Target specification parsed from text
@@ -554,12 +554,11 @@ function parseTriggerText(triggerText: string): TriggerCondition | null {
     return { event: "upkeep" };
   }
 
-  // Beginning of end step - maps to phaseEnds (end step is part of the end phase)
+  // Beginning of end step - maps to phaseEnds (end step is part of the end
+  // phase). Covers "the/your/each/next end step" phrasings, including the
+  // CR 603.4 delayed-trigger wording "at the beginning of the next end step".
   // These must come BEFORE the generic "end of turn" checks
-  if (
-    text.includes("beginning of the end step") ||
-    text.includes("at the beginning of the end step")
-  ) {
+  if (/beginning of (?:the next|next|the|your|each) end step/.test(text)) {
     return { event: "phaseEnds" };
   }
 
@@ -731,4 +730,3 @@ export function canGoOnStack(card: ScryfallCard): boolean {
 
   return false;
 }
-

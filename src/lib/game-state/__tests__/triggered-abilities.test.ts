@@ -229,18 +229,48 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
   });
 
   describe("End of Turn Triggers (CR 603.4)", () => {
-    it.skip("should detect end of turn trigger on endOfTurn event", () => {
-      // Implementation does not properly handle endOfTurn event type
-      // "At the end of the turn" text triggers turnEnds but detectTriggeredAbilities
-      // does not have a case for "turnEnds" with "endOfTurn" event
+    it("should detect end of turn trigger on endOfTurn event", () => {
+      const cardId = placeCardOnBattlefield(
+        createMockCard({
+          id: "end-of-turn-trigger",
+          oracle_text: "At the end of the turn, gain 1 life.",
+        }),
+        aliceId,
+      );
+      const result = detectTriggeredAbilities(state, "endOfTurn");
+      expect(result.length).toBe(1);
+      expect(result[0].triggerCondition).toBe("turnEnds");
+      expect(result[0].sourceCardId).toBe(cardId);
     });
 
-    it.skip("should detect turnEnds trigger on endOfTurn event", () => {
-      // Implementation does not properly handle endOfTurn event type
+    it("should detect turnEnds trigger on endOfTurn event", () => {
+      const cardId = placeCardOnBattlefield(
+        createMockCard({
+          id: "turn-ends-trigger",
+          name: "Ball Lightning",
+          oracle_text: "At end of turn, destroy this creature.",
+        }),
+        aliceId,
+      );
+      const result = detectTriggeredAbilities(state, "endOfTurn");
+      expect(result.length).toBe(1);
+      expect(result[0].triggerCondition).toBe("turnEnds");
+      expect(result[0].sourceCardId).toBe(cardId);
     });
 
-    it.skip("should detect phaseEnds trigger on endOfTurn event", () => {
-      // Implementation does not properly handle endOfTurn event type
+    it("should detect phaseEnds trigger on endOfTurn event", () => {
+      const cardId = placeCardOnBattlefield(
+        createMockCard({
+          id: "phase-ends-trigger",
+          oracle_text:
+            "At the beginning of the end step, sacrifice this creature.",
+        }),
+        aliceId,
+      );
+      const result = detectTriggeredAbilities(state, "endOfTurn");
+      expect(result.length).toBe(1);
+      expect(result[0].triggerCondition).toBe("phaseEnds");
+      expect(result[0].sourceCardId).toBe(cardId);
     });
   });
 
