@@ -91,6 +91,10 @@ function buildMeshPeerHarness(opts: MeshPeerOptions): string {
   // It still lands in allReceived (wire-level view) for diagnostics.
   var lastAppliedSeq = {};
   var openPeers = {};  // peerId -> { send(raw), close() } outbound handle
+  // Issue #1913: track received game state for reconciliation E2E verification.
+  var lastGameState = null;      // last received gameState payload
+  var lastStateHash = null;      // DJB2 hash of serialized lastGameState
+  var graveyardCardIds = [];     // card ids in the graveyard zone
 
   var channel = window.__mockDataChannel;
 
@@ -126,6 +130,21 @@ function buildMeshPeerHarness(opts: MeshPeerOptions): string {
     }
     (handlers[msg.type] || []).forEach(function (fn) { try { fn(msg); } catch (e) {} });
     (handlers["*"] || []).forEach(function (fn) { try { fn(msg); } catch (e) {} });
+    // Issue #1913: extract game state for reconciliation E2E comparison.
+    if (msg.type === "game-state-sync" && msg.data && msg.data.gameState) {
+      lastGameState = msg.data.gameState;
+      lastStateHash = computeSimpleHash(JSON.stringify(lastGameState));
+      // Extract graveyard card ids from zones: "playerId-graveyard" zone.
+      graveyardCardIds = [];
+      if (lastGameState.zones) {
+        for (var zoneId in lastGameState.zones) {
+          if (String(zoneId).endsWith("-graveyard")) {
+            graveyardCardIds = (lastGameState.zones[zoneId].cardIds || []).slice().sort();
+            break;
+          }
+        }
+      }
+    }
     return msg;
   }
 
@@ -161,6 +180,20 @@ function buildMeshPeerHarness(opts: MeshPeerOptions): string {
   // the limit of one exposeBinding per name and lets the binding body route
   // dynamically to whichever peer the harness is currently associated with.
   window.__p2pRecord = function (raw) { return recordReceive(raw); };
+
+  // Issue #1913: DJB2-style hash matching src/lib/game-state/state-hash.ts.
+  function computeSimpleHash(str) {
+    var hash = 5381;
+    for (var i = 0; i < str.length; i++) {
+      hash = ((hash << 5) + hash + str.charCodeAt(i)) >>> 0;
+    }
+    return hash.toString(16).padStart(8, "0");
+  }
+
+  // Issue #1913: expose last received game state + hash for E2E comparison.
+  window.__getLastGameState = function () { return lastGameState; };
+  window.__getLastStateHash = function () { return lastStateHash; };
+  window.__getGraveyardCardIds = function () { return graveyardCardIds.slice(); };
 
   window.__peer = {
     playerId: playerId,
