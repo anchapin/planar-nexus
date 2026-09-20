@@ -1,26 +1,26 @@
 /**
  * Ranked Mode System
- * 
+ *
  * Implements competitive ranked gameplay with Elo rating system,
  * seasons, and leaderboards.
- * 
+ *
  * Issue #254: Add competitive/ranked game mode
  */
 
-import { PlayerId } from './game-state/types';
+import type { PlayerId } from "@/lib/game-state";
 
 // ============================================================
 // Types
 // ============================================================
 
-export type RankTier = 
-  | 'bronze'
-  | 'silver'
-  | 'gold'
-  | 'platinum'
-  | 'diamond'
-  | 'master'
-  | 'grandmaster';
+export type RankTier =
+  | "bronze"
+  | "silver"
+  | "gold"
+  | "platinum"
+  | "diamond"
+  | "master"
+  | "grandmaster";
 
 export type RankDivision = 1 | 2 | 3 | 4;
 
@@ -49,7 +49,7 @@ export interface PlayerRating {
 export interface MatchResult {
   playerId: PlayerId;
   opponentId: PlayerId;
-  result: 'win' | 'loss' | 'draw';
+  result: "win" | "loss" | "draw";
   ratingChange: number;
   lpChange: number;
   opponentRating: number;
@@ -78,7 +78,15 @@ export interface LeaderboardEntry {
 // Constants
 // ============================================================
 
-const RANK_TIERS: RankTier[] = ['bronze', 'silver', 'gold', 'platinum', 'diamond', 'master', 'grandmaster'];
+const RANK_TIERS: RankTier[] = [
+  "bronze",
+  "silver",
+  "gold",
+  "platinum",
+  "diamond",
+  "master",
+  "grandmaster",
+];
 
 const RANK_THRESHOLDS: Record<RankTier, number> = {
   bronze: 0,
@@ -102,13 +110,13 @@ const RANKED_STARTING_RATING = 1000;
  * Get the tier for a given rating
  */
 export function getTierForRating(rating: number): RankTier {
-  if (rating >= RANK_THRESHOLDS.grandmaster) return 'grandmaster';
-  if (rating >= RANK_THRESHOLDS.master) return 'master';
-  if (rating >= RANK_THRESHOLDS.diamond) return 'diamond';
-  if (rating >= RANK_THRESHOLDS.platinum) return 'platinum';
-  if (rating >= RANK_THRESHOLDS.gold) return 'gold';
-  if (rating >= RANK_THRESHOLDS.silver) return 'silver';
-  return 'bronze';
+  if (rating >= RANK_THRESHOLDS.grandmaster) return "grandmaster";
+  if (rating >= RANK_THRESHOLDS.master) return "master";
+  if (rating >= RANK_THRESHOLDS.diamond) return "diamond";
+  if (rating >= RANK_THRESHOLDS.platinum) return "platinum";
+  if (rating >= RANK_THRESHOLDS.gold) return "gold";
+  if (rating >= RANK_THRESHOLDS.silver) return "silver";
+  return "bronze";
 }
 
 /**
@@ -152,7 +160,7 @@ export function getTierIndex(tier: RankTier): number {
  */
 export function getRankDisplayName(rank: Rank): string {
   const tierName = rank.tier.charAt(0).toUpperCase() + rank.tier.slice(1);
-  if (rank.tier === 'grandmaster' || rank.tier === 'master') {
+  if (rank.tier === "grandmaster" || rank.tier === "master") {
     return tierName;
   }
   return `${tierName} ${rank.division}`;
@@ -163,13 +171,13 @@ export function getRankDisplayName(rank: Rank): string {
  */
 export function getRankColor(tier: RankTier): string {
   const colors: Record<RankTier, string> = {
-    bronze: '#cd7f32',
-    silver: '#c0c0c0',
-    gold: '#ffd700',
-    platinum: '#e5e4e2',
-    diamond: '#b9f2ff',
-    master: '#9d4edd',
-    grandmaster: '#ff6b6b',
+    bronze: "#cd7f32",
+    silver: "#c0c0c0",
+    gold: "#ffd700",
+    platinum: "#e5e4e2",
+    diamond: "#b9f2ff",
+    master: "#9d4edd",
+    grandmaster: "#ff6b6b",
   };
   return colors[tier];
 }
@@ -181,7 +189,10 @@ export function getRankColor(tier: RankTier): string {
 /**
  * Calculate expected score for a match
  */
-export function calculateExpectedScore(ratingA: number, ratingB: number): number {
+export function calculateExpectedScore(
+  ratingA: number,
+  ratingB: number,
+): number {
   return 1 / (1 + Math.pow(10, (ratingB - ratingA) / 400));
 }
 
@@ -193,12 +204,12 @@ export function calculateRatingChange(
   playerRating: number,
   opponentRating: number,
   actualScore: number, // 1 = win, 0.5 = draw, 0 = loss
-  kFactor?: number
+  kFactor?: number,
 ): number {
   // K-factor determines how much rating can change
   // Higher K = more volatile ratings
   const k = kFactor ?? getKFactor(playerRating);
-  
+
   const expectedScore = calculateExpectedScore(playerRating, opponentRating);
   return Math.round(k * (actualScore - expectedScore));
 }
@@ -219,9 +230,9 @@ export function getKFactor(rating: number): number {
  * Calculate LP change based on match result and rank
  */
 export function calculateLPChange(
-  result: 'win' | 'loss' | 'draw',
+  result: "win" | "loss" | "draw",
   rank: Rank,
-  isPromoteMatch: boolean = false
+  isPromoteMatch: boolean = false,
 ): number {
   const baseLP = {
     win: 20,
@@ -230,17 +241,15 @@ export function calculateLPChange(
   }[result];
 
   // Bonus for winning at promotion threshold
-  if (isPromoteMatch && result === 'win') {
+  if (isPromoteMatch && result === "win") {
     return baseLP + 10;
   }
 
   // Reduced LP loss at higher ranks
   const tierIndex = getTierIndex(rank.tier);
   const reduction = Math.min(tierIndex * 2, 10);
-  
-  return result === 'loss' 
-    ? -Math.max(10, baseLP - reduction) 
-    : baseLP;
+
+  return result === "loss" ? -Math.max(10, baseLP - reduction) : baseLP;
 }
 
 // ============================================================
@@ -288,7 +297,7 @@ export function getSeasonDaysRemaining(season: Season): number {
  */
 export function createPlayerRating(
   playerId: PlayerId,
-  playerName: string
+  playerName: string,
 ): PlayerRating {
   return {
     playerId,
@@ -313,43 +322,48 @@ export function createPlayerRating(
 export function processMatchResult(
   rating: PlayerRating,
   opponentRating: number,
-  result: 'win' | 'loss' | 'draw'
+  result: "win" | "loss" | "draw",
 ): { updatedRating: PlayerRating; matchResult: MatchResult } {
-  const actualScore = result === 'win' ? 1 : result === 'draw' ? 0.5 : 0;
-  const ratingChange = calculateRatingChange(rating.rating, opponentRating, actualScore);
-  
+  const actualScore = result === "win" ? 1 : result === "draw" ? 0.5 : 0;
+  const ratingChange = calculateRatingChange(
+    rating.rating,
+    opponentRating,
+    actualScore,
+  );
+
   // Calculate LP change
   const newRating = Math.max(0, rating.rating + ratingChange);
   const newRank = ratingToRank(newRating);
   const lpChange = calculateLPChange(result, rating.rank);
   const newLP = Math.max(0, rating.rank.lp + lpChange);
-  
+
   // Update streak
-  const newStreak = result === 'win' 
-    ? rating.currentStreak + 1 
-    : result === 'loss' 
-    ? rating.currentStreak - 1 
-    : 0;
+  const newStreak =
+    result === "win"
+      ? rating.currentStreak + 1
+      : result === "loss"
+        ? rating.currentStreak - 1
+        : 0;
   const newBestStreak = Math.max(rating.bestStreak, Math.abs(newStreak));
-  
+
   const updatedRating: PlayerRating = {
     ...rating,
     rating: newRating,
     rank: { ...newRank, lp: newLP },
-    wins: rating.wins + (result === 'win' ? 1 : 0),
-    losses: rating.losses + (result === 'loss' ? 1 : 0),
-    draws: rating.draws + (result === 'draw' ? 1 : 0),
+    wins: rating.wins + (result === "win" ? 1 : 0),
+    losses: rating.losses + (result === "loss" ? 1 : 0),
+    draws: rating.draws + (result === "draw" ? 1 : 0),
     currentStreak: newStreak,
     bestStreak: newBestStreak,
-    seasonWins: rating.seasonWins + (result === 'win' ? 1 : 0),
-    seasonLosses: rating.seasonLosses + (result === 'loss' ? 1 : 0),
+    seasonWins: rating.seasonWins + (result === "win" ? 1 : 0),
+    seasonLosses: rating.seasonLosses + (result === "loss" ? 1 : 0),
     seasonGamesPlayed: rating.seasonGamesPlayed + 1,
     lastPlayedAt: Date.now(),
   };
 
   const matchResult: MatchResult = {
     playerId: rating.playerId,
-    opponentId: '', // Would be set by caller
+    opponentId: "", // Would be set by caller
     result,
     ratingChange,
     lpChange,
@@ -402,16 +416,22 @@ export function sortLeaderboard(ratings: PlayerRating[]): LeaderboardEntry[] {
 /**
  * Get top N players from leaderboard
  */
-export function getTopPlayers(ratings: PlayerRating[], count: number = 10): LeaderboardEntry[] {
+export function getTopPlayers(
+  ratings: PlayerRating[],
+  count: number = 10,
+): LeaderboardEntry[] {
   return sortLeaderboard(ratings).slice(0, count);
 }
 
 /**
  * Get player's rank on leaderboard
  */
-export function getPlayerRank(playerId: PlayerId, ratings: PlayerRating[]): number {
+export function getPlayerRank(
+  playerId: PlayerId,
+  ratings: PlayerRating[],
+): number {
   const sorted = sortLeaderboard(ratings);
-  const entry = sorted.find(e => e.playerId === playerId);
+  const entry = sorted.find((e) => e.playerId === playerId);
   return entry?.rank ?? -1;
 }
 
@@ -420,8 +440,8 @@ export function getPlayerRank(playerId: PlayerId, ratings: PlayerRating[]): numb
 // ============================================================
 
 export const RANKED_STORAGE_KEYS = {
-  PLAYER_RATING: 'planar-nexus-ranked-rating',
-  SEASON: 'planar-nexus-ranked-season',
-  MATCH_HISTORY: 'planar-nexus-ranked-history',
-  LEADERBOARD: 'planar-nexus-ranked-leaderboard',
+  PLAYER_RATING: "planar-nexus-ranked-rating",
+  SEASON: "planar-nexus-ranked-season",
+  MATCH_HISTORY: "planar-nexus-ranked-history",
+  LEADERBOARD: "planar-nexus-ranked-leaderboard",
 } as const;

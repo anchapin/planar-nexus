@@ -1,25 +1,25 @@
 /**
  * Social Features System
- * 
+ *
  * Implements friends list and match history for social features.
- * 
+ *
  * Issue #255: Add social features - friends list and match history
  */
 
-import { PlayerId } from './game-state/types';
+import type { PlayerId } from "@/lib/game-state";
 
 // ============================================================
 // Types
 // ============================================================
 
-export type FriendStatus = 'none' | 'pending' | 'friends' | 'blocked';
+export type FriendStatus = "none" | "pending" | "friends" | "blocked";
 
 export interface Friend {
   id: string;
   playerId: PlayerId;
   displayName: string;
   avatarUrl?: string;
-  status: 'online' | 'offline' | 'in-game';
+  status: "online" | "offline" | "in-game";
   lastSeen?: number;
   addedAt: number;
 }
@@ -30,15 +30,15 @@ export interface FriendRequest {
   fromDisplayName: string;
   toPlayerId: PlayerId;
   timestamp: number;
-  status: 'pending' | 'accepted' | 'rejected';
+  status: "pending" | "accepted" | "rejected";
 }
 
 export interface MatchHistoryEntry {
   id: string;
   opponentId: PlayerId;
   opponentName: string;
-  result: 'win' | 'loss' | 'draw';
-  format: 'standard' | 'draft' | 'sealed' | 'commander' | 'casual';
+  result: "win" | "loss" | "draw";
+  format: "standard" | "draft" | "sealed" | "commander" | "casual";
   yourDeckName?: string;
   opponentDeckName?: string;
   playedAt: number;
@@ -64,11 +64,11 @@ export interface PlayerProfile {
 // ============================================================
 
 export const SOCIAL_STORAGE_KEYS = {
-  FRIENDS: 'planar-nexus-friends',
-  FRIEND_REQUESTS: 'planar-nexus-friend-requests',
-  MATCH_HISTORY: 'planar-nexus-match-history',
-  BLOCKED_PLAYERS: 'planar-nexus-blocked-players',
-  PLAYER_PROFILE: 'planar-nexus-player-profile',
+  FRIENDS: "planar-nexus-friends",
+  FRIEND_REQUESTS: "planar-nexus-friend-requests",
+  MATCH_HISTORY: "planar-nexus-match-history",
+  BLOCKED_PLAYERS: "planar-nexus-blocked-players",
+  PLAYER_PROFILE: "planar-nexus-player-profile",
 } as const;
 
 // ============================================================
@@ -81,14 +81,14 @@ export const SOCIAL_STORAGE_KEYS = {
 export function createFriend(
   playerId: PlayerId,
   displayName: string,
-  avatarUrl?: string
+  avatarUrl?: string,
 ): Friend {
   return {
     id: `friend-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     playerId,
     displayName,
     avatarUrl,
-    status: 'offline',
+    status: "offline",
     addedAt: Date.now(),
   };
 }
@@ -99,7 +99,7 @@ export function createFriend(
 export function createFriendRequest(
   fromPlayerId: PlayerId,
   fromDisplayName: string,
-  toPlayerId: PlayerId
+  toPlayerId: PlayerId,
 ): FriendRequest {
   return {
     id: `request-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -107,7 +107,7 @@ export function createFriendRequest(
     fromDisplayName,
     toPlayerId,
     timestamp: Date.now(),
-    status: 'pending',
+    status: "pending",
   };
 }
 
@@ -121,11 +121,11 @@ export function createFriendRequest(
 export function createMatchHistoryEntry(
   opponentId: PlayerId,
   opponentName: string,
-  result: 'win' | 'loss' | 'draw',
-  format: MatchHistoryEntry['format'],
+  result: "win" | "loss" | "draw",
+  format: MatchHistoryEntry["format"],
   yourDeckName?: string,
   opponentDeckName?: string,
-  duration: number = 0
+  duration: number = 0,
 ): MatchHistoryEntry {
   return {
     id: `match-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -145,20 +145,21 @@ export function createMatchHistoryEntry(
  */
 export function getWinRateFromHistory(history: MatchHistoryEntry[]): number {
   if (history.length === 0) return 0;
-  
-  const wins = history.filter(m => m.result === 'win').length;
-  const draws = history.filter(m => m.result === 'draw').length;
-  
+
+  const wins = history.filter((m) => m.result === "win").length;
+  const draws = history.filter((m) => m.result === "draw").length;
+
   return ((wins + draws * 0.5) / history.length) * 100;
 }
 
 /**
  * Get recent results (last N games)
  */
-export function getRecentResults(history: MatchHistoryEntry[], count: number = 10): MatchHistoryEntry[] {
-  return [...history]
-    .sort((a, b) => b.playedAt - a.playedAt)
-    .slice(0, count);
+export function getRecentResults(
+  history: MatchHistoryEntry[],
+  count: number = 10,
+): MatchHistoryEntry[] {
+  return [...history].sort((a, b) => b.playedAt - a.playedAt).slice(0, count);
 }
 
 /**
@@ -166,9 +167,9 @@ export function getRecentResults(history: MatchHistoryEntry[], count: number = 1
  */
 export function getResultsByFormat(
   history: MatchHistoryEntry[],
-  format: MatchHistoryEntry['format']
+  format: MatchHistoryEntry["format"],
 ): MatchHistoryEntry[] {
-  return history.filter(m => m.format === format);
+  return history.filter((m) => m.format === format);
 }
 
 // ============================================================
@@ -180,7 +181,7 @@ export function getResultsByFormat(
  */
 export function createPlayerProfile(
   playerId: PlayerId,
-  displayName: string
+  displayName: string,
 ): PlayerProfile {
   return {
     playerId,
@@ -198,14 +199,14 @@ export function createPlayerProfile(
  */
 export function updateProfileWithResult(
   profile: PlayerProfile,
-  result: 'win' | 'loss' | 'draw'
+  result: "win" | "loss" | "draw",
 ): PlayerProfile {
   return {
     ...profile,
     totalGames: profile.totalGames + 1,
-    wins: profile.wins + (result === 'win' ? 1 : 0),
-    losses: profile.losses + (result === 'loss' ? 1 : 0),
-    draws: profile.draws + (result === 'draw' ? 1 : 0),
+    wins: profile.wins + (result === "win" ? 1 : 0),
+    losses: profile.losses + (result === "loss" ? 1 : 0),
+    draws: profile.draws + (result === "draw" ? 1 : 0),
   };
 }
 

@@ -14,22 +14,27 @@
  * preserved on every diagnostic log call.
  */
 
-import { WebRTCConnection, type P2PConnectionState, type P2PMessage, type P2PEvents } from './webrtc-p2p';
+import {
+  WebRTCConnection,
+  type P2PConnectionState,
+  type P2PMessage,
+  type P2PEvents,
+} from "./webrtc-p2p";
 import {
   WebSocketConnection,
   type WebSocketConnectionState,
   type WebSocketEvents,
   type WebSocketConfig,
   isWebSocketAvailable,
-} from './websocket-connection';
-import type { GameState } from './game-state/types';
-import { TIMEOUTS } from './config/timeouts';
-import { redactSensitive } from './p2p-log-redact';
+} from "./websocket-connection";
+import type { GameState } from "@/lib/game-state";
+import { TIMEOUTS } from "./config/timeouts";
+import { redactSensitive } from "./p2p-log-redact";
 
 /**
  * Connection type
  */
-export type ConnectionType = 'webrtc' | 'websocket' | 'none';
+export type ConnectionType = "webrtc" | "websocket" | "none";
 
 /**
  * Structured failure codes for the connection state machine (#985).
@@ -40,25 +45,25 @@ export type ConnectionType = 'webrtc' | 'websocket' | 'none';
  */
 export enum ConnectionErrorCode {
   /** ICE negotiation failed or the peer connection never opened. */
-  ICE_FAILED = 'ICE_FAILED',
+  ICE_FAILED = "ICE_FAILED",
   /** WebRTC connection failed (initialization, data channel, or retries exhausted). */
-  WEBRTC_FAILED = 'WEBRTC_FAILED',
+  WEBRTC_FAILED = "WEBRTC_FAILED",
   /** WebRTC is not available in this environment (e.g. no `RTCPeerConnection`). */
-  WEBRTC_UNAVAILABLE = 'WEBRTC_UNAVAILABLE',
+  WEBRTC_UNAVAILABLE = "WEBRTC_UNAVAILABLE",
   /** The WebSocket transport failed (`new WebSocket(...)` or `connect()` rejected). */
-  WEBSOCKET_FAILED = 'WEBSOCKET_FAILED',
+  WEBSOCKET_FAILED = "WEBSOCKET_FAILED",
   /** No `websocketUrl` was configured or `isWebSocketAvailable()` returned false. */
-  WEBSOCKET_UNAVAILABLE = 'WEBSOCKET_UNAVAILABLE',
+  WEBSOCKET_UNAVAILABLE = "WEBSOCKET_UNAVAILABLE",
   /** A connection attempt exceeded its configured timeout. */
-  TIMEOUT = 'TIMEOUT',
+  TIMEOUT = "TIMEOUT",
   /** Neither WebRTC nor WebSocket is available. */
-  NO_CONNECTION_METHOD = 'NO_CONNECTION_METHOD',
+  NO_CONNECTION_METHOD = "NO_CONNECTION_METHOD",
   /** Both WebRTC and WebSocket were tried and neither connected. */
-  BOTH_FAILED = 'BOTH_FAILED',
+  BOTH_FAILED = "BOTH_FAILED",
   /** The retry budget for a transient failure was exhausted. */
-  RETRY_EXHAUSTED = 'RETRY_EXHAUSTED',
+  RETRY_EXHAUSTED = "RETRY_EXHAUSTED",
   /** A `send*` call could not be delivered because the active transport threw. */
-  SEND_FAILED = 'SEND_FAILED',
+  SEND_FAILED = "SEND_FAILED",
 }
 
 /**
@@ -73,7 +78,7 @@ export class ConnectionError extends Error {
 
   constructor(code: ConnectionErrorCode, message: string, cause?: Error) {
     super(message);
-    this.name = 'ConnectionError';
+    this.name = "ConnectionError";
     this.code = code;
     if (cause) {
       this.cause = cause;
@@ -150,7 +155,9 @@ const DEFAULT_RETRY_BASE_DELAY_MS = 1000;
 export class ConnectionFallbackManager {
   private webrtcConnection: WebRTCConnection | null = null;
   private websocketConnection: WebSocketConnection | null = null;
-  private options: Required<Omit<ConnectionFallbackOptions, 'events'>> & { events: ConnectionFallbackEvents };
+  private options: Required<Omit<ConnectionFallbackOptions, "events">> & {
+    events: ConnectionFallbackEvents;
+  };
   private state: ConnectionFallbackState;
   private fallbackTimer: ReturnType<typeof setTimeout> | null = null;
   private connectionAttempts = 0;
@@ -159,10 +166,12 @@ export class ConnectionFallbackManager {
   constructor(options: ConnectionFallbackOptions) {
     this.options = {
       ...options,
-      gameCode: options.gameCode ?? '',
+      gameCode: options.gameCode ?? "",
       webrtcConfig: options.webrtcConfig ?? {},
-      websocketUrl: options.websocketUrl || process.env.NEXT_PUBLIC_WEBSOCKET_URL || '',
-      fallbackTimeout: options.fallbackTimeout ?? TIMEOUTS.P2P_FALLBACK_TIMEOUT_MS,
+      websocketUrl:
+        options.websocketUrl || process.env.NEXT_PUBLIC_WEBSOCKET_URL || "",
+      fallbackTimeout:
+        options.fallbackTimeout ?? TIMEOUTS.P2P_FALLBACK_TIMEOUT_MS,
       enableFallback: options.enableFallback ?? true,
       preferWebSocket: options.preferWebSocket ?? false,
       maxRetries: options.maxRetries ?? 0,
@@ -170,8 +179,8 @@ export class ConnectionFallbackManager {
     };
 
     this.state = {
-      preferredConnection: options.preferWebSocket ? 'websocket' : 'webrtc',
-      activeConnection: 'none',
+      preferredConnection: options.preferWebSocket ? "websocket" : "webrtc",
+      activeConnection: "none",
       webrtcState: null,
       websocketState: null,
       fallbackAttempted: false,
@@ -194,7 +203,7 @@ export class ConnectionFallbackManager {
         }
         const err = new ConnectionError(
           ConnectionErrorCode.NO_CONNECTION_METHOD,
-          'No connection method available',
+          "No connection method available",
         );
         this.recordError(err);
         throw err;
@@ -209,7 +218,7 @@ export class ConnectionFallbackManager {
         }
         const wrapped = new ConnectionError(
           ConnectionErrorCode.WEBRTC_FAILED,
-          `Failed to establish connection: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          `Failed to establish connection: ${error instanceof Error ? error.message : "Unknown error"}`,
           error instanceof Error ? error : undefined,
         );
         this.recordError(wrapped);
@@ -279,7 +288,9 @@ export class ConnectionFallbackManager {
                 ? wsError
                 : new ConnectionError(
                     ConnectionErrorCode.WEBSOCKET_FAILED,
-                    wsError instanceof Error ? wsError.message : String(wsError),
+                    wsError instanceof Error
+                      ? wsError.message
+                      : String(wsError),
                     wsError instanceof Error ? wsError : undefined,
                   );
             settleReject(
@@ -293,11 +304,17 @@ export class ConnectionFallbackManager {
       };
 
       // Set up fallback timer (only when a fallback is possible)
-      if (this.options.enableFallback && isWebSocketAvailable() && this.options.websocketUrl) {
+      if (
+        this.options.enableFallback &&
+        isWebSocketAvailable() &&
+        this.options.websocketUrl
+      ) {
         this.fallbackTimer = setTimeout(() => {
-          if (settled || this.state.activeConnection === 'webrtc') return;
-          console.info('[ConnectionFallback] WebRTC connection timeout, falling back to WebSocket');
-          attemptFallback('WebRTC connection timed out');
+          if (settled || this.state.activeConnection === "webrtc") return;
+          console.info(
+            "[ConnectionFallback] WebRTC connection timeout, falling back to WebSocket",
+          );
+          attemptFallback("WebRTC connection timed out");
         }, this.options.fallbackTimeout);
       }
 
@@ -308,9 +325,15 @@ export class ConnectionFallbackManager {
         .then(settleResolve)
         .catch((error) => {
           // #982: redact — WebRTC connection errors may embed SDP / ICE config.
-          console.error('[ConnectionFallback] WebRTC connection failed:', redactSensitive(error));
-          this.state.lastError = error instanceof Error ? error.message : 'WebRTC connection failed';
-          this.options.events.onError(error instanceof Error ? error : new Error(String(error)));
+          console.error(
+            "[ConnectionFallback] WebRTC connection failed:",
+            redactSensitive(error),
+          );
+          this.state.lastError =
+            error instanceof Error ? error.message : "WebRTC connection failed";
+          this.options.events.onError(
+            error instanceof Error ? error : new Error(String(error)),
+          );
 
           // If no fallback is possible, bubble the original (already-typed)
           // error verbatim — this preserves RETRY_EXHAUSTED / WEBRTC_FAILED
@@ -332,7 +355,7 @@ export class ConnectionFallbackManager {
           }
 
           attemptFallback(
-            error instanceof Error ? error.message : 'WebRTC connection failed',
+            error instanceof Error ? error.message : "WebRTC connection failed",
           );
         });
     });
@@ -381,7 +404,7 @@ export class ConnectionFallbackManager {
     }
 
     const message =
-      lastError instanceof Error ? lastError.message : 'Unknown error';
+      lastError instanceof Error ? lastError.message : "Unknown error";
     throw new ConnectionError(
       this.options.maxRetries > 0
         ? ConnectionErrorCode.RETRY_EXHAUSTED
@@ -401,11 +424,15 @@ export class ConnectionFallbackManager {
         this.state.webrtcState = state;
         this.notifyStateChange();
 
-        if (state === 'failed' && this.options.enableFallback && !this.state.fallbackAttempted) {
+        if (
+          state === "failed" &&
+          this.options.enableFallback &&
+          !this.state.fallbackAttempted
+        ) {
           this.attemptFallback().catch((err) => {
             // Already logged inside attemptFallback; suppress unhandled rejection.
             console.error(
-              '[ConnectionFallback] Unhandled error in auto-fallback:',
+              "[ConnectionFallback] Unhandled error in auto-fallback:",
               redactSensitive(err),
             );
           });
@@ -418,28 +445,37 @@ export class ConnectionFallbackManager {
         this.options.events.onGameStateSync(gameState);
       },
       onPlayerAction: (action, data, _peerId) => {
-        this.options.events.onMessage({
-          type: 'player-action',
-          senderId: _peerId,
-          timestamp: Date.now(),
-          payload: { action, data },
-        }, _peerId);
+        this.options.events.onMessage(
+          {
+            type: "player-action",
+            senderId: _peerId,
+            timestamp: Date.now(),
+            payload: { action, data },
+          },
+          _peerId,
+        );
       },
       onChat: (text, _peerId) => {
-        this.options.events.onMessage({
-          type: 'chat',
-          senderId: _peerId,
-          timestamp: Date.now(),
-          payload: { text },
-        }, _peerId);
+        this.options.events.onMessage(
+          {
+            type: "chat",
+            senderId: _peerId,
+            timestamp: Date.now(),
+            payload: { text },
+          },
+          _peerId,
+        );
       },
       onEmote: (emote, _peerId) => {
-        this.options.events.onMessage({
-          type: 'emote',
-          senderId: _peerId,
-          timestamp: Date.now(),
-          payload: { emote },
-        }, _peerId);
+        this.options.events.onMessage(
+          {
+            type: "emote",
+            senderId: _peerId,
+            timestamp: Date.now(),
+            payload: { emote },
+          },
+          _peerId,
+        );
       },
       onError: (error, _peerId) => {
         this.state.lastError = error.message;
@@ -447,7 +483,10 @@ export class ConnectionFallbackManager {
         this.options.events.onError(error);
       },
       onPeerConnected: (peerInfo) => {
-        this.options.events.onPeerConnected(peerInfo.peerId, peerInfo.playerName);
+        this.options.events.onPeerConnected(
+          peerInfo.peerId,
+          peerInfo.playerName,
+        );
       },
       onPeerDisconnected: (peerId) => {
         this.options.events.onPeerDisconnected(peerId);
@@ -465,22 +504,20 @@ export class ConnectionFallbackManager {
       });
 
       await this.webrtcConnection.initialize();
-      this.state.activeConnection = 'webrtc';
+      this.state.activeConnection = "webrtc";
       this.notifyStateChange();
-      this.options.events.onConnectionTypeChange('webrtc');
+      this.options.events.onConnectionTypeChange("webrtc");
 
-      return 'webrtc';
+      return "webrtc";
     } catch (error) {
       // Clean up partially-initialised connection so a retry starts clean.
       this.cleanupWebRTC();
       // #982: redact — underlying errors may embed SDP / ICE config.
       console.error(
-        '[ConnectionFallback] WebRTC establishment failed:',
+        "[ConnectionFallback] WebRTC establishment failed:",
         redactSensitive(error),
       );
-      throw error instanceof Error
-        ? error
-        : new Error(String(error));
+      throw error instanceof Error ? error : new Error(String(error));
     }
   }
 
@@ -495,7 +532,7 @@ export class ConnectionFallbackManager {
     if (!isWebSocketAvailable() || !this.options.websocketUrl) {
       throw new ConnectionError(
         ConnectionErrorCode.WEBSOCKET_UNAVAILABLE,
-        'WebSocket is not available',
+        "WebSocket is not available",
       );
     }
 
@@ -504,8 +541,8 @@ export class ConnectionFallbackManager {
         this.state.websocketState = state;
         this.notifyStateChange();
 
-        if (state === 'failed') {
-          this.recordError(new Error('WebSocket connection failed'));
+        if (state === "failed") {
+          this.recordError(new Error("WebSocket connection failed"));
         }
       },
       onMessage: (message) => {
@@ -538,24 +575,24 @@ export class ConnectionFallbackManager {
       this.cleanupWebSocket();
       // #982: redact — WS fallback errors may embed server URLs carrying session tokens.
       console.error(
-        '[ConnectionFallback] WebSocket connection failed:',
+        "[ConnectionFallback] WebSocket connection failed:",
         redactSensitive(error),
       );
       const wrapped = new ConnectionError(
         ConnectionErrorCode.WEBSOCKET_FAILED,
-        `WebSocket connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        `WebSocket connection failed: ${error instanceof Error ? error.message : "Unknown error"}`,
         error instanceof Error ? error : undefined,
       );
       this.recordError(wrapped);
       throw wrapped;
     }
 
-    this.state.activeConnection = 'websocket';
+    this.state.activeConnection = "websocket";
     this.state.fallbackAttempted = true;
     this.notifyStateChange();
-    this.options.events.onConnectionTypeChange('websocket');
+    this.options.events.onConnectionTypeChange("websocket");
 
-    return 'websocket';
+    return "websocket";
   }
 
   /**
@@ -570,7 +607,7 @@ export class ConnectionFallbackManager {
       return;
     }
 
-    console.info('[ConnectionFallback] Attempting fallback to WebSocket');
+    console.info("[ConnectionFallback] Attempting fallback to WebSocket");
     this.state.fallbackAttempted = true;
 
     // Clean up WebRTC connection
@@ -580,7 +617,10 @@ export class ConnectionFallbackManager {
       await this.connectWebSocket();
     } catch (error) {
       // #982: redact — fallback errors may embed WS URLs / session tokens.
-      console.error('[ConnectionFallback] Fallback to WebSocket failed:', redactSensitive(error));
+      console.error(
+        "[ConnectionFallback] Fallback to WebSocket failed:",
+        redactSensitive(error),
+      );
       const wrapped =
         error instanceof ConnectionError
           ? error
@@ -597,7 +637,7 @@ export class ConnectionFallbackManager {
    * Check if WebRTC is available
    */
   private isWebRTCAvailable(): boolean {
-    return typeof RTCPeerConnection !== 'undefined';
+    return typeof RTCPeerConnection !== "undefined";
   }
 
   /**
@@ -632,7 +672,7 @@ export class ConnectionFallbackManager {
       this.webrtcConnection.close();
     } catch (err) {
       console.warn(
-        '[ConnectionFallback] Error closing WebRTC connection during cleanup:',
+        "[ConnectionFallback] Error closing WebRTC connection during cleanup:",
         redactSensitive(err),
       );
     }
@@ -646,7 +686,7 @@ export class ConnectionFallbackManager {
       this.websocketConnection.disconnect();
     } catch (err) {
       console.warn(
-        '[ConnectionFallback] Error closing WebSocket connection during cleanup:',
+        "[ConnectionFallback] Error closing WebSocket connection during cleanup:",
         redactSensitive(err),
       );
     }
@@ -669,15 +709,20 @@ export class ConnectionFallbackManager {
    */
   send(message: P2PMessage): void {
     try {
-      if (this.state.activeConnection === 'webrtc' && this.webrtcConnection) {
+      if (this.state.activeConnection === "webrtc" && this.webrtcConnection) {
         this.webrtcConnection.send(message);
-      } else if (this.state.activeConnection === 'websocket' && this.websocketConnection) {
+      } else if (
+        this.state.activeConnection === "websocket" &&
+        this.websocketConnection
+      ) {
         this.websocketConnection.send(message);
       } else {
-        console.warn('[ConnectionFallback] No active connection to send message');
+        console.warn(
+          "[ConnectionFallback] No active connection to send message",
+        );
       }
     } catch (error) {
-      this.recordSendError('send', error);
+      this.recordSendError("send", error);
     }
   }
 
@@ -686,15 +731,20 @@ export class ConnectionFallbackManager {
    */
   sendGameState(gameState: GameState, isFullSync: boolean = false): void {
     try {
-      if (this.state.activeConnection === 'webrtc' && this.webrtcConnection) {
+      if (this.state.activeConnection === "webrtc" && this.webrtcConnection) {
         this.webrtcConnection.sendGameState(gameState, isFullSync);
-      } else if (this.state.activeConnection === 'websocket' && this.websocketConnection) {
+      } else if (
+        this.state.activeConnection === "websocket" &&
+        this.websocketConnection
+      ) {
         this.websocketConnection.sendGameState(gameState, isFullSync);
       } else {
-        console.warn('[ConnectionFallback] No active connection to send game state');
+        console.warn(
+          "[ConnectionFallback] No active connection to send game state",
+        );
       }
     } catch (error) {
-      this.recordSendError('sendGameState', error);
+      this.recordSendError("sendGameState", error);
     }
   }
 
@@ -703,13 +753,16 @@ export class ConnectionFallbackManager {
    */
   sendPlayerAction(action: string, data: unknown): void {
     try {
-      if (this.state.activeConnection === 'webrtc' && this.webrtcConnection) {
+      if (this.state.activeConnection === "webrtc" && this.webrtcConnection) {
         this.webrtcConnection.sendPlayerAction(action, data);
-      } else if (this.state.activeConnection === 'websocket' && this.websocketConnection) {
+      } else if (
+        this.state.activeConnection === "websocket" &&
+        this.websocketConnection
+      ) {
         this.websocketConnection.sendPlayerAction(action, data);
       }
     } catch (error) {
-      this.recordSendError('sendPlayerAction', error);
+      this.recordSendError("sendPlayerAction", error);
     }
   }
 
@@ -718,13 +771,16 @@ export class ConnectionFallbackManager {
    */
   sendChat(text: string): void {
     try {
-      if (this.state.activeConnection === 'webrtc' && this.webrtcConnection) {
+      if (this.state.activeConnection === "webrtc" && this.webrtcConnection) {
         this.webrtcConnection.sendChat(text);
-      } else if (this.state.activeConnection === 'websocket' && this.websocketConnection) {
+      } else if (
+        this.state.activeConnection === "websocket" &&
+        this.websocketConnection
+      ) {
         this.websocketConnection.sendChat(text);
       }
     } catch (error) {
-      this.recordSendError('sendChat', error);
+      this.recordSendError("sendChat", error);
     }
   }
 
@@ -733,13 +789,16 @@ export class ConnectionFallbackManager {
    */
   sendEmote(emote: string): void {
     try {
-      if (this.state.activeConnection === 'webrtc' && this.webrtcConnection) {
+      if (this.state.activeConnection === "webrtc" && this.webrtcConnection) {
         this.webrtcConnection.sendEmote(emote);
-      } else if (this.state.activeConnection === 'websocket' && this.websocketConnection) {
+      } else if (
+        this.state.activeConnection === "websocket" &&
+        this.websocketConnection
+      ) {
         this.websocketConnection.sendEmote(emote);
       }
     } catch (error) {
-      this.recordSendError('sendEmote', error);
+      this.recordSendError("sendEmote", error);
     }
   }
 
@@ -756,7 +815,7 @@ export class ConnectionFallbackManager {
     this.recordError(
       new ConnectionError(
         ConnectionErrorCode.SEND_FAILED,
-        `${method} failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        `${method} failed: ${error instanceof Error ? error.message : "Unknown error"}`,
         error instanceof Error ? error : undefined,
       ),
     );
@@ -781,16 +840,16 @@ export class ConnectionFallbackManager {
    */
   isConnected(): boolean {
     try {
-      if (this.state.activeConnection === 'webrtc') {
+      if (this.state.activeConnection === "webrtc") {
         return this.webrtcConnection?.isConnected() ?? false;
-      } else if (this.state.activeConnection === 'websocket') {
+      } else if (this.state.activeConnection === "websocket") {
         return this.websocketConnection?.isConnected() ?? false;
       }
       return false;
     } catch (error) {
       // isConnected is a status check — never let it crash callers.
       console.warn(
-        '[ConnectionFallback] isConnected() threw:',
+        "[ConnectionFallback] isConnected() threw:",
         redactSensitive(error),
       );
       return false;
@@ -818,7 +877,7 @@ export class ConnectionFallbackManager {
    * the auto-fallback path, the caller asked explicitly.
    */
   async forceFallback(): Promise<void> {
-    if (this.state.activeConnection === 'websocket') {
+    if (this.state.activeConnection === "websocket") {
       return;
     }
 
@@ -833,7 +892,7 @@ export class ConnectionFallbackManager {
           ? error
           : new ConnectionError(
               ConnectionErrorCode.WEBSOCKET_FAILED,
-              `forceFallback failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+              `forceFallback failed: ${error instanceof Error ? error.message : "Unknown error"}`,
               error instanceof Error ? error : undefined,
             );
       this.recordError(wrapped);
@@ -849,7 +908,7 @@ export class ConnectionFallbackManager {
     this.cleanupWebRTC();
     this.cleanupWebSocket();
 
-    this.state.activeConnection = 'none';
+    this.state.activeConnection = "none";
     this.state.webrtcState = null;
     this.state.websocketState = null;
     this.notifyStateChange();
@@ -867,7 +926,7 @@ export class ConnectionFallbackManager {
  * Create a connection fallback manager
  */
 export function createConnectionFallbackManager(
-  options: ConnectionFallbackOptions
+  options: ConnectionFallbackOptions,
 ): ConnectionFallbackManager {
   return new ConnectionFallbackManager(options);
 }
@@ -876,5 +935,5 @@ export function createConnectionFallbackManager(
  * Check if any connection method is available
  */
 export function isConnectionAvailable(): boolean {
-  return typeof RTCPeerConnection !== 'undefined' || isWebSocketAvailable();
+  return typeof RTCPeerConnection !== "undefined" || isWebSocketAvailable();
 }

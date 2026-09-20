@@ -40,6 +40,9 @@ export * from "./state-hash";
 export * from "./replay";
 export * from "./serialization";
 export * from "./replacement-effects";
+// Named re-export (not `export *`) to avoid shadowing serializeGameState /
+// deserializeGameState from ./serialization with the同名 from ./state-serialization:
+export { mapReviver } from "./state-serialization";
 export * from "./layer-system";
 export {
   destroyCard as destroyPermanentAction,
@@ -55,6 +58,7 @@ export {
 export * from "./keyword-actions";
 export * from "./combat";
 export * from "./state-based-actions";
+export * from "./validation-service";
 export * from "./oracle-text-parser";
 export * from "./mana";
 export * from "./spell-casting";
@@ -75,6 +79,7 @@ export * from "./priority-guard";
 export * from "./card-instance";
 export * from "./zones";
 export * from "./ward-system";
+export * from "./game-state-compression";
 export * from "./replay-compression";
 // #1724: format / game-mode configuration is engine-owned versioned input
 // data (FORMAT_RULES_VERSION). The root-level @/lib/game-rules module is a

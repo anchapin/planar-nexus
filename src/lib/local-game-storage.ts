@@ -15,8 +15,10 @@ import {
   serializeGameState,
   deserializeGameState,
   type SerializedGameState,
-} from "./game-state/serialization";
-import type { GameState, Phase, PlayerId } from "./game-state/types";
+  type GameState,
+  type Phase,
+  type PlayerId,
+} from "@/lib/game-state";
 import {
   indexedDBStorage,
   LOCAL_GAME_CODES_STORE,

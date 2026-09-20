@@ -15,12 +15,16 @@
  *   signed under the pre-migration key, satisfying acceptance criterion #2.
  */
 
-import type {
-  GameState,
-  Phase,
-  PlayerId,
-  GameAction,
-} from "./game-state/types";
+import {
+  type GameState,
+  type Phase,
+  type PlayerId,
+  type GameAction,
+  serializeGameState,
+  deserializeGameState,
+  type SerializedGameState,
+  ValidationService,
+} from "@/lib/game-state";
 import {
   LocalSignalingClient,
   createLocalSignalingClient,
@@ -29,12 +33,6 @@ import {
   ConnectionPhase,
   SignalingRole,
 } from "./local-signaling-client";
-import {
-  serializeGameState,
-  deserializeGameState,
-  type SerializedGameState,
-} from "./game-state/serialization";
-import { ValidationService } from "./game-state/validation-service";
 import {
   ICEConfigurationManager,
   getGlobalICEManager,
