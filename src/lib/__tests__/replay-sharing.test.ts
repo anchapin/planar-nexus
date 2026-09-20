@@ -286,10 +286,10 @@ describe("replay-sharing", () => {
   });
 
   // -------------------------------------------------------------------
-  // 2. Version / Phase coercion  (pins QA-2.8)
+  // 2. Phase / status enum validation (issue #1904)
   // -------------------------------------------------------------------
-  describe("Phase / status coercion (no enum validation — pins QA-2.8)", () => {
-    it("passes an unknown phase string through verbatim (silent cast)", () => {
+  describe("Phase / status coercion (validates against enum — fixes QA-2.8)", () => {
+    it("returns null for an unknown phase string (e.g. cp: 'postcombat_mai')", () => {
       const minified = {
         i: "r",
         m: {
@@ -304,7 +304,7 @@ describe("replay-sharing", () => {
             t: "cast_spell",
             pid: "p1",
             rs: {
-              t: { cp: "NOT_A_REAL_PHASE", tn: 5 },
+              t: { cp: "postcombat_mai", tn: 5 },
               p: [{ id: "p1", n: "A", l: 17, h: 3 }],
               z: { bf: 1, g: 0, l: 30 },
             },
@@ -318,10 +318,59 @@ describe("replay-sharing", () => {
         lma: FIXED_NOW,
       };
 
-      const decoded = decodeReplayFromURL(encodeValue(minified))!;
-      expect(decoded.actions[0].resultingState!.turn.currentPhase).toBe(
-        "NOT_A_REAL_PHASE",
-      );
+      expect(decodeReplayFromURL(encodeValue(minified))).toBeNull();
+    });
+
+    it("returns null for a typo phase string (e.g. cp: 'postcombat_mai') via decodeReplayFromURL", () => {
+      const minified = {
+        i: "r",
+        m: { f: "modern", p: ["A"], s: 20, c: false },
+        a: [
+          {
+            s: 0,
+            t: "cast_spell",
+            pid: "p1",
+            rs: {
+              t: { cp: "postcombat_mai", tn: 1 },
+              p: [{ id: "p1", n: "A", l: 20, h: 7 }],
+              z: { bf: 0, g: 0, l: 40 },
+            },
+            desc: "x",
+            ra: FIXED_NOW,
+          },
+        ],
+        cp: 0,
+        ta: 1,
+        ca: FIXED_NOW,
+        lma: FIXED_NOW,
+      };
+      expect(decodeReplayFromURL(encodeValue(minified))).toBeNull();
+    });
+
+    it("returns null for an unknown status string (e.g. s: 'concluded')", () => {
+      const minified = {
+        i: "r",
+        m: { f: "modern", p: ["A"], s: 20, c: false },
+        a: [
+          {
+            s: 0,
+            t: "cast_spell",
+            pid: "p1",
+            rs: {
+              p: [{ id: "p1", n: "A", l: 20, h: 7 }],
+              z: { bf: 0, g: 0, l: 40 },
+              s: "concluded",
+            },
+            desc: "x",
+            ra: FIXED_NOW,
+          },
+        ],
+        cp: 0,
+        ta: 1,
+        ca: FIXED_NOW,
+        lma: FIXED_NOW,
+      };
+      expect(decodeReplayFromURL(encodeValue(minified))).toBeNull();
     });
 
     it("defaults a missing phase to UNTAP", () => {
@@ -354,7 +403,7 @@ describe("replay-sharing", () => {
       );
     });
 
-    it("passes an unknown status string through verbatim", () => {
+    it("accepts a valid phase string", () => {
       const minified = {
         i: "r",
         m: { f: "modern", p: ["A"], s: 20, c: false },
@@ -364,9 +413,9 @@ describe("replay-sharing", () => {
             t: "cast_spell",
             pid: "p1",
             rs: {
+              t: { cp: Phase.POSTCOMBAT_MAIN, tn: 3 },
               p: [{ id: "p1", n: "A", l: 20, h: 7 }],
-              z: { bf: 0, g: 0, l: 40 },
-              s: "frozen", // not a real GameStatus
+              z: { bf: 1, g: 0, l: 40 },
             },
             desc: "x",
             ra: FIXED_NOW,
@@ -379,7 +428,37 @@ describe("replay-sharing", () => {
       };
 
       const decoded = decodeReplayFromURL(encodeValue(minified))!;
-      expect(decoded.actions[0].resultingState!.status).toBe("frozen");
+      expect(decoded.actions[0].resultingState!.turn.currentPhase).toBe(
+        Phase.POSTCOMBAT_MAIN,
+      );
+    });
+
+    it("accepts a valid status string", () => {
+      const minified = {
+        i: "r",
+        m: { f: "modern", p: ["A"], s: 20, c: false },
+        a: [
+          {
+            s: 0,
+            t: "cast_spell",
+            pid: "p1",
+            rs: {
+              p: [{ id: "p1", n: "A", l: 20, h: 7 }],
+              z: { bf: 0, g: 0, l: 40 },
+              s: "completed",
+            },
+            desc: "x",
+            ra: FIXED_NOW,
+          },
+        ],
+        cp: 0,
+        ta: 1,
+        ca: FIXED_NOW,
+        lma: FIXED_NOW,
+      };
+
+      const decoded = decodeReplayFromURL(encodeValue(minified))!;
+      expect(decoded.actions[0].resultingState!.status).toBe("completed");
     });
   });
 
