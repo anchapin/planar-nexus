@@ -150,6 +150,21 @@ export interface MeshGameConnectionEvents {
    * takes ~30s to transition `disconnected` → `failed`.
    */
   onPeerUnreachable: (peerId: string) => void;
+  /**
+   * A peer's broadcast state hash differs from the local state hash (issue #1908).
+   * The mesh fires this event when an inbound `state-hash` message from a peer
+   * does not match the local hash at the time of receipt. The caller should
+   * trigger a full state reconciliation (e.g. via `requestStateSync`) on the
+   * receiving side to restore consistency. Fires at most once per (peer, mismatch)
+   * episode — subsequent inbound hashes from the same peer that still mismatch
+   * are suppressed until the mismatch clears (both peers hash equal again, e.g.
+   * after a successful reconcile).
+   */
+  onDesyncDetected: (
+    peerId: string,
+    localHash: string,
+    remoteHash: string,
+  ) => void;
 }
 
 /** A message payload the caller wants to put on the wire (seq/timestamp stamped by the mesh). */
@@ -185,6 +200,35 @@ export interface MeshHeartbeatOptions {
    */
   maxMissed?: number;
 }
+
+/**
+ * Application-level state-hash broadcast configuration (issue #1908).
+ *
+ * The mesh runs a periodic `setInterval` that broadcasts the local peer's
+ * state hash to all connected peers. When a peer's inbound hash differs
+ * from the local hash, the mesh fires {@link MeshGameConnectionEvents.onDesyncDetected}
+ * so the caller can trigger a full state reconciliation via `requestStateSync`.
+ *
+ * Setting `intervalMs` to a non-positive value disables the hash drift
+ * detection entirely (no `setInterval` is registered, no hashes are sent).
+ */
+export interface MeshHashDriftOptions {
+  /**
+   * Hash broadcast tick interval (ms). Defaults to
+   * {@link DEFAULT_HASH_DRIFT_INTERVAL_MS} (10000 = 10s).
+   * Setting to `<= 0` disables periodic hash broadcast.
+   */
+  intervalMs?: number;
+  /**
+   * Callback that returns the current local state hash. The mesh calls this
+   * on every tick to get the hash to broadcast. Must be provided if
+   * `intervalMs > 0`.
+   */
+  getLocalStateHash?: () => string;
+}
+
+/** Default hash drift detection interval (ms). Issue #1908 — 10s detection window. */
+export const DEFAULT_HASH_DRIFT_INTERVAL_MS = 10000;
 
 /** Default heartbeat interval (ms). Issue #1569 — 5s * 3 = 15s detection. */
 export const DEFAULT_HEARTBEAT_INTERVAL_MS = 5000;
@@ -243,6 +287,14 @@ export interface MeshGameConnectionOptions {
    * `onPeerUnreachable` fires).
    */
   heartbeat?: MeshHeartbeatOptions;
+  /**
+   * Application-level periodic state-hash broadcast for desync detection (issue #1908).
+   * When omitted the hash drift detection is DISABLED — no `setInterval` is
+   * registered and no `state-hash` messages are sent. Pass `intervalMs: 0`
+   * (or any non-positive value) to explicitly disable. When enabled with a
+   * positive `intervalMs`, `getLocalStateHash` MUST be provided.
+   */
+  hashDrift?: MeshHashDriftOptions;
   /**
    * Observer invoked once per executed inbound trust-pipeline step with the
    * step's terminal outcome (`pass` / `reject` / `skipped`), in execution
@@ -422,6 +474,31 @@ export class MeshGameConnection {
    */
   private readonly peerUnreachableEmitted: Set<string> = new Set();
 
+  // ──────────────────────────────────────────────────────────────────────
+  // Application-level state-hash broadcast for desync detection (issue #1908)
+  // ──────────────────────────────────────────────────────────────────────
+  /**
+   * Hash drift detection tick interval in ms (issue #1908). `0` (or any
+   * non-positive value) means the detection is disabled.
+   */
+  private readonly hashDriftIntervalMs: number;
+  /**
+   * Callback that returns the current local state hash. Called on every
+   * tick to get the hash to broadcast.
+   */
+  private readonly getLocalStateHash: (() => string) | null;
+  /**
+   * Handle for the hash drift `setInterval`. `null` when disabled
+   * (initial state, after `close()`, or when `hashDrift.intervalMs <= 0`).
+   */
+  private hashDriftIntervalId: ReturnType<typeof setInterval> | null = null;
+  /**
+   * Per-peer set of peer-ids for which `onDesyncDetected` has already been
+   * emitted during the current mismatch episode (issue #1908). Cleared when
+   * the peer's hash matches the local hash again (e.g. after successful reconcile).
+   */
+  private readonly desyncEmittedFor: Set<string> = new Set();
+
   constructor(options: MeshGameConnectionOptions) {
     if (!options.localPlayerId) {
       throw new Error("MeshGameConnectionOptions.localPlayerId is required");
@@ -465,6 +542,19 @@ export class MeshGameConnection {
         ? Math.floor(options.heartbeat.maxMissed)
         : DEFAULT_HEARTBEAT_MAX_MISSED;
 
+    // Hash drift detection configuration (issue #1908). A positive `intervalMs`
+    // enables the periodic broadcast; `0` (or omitted/negative) disables it.
+    if (
+      typeof options.hashDrift?.intervalMs === "number" &&
+      options.hashDrift.intervalMs > 0
+    ) {
+      this.hashDriftIntervalMs = options.hashDrift.intervalMs;
+      this.getLocalStateHash = options.hashDrift.getLocalStateHash ?? null;
+    } else {
+      this.hashDriftIntervalMs = 0;
+      this.getLocalStateHash = null;
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-empty-function
     const noop = (): void => {};
     const defaults: MeshGameConnectionEvents = {
@@ -475,6 +565,7 @@ export class MeshGameConnection {
       onPeerLeft: noop,
       onError: noop,
       onPeerUnreachable: noop,
+      onDesyncDetected: noop,
     };
     this.events = options.events
       ? { ...defaults, ...options.events }
@@ -484,6 +575,9 @@ export class MeshGameConnection {
     // tick cannot fire before the caller's `onPeerUnreachable` is wired
     // up.
     this.startHeartbeat();
+    // Kick off hash drift detection after heartbeat so the first hash
+    // broadcast can fire without racing the heartbeat setup.
+    this.startHashDriftDetection();
 
     // Issue #1791 — delegate the ordered inbound trust pipeline to the
     // shared module. Every callback reads LIVE mesh state (per-link keys,
@@ -1116,6 +1210,34 @@ export class MeshGameConnection {
         this.onPongReceived(fromPeerId);
         break;
       }
+      case "state-hash": {
+        // Inbound state hash from a peer (issue #1908). Compare against
+        // the local hash and emit `onDesyncDetected` if they differ.
+        // Only emit once per mismatch episode — suppress until the peer
+        // sends a matching hash (e.g. after a successful reconcile).
+        if (!this.getLocalStateHash) break;
+        const payload = message.data as { hash?: unknown };
+        if (typeof payload?.hash !== "string") break;
+        const remoteHash = payload.hash;
+        let localHash: string;
+        try {
+          localHash = this.getLocalStateHash();
+        } catch {
+          break;
+        }
+        if (
+          remoteHash !== localHash &&
+          !this.desyncEmittedFor.has(fromPeerId)
+        ) {
+          this.desyncEmittedFor.add(fromPeerId);
+          this.events.onDesyncDetected(fromPeerId, localHash, remoteHash);
+        } else if (remoteHash === localHash) {
+          // Hash matches again — clear the episode flag so a future mismatch
+          // can re-fire the event (issue #1908).
+          this.desyncEmittedFor.delete(fromPeerId);
+        }
+        break;
+      }
       default:
         break;
     }
@@ -1346,6 +1468,69 @@ export class MeshGameConnection {
     this.peerUnreachableEmitted.delete(fromPeerId);
   }
 
+  // ──────────────────────────────────────────────────────────────────────
+  // State-hash broadcast for desync detection (issue #1908)
+  // ──────────────────────────────────────────────────────────────────────
+
+  /**
+   * Start the periodic state-hash broadcast (issue #1908).
+   *
+   * Idempotent: a running interval is cleared first. If
+   * `hashDriftIntervalMs` is `0` (disabled), this is a no-op and NO
+   * `setInterval` is registered.
+   */
+  private startHashDriftDetection(): void {
+    this.stopHashDriftDetection();
+    if (this.hashDriftIntervalMs <= 0) return;
+    this.hashDriftIntervalId = setInterval(
+      () => this.tickHashDrift(),
+      this.hashDriftIntervalMs,
+    );
+  }
+
+  /**
+   * Stop the hash drift interval (cleared, not held). Idempotent.
+   * Issue #1908.
+   */
+  private stopHashDriftDetection(): void {
+    if (this.hashDriftIntervalId !== null) {
+      clearInterval(this.hashDriftIntervalId);
+      this.hashDriftIntervalId = null;
+    }
+  }
+
+  /**
+   * Whether the hash drift `setInterval` is currently running. Exposed
+   * for tests. Issue #1908.
+   */
+  isHashDriftDetectionRunning(): boolean {
+    return this.hashDriftIntervalId !== null;
+  }
+
+  /**
+   * One hash-drift tick (issue #1908). Broadcasts the local state hash
+   * to all connected peers via a `state-hash` GameMessage.
+   *
+   * The `getLocalStateHash` callback is called at tick time so the hash
+   * always reflects the current state even if the caller updated its state
+   * between ticks.
+   */
+  private tickHashDrift(): void {
+    if (this.links.size === 0) return;
+    if (!this.getLocalStateHash) return;
+    let localHash: string;
+    try {
+      localHash = this.getLocalStateHash();
+    } catch (error) {
+      p2pLogger.warn(
+        "[MeshGameConnection] getLocalStateHash threw during tickHashDrift:",
+        redactSensitive(error),
+      );
+      return;
+    }
+    this.broadcast({ type: "state-hash", data: { hash: localHash } });
+  }
+
   // ────────────────────────────────────────────────────────────────────────
   // Teardown
   // ────────────────────────────────────────────────────────────────────────
@@ -1360,6 +1545,8 @@ export class MeshGameConnection {
     // after we've torn down the per-peer state (issue #1569 teardown
     // contract).
     this.stopHeartbeat();
+    // Hash drift detection must be cleared too (issue #1908).
+    this.stopHashDriftDetection();
     for (const link of this.links.values()) {
       try {
         link.close();
@@ -1385,6 +1572,9 @@ export class MeshGameConnection {
     this.lastPongAt.clear();
     this.consecutiveMissedPongs.clear();
     this.peerUnreachableEmitted.clear();
+    // Hash drift bookkeeping (issue #1908). Drop the per-peer desync flags
+    // so a fresh session is not poisoned by stale mismatch flags.
+    this.desyncEmittedFor.clear();
   }
 }
 

@@ -29,6 +29,8 @@ interface MockEvents {
   onError: jest.Mock;
   // Issue #1569 — application-level ping/pong heartbeat.
   onPeerUnreachable: jest.Mock;
+  // Issue #1908 — state-hash drift detection.
+  onDesyncDetected: jest.Mock;
 }
 
 /** A controllable stand-in for a peer's data-channel-backed transport link. */
@@ -37,6 +39,7 @@ class MockLink implements PeerLink {
   open: boolean;
   closed = false;
   sent: string[] = [];
+  deliver: (raw: string) => void = () => {};
 
   constructor(peerId: string, open = true) {
     this.peerId = peerId;
@@ -46,6 +49,7 @@ class MockLink implements PeerLink {
   send(raw: string): boolean {
     if (!this.open) return false;
     this.sent.push(raw);
+    this.deliver(raw);
     return true;
   }
 
@@ -95,6 +99,8 @@ const newMesh = (
     onError: jest.fn(),
     // Issue #1569 — application-level ping/pong heartbeat.
     onPeerUnreachable: jest.fn(),
+    // Issue #1908 — state-hash drift detection.
+    onDesyncDetected: jest.fn(),
   };
   // Apply caller event overrides onto the shared handle so the returned
   // `events` object is exactly what the mesh uses (same references).
@@ -1513,6 +1519,262 @@ describe("MeshGameConnection — application-level ping/pong heartbeat (#1569)",
         expect(events.onPeerUnreachable).toHaveBeenCalledTimes(2);
       } finally {
         mesh.close();
+      }
+    });
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // State-hash drift detection (issue #1908)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Build a 2-peer in-memory mesh with hash drift detection enabled.
+   * Returns both mesh instances and their links so tests can inject
+   * messages directly.
+   */
+  function buildHashDriftMesh() {
+    interface HashDriftMeshNode {
+      mesh: MeshGameConnection;
+      events: MockEvents;
+      link: MockLink;
+      stateHash: string;
+    }
+
+    const hostEvents: MockEvents = {
+      onMessage: jest.fn(),
+      onGameAction: jest.fn(),
+      onChat: jest.fn(),
+      onPeerJoined: jest.fn(),
+      onPeerLeft: jest.fn(),
+      onError: jest.fn(),
+      onPeerUnreachable: jest.fn(),
+      onDesyncDetected: jest.fn(),
+    };
+    const peerEvents: MockEvents = {
+      onMessage: jest.fn(),
+      onGameAction: jest.fn(),
+      onChat: jest.fn(),
+      onPeerJoined: jest.fn(),
+      onPeerLeft: jest.fn(),
+      onError: jest.fn(),
+      onPeerUnreachable: jest.fn(),
+      onDesyncDetected: jest.fn(),
+    };
+
+    let hostHash = "hash-A";
+    let peerHash = "hash-A";
+
+    const hostMesh = new MeshGameConnection({
+      localPlayerId: "host",
+      localPlayerName: "Host",
+      hostId: "host",
+      isHost: true,
+      events: hostEvents,
+      // Disable heartbeat to avoid test interference.
+      heartbeat: { intervalMs: 0 },
+      hashDrift: {
+        intervalMs: 100,
+        getLocalStateHash: () => hostHash,
+      },
+    });
+
+    const peerMesh = new MeshGameConnection({
+      localPlayerId: "peer",
+      localPlayerName: "Peer",
+      hostId: "host",
+      isHost: false,
+      events: peerEvents,
+      heartbeat: { intervalMs: 0 },
+      hashDrift: {
+        intervalMs: 100,
+        getLocalStateHash: () => peerHash,
+      },
+    });
+
+    const hostLink = new MockLink("peer");
+    const peerLink = new MockLink("host");
+
+    // Wire the links so messages delivered on one are received by the other.
+    hostLink.deliver = (raw) => peerMesh.handleIncoming(raw, "host");
+    peerLink.deliver = (raw) => hostMesh.handleIncoming(raw, "peer");
+
+    hostMesh.addPeerLink(hostLink);
+    peerMesh.addPeerLink(peerLink);
+
+    const result: HashDriftMeshNode[] = [
+      {
+        mesh: hostMesh,
+        events: hostEvents,
+        link: hostLink,
+        stateHash: "hash-A",
+      },
+      {
+        mesh: peerMesh,
+        events: peerEvents,
+        link: peerLink,
+        stateHash: "hash-A",
+      },
+    ];
+
+    // Helper to update hash and return it
+    const setHostHash = (h: string) => {
+      hostHash = h;
+    };
+    const setPeerHash = (h: string) => {
+      peerHash = h;
+    };
+
+    return {
+      nodes: result,
+      host: result[0],
+      peer: result[1],
+      setHostHash,
+      setPeerHash,
+      close: () => {
+        hostMesh.close();
+        peerMesh.close();
+      },
+    };
+  }
+
+  describe("MeshGameConnection — state-hash drift detection (issue #1908)", () => {
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it("installs a hash-drift interval with the configured intervalMs", () => {
+      const mesh = new MeshGameConnection({
+        localPlayerId: "p1",
+        localPlayerName: "P1",
+        hostId: "p1",
+        isHost: true,
+        events: { onDesyncDetected: jest.fn() },
+        heartbeat: { intervalMs: 0 },
+        hashDrift: { intervalMs: 200, getLocalStateHash: () => "test" },
+      });
+      try {
+        expect(mesh.isHashDriftDetectionRunning()).toBe(true);
+      } finally {
+        mesh.close();
+      }
+    });
+
+    it("DISABLES hash drift detection when intervalMs <= 0", () => {
+      const mesh = new MeshGameConnection({
+        localPlayerId: "p1",
+        localPlayerName: "P1",
+        hostId: "p1",
+        isHost: true,
+        events: { onDesyncDetected: jest.fn() },
+        heartbeat: { intervalMs: 0 },
+        hashDrift: { intervalMs: 0, getLocalStateHash: () => "test" },
+      });
+      try {
+        expect(mesh.isHashDriftDetectionRunning()).toBe(false);
+      } finally {
+        mesh.close();
+      }
+    });
+
+    it("close() clears the hash-drift interval — no leaked timer", () => {
+      const mesh = new MeshGameConnection({
+        localPlayerId: "p1",
+        localPlayerName: "P1",
+        hostId: "p1",
+        isHost: true,
+        events: { onDesyncDetected: jest.fn() },
+        heartbeat: { intervalMs: 0 },
+        hashDrift: { intervalMs: 100, getLocalStateHash: () => "test" },
+      });
+      expect(mesh.isHashDriftDetectionRunning()).toBe(true);
+      mesh.close();
+      expect(mesh.isHashDriftDetectionRunning()).toBe(false);
+    });
+
+    it("tick broadcasts a state-hash message to every peer link", () => {
+      const fixture = buildHashDriftMesh();
+      try {
+        // First tick fires immediately on the interval; advance just past it.
+        jest.advanceTimersByTime(101);
+        const sent = fixture.host.link.messages();
+        expect(sent.some((m) => m.type === "state-hash")).toBe(true);
+      } finally {
+        fixture.close();
+      }
+    });
+
+    it("detects a hash mismatch and fires onDesyncDetected within two tick intervals", () => {
+      const fixture = buildHashDriftMesh();
+      try {
+        // Advance past the first tick so both peers have broadcast their hashes.
+        jest.advanceTimersByTime(101);
+
+        // Now diverge: peer modifies its local state (simulated by changing its hash).
+        fixture.setPeerHash("hash-B");
+
+        // Advance past the second tick. The host receives peer's "hash-B" which
+        // does not match host's "hash-A", so onDesyncDetected fires.
+        jest.advanceTimersByTime(101);
+
+        // The host should have fired onDesyncDetected for the peer.
+        expect(fixture.host.events.onDesyncDetected).toHaveBeenCalledTimes(1);
+        expect(fixture.host.events.onDesyncDetected).toHaveBeenCalledWith(
+          "peer",
+          "hash-A",
+          "hash-B",
+        );
+      } finally {
+        fixture.close();
+      }
+    });
+
+    it("does NOT fire onDesyncDetected when hashes match", () => {
+      const fixture = buildHashDriftMesh();
+      try {
+        // Both peers start with hash-A.
+        jest.advanceTimersByTime(201); // Two full ticks.
+        expect(fixture.host.events.onDesyncDetected).not.toHaveBeenCalled();
+      } finally {
+        fixture.close();
+      }
+    });
+
+    it("clears the desync episode flag when the peer's hash matches again", () => {
+      const fixture = buildHashDriftMesh();
+      try {
+        // Diverge.
+        fixture.setPeerHash("hash-B");
+        jest.advanceTimersByTime(201);
+        expect(fixture.host.events.onDesyncDetected).toHaveBeenCalledTimes(1);
+
+        // Reconcile: peer comes back in sync.
+        fixture.setPeerHash("hash-A");
+        jest.advanceTimersByTime(101);
+        // The episode flag is cleared, so another divergence should re-fire.
+        fixture.setPeerHash("hash-B");
+        jest.advanceTimersByTime(101);
+        expect(fixture.host.events.onDesyncDetected).toHaveBeenCalledTimes(2);
+      } finally {
+        fixture.close();
+      }
+    });
+
+    it("emits onDesyncDetected at most once per mismatch episode per peer", () => {
+      const fixture = buildHashDriftMesh();
+      try {
+        fixture.setPeerHash("hash-B");
+        jest.advanceTimersByTime(201);
+        expect(fixture.host.events.onDesyncDetected).toHaveBeenCalledTimes(1);
+
+        // Additional ticks with continued mismatch should NOT re-fire.
+        jest.advanceTimersByTime(500);
+        expect(fixture.host.events.onDesyncDetected).toHaveBeenCalledTimes(1);
+      } finally {
+        fixture.close();
       }
     });
   });

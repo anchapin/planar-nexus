@@ -186,7 +186,8 @@ export type GameMessageType =
   | "error"
   | "request-state-sync"
   | "lobby-control"
-  | "game-ended";
+  | "game-ended"
+  | "state-hash";
 
 /**
  * Base game message.
@@ -228,6 +229,7 @@ const GAME_MESSAGE_TYPES: ReadonlySet<GameMessageType> = new Set([
   "request-state-sync",
   "lobby-control",
   "game-ended",
+  "state-hash",
 ]);
 
 /**

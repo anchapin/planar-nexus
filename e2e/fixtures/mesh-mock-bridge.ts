@@ -322,11 +322,6 @@ export async function setupMeshPeerPages(
       `setupMeshPeerPages: pages.length (${pages.length}) !== opts.length (${opts.length})`,
     );
   }
-  if (pages.length < 3) {
-    throw new Error(
-      `setupMeshPeerPages requires at least 3 peers (got ${pages.length})`,
-    );
-  }
 
   // Build a map from playerId to Page for fanout routing.
   const pageById = new Map<string, Page>();
