@@ -22,7 +22,7 @@ import {
   type GeneratedDeck,
   type MatchupCategory,
   type AISideboardingStep,
-} from "../opponent-deck-generator";
+} from "../../ai/opponent-deck-generator";
 
 // ---- helpers -----------------------------------------------------------
 function countCards(

@@ -12,8 +12,8 @@
  * - Strategic synergy evaluation
  */
 
-import { formatRules, Format } from "./game-rules";
-import type { MinimalCard } from "./card-database";
+import { formatRules, Format } from "../lib/game-rules";
+import type { MinimalCard } from "../lib/card-database";
 
 // Re-export Format type for test imports
 export type { Format };

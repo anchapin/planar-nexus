@@ -17,8 +17,8 @@ import {
   DIFFICULTY_POWER_TIERS,
   getDifficultyConfig,
   classifyCardRole,
-} from "../opponent-deck-generator";
-import type { DeckArchetype, DifficultyLevel } from "../opponent-deck-generator";
+} from "../../ai/opponent-deck-generator";
+import type { DeckArchetype, DifficultyLevel } from "../../ai/opponent-deck-generator";
 import { formatRules } from "../game-rules";
 
 const DIFFICULTIES: DifficultyLevel[] = ["easy", "medium", "hard", "expert"];

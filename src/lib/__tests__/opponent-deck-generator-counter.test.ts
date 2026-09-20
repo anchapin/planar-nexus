@@ -22,12 +22,12 @@ import {
   generateOpponentDeck,
   generateRandomDeck,
   generateThemedDeck,
-} from "../opponent-deck-generator";
+} from "../../ai/opponent-deck-generator";
 import type {
   CounterTargetArchetype,
   DifficultyLevel,
   GeneratedDeck,
-} from "../opponent-deck-generator";
+} from "../../ai/opponent-deck-generator";
 
 /**
  * Deterministic PRNG — mulberry32.

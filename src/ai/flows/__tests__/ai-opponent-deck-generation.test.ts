@@ -14,8 +14,8 @@
  * acceptance criterion called out in issue #1259.
  */
 
-jest.mock("@/lib/opponent-deck-generator", () => {
-  const actual = jest.requireActual("@/lib/opponent-deck-generator");
+jest.mock("@/ai/opponent-deck-generator", () => {
+  const actual = jest.requireActual("@/ai/opponent-deck-generator");
   return {
     ...actual,
     // The generators are pure stochastic functions backed by a large
@@ -45,7 +45,7 @@ import {
   generateOpponentDeck,
   generateRandomDeck,
   generateThemedDeck,
-} from "@/lib/opponent-deck-generator";
+} from "@/ai/opponent-deck-generator";
 import {
   classifyDifficultyFormat,
   getDifficultyConfig,
