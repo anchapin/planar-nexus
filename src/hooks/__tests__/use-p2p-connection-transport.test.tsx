@@ -904,10 +904,18 @@ describe("use-p2p-connection — single source of truth for match history (#1863
   // the architectural choice with two complementary checks:
 
   it("writes MatchRecord rows ONLY to localIntelligenceDb.match_records (no useLocalStorage mirror)", () => {
-    const source = readFileSync(
+    // Issue #1927 split the hook into colocated sub-modules; the Dexie
+    // writer now lives in the game-ended sub-hook. Scan both files so the
+    // architectural guard keeps covering the whole composition.
+    const hookSource = readFileSync(
       join(__dirname, "..", "use-p2p-connection.ts"),
       "utf8",
     );
+    const writerSource = readFileSync(
+      join(__dirname, "..", "p2p", "use-p2p-game-ended.ts"),
+      "utf8",
+    );
+    const source = hookSource + "\n" + writerSource;
 
     // The hook must continue to call `match_records.put` so the runtime
     // persistence path is exercised. The runtime tests above pin the

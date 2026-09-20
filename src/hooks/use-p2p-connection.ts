@@ -2,306 +2,60 @@
  * React hook for managing P2P game connections
  * Unit 10: Client-Side Multiplayer Signaling
  *
- * Enhanced with handshake protocol and conflict resolution
+ * Enhanced with handshake protocol and conflict resolution.
+ *
+ * Issue #1927 — this module is now a composition root. The cohesive
+ * concerns live in colocated sub-modules under `src/hooks/p2p/`:
+ *   - `use-p2p-signaling-handshake.ts` — handshake session + reconnect
+ *     token (issue #1254).
+ *   - `use-p2p-reconnect.ts` — reconnection UI state (issue #988) and
+ *     post-reconnect reconciliation (issue #1086).
+ *   - `use-p2p-local-degrade.ts` — graceful degradation to local
+ *     hot-seat (issue #1090).
+ *   - `use-p2p-host-migration.ts` — host migration (issue #916).
+ *   - `use-p2p-game-ended.ts` — game-ended persistence (issue #1570).
+ *   - `create-p2p-connection-events.ts` — shared transport event wiring.
+ * Public types and the promoted-host key rotation helper are re-exported
+ * below so existing imports are unaffected.
  */
 
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { GameState } from "@/lib/game-state";
 import {
   createP2PGameConnection,
   P2PGameConnection,
-  type P2PGameConnectionEvents,
   type P2PConnectionState,
-  type ChatMessage,
-  type SignalingRole,
 } from "@/lib/p2p-game-connection";
 import type { LocalSignalingState } from "@/lib/local-signaling-client";
-import type {
-  RTCSessionDescriptionInit,
-  RTCIceCandidateInit,
-} from "@/lib/webrtc-types";
-import {
-  HandshakeSession,
-  verifySimpleStateChecksum,
-  generateSessionKey,
-  type HandshakeState,
-} from "@/lib/p2p-handshake";
-import {
-  ConflictResolutionManager,
-  decideOutboundAction,
-  type TimestampedAction,
-} from "@/lib/p2p-conflict-resolution";
-import {
-  HostMigrationManager,
-  createHostMigrationManager,
-  type HostMigrationMessage,
-  type HostMigrationResult,
-  type PeerRosterEntry,
-} from "@/lib/p2p-host-migration";
-import { saveGameForLocalHotSeat } from "@/lib/local-game-storage";
-import {
-  ReconciliationCoordinator,
-  type PendingAction,
-} from "@/lib/p2p-reconciliation";
-import {
-  useConnectionHealth,
-  type ConnectionHealth,
-} from "@/hooks/use-connection-health";
+import type { RTCSessionDescriptionInit } from "@/lib/webrtc-types";
+import { ConflictResolutionManager } from "@/lib/p2p-conflict-resolution";
+import { useConnectionHealth } from "@/hooks/use-connection-health";
 import type { ConnectionFailureDiagnostic } from "@/lib/p2p-failure-diagnostics";
+import { type PeerRole, DEFAULT_PEER_ROLE } from "@/lib/peer-role";
 import {
-  reconnectTokenStore,
-  type ReconnectToken,
-} from "@/lib/p2p-reconnect-store";
-import { logger } from "@/lib/logger";
-import {
-  type PeerRole,
-  DEFAULT_PEER_ROLE,
-  rejectionReasonForSend,
-} from "@/lib/peer-role";
-import {
-  db as localIntelligenceDb,
-  getMatchRecordKey,
-  type MatchRecord,
-} from "@/lib/db/local-intelligence-db";
-import type { GameEndedPayload } from "@/lib/p2p-game-connection";
+  MAX_RECONNECT_ATTEMPTS_DISPLAY,
+  type UseP2PConnectionOptions,
+  type UseP2PConnectionReturn,
+} from "./p2p/p2p-connection-types";
+import { useP2PGameEnded } from "./p2p/use-p2p-game-ended";
+import { useP2PLocalDegrade } from "./p2p/use-p2p-local-degrade";
+import { useP2PHostMigration } from "./p2p/use-p2p-host-migration";
+import { useP2PReconnect } from "./p2p/use-p2p-reconnect";
+import { useP2PSignalingHandshake } from "./p2p/use-p2p-signaling-handshake";
+import { useP2PTransportActions } from "./p2p/use-p2p-transport-actions";
+import { createP2PConnectionEvents } from "./p2p/create-p2p-connection-events";
 
-const p2pLogger = logger.child("P2PConnection");
-
-/**
- * Upper bound for the user-facing "attempt N of M" label in the reconnection
- * UI (issue #988). The hook does not own the actual reconnection loop; this
- * constant is the maximum displayed attempt number before the UI switches to
- * the terminal "Reconnection failed" message. The underlying transport's
- * own `maxReconnectAttempts` is plumbed via {@link P2PConnectionState}
- * callers and may differ; this is purely a display bound.
- */
-const MAX_RECONNECT_ATTEMPTS_DISPLAY = 3;
-
-export interface UseP2PConnectionOptions {
-  playerId: string;
-  playerName: string;
-  role: SignalingRole;
-  gameCode?: string;
-  enableHandshake?: boolean;
-  enableConflictResolution?: boolean;
-  conflictResolutionStrategy?:
-    "host-wins" | "timestamp-based" | "priority-based" | "round-robin";
-  /** Enable host migration when the authoritative host disconnects (issue #916). */
-  enableHostMigration?: boolean;
-  /** Initial authoritative host id. Defaults to the host when role === 'host'. */
-  initialHostId?: string;
-  /** Initial peer roster used for deterministic successor selection. */
-  migrationPeers?: PeerRosterEntry[];
-  /** Called after a host migration completes (promotion or remote change). */
-  onHostMigrated?: (result: HostMigrationResult) => void;
-  /** Called when no peers remain and the multiplayer game must end cleanly. */
-  onGameTerminated?: (reason: string) => void;
-  /**
-   * Called after the connection degrades to local hot-seat on a terminal P2P
-   * failure (issue #1090). Carries the resume key + gameId so the UI can load
-   * the migrated game, or nulls when there was no game state to migrate.
-   */
-  onDegradedToLocal?: (result: LocalDegradeInfo) => void;
-  /**
-   * Local peer's role (issue #1253). When the local peer is a spectator or
-   * moderator, the hook gates `sendGameAction` and routes inbound
-   * `game-action` messages through the read-only allowlist. Defaults to
-   * {@link DEFAULT_PEER_ROLE} (`'player'`) so existing 1:1 / host call sites
-   * are unaffected.
-   */
-  localRole?: PeerRole;
-}
-
-/**
- * Outcome of migrating a failed P2P game to local hot-seat storage.
- */
-export interface LocalDegradeInfo {
-  resumeKey: string | null;
-  gameId: string | null;
-  /** False when there was no in-progress game state to preserve. */
-  hadGameState: boolean;
-}
-
-/**
- * Reconnection lifecycle phase surfaced to the UI (issue #988).
- *
- * Derived from the connection state by {@link useP2PConnection}. The UI uses
- * this to pick what to show:
- *   - `stable`     — no reconnection activity; nothing to surface.
- *   - `lost`       — the connection dropped after having been connected; the
- *                    transport is attempting recovery. Shows a "Connection
- *                    lost — reconnecting…" banner with attempt count.
- *   - `reconnecting` — the transport reports the "reconnecting" state (used
- *                    when the underlying WebRTC layer actively drives the
- *                    cycle, e.g. via WebRTCConnection's ICE-restart loop).
- *   - `recovered`  — transient: the transport recovered after a prior drop.
- *                    Shows a brief "Reconnected" success message and
- *                    auto-dismisses. Cleared by the consumer after handling.
- *   - `failed`     — reconnection retries were exhausted and the user has not
- *                    yet migrated or abandoned. Surfaces the recovery prompt
- *                    that hands off to {@link P2PDegradeDialog}.
- */
-export type ReconnectionPhase =
-  "stable" | "lost" | "reconnecting" | "recovered" | "failed";
-
-/**
- * Result of {@link useP2PConnectionReturn.continueAsLocalHotSeat}.
- */
-export interface LocalHotSeatMigrationResult {
-  ok: boolean;
-  resumeKey?: string;
-  gameId?: string;
-  hadGameState?: boolean;
-  error?: string;
-}
-
-/**
- * Result of {@link useP2PConnectionReturn.saveForLocalResume}.
- */
-export interface LocalHotSeatSaveResult {
-  ok: boolean;
-  resumeKey?: string;
-  error?: string;
-}
-
-export interface UseP2PConnectionReturn {
-  connectionState: P2PConnectionState;
-  signalingState: LocalSignalingState | null;
-  isConnected: boolean;
-  error: string | null;
-  handshakeState: HandshakeState;
-  connectionHealth: ConnectionHealth;
-  /** Actionable diagnostic from the last connection failure, if any. */
-  connectionFailureReason: ConnectionFailureDiagnostic | null;
-  initializeAsHost: () => Promise<RTCSessionDescriptionInit>;
-  initializeAsJoiner: (
-    offer: RTCSessionDescriptionInit,
-  ) => Promise<RTCSessionDescriptionInit>;
-  processAnswer: (answer: RTCSessionDescriptionInit) => Promise<void>;
-  processIceCandidates: (candidates: RTCIceCandidateInit[]) => Promise<void>;
-  sendGameState: (gameState: GameState, isFullSync?: boolean) => boolean;
-  sendGameAction: (
-    action: string,
-    data: unknown,
-  ) => { success: boolean; action?: TimestampedAction; queued?: boolean };
-  sendChat: (text: string) => boolean;
-  /**
-   * Pull a fresh authoritative full game-state-sync from the host on demand
-   * (issue #1086). Used after an ICE-restart reconnect to reconcile, or any
-   * time the local peer notices drift. No-op when not connected.
-   */
-  requestStateSync: () => boolean;
-  closeConnection: () => void;
-  getConnection: () => P2PGameConnection | null;
-  getConflictQueueSize: () => number;
-  /** Current authoritative host id (updates on host migration). */
-  currentHostId: string;
-  /** True when the local client currently holds host authority. */
-  isAuthoritativeHost: boolean;
-  // --- Issue #1090: graceful degradation to local hot-seat ---
-  /** True when the P2P connection has failed terminally and the user has not yet acted. */
-  terminalFailure: boolean;
-  /** True after the game has been migrated to local hot-seat mode. */
-  degradedToLocal: boolean;
-  /** The most recent game state observed (sent or received), available for migration. */
-  lastGameState: GameState | null;
-  /** Migrate the in-progress game to local hot-seat storage and switch modes. Idempotent. */
-  continueAsLocalHotSeat: () => Promise<LocalHotSeatMigrationResult>;
-  /** Persist the in-progress game to IndexedDB for later resume (without switching modes). */
-  saveForLocalResume: () => Promise<LocalHotSeatSaveResult>;
-  /** Acknowledge the terminal failure (abandon) and dismiss the degrade prompt. */
-  dismissTerminalFailure: () => void;
-  /**
-   * Local actions recorded while disconnected that were DROPPED when the host's
-   * authoritative state was adopted after a reconnect (issue #1086). The UI
-   * surfaces these so the player is not silently undone. Cleared on the next
-   * reconcile / close.
-   */
-  droppedPendingActions: PendingAction[];
-  // --- Issue #988: user-facing reconnection UI ---
-  /**
-   * Reconnection lifecycle phase derived from `connectionState` and the
-   * connection's reconnection attempt count. Drives the
-   * {@link P2PReconnectionStatus} component.
-   */
-  reconnectionPhase: ReconnectionPhase;
-  /** Number of reconnection attempts since the last successful connect. */
-  reconnectAttempts: number;
-  /** Maximum reconnection attempts before transitioning to the terminal `failed`
-   * phase. Matches the configured `maxReconnectAttempts` (defaults to 3). */
-  maxReconnectAttempts: number;
-  /**
-   * True for a short window after a successful reconnect so the UI can show a
-   * transient "Reconnected" message. Callers may clear it via
-   * {@link acknowledgeReconnect} once the message has been displayed.
-   */
-  reconnectedRecently: boolean;
-  /** Dismiss the transient "Reconnected" message once shown to the user. */
-  acknowledgeReconnect: () => void;
-  // --- Issue #1254: per-peer reconnect-token (IndexedDB-backed) ---
-  /**
-   * The persisted reconnect token for the current (gameCode, playerId)
-   * pair, or `null` when no token exists / has expired / has been
-   * purged. Surfaced so the lobby UI can attempt a silent rejoin
-   * (claim the held seat via the host-side seat reservation, replay
-   * missed messages) before falling through to the manual-entry lobby.
-   */
-  reconnectToken: ReconnectToken | null;
-  /**
-   * False until the initial store lookup completes. The lobby UI MUST
-   * gate on this before falling through to manual entry, otherwise a
-   * fast refresh could briefly flash the manual-entry screen before
-   * the IDB read resolves.
-   */
-  reconnectTokenLookupDone: boolean;
-  /**
-   * Proactively clear the stored token for this (gameCode, playerId)
-   * pair. Call on game end / lobby close so the 30-minute TTL is a
-   * worst-case bound rather than the typical one. Returns `true` when
-   * the delete succeeded (or there was nothing to delete).
-   */
-  clearReconnectToken: () => Promise<boolean>;
-  // --- Issue #1253: per-peer role ---
-  /**
-   * Local peer's role. Mirrored from the `localRole` option so the UI
-   * can render a spectator-specific layout (e.g. "Watching as Alex —
-   * read only") without re-deriving it from the transport.
-   */
-  localRole: PeerRole;
-  /**
-   * Set the local peer's role. Called after the spectator handshake
-   * completes (the host `ack`s the role and the local client adopts
-   * it). A cross-boundary change (player ⇄ non-player) requires a
-   * fresh handshake — the hook does not enforce that here, it trusts
-   * the host's `ack` to validate the new role.
-   */
-  setLocalRole: (role: PeerRole) => void;
-  /**
-   * Cumulative count of inbound messages dropped because the local
-   * role disallowed them (issue #1253). Surfaced in the diagnostics
-   * panel so a misconfigured spectator (or a hostile peer pushing
-   * actions at a spectator) can be diagnosed. Reset on
-   * `closeConnection`.
-   */
-  spectatorDrops: number;
-  // --- Issue #1570: game-ended event surface ---
-  /**
-   * The most recent `game-ended` payload received from the host during
-   * this session (see {@link GameEndedPayload}), or `null` when no
-   * terminal event has arrived yet (or after `closeConnection`).
-   *
-   * The hook ALSO persists a `MatchRecord` row to Dexie on receipt so
-   * the durable source of truth for match history is
-   * `localIntelligenceDb.match_records` — there is no other store
-   * (issue #1863 closed the `useLocalStorage` mirror). The `gameEnded`
-   * field here is for UI banner / state-update consumption only
-   * (e.g. a "Game Over" toast before the user dismisses it); future
-   * match-history UI must read from `match_records` directly.
-   */
-  gameEnded: GameEndedPayload | null;
-}
+// Re-export the public surface so existing imports keep working (issue #1927).
+export type {
+  UseP2PConnectionOptions,
+  UseP2PConnectionReturn,
+  LocalDegradeInfo,
+  ReconnectionPhase,
+  LocalHotSeatMigrationResult,
+  LocalHotSeatSaveResult,
+} from "./p2p/p2p-connection-types";
+export { rotateSessionKeyOnPromotion } from "./p2p/rotate-session-key-on-promotion";
 
 export function useP2PConnection(
   options: UseP2PConnectionOptions,
@@ -335,42 +89,10 @@ export function useP2PConnection(
   const [signalingState, setSignalingState] =
     useState<LocalSignalingState | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [handshakeState, setHandshakeState] = useState<HandshakeState>("idle");
-  const [currentHostId, setCurrentHostIdState] =
-    useState<string>(fallbackHostId);
   const [connectionFailureReason, setConnectionFailureReason] =
     useState<ConnectionFailureDiagnostic | null>(null);
-  // --- Issue #988: reconnection UI state ---
-  const [reconnectAttempts, setReconnectAttempts] = useState(0);
-  const [reconnectedRecently, setReconnectedRecently] = useState(false);
-  const reconnectAttemptsRef = useRef(0);
-  const hadConnectedRef = useRef(false);
-  // --- Issue #1254: per-peer reconnect-token state ---
-  // `reconnectToken` mirrors the IndexedDB-persisted token (when one
-  // exists for this (gameCode, playerId) pair) so the lobby UI can show
-  // "Reconnecting to {gameCode} as {playerName}…" without making the
-  // caller wire up its own store consumer. `reconnectTokenLookupDone`
-  // distinguishes "we have not checked yet" from "we checked and found
-  // nothing" — important for the page mount race where the lobby
-  // should NOT fall through to the manual-entry UI before the lookup
-  // resolves.
-  const [reconnectToken, setReconnectToken] = useState<ReconnectToken | null>(
-    null,
-  );
-  const [reconnectTokenLookupDone, setReconnectTokenLookupDone] =
-    useState(false);
-  const reconnectTokenLookupRef = useRef<string | null>(null);
-  // --- Issue #1090: graceful degradation to local hot-seat ---
-  const [degradedToLocal, setDegradedToLocal] = useState(false);
-  const [terminalFailureDismissed, setTerminalFailureDismissed] =
-    useState(false);
-  const [lastGameState, setLastGameState] = useState<GameState | null>(null);
-  const lastGameStateRef = useRef<GameState | null>(null);
-  const degradedRef = useRef(false);
   const connectionRef = useRef<P2PGameConnection | null>(null);
-  const handshakeSessionRef = useRef<HandshakeSession | null>(null);
   const conflictManagerRef = useRef<ConflictResolutionManager | null>(null);
-  const hostMigrationRef = useRef<HostMigrationManager | null>(null);
   // Issue #1253 — local peer's role. Mirrored in a ref so the
   // once-created connection event handlers read the latest role without
   // re-binding. Defaults to `'player'` (legacy behaviour) so existing
@@ -386,48 +108,121 @@ export function useP2PConnection(
   );
   // Issue #1253 — diagnostic counter surfaced to the diagnostics panel.
   const [spectatorDrops, setSpectatorDrops] = useState(0);
-  // --- Issue #1570: game-ended persistence + state ---
-  // Latest `game-ended` payload received from the host. `null` until the
-  // first terminal event arrives for this session. Reset by
-  // `closeConnection` so a fresh session starts blank. The hook layer
-  // ALSO persists a `MatchRecord` row to Dexie on receipt so the value
-  // survives a refresh. As of issue #1863, the P2P match-history surface
-  // is owned exclusively by `localIntelligenceDb.match_records` — the
-  // historical `useLocalStorage` mirror in `use-social.ts` /
-  // `use-ranked-mode.ts` has been removed so the two paths cannot drift.
-  const [gameEnded, setGameEnded] = useState<GameEndedPayload | null>(null);
-  // Mirrors `playerId` / `playerName` into refs so the once-created
-  // `onGameEnded` connection handler reads the latest identity without
-  // re-binding the connection on every identity change.
-  const playerIdRef = useRef(playerId);
-  const playerNameRef = useRef(playerName);
-  playerIdRef.current = playerId;
-  playerNameRef.current = playerName;
-  // Keep latest callbacks in refs so the connection event handlers (created
-  // once per initialize) always see the current props without re-creating.
-  const onHostMigratedRef = useRef(onHostMigrated);
-  const onGameTerminatedRef = useRef(onGameTerminated);
-  const onDegradedToLocalRef = useRef(onDegradedToLocal);
-  onHostMigratedRef.current = onHostMigrated;
-  onGameTerminatedRef.current = onGameTerminated;
-  onDegradedToLocalRef.current = onDegradedToLocal;
 
-  // --- Issue #1086: authoritative-state reconciliation after ICE-restart ---
-  // Pure coordinator tracking pending actions during disconnect and producing
-  // the reconcile decision on reconnect. See src/lib/p2p-reconciliation.ts.
-  const reconcileRef = useRef<ReconciliationCoordinator>(
-    new ReconciliationCoordinator(),
-  );
-  // Mirrors `currentHostId` so the once-created onReconnect handler reads the
-  // latest authority without re-creating the connection.
-  const currentHostIdRef = useRef(fallbackHostId);
-  currentHostIdRef.current = currentHostId;
-  // True on a non-host peer between its reconnect and the arrival of the
-  // host's authoritative full sync (the snapshot it must adopt).
-  const awaitingReconciliationRef = useRef(false);
-  const [droppedPendingActions, setDroppedPendingActions] = useState<
-    PendingAction[]
-  >([]);
+  // --- Composed concerns (issue #1927 split) ---
+
+  // Issue #1090: graceful degradation to local hot-seat.
+  const {
+    degradedToLocal,
+    terminalFailure,
+    lastGameState,
+    lastGameStateRef,
+    cacheLatestGameState,
+    continueAsLocalHotSeat,
+    saveForLocalResume,
+    dismissTerminalFailure,
+    resetDegradeState,
+  } = useP2PLocalDegrade({
+    connectionState,
+    playerName,
+    onDegradedToLocal,
+    setError,
+    connectionRef,
+  });
+
+  // Issue #916: host migration.
+  const {
+    currentHostId,
+    currentHostIdRef,
+    cacheGameStateForMigration,
+    registerPeerForMigration,
+    handleMigrationGameAction,
+    handlePeerLeftForMigration,
+    resetHostMigration,
+  } = useP2PHostMigration({
+    enableHostMigration,
+    playerId,
+    playerName,
+    role,
+    fallbackHostId,
+    migrationPeers,
+    onHostMigrated,
+    onGameTerminated,
+    setError,
+    connectionRef,
+    conflictManagerRef,
+  });
+
+  // Issue #1570: game-ended persistence + state.
+  const { gameEnded, handleGameEnded, resetGameEnded } = useP2PGameEnded({
+    playerId,
+    playerName,
+  });
+
+  // Issues #988 / #1086: reconnection UI state + reconciliation.
+  const {
+    reconnectAttempts,
+    reconnectedRecently,
+    acknowledgeReconnect,
+    noteTransportStateChange,
+    handleReconnect,
+    adoptHostStateIfAwaiting,
+    recordPendingAction,
+    droppedPendingActions,
+    reconnectionPhase,
+    getReconnectAttempts,
+    resetReconnectState,
+  } = useP2PReconnect({
+    playerId,
+    connectionState,
+    degradedToLocal,
+    terminalFailure,
+    connectionRef,
+    currentHostIdRef,
+    lastGameStateRef,
+  });
+
+  // Signaling handshake + reconnect token (issue #1254).
+  const {
+    handshakeState,
+    setHandshakeState,
+    handshakeSessionRef,
+    reconnectToken,
+    reconnectTokenLookupDone,
+    clearReconnectToken,
+    cleanupHandshake,
+    resetHandshake,
+  } = useP2PSignalingHandshake({
+    enableHandshake,
+    connectionState,
+    playerId,
+    playerName,
+    gameCode,
+    setError,
+    connectionRef,
+    currentHostIdRef,
+  });
+
+  // Transport send/process surface (issue #1716 orchestration).
+  const {
+    processAnswer,
+    processIceCandidates,
+    sendGameState,
+    sendGameAction,
+    requestStateSync,
+    sendChat,
+  } = useP2PTransportActions({
+    playerId,
+    playerName,
+    connectionState,
+    enableConflictResolution,
+    setError,
+    connectionRef,
+    conflictManagerRef,
+    localRoleRef,
+    recordPendingAction,
+    cacheLatestGameState,
+  });
 
   // Initialize conflict resolution manager
   useEffect(() => {
@@ -438,173 +233,6 @@ export function useP2PConnection(
       });
     }
   }, [enableConflictResolution, conflictResolutionStrategy, role, playerId]);
-
-  // Initialize host migration manager
-  useEffect(() => {
-    if (enableHostMigration && !hostMigrationRef.current) {
-      hostMigrationRef.current = createHostMigrationManager({
-        localPlayerId: playerId,
-        initialHostId: fallbackHostId,
-        initialPeers: migrationPeers,
-        events: {
-          onPromotedToHost: (result) => {
-            p2pLogger.info(
-              "Promoted to host after migration",
-              result.newHostId,
-            );
-            // Issue #1391 — rotate the HMAC session key so post-migration
-            // envelopes are signed under fresh material. The previous host's
-            // key is invalidated; followers still holding it reject any
-            // post-migration envelope signed under it (issue #1252
-            // acceptance criterion #2). Sequence-number continuity is
-            // preserved by the transport's `adoptOutgoingSeq` (#1091), so
-            // no additional anti-replay change is needed here.
-            rotateSessionKeyOnPromotion(connectionRef.current, p2pLogger);
-            conflictManagerRef.current?.updateConfig({
-              hostId: result.newHostId,
-            });
-            onHostMigratedRef.current?.(result);
-          },
-          onHostChanged: (result) => {
-            p2pLogger.info("Remote peer promoted to host", result.newHostId);
-            conflictManagerRef.current?.updateConfig({
-              hostId: result.newHostId,
-            });
-            onHostMigratedRef.current?.(result);
-          },
-          onTerminated: (reason) => {
-            p2pLogger.warn("Multiplayer game terminated", reason);
-            setError(reason);
-            onGameTerminatedRef.current?.(reason);
-          },
-        },
-      });
-      // Issue #1567 — seed the original host's roster entry with the
-      // host-attested joinSeq (0). If the host was already in
-      // `migrationPeers` with a lower sequence, that entry is honoured
-      // (the counter is just advanced past it).
-      if (role === "host") {
-        hostMigrationRef.current.seedHostJoinSeq(playerName);
-      }
-      setCurrentHostIdState(hostMigrationRef.current.getHostId());
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enableHostMigration, playerId, fallbackHostId]);
-
-  const setCurrentHostId = useCallback((hostId: string) => {
-    setCurrentHostIdState(hostId);
-  }, []);
-
-  // Initialize handshake session when connection is established.
-  // On successful handshake, persist a reconnect token (issue #1254) so the
-  // peer can silently rejoin the same game/seat after a browser refresh or
-  // Tauri window restart. The token is keyed by `${gameCode}::${peerId}`
-  // and carries the session key, the current authoritative host, and the
-  // anti-replay high-water mark so the reattaching peer can catch up
-  // without double-applying already-seen messages.
-  useEffect(() => {
-    if (
-      enableHandshake &&
-      connectionState === "connected" &&
-      !handshakeSessionRef.current
-    ) {
-      handshakeSessionRef.current = new HandshakeSession(
-        playerId,
-        (state) => setHandshakeState(state),
-        (success, errorReason) => {
-          if (!success) {
-            setError(`Handshake failed: ${errorReason}`);
-            return;
-          }
-          // Persist the reconnect token on successful handshake. Failures
-          // here are non-fatal — the live session keeps working, we just
-          // lose the ability to silently rejoin after a refresh. Issue
-          // #1254 acceptance criteria: tokens are scoped to (gameCode,
-          // peerId) and never transferable across games.
-          const code = gameCode;
-          if (!code) {
-            p2pLogger.debug(
-              "Skipping reconnect-token save: no gameCode on connection",
-            );
-            return;
-          }
-          const sessionKey = generateSessionKey();
-          const conn = connectionRef.current;
-          const lastDeliveredSeq = conn?.getOutgoingSeq?.() ?? 0;
-          reconnectTokenStore
-            .save({
-              peerId: playerId,
-              sessionKey,
-              hostPeerId: currentHostIdRef.current,
-              gameCode: code,
-              lastDeliveredSeq,
-              playerName,
-            })
-            .then((ok) => {
-              if (ok) {
-                p2pLogger.info("Persisted reconnect token", code);
-              } else {
-                p2pLogger.warn(
-                  "Reconnect-token save failed; live session unaffected",
-                  code,
-                );
-              }
-            })
-            .catch((err) => {
-              p2pLogger.warn(
-                "Reconnect-token save threw; live session unaffected",
-                String(err),
-              );
-            });
-        },
-      );
-    }
-  }, [enableHandshake, connectionState, playerId, gameCode, playerName]);
-
-  // Issue #1254 — on mount (or whenever `gameCode` changes), look up a
-  // stored reconnect token for this (gameCode, playerId) pair. The lobby
-  // UI surfaces this so it can attempt a silent rejoin before falling
-  // through to the manual-entry lobby. We guard against double-firing
-  // with a ref so React strict-mode + dep-array churn does not trigger
-  // multiple IDB reads for the same code.
-  useEffect(() => {
-    if (!gameCode) {
-      setReconnectTokenLookupDone(true);
-      return;
-    }
-    if (reconnectTokenLookupRef.current === gameCode) {
-      return;
-    }
-    reconnectTokenLookupRef.current = gameCode;
-    let cancelled = false;
-    reconnectTokenStore
-      .get(gameCode, playerId)
-      .then((token) => {
-        if (cancelled) return;
-        setReconnectToken(token);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        p2pLogger.warn("Reconnect-token lookup threw", String(err));
-        setReconnectToken(null);
-      })
-      .finally(() => {
-        if (cancelled) return;
-        setReconnectTokenLookupDone(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [gameCode, playerId]);
-
-  // Issue #1254 — drop a stored token once the host confirms the game has
-  // ended cleanly (e.g. on lobby close). Auto-purge expired tokens is
-  // handled inside the store; this is the proactive cleanup path so the
-  // 30-minute TTL is a worst-case bound, not the typical one.
-  const clearReconnectToken = useCallback(async () => {
-    if (!gameCode) return false;
-    return reconnectTokenStore.delete(gameCode, playerId);
-  }, [gameCode, playerId]);
 
   // Clean up on unmount
   useEffect(() => {
@@ -619,7 +247,7 @@ export function useP2PConnection(
         conflictManagerRef.current.reset();
       }
     };
-  }, []);
+  }, [handshakeSessionRef]);
 
   // Connection health monitoring.
   //
@@ -638,13 +266,11 @@ export function useP2PConnection(
     () => connectionState,
     [connectionState],
   );
-  const getReconnectAttempts = useCallback(() => {
-    const conn = connectionRef.current as any;
-    return conn?.["reconnectAttempts"] || 0;
-  }, []);
+  // Issue #1927 — the reconnect getters read the hook-owned #988 counter
+  // (see use-p2p-reconnect.ts); the transport owns no reconnect loop, so
+  // there is nothing to read off it.
   const getMaxReconnectAttempts = useCallback(() => {
-    const conn = connectionRef.current as any;
-    return conn?.["maxReconnectAttempts"] || 3;
+    return MAX_RECONNECT_ATTEMPTS_DISPLAY;
   }, []);
 
   const connectionHealth = useConnectionHealth({
@@ -653,301 +279,6 @@ export function useP2PConnection(
     getMaxReconnectAttempts,
     enableMonitoring: true,
   });
-
-  // --- Host migration helpers (issue #916) ---
-
-  // Cache the latest authoritative game state so a promoted host can adopt it.
-  const cacheGameStateForMigration = useCallback((gameState: GameState) => {
-    hostMigrationRef.current?.setLastKnownGameState(gameState);
-  }, []);
-
-  // Cache the latest observed game state (sent or received) so it can be
-  // migrated to local hot-seat storage on a terminal P2P failure (#1090).
-  const cacheLatestGameState = useCallback((gameState: GameState) => {
-    lastGameStateRef.current = gameState;
-    setLastGameState(gameState);
-  }, []);
-
-  // Track a newly-joined peer for successor-selection purposes.
-  // Issue #1567 — when the local client is the host, mint the next
-  // monotonic joinSeq and broadcast it under the HMAC envelope (#1252)
-  // so followers cannot forge a low sequence. Followers record the
-  // host-attested seq via `recordHostJoinSeq` when the roster-assignment
-  // arrives (handled by `handleMigrationGameAction` below).
-  const registerPeerForMigration = useCallback(
-    (peerPlayerId: string, peerPlayerName: string) => {
-      const manager = hostMigrationRef.current;
-      if (!manager) return;
-      if (manager.isLocalHost()) {
-        const entry = manager.assignNextJoinSeq(peerPlayerId, peerPlayerName);
-        // Broadcast the host-attested joinSeq to every peer so each
-        // follower's roster carries the authoritative sequence. The
-        // game-action channel rides under the HMAC envelope (#1252), so
-        // a malicious peer cannot claim a lower sequence for itself.
-        connectionRef.current?.sendGameAction("roster-assignment", {
-          playerId: entry.playerId,
-          playerName: entry.playerName,
-          joinSeq: entry.joinSeq,
-        });
-        return;
-      }
-      // Follower path: the host will tell us the authoritative joinSeq
-      // shortly. Record a sentinel (joinSeq = MAX_SAFE_INTEGER so this
-      // peer is effectively ignored by the sort comparator until the
-      // host's assignment arrives) and let `handleMigrationGameAction`
-      // overwrite it. Using MAX_SAFE_INTEGER is safe — the host's real
-      // sequence will be a small non-negative integer, so the placeholder
-      // can never win succession.
-      manager.upsertPeer({
-        playerId: peerPlayerId,
-        playerName: peerPlayerName,
-        joinedAt: Date.now(),
-        joinSeq: Number.MAX_SAFE_INTEGER,
-      });
-    },
-    [],
-  );
-
-  // Issue #1567 — handle a host-broadcast roster-assignment message.
-  // The message carries the host-attested `joinSeq` for one peer; we
-  // update the local roster so successor selection sees the same value
-  // every other peer does.
-  const handleRosterAssignment = useCallback((payload: unknown) => {
-    const manager = hostMigrationRef.current;
-    if (!manager) return;
-    if (
-      !payload ||
-      typeof payload !== "object" ||
-      typeof (payload as { playerId?: unknown }).playerId !== "string" ||
-      typeof (payload as { joinSeq?: unknown }).joinSeq !== "number"
-    ) {
-      return; // malformed — drop silently
-    }
-    const { playerId: assignedId, joinSeq } = payload as {
-      playerId: string;
-      joinSeq: number;
-    };
-    // Defensive: only accept non-negative finite integers. A peer
-    // replaying an older assignment or attempting a negative seq is
-    // rejected — the transport's HMAC envelope (#1252) is the
-    // primary defence; this is belt-and-suspenders.
-    if (
-      !Number.isFinite(joinSeq) ||
-      joinSeq < 0 ||
-      !Number.isInteger(joinSeq)
-    ) {
-      return;
-    }
-    manager.recordHostJoinSeq(assignedId, joinSeq);
-  }, []);
-
-  // Apply a received host-migration message (idempotent).
-  const applyHostMigrationMessage = useCallback(
-    (message: HostMigrationMessage) => {
-      const manager = hostMigrationRef.current;
-      if (!manager) return;
-      const result = manager.applyMigration(message);
-      if (result) {
-        setCurrentHostId(manager.getHostId());
-      }
-    },
-    [setCurrentHostId],
-  );
-
-  // Handle a peer leaving. If it was the host, run migration: the deterministic
-  // successor broadcasts a migration message and promotes itself; others apply
-  // it on receipt. If too few peers remain, the manager terminates cleanly.
-  const handlePeerLeftForMigration = useCallback(
-    (peerPlayerId: string, reason: "host-disconnected" | "host-left") => {
-      const manager = hostMigrationRef.current;
-      if (!manager) return;
-
-      const wasHost = manager.getHostId() === peerPlayerId;
-      manager.removePeer(peerPlayerId);
-
-      if (!wasHost) return;
-
-      const result = manager.initiateMigration(reason);
-      if (result.terminated) {
-        // onTerminated event already fired by the manager.
-        return;
-      }
-
-      if (result.promotedSelf) {
-        setCurrentHostId(manager.getHostId());
-        const message = manager.buildMigrationMessage(result);
-        connectionRef.current?.sendGameAction("host-migration", message);
-      }
-      // Non-successor peers do nothing here; they apply the successor's
-      // broadcast via applyHostMigrationMessage when it arrives.
-    },
-    [setCurrentHostId],
-  );
-
-  // Inspect a game-action message and route host-migration messages.
-  // Issue #1567 — also routes `roster-assignment` messages carrying the
-  // host-attested joinSeq for newly-admitted peers.
-  const handleMigrationGameAction = useCallback(
-    (action: string, data: unknown) => {
-      if (action === "host-migration") {
-        if (!data || typeof data !== "object") return;
-        const message = data as HostMigrationMessage;
-        if (message.type !== "host-migration") return;
-        applyHostMigrationMessage(message);
-        return;
-      }
-      if (action === "roster-assignment") {
-        handleRosterAssignment(data);
-        return;
-      }
-    },
-    [applyHostMigrationMessage, handleRosterAssignment],
-  );
-
-  // --- Issue #1570: persist a game-ended payload to Dexie ---
-  //
-  // Wired into both `initializeAsHost` and `initializeAsJoiner` via the
-  // transport's `onGameEnded` event. The transport's anti-replay check
-  // (issue #1091) deduplicates a re-delivered `game-ended` BEFORE this
-  // runs, so the same `gameId` is written at most once per local peer.
-  // This Dexie `match_records` write is the ONLY writer of P2P match
-  // history (issue #1863); consumers must read from `match_records`
-  // rather than any `useLocalStorage` mirror.
-  //
-  // A peer that is NOT listed in the payload's `standings` (e.g. a
-  // spectator who watched but did not play) still receives the event for
-  // UI banners but does NOT persist a `MatchRecord` — match history is a
-  // player-facing concept. The latest payload is surfaced via state so
-  // downstream consumers (the eventual match-history merge into
-  // `use-social.ts`) can pick it up.
-  const handleGameEnded = useCallback(async (payload: GameEndedPayload) => {
-    // 1. Update React state regardless of whether the local player was
-    //    in the standings (spectators need the "Game Over" banner).
-    setGameEnded(payload);
-
-    // 2. Find the local player's standing. If they were not a participant
-    //    (spectator / observer), skip persistence.
-    const localPlayerId = playerIdRef.current;
-    const localStanding = payload.standings.find(
-      (s) => s.playerId === localPlayerId,
-    );
-    if (!localStanding) {
-      p2pLogger.debug(
-        "[use-p2p-Connection] game-ended received but local player is not in standings; skipping MatchRecord write",
-        { gameId: payload.gameId, localPlayerId },
-      );
-      return;
-    }
-
-    // 3. Build + persist the local-perspective MatchRecord. The Dexie
-    //    `put` is upsert-on-key so a re-delivery that somehow slipped
-    //    past anti-replay (e.g. across an ICE-restart that reset the
-    //    high-water mark before the original `game-ended` was applied)
-    //    STILL results in exactly one row per (gameId, playerId). The
-    //    primary path is still the seq check (#1091) — this is defense
-    //    in depth, not the primary dedup mechanism.
-    const record: MatchRecord = {
-      id: getMatchRecordKey(payload.gameId, localPlayerId),
-      gameId: payload.gameId,
-      playerId: localPlayerId,
-      playerName: localStanding.playerName || playerNameRef.current,
-      startedAt: payload.startedAt,
-      endedAt: payload.endedAt,
-      durationMs: payload.endedAt - payload.startedAt,
-      format: payload.format,
-      endReason: payload.endReason,
-      position: localStanding.position,
-      isWinner: payload.winnerId === localPlayerId,
-      finalLife: localStanding.life,
-      standings: payload.standings,
-    };
-    try {
-      await localIntelligenceDb.match_records.put(record);
-      p2pLogger.info(
-        "[use-p2p-Connection] Persisted MatchRecord from game-ended",
-        {
-          gameId: payload.gameId,
-          playerId: localPlayerId,
-          position: localStanding.position,
-          isWinner: record.isWinner,
-        },
-      );
-    } catch (err) {
-      // Persistence is best-effort: the live session keeps working even
-      // when IDB is unavailable / quota-exhausted. Match history will
-      // miss this entry, which is preferable to crashing the multiplayer
-      // UI.
-      p2pLogger.warn(
-        "[use-p2p-Connection] Failed to persist MatchRecord; live session unaffected",
-        String(err),
-      );
-    }
-  }, []);
-
-  // --- Issue #1086: reconciliation after ICE-restart reconnect ---
-
-  // Drive the reconcile decision when the transport recovers. The host pushes
-  // its authoritative full state; a non-host peer arms adoption and pulls a
-  // fresh snapshot (belt-and-suspenders alongside the host's reconnect push).
-  // `droppedPendingActions` surfaced for the adopt path come from the
-  // onGameStateSync adoption below. See src/lib/p2p-reconciliation.ts.
-  const handleReconnect = useCallback(() => {
-    // Issue #988: a successful reconnect deserves a transient "Reconnected"
-    // user-facing message. Reset attempt counters and arm the flag the UI
-    // consumes (cleared via `acknowledgeReconnect`).
-    reconnectAttemptsRef.current = 0;
-    setReconnectAttempts(0);
-    setReconnectedRecently(true);
-
-    const coordinator = reconcileRef.current;
-    const isHost = currentHostIdRef.current === playerId;
-    const decision = coordinator.onReconnect({
-      isHost,
-      hasAuthoritativeState: lastGameStateRef.current !== null,
-    });
-    if (
-      decision.action === "send-authoritative-state" &&
-      lastGameStateRef.current
-    ) {
-      p2pLogger.info(
-        "Reconnected as host; pushing authoritative full state to peer",
-      );
-      connectionRef.current?.sendGameState(lastGameStateRef.current, true);
-    } else if (decision.action === "adopt-host-state") {
-      // Arm adoption: the NEXT authoritative full sync received is adopted and
-      // pending actions are dropped. Also explicitly request a snapshot so a
-      // host push that raced ahead of this reconnect still produces an adopt.
-      awaitingReconciliationRef.current = true;
-      p2pLogger.info(
-        "Reconnected as peer; awaiting host authoritative state for reconciliation",
-      );
-      connectionRef.current?.requestStateSync();
-    }
-  }, [playerId]);
-
-  // Acknowledge the transient "Reconnected" message — caller fires once the
-  // banner has been shown so the hook does not flip the flag back on. Issue
-  // #988.
-  const acknowledgeReconnect = useCallback(() => {
-    setReconnectedRecently(false);
-  }, []);
-
-  // On a received game-state sync, if we are awaiting reconciliation, adopt
-  // the host's authoritative state (source of truth) and drop the pending
-  // actions that never reached the host. Idempotent: a duplicate full sync
-  // with no pending queued between syncs drops nothing.
-  const adoptHostStateIfAwaiting = useCallback(() => {
-    if (!awaitingReconciliationRef.current) return;
-    awaitingReconciliationRef.current = false;
-    const dropped = reconcileRef.current.adoptAuthoritativeState();
-    if (dropped.length > 0) {
-      p2pLogger.warn(
-        "Reconciled to host authoritative state; dropped pending actions",
-        dropped.length,
-      );
-      setDroppedPendingActions(dropped);
-    }
-  }, []);
 
   // Initialize connection as host
   const initializeAsHost =
@@ -970,131 +301,29 @@ export function useP2PConnection(
           // transport gates `sendGameAction` and inbound filtering on the
           // local role flag.
           localRole: localRoleRef.current,
-          events: {
-            onConnectionStateChange: (state) => {
-              setConnectionState(state);
-              if (state === "failed") {
-                const conn = connectionRef.current as any;
-                setConnectionFailureReason(
-                  conn?.getLastFailureDiagnostic?.() ?? null,
-                );
-              }
-              // Issue #988: track reconnection attempts. The hook does not
-              // own the underlying reconnect loop — that lives in
-              // WebRTCConnection / the browser RTCPeerConnection — but it does
-              // own the user-facing count of how many times we have observed
-              // a drop after having been connected. Each observed drop
-              // increments; a successful reconnect resets to 0 via
-              // `handleReconnect` above. Capped at `maxReconnectAttempts + 1`
-              // so the UI can label the terminal attempt explicitly.
-              if (state === "disconnected" || state === "reconnecting") {
-                if (hadConnectedRef.current) {
-                  const next = Math.min(
-                    reconnectAttemptsRef.current + 1,
-                    MAX_RECONNECT_ATTEMPTS_DISPLAY + 1,
-                  );
-                  reconnectAttemptsRef.current = next;
-                  setReconnectAttempts(next);
-                }
-              } else if (state === "connected") {
-                // Successful recovery (or initial connect): clear the
-                // transient "Reconnected" message flag only if we are NOT in
-                // a recovery edge — the actual flag flip happens in
-                // handleReconnect so it survives handler re-binding.
-                hadConnectedRef.current = true;
-              }
-              // Issue #1253 — refresh the role-aware diagnostic counter on
-              // every state change so the diagnostics panel always shows
-              // the latest drop count.
-              const conn = connectionRef.current as any;
-              if (conn && typeof conn.getSpectatorDrops === "function") {
-                setSpectatorDrops(conn.getSpectatorDrops() ?? 0);
-              }
-            },
-            onReconnect: handleReconnect,
-            onSignalingStateChange: setSignalingState,
-            // Issue #1570 — host-authoritative terminal-event channel. Wired
-            // so the hook layer persists a `MatchRecord` row to Dexie and
-            // surfaces a React state update. Anti-replay (#1091) ensures a
-            // re-delivered `game-ended` is dropped at the transport layer
-            // BEFORE this handler runs, so only one Dexie row is written
-            // even after a host-reconnect rebroadcast.
-            onGameEnded: handleGameEnded,
-            onMessage: (message) => {
-              p2pLogger.debug("Received message:", message.type);
-
-              // Handle handshake messages if enabled
-              if (enableHandshake && handshakeSessionRef.current) {
-                // Handshake message handling would go here
-                // For now, we just log them
-              }
-
-              // Route host-migration announcements (issue #916).
-              if (message.type === "game-action") {
-                const payload = message.data as
-                  { action?: string; data?: unknown } | undefined;
-                if (payload?.action) {
-                  handleMigrationGameAction(payload.action, payload.data);
-                }
-              }
-            },
-            onGameStateSync: (gameState) => {
-              p2pLogger.debug("Received game state sync");
-              cacheGameStateForMigration(gameState);
-              cacheLatestGameState(gameState);
-              // Issue #1086: adopt the host's authoritative state on
-              // reconnect-driven reconciliation (drops pending actions).
-              adoptHostStateIfAwaiting();
-
-              // Verify checksum if handshake completed
-              if (
-                handshakeState === "completed" &&
-                handshakeSessionRef.current
-              ) {
-                const remoteChecksum =
-                  handshakeSessionRef.current.getRemoteChecksum();
-                if (remoteChecksum) {
-                  const isValid = verifySimpleStateChecksum(
-                    gameState,
-                    remoteChecksum,
-                  );
-                  if (!isValid) {
-                    console.warn("[useP2PConnection] State checksum mismatch!");
-                  }
-                }
-              }
-            },
-            onChat: (chatMessage) => {
-              p2pLogger.debug("Received chat:", chatMessage.text);
-            },
-            onError: (err) => {
-              setError(err.message);
-            },
-            onPlayerJoined: (playerId, playerName) => {
-              p2pLogger.debug("Player joined:", playerName);
-              registerPeerForMigration(playerId, playerName);
-
-              // Start handshake with new player
-              if (enableHandshake && handshakeSessionRef.current) {
-                const initMessage = handshakeSessionRef.current.start(playerId);
-                // Send init message to peer
-                connectionRef.current?.sendGameAction(
-                  "handshake-init",
-                  initMessage,
-                );
-              }
-            },
-            onPlayerLeft: (playerId) => {
-              p2pLogger.debug("Player left:", playerId);
-              handlePeerLeftForMigration(playerId, "host-disconnected");
-
-              // Cleanup handshake
-              if (handshakeSessionRef.current) {
-                handshakeSessionRef.current.cleanup();
-                setHandshakeState("idle");
-              }
-            },
-          },
+          events: createP2PConnectionEvents({
+            mode: "host",
+            connectionRef,
+            setConnectionState,
+            noteTransportStateChange,
+            setConnectionFailureReason,
+            setSpectatorDrops,
+            handleReconnect,
+            setSignalingState,
+            handleGameEnded,
+            handleMigrationGameAction,
+            cacheGameStateForMigration,
+            cacheLatestGameState,
+            adoptHostStateIfAwaiting,
+            enableHandshake,
+            handshakeState,
+            handshakeSessionRef,
+            cleanupHandshake,
+            registerPeerForMigration,
+            handlePeerLeftForMigration: (peerPlayerId) =>
+              handlePeerLeftForMigration(peerPlayerId, "host-disconnected"),
+            setError,
+          }),
         });
 
         connectionRef.current = connection;
@@ -1120,6 +349,10 @@ export function useP2PConnection(
       gameCode,
       enableHandshake,
       handshakeState,
+      handshakeSessionRef,
+      setHandshakeState,
+      noteTransportStateChange,
+      cleanupHandshake,
       cacheGameStateForMigration,
       cacheLatestGameState,
       registerPeerForMigration,
@@ -1156,76 +389,31 @@ export function useP2PConnection(
           // transport gates `sendGameAction` and inbound filtering on the
           // local role flag.
           localRole: localRoleRef.current,
-          events: {
-            onConnectionStateChange: (state) => {
-              setConnectionState(state);
-              if (state === "failed") {
-                const conn = connectionRef.current as any;
-                setConnectionFailureReason(
-                  conn?.getLastFailureDiagnostic?.() ?? null,
-                );
-              }
-              // Issue #988: same attempt tracking as the host path — see the
-              // matching comment in initializeAsHost above.
-              if (state === "disconnected" || state === "reconnecting") {
-                if (hadConnectedRef.current) {
-                  const next = Math.min(
-                    reconnectAttemptsRef.current + 1,
-                    MAX_RECONNECT_ATTEMPTS_DISPLAY + 1,
-                  );
-                  reconnectAttemptsRef.current = next;
-                  setReconnectAttempts(next);
-                }
-              } else if (state === "connected") {
-                hadConnectedRef.current = true;
-              }
-            },
-            onReconnect: handleReconnect,
-            onSignalingStateChange: setSignalingState,
+          events: createP2PConnectionEvents({
+            mode: "joiner",
+            connectionRef,
+            setConnectionState,
+            noteTransportStateChange,
+            setConnectionFailureReason,
+            setSpectatorDrops,
+            handleReconnect,
+            setSignalingState,
             // Issue #1570 — see the matching comment in initializeAsHost
             // above. The joiner path uses the same handler.
-            onGameEnded: handleGameEnded,
-            onMessage: (message) => {
-              p2pLogger.debug("Received message:", message.type);
-
-              // Route host-migration announcements (issue #916).
-              if (message.type === "game-action") {
-                const payload = message.data as
-                  { action?: string; data?: unknown } | undefined;
-                if (payload?.action) {
-                  handleMigrationGameAction(payload.action, payload.data);
-                }
-              }
-            },
-            onGameStateSync: (gameState) => {
-              p2pLogger.debug("Received game state sync");
-              cacheGameStateForMigration(gameState);
-              cacheLatestGameState(gameState);
-              // Issue #1086: adopt the host's authoritative state on
-              // reconnect-driven reconciliation (drops pending actions).
-              adoptHostStateIfAwaiting();
-            },
-            onChat: (chatMessage) => {
-              p2pLogger.debug("Received chat:", chatMessage.text);
-            },
-            onError: (err) => {
-              setError(err.message);
-            },
-            onPlayerJoined: (playerId, playerName) => {
-              p2pLogger.debug("Player joined:", playerName);
-              registerPeerForMigration(playerId, playerName);
-            },
-            onPlayerLeft: (playerId) => {
-              p2pLogger.debug("Player left:", playerId);
-              handlePeerLeftForMigration(playerId, "host-disconnected");
-
-              // Cleanup handshake
-              if (handshakeSessionRef.current) {
-                handshakeSessionRef.current.cleanup();
-                setHandshakeState("idle");
-              }
-            },
-          },
+            handleGameEnded,
+            handleMigrationGameAction,
+            cacheGameStateForMigration,
+            cacheLatestGameState,
+            adoptHostStateIfAwaiting,
+            enableHandshake,
+            handshakeState,
+            handshakeSessionRef,
+            cleanupHandshake,
+            registerPeerForMigration,
+            handlePeerLeftForMigration: (peerPlayerId) =>
+              handlePeerLeftForMigration(peerPlayerId, "host-disconnected"),
+            setError,
+          }),
         });
 
         connectionRef.current = connection;
@@ -1250,6 +438,12 @@ export function useP2PConnection(
       playerName,
       role,
       gameCode,
+      enableHandshake,
+      handshakeState,
+      handshakeSessionRef,
+      setHandshakeState,
+      noteTransportStateChange,
+      cleanupHandshake,
       cacheGameStateForMigration,
       cacheLatestGameState,
       registerPeerForMigration,
@@ -1264,183 +458,23 @@ export function useP2PConnection(
     ],
   );
 
-  // Process answer (host only)
-  const processAnswer = useCallback(
-    async (answer: RTCSessionDescriptionInit): Promise<void> => {
-      if (!connectionRef.current) {
-        throw new Error("No active connection");
-      }
-
-      try {
-        setError(null);
-        await connectionRef.current.processAnswer(answer);
-      } catch (err) {
-        const errorMessage =
-          err instanceof Error ? err.message : "Failed to process answer";
-        setError(errorMessage);
-        throw err;
-      }
-    },
-    [],
-  );
-
-  // Process ICE candidates
-  const processIceCandidates = useCallback(
-    async (candidates: RTCIceCandidateInit[]): Promise<void> => {
-      if (!connectionRef.current) {
-        throw new Error("No active connection");
-      }
-
-      try {
-        setError(null);
-        await connectionRef.current.processIceCandidates(candidates);
-      } catch (err) {
-        const errorMessage =
-          err instanceof Error
-            ? err.message
-            : "Failed to process ICE candidates";
-        setError(errorMessage);
-        throw err;
-      }
-    },
-    [],
-  );
-
-  // Send game state
-  const sendGameState = useCallback(
-    (gameState: GameState, isFullSync: boolean = false): boolean => {
-      // Cache the outgoing state so it is available for local migration on
-      // a later terminal failure (#1090).
-      cacheLatestGameState(gameState);
-      if (!connectionRef.current) {
-        return false;
-      }
-
-      return connectionRef.current.sendGameState(gameState, isFullSync);
-    },
-    [cacheLatestGameState],
-  );
-
-  // Send game action. Pure orchestration (issue #1716): the role-refusal
-  // policy is owned by @/lib/peer-role (rejectionReasonForSend) and the
-  // queue/process/send conflict policy by @/lib/p2p-conflict-resolution
-  // (decideOutboundAction) — this hook only maps verdicts to transport calls.
-  const sendGameAction = useCallback(
-    (
-      action: string,
-      data: unknown,
-    ): {
-      success: boolean;
-      action?: TimestampedAction;
-      queued?: boolean;
-      /** Issue #1253 — `spectator` when the local role is read-only and the
-       * action was refused; otherwise undefined. */
-      reason?: string;
-    } => {
-      if (!connectionRef.current) {
-        return { success: false };
-      }
-
-      // Issue #1253 — refuse `game-action` from a read-only role. The
-      // transport ALSO refuses (defence in depth) but gating here lets
-      // the hook return a typed `reason` so the UI can surface a
-      // "Spectators cannot play — watch only" hint without a
-      // round-trip through the transport's `onError` event.
-      const roleRefusal = rejectionReasonForSend(
-        localRoleRef.current,
-        "game-action",
-      );
-      if (roleRefusal) {
-        p2pLogger.warn("Refusing game-action: local role is read-only", {
-          localRole: localRoleRef.current,
-          action,
-        });
-        return { success: false, reason: roleRefusal };
-      }
-
-      // Issue #1086: while the transport is down, record the action as
-      // pending so it can be reconciled (re-submitted if the local node is
-      // the host, or dropped with notice if the host's authoritative state is
-      // adopted on reconnect). Best-effort — never blocks the send path.
-      if (connectionState !== "connected") {
-        reconcileRef.current.recordPendingAction(action, data);
-      }
-
-      // Conflict resolution owns the queue/process/send verdict.
-      const decision = decideOutboundAction(
-        enableConflictResolution && conflictManagerRef.current
-          ? conflictManagerRef.current.processAction(
-              action,
-              data,
-              playerId,
-              playerName,
-            )
-          : null,
-      );
-
-      switch (decision.kind) {
-        case "queue":
-          return { success: false, action: decision.action, queued: true };
-        case "send":
-          return {
-            success: connectionRef.current.sendGameAction(action, data),
-            action: decision.action,
-            queued: false,
-          };
-        default:
-          return {
-            success: connectionRef.current.sendGameAction(action, data),
-          };
-      }
-    },
-    [playerId, playerName, enableConflictResolution, connectionState],
-  );
-
-  // Request a fresh authoritative state sync from the host (issue #1086).
-  const requestStateSync = useCallback((): boolean => {
-    return connectionRef.current?.requestStateSync() ?? false;
-  }, []);
-
-  // Send chat
-  const sendChat = useCallback((text: string): boolean => {
-    if (!connectionRef.current) {
-      return false;
-    }
-
-    return connectionRef.current.sendChat(text);
-  }, []);
-
   // Close connection
   const closeConnection = useCallback(() => {
     if (connectionRef.current) {
       connectionRef.current.close();
       connectionRef.current = null;
     }
-    if (handshakeSessionRef.current) {
-      handshakeSessionRef.current.cleanup();
-    }
-    hostMigrationRef.current?.reset();
-    setCurrentHostIdState(fallbackHostId);
+    resetHandshake();
+    resetHostMigration();
     setConnectionState("disconnected");
     setSignalingState(null);
-    setHandshakeState("idle");
     setError(null);
     setConnectionFailureReason(null);
     // Reset degrade-to-local bookkeeping so a fresh session starts clean.
-    degradedRef.current = false;
-    setDegradedToLocal(false);
-    setTerminalFailureDismissed(false);
-    lastGameStateRef.current = null;
-    setLastGameState(null);
-    // Reset reconciliation bookkeeping so a fresh session starts clean.
-    reconcileRef.current.clear();
-    awaitingReconciliationRef.current = false;
-    setDroppedPendingActions([]);
-    // Issue #988: reset reconnection UI state for a fresh session.
-    reconnectAttemptsRef.current = 0;
-    setReconnectAttempts(0);
-    setReconnectedRecently(false);
-    hadConnectedRef.current = false;
+    resetDegradeState();
+    // Reset reconciliation + reconnection bookkeeping so a fresh session
+    // starts clean.
+    resetReconnectState();
     // Issue #1253: reset the role-aware diagnostic counter.
     setSpectatorDrops(0);
     // Issue #1570: reset the latest game-ended payload so a fresh session
@@ -1448,8 +482,14 @@ export function useP2PConnection(
     // `match_records` rows are NOT cleared here — the user expects match
     // history to survive a session boundary, and `match_records` is the
     // sole persistent store for P2P match history (issue #1863).
-    setGameEnded(null);
-  }, [fallbackHostId]);
+    resetGameEnded();
+  }, [
+    resetHandshake,
+    resetHostMigration,
+    resetDegradeState,
+    resetReconnectState,
+    resetGameEnded,
+  ]);
 
   // Issue #1253 — set the local peer's role. Mirrors the value onto the
   // ref (so the connection event handlers see the latest) and onto the
@@ -1475,140 +515,6 @@ export function useP2PConnection(
     }
     return conflictManagerRef.current.getQueueSize();
   }, []);
-
-  // --- Issue #1090: graceful degradation to local hot-seat ---
-
-  // Tear down the dead P2P connection without ever throwing into the caller.
-  const safeCloseConnection = useCallback(() => {
-    try {
-      connectionRef.current?.close();
-    } catch (err) {
-      p2pLogger.warn("Error closing failed P2P connection", String(err));
-    }
-    connectionRef.current = null;
-  }, []);
-
-  // Migrate the in-progress game to local hot-seat storage and switch modes.
-  // Idempotent: a second call is a no-op once degradedToLocal is true.
-  const continueAsLocalHotSeat =
-    useCallback(async (): Promise<LocalHotSeatMigrationResult> => {
-      if (degradedRef.current) {
-        return { ok: true };
-      }
-
-      const gameState = lastGameStateRef.current;
-
-      // No game state to preserve: still leave multiplayer cleanly and notify.
-      if (!gameState) {
-        degradedRef.current = true;
-        setDegradedToLocal(true);
-        setError(null);
-        safeCloseConnection();
-        onDegradedToLocalRef.current?.({
-          resumeKey: null,
-          gameId: null,
-          hadGameState: false,
-        });
-        return { ok: true, hadGameState: false };
-      }
-
-      try {
-        const resumeKey = `p2p_${gameState.gameId || Date.now().toString(36)}`;
-        const session = await saveGameForLocalHotSeat(gameState, {
-          resumeKey,
-          playerName,
-        });
-        degradedRef.current = true;
-        setDegradedToLocal(true);
-        setError(null);
-        safeCloseConnection();
-        p2pLogger.info(
-          "Degraded to local hot-seat after terminal P2P failure",
-          session.gameId,
-        );
-        onDegradedToLocalRef.current?.({
-          resumeKey: session.resumeKey ?? resumeKey,
-          gameId: session.gameId,
-          hadGameState: true,
-        });
-        return {
-          ok: true,
-          resumeKey: session.resumeKey ?? resumeKey,
-          gameId: session.gameId,
-          hadGameState: true,
-        };
-      } catch (err) {
-        // Never let the degrade path crash the UI — surface as a normal error.
-        const msg =
-          err instanceof Error
-            ? err.message
-            : "Failed to migrate game to local hot-seat";
-        p2pLogger.error("Local hot-seat migration failed", msg);
-        setError(msg);
-        return { ok: false, error: msg };
-      }
-    }, [playerName, safeCloseConnection]);
-
-  // Persist the in-progress game to IndexedDB for later resume WITHOUT
-  // switching modes (the user chose "save for later" rather than continue).
-  const saveForLocalResume =
-    useCallback(async (): Promise<LocalHotSeatSaveResult> => {
-      const gameState = lastGameStateRef.current;
-      if (!gameState) {
-        return { ok: false, error: "No in-progress game state to save" };
-      }
-      try {
-        const resumeKey = `resume_${gameState.gameId || Date.now().toString(36)}`;
-        const session = await saveGameForLocalHotSeat(gameState, {
-          resumeKey,
-          playerName,
-        });
-        return { ok: true, resumeKey: session.resumeKey ?? resumeKey };
-      } catch (err) {
-        const msg =
-          err instanceof Error
-            ? err.message
-            : "Failed to save game for local resume";
-        setError(msg);
-        return { ok: false, error: msg };
-      }
-    }, [playerName]);
-
-  // The user chose to abandon: tear down and dismiss the degrade prompt.
-  const dismissTerminalFailure = useCallback(() => {
-    safeCloseConnection();
-    setTerminalFailureDismissed(true);
-  }, [safeCloseConnection]);
-
-  // Terminal failure is a distinct, actionable state: the P2P connection has
-  // failed AND fallback/reconnection is exhausted, the user has not yet
-  // migrated or abandoned, and we are not already in local mode.
-  const terminalFailure =
-    connectionState === "failed" &&
-    !degradedToLocal &&
-    !terminalFailureDismissed;
-
-  // --- Issue #988: derive the user-facing reconnection phase ---
-  // Order of precedence (highest first):
-  //   1. Transient "Reconnected" message immediately after a recovery edge.
-  //   2. Terminal "failed" (after reconnection exhausted) and the user has
-  //      not yet migrated/abandoned — surface the recovery prompt.
-  //   3. Mid-flight "reconnecting" (the transport reports it actively).
-  //   4. Lost after having been connected (silent pre-#988 bug).
-  //   5. Stable — nothing to show.
-  const reconnectionPhase: ReconnectionPhase = (() => {
-    if (reconnectedRecently) return "recovered";
-    if (terminalFailure) return "failed";
-    if (connectionState === "reconnecting") return "reconnecting";
-    if (
-      connectionState === "disconnected" &&
-      hadConnectedRef.current &&
-      !degradedToLocal
-    ) {
-      return "lost";
-    }
-    return "stable";
-  })();
 
   return {
     connectionState,
@@ -1667,42 +573,4 @@ export function useP2PConnection(
      */
     gameEnded,
   };
-}
-
-/**
- * Issue #1391 — rotate the per-session HMAC key on the active connection
- * after the local peer is promoted to host. Generates a fresh 32-byte
- * secret and pushes it onto the transport via `setSessionKey`, so every
- * subsequent outbound envelope is signed under the new key and every
- * inbound envelope must verify against it.
- *
- * The previous host's key is invalidated: a follower that still holds the
- * pre-migration key rejects any post-migration envelope signed under it
- * (issue #1252 acceptance criterion #2). The transport preserves
- * sequence-number continuity across the rotation via `adoptOutgoingSeq`
- * (#1091), so anti-replay high-water marks are not reset.
- *
- * Exported (and unit-tested directly) so the security-critical wiring is
- * verifiable without mounting the full React hook. A `null` connection
- * (promotion before the transport is established) is a safe no-op.
- *
- * @returns the new key hex, or `null` when there is no active connection.
- */
-export function rotateSessionKeyOnPromotion(
-  connection: P2PGameConnection | null,
-  log = p2pLogger,
-): string | null {
-  if (!connection) {
-    log.debug(
-      "Skipping session-key rotation: no active P2P connection on promotion",
-    );
-    return null;
-  }
-  const previousKey = connection.getSessionKey();
-  const newKey = generateSessionKey();
-  connection.setSessionKey(newKey);
-  log.info("Rotated HMAC session key after promotion to host", {
-    rotated: previousKey !== null,
-  });
-  return newKey;
 }
