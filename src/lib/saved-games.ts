@@ -18,14 +18,6 @@
 import type { GameState } from "./game-state/types";
 import type { Replay } from "./game-state/replay";
 import {
-  indexedDBStorage,
-  StoredGame,
-  StoredGameMeta,
-  StoredGamePayload,
-  SAVED_GAMES_META_STORE,
-  SAVED_GAMES_PAYLOAD_STORE,
-} from "./indexeddb-storage";
-import {
   serializeGameState,
   deserializeGameState,
   mapReviver,
@@ -38,6 +30,14 @@ import {
   compressReplayJson,
   decompressReplayJson,
 } from "./game-state/replay-compression";
+import {
+  indexedDBStorage,
+  StoredGame,
+  StoredGameMeta,
+  StoredGamePayload,
+  SAVED_GAMES_META_STORE,
+  SAVED_GAMES_PAYLOAD_STORE,
+} from "./indexeddb-storage";
 import { serializeReplayJson } from "./saved-game-serialize-bridge";
 
 export interface SavedGame {

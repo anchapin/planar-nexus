@@ -148,14 +148,32 @@ const eslintConfig = [
       "react/no-danger": "off",
     },
   },
-  // Issue #1710: the game-state barrel (src/lib/game-state/index.ts) is the
-  // engine's sole public API. Deep imports (`@/lib/game-state/<module>`)
-  // bypass the curated surface and fan internal churn out to consumers —
-  // error on them everywhere OUTSIDE the engine directory (relative
-  // intra-engine imports are exempt via the ignores pattern).
+  // Issue #1710 + #1925: the game-state barrel is the engine's sole public API.
+  // ALL patterns use `regex` (not `group`) so ESLint flat config MERGES them.
+  // The barrel deep-import pattern and relative deep-import patterns all live
+  // in the same rule entry to avoid ESLint replacing group-based options with
+  // regex-based ones across overlapping file globs.
+  //
+  // Allowlisted files are excluded from this block (via `ignores`) so the
+  // barrel rule does not apply to them. They are handled in the next block.
   {
     files: ["src/**/*.{ts,tsx}"],
-    ignores: ["src/lib/game-state/**"],
+    ignores: [
+      // Exclude engine files — their outbound escapes are handled by the
+      // engineOutboundBoundaryBlock rules (issue #1724).
+      "src/lib/game-state/**",
+      // Exclude test files (jest.mock boundary).
+      "**/__tests__/**",
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      // Allowlisted: these files do relative deep imports into the engine
+      // (mapReplacer/mapReviver, getStateAtPosition) not in the barrel.
+      // They get the relative-import rule separately at WARNING level (below).
+      "src/lib/saved-game-serialize-core.ts",
+      "src/lib/saved-game-serialize-bridge.ts",
+      "src/lib/replay-sharing.ts",
+      "src/lib/saved-games.ts",
+    ],
     rules: {
       "no-restricted-imports": [
         "error",
@@ -169,9 +187,60 @@ const eslintConfig = [
           ],
           patterns: [
             {
-              group: ["@/lib/game-state/*"],
+              // Barrel deep import: block `@/lib/game-state/<sub>` where <sub>
+              // is a letter. Negative lookahead (?!$|[/]) permits the bare
+              // barrel `@/lib/game-state` while blocking `@/lib/game-state/types` etc.
+              regex: "^@/lib/game-state/[a-zA-Z](?!$|[/])",
               message:
                 'Import from "@/lib/game-state" (the barrel), not from individual engine modules — the barrel is the engine\'s only public API (issue #1710).',
+            },
+            {
+              // Relative deep import: block `./game-state/<sub>` (issue #1925).
+              regex: "^\\./game-state/[a-z]",
+              message:
+                'Import from "@/lib/game-state" (the barrel) — relative deep imports bypass the barrel and are not allowed (issue #1925).',
+            },
+            {
+              // Relative deep import: block `../game-state/<sub>` (issue #1925).
+              regex: "^\\.\\./game-state/[a-z]",
+              message:
+                'Import from "@/lib/game-state" (the barrel) — relative deep imports bypass the barrel and are not allowed (issue #1925).',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  // Allowlisted files: receive only the relative-import rule at WARNING level
+  // (they don't do barrel imports, only relative imports for internal helpers).
+  // Using "warn" instead of "error" so these known exceptions don't fail CI
+  // while still being visible in lint output.
+  {
+    files: [
+      "src/lib/saved-game-serialize-core.ts",
+      "src/lib/saved-game-serialize-bridge.ts",
+      "src/lib/replay-sharing.ts",
+      "src/lib/saved-games.ts",
+    ],
+    ignores: [
+      "**/__tests__/**",
+      "**/*.test.ts",
+      "**/*.test.tsx",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "warn",
+        {
+          patterns: [
+            {
+              regex: "^\\./game-state/[a-z]",
+              message:
+                "Allowlisted: internal helpers not in barrel (issue #1925).",
+            },
+            {
+              regex: "^\\.\\./game-state/[a-z]",
+              message:
+                "Allowlisted: internal helpers not in barrel (issue #1925).",
             },
           ],
         },

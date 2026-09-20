@@ -12,7 +12,7 @@
  * - Rarity tiers
  */
 
-import type { GameState } from "./game-state/types";
+import type { GameState } from "@/lib/game-state";
 import { indexedDBStorage } from "./indexeddb-storage";
 import {
   safeParseJson,

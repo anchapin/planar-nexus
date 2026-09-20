@@ -40,6 +40,7 @@ export * from "./state-hash";
 export * from "./replay";
 export * from "./serialization";
 export * from "./replacement-effects";
+export { mapReviver } from "./state-serialization";
 export * from "./layer-system";
 export {
   destroyCard as destroyPermanentAction,
@@ -55,6 +56,7 @@ export {
 export * from "./keyword-actions";
 export * from "./combat";
 export * from "./state-based-actions";
+export * from "./validation-service";
 export * from "./oracle-text-parser";
 export * from "./mana";
 export * from "./spell-casting";
