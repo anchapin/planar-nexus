@@ -92,6 +92,7 @@ New comprehensive translation system with the following capabilities:
 **File**: `/docs/TERMINOLOGY_TRANSLATION.md`
 
 Comprehensive documentation including:
+
 - Overview and purpose
 - Complete translation mappings table
 - Usage examples for all functions
@@ -103,12 +104,14 @@ Comprehensive documentation including:
 ### Translation Mappings Implemented
 
 #### Core Actions
+
 - tap → activate
 - untap → deactivate
 - tapped → activated
 - untapped → deactivated
 
 #### Zones
+
 - battlefield → play area
 - graveyard → discard pile
 - library → deck
@@ -117,19 +120,23 @@ Comprehensive documentation including:
 - command zone → reserve zone
 
 #### Game Mechanics
+
 - summoning sickness → deployment restriction
 - cast → play
 - spell → card effect
 - counter → marker
 
 #### Card Types
+
 - planeswalker → champion
 
 #### Phases
+
 - untap step → reactivation step
 - upkeep step → maintenance step
 
 #### Resources
+
 - mana pool → energy pool
 - mana → energy
 
@@ -193,6 +200,7 @@ While the translation layer is complete, future work will involve:
 ### Conclusion
 
 Unit 8 successfully implements a robust terminology translation layer that:
+
 - Removes MTG IP from user-facing text
 - Maintains internal compatibility with existing code
 - Provides comprehensive translation functions
