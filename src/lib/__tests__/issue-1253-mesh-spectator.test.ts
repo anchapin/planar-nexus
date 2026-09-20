@@ -79,6 +79,8 @@ function newMesh(
     // Issue #1569 — application-level heartbeat; tests opt out of
     // asserting on it unless they wire a custom one up.
     onPeerUnreachable: jest.fn(),
+    // Issue #1908 — hash drift detection; tests opt out unless wired.
+    onDesyncDetected: jest.fn(),
   };
   // Apply any caller-supplied event overrides (so the returned
   // `events` object is exactly what the mesh uses, with the same

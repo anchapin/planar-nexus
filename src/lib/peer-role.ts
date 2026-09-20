@@ -125,6 +125,7 @@ export const SPECTATOR_INBOUND_ALLOWED_TYPES: ReadonlySet<GameMessageType> =
     "error",
     "lobby-control",
     "game-ended",
+    "state-hash",
   ]);
 
 /**
@@ -148,7 +149,12 @@ export const MODERATOR_INBOUND_ALLOWED_TYPES: ReadonlySet<GameMessageType> =
  * surface a "Spectators cannot play — watch only" hint.
  */
 export const READ_ONLY_OUTBOUND_ALLOWED_TYPES: ReadonlySet<GameMessageType> =
-  new Set<GameMessageType>(["chat", "ping", "request-state-sync"]);
+  new Set<GameMessageType>([
+    "chat",
+    "ping",
+    "request-state-sync",
+    "state-hash",
+  ]);
 
 /**
  * True when `type` is in {@link SPECTATOR_INBOUND_ALLOWED_TYPES} — i.e. a
