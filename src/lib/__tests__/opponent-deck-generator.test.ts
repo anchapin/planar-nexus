@@ -16,13 +16,13 @@ import {
   generateColorDeck,
   getAvailableArchetypes,
   getAvailableThemes,
-} from "../opponent-deck-generator";
+} from "../../ai/opponent-deck-generator";
 import type {
   DeckArchetype,
   DifficultyLevel,
   Format,
   StrategicTheme,
-} from "../opponent-deck-generator";
+} from "../../ai/opponent-deck-generator";
 
 // Test utilities
 function countUniqueCards(deck: any): number {

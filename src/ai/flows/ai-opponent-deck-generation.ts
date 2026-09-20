@@ -23,12 +23,12 @@ import {
   generateRandomDeck,
   generateThemedDeck,
   type CounterTargetArchetype,
-} from "@/lib/opponent-deck-generator";
+} from "@/ai/opponent-deck-generator";
 import type { Format } from "@/lib/game-rules";
 import type {
   StrategicTheme,
   DifficultyLevel,
-} from "@/lib/opponent-deck-generator";
+} from "@/ai/opponent-deck-generator";
 import {
   classifyDifficultyFormat,
   getDifficultyConfig,

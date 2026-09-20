@@ -13,7 +13,7 @@ import {
   getAvailableArchetypes,
   getAvailableThemes,
   getDifficultyConfig,
-} from './src/lib/opponent-deck-generator';
+} from './src/ai/opponent-deck-generator';
 
 function printSeparator() {
   console.log('\n' + '='.repeat(80) + '\n');
