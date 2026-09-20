@@ -15,56 +15,56 @@ The Terminology Translation Layer (Issue #442) provides a comprehensive system f
 
 ### Core Terminology
 
-| MTG Term | Generic Term |
-|----------|-------------|
-| tap | activate |
-| untap | deactivate |
-| tapped | activated |
-| untapped | deactivated |
-| tapping | activating |
+| MTG Term  | Generic Term |
+| --------- | ------------ |
+| tap       | activate     |
+| untap     | deactivate   |
+| tapped    | activated    |
+| untapped  | deactivated  |
+| tapping   | activating   |
 | untapping | deactivating |
 
 ### Zones
 
-| MTG Term | Generic Term |
-|----------|-------------|
-| battlefield | play area |
-| graveyard | discard pile |
-| library | deck |
-| exile | void |
-| stack | action stack |
+| MTG Term     | Generic Term |
+| ------------ | ------------ |
+| battlefield  | play area    |
+| graveyard    | discard pile |
+| library      | deck         |
+| exile        | void         |
+| stack        | action stack |
 | command zone | reserve zone |
 
 ### Game Mechanics
 
-| MTG Term | Generic Term |
-|----------|-------------|
+| MTG Term           | Generic Term           |
+| ------------------ | ---------------------- |
 | summoning sickness | deployment restriction |
-| cast | play |
-| casting | playing |
-| spell | card effect |
-| counter | marker |
+| cast               | play                   |
+| casting            | playing                |
+| spell              | card effect            |
+| counter            | marker                 |
 
 ### Card Types
 
-| MTG Term | Generic Term |
-|----------|-------------|
-| planeswalker | champion |
-| planeswalkers | champions |
+| MTG Term      | Generic Term |
+| ------------- | ------------ |
+| planeswalker  | champion     |
+| planeswalkers | champions    |
 
 ### Phases
 
-| MTG Term | Generic Term |
-|----------|-------------|
-| untap step | reactivation step |
-| upkeep step | maintenance step |
+| MTG Term    | Generic Term      |
+| ----------- | ----------------- |
+| untap step  | reactivation step |
+| upkeep step | maintenance step  |
 
 ### Resources
 
-| MTG Term | Generic Term |
-|----------|-------------|
-| mana pool | energy pool |
-| mana | energy |
+| MTG Term  | Generic Term |
+| --------- | ------------ |
+| mana pool | energy pool  |
+| mana      | energy       |
 
 ## Usage
 
@@ -75,52 +75,52 @@ import {
   translateToGeneric,
   translateFromGeneric,
   translateTerm,
-} from '@/lib/game-state';
+} from "@/lib/game-state";
 
 // Translate text from MTG to generic
-const genericText = translateToGeneric('Tap this creature on the battlefield');
+const genericText = translateToGeneric("Tap this creature on the battlefield");
 // Result: 'Activate this creature on the play area'
 
 // Translate back from generic to MTG
-const mtgText = translateFromGeneric('Activate this creature');
+const mtgText = translateFromGeneric("Activate this creature");
 // Result: 'Tap this creature'
 
 // Translate a single term
-const term = translateTerm('graveyard');
+const term = translateTerm("graveyard");
 // Result: 'discard pile'
 ```
 
 ### Zone Translation
 
 ```typescript
-import { translateZone } from '@/lib/game-state';
+import { translateZone } from "@/lib/game-state";
 
-const zoneName = translateZone('battlefield');
+const zoneName = translateZone("battlefield");
 // Result: 'Play Area'
 ```
 
 ### Phase Translation
 
 ```typescript
-import { translatePhase } from '@/lib/game-state';
+import { translatePhase } from "@/lib/game-state";
 
-const phaseName = translatePhase('untap');
+const phaseName = translatePhase("untap");
 // Result: 'Reactivation'
 ```
 
 ### Action Translation
 
 ```typescript
-import { translateAction } from '@/lib/game-state';
+import { translateAction } from "@/lib/game-state";
 
-const actionName = translateAction('tap_card');
+const actionName = translateAction("tap_card");
 // Result: 'Activate card'
 ```
 
 ### Card State Translation
 
 ```typescript
-import { translateCardState, getCardStateDescription } from '@/lib/game-state';
+import { translateCardState, getCardStateDescription } from "@/lib/game-state";
 
 const state = translateCardState({
   isTapped: true,
@@ -139,9 +139,10 @@ const description = getCardStateDescription({
 ### Rule Text Translation
 
 ```typescript
-import { translateRuleText } from '@/lib/game-state';
+import { translateRuleText } from "@/lib/game-state";
 
-const rule = 'At the beginning of your upkeep, tap target creature an opponent controls.';
+const rule =
+  "At the beginning of your upkeep, tap target creature an opponent controls.";
 const translated = translateRuleText(rule);
 // Result: 'At the beginning of your maintenance, activate target creature an opponent controls.'
 ```
@@ -149,9 +150,9 @@ const translated = translateRuleText(rule);
 ### Batch Translation
 
 ```typescript
-import { translateBatch } from '@/lib/game-state';
+import { translateBatch } from "@/lib/game-state";
 
-const texts = ['Tap this card', 'Untap that card', 'Move to graveyard'];
+const texts = ["Tap this card", "Untap that card", "Move to graveyard"];
 const translated = translateBatch(texts);
 // Result: ['Activate this card', 'Deactivate that card', 'Move to discard pile']
 ```
@@ -159,11 +160,11 @@ const translated = translateBatch(texts);
 ### Utility Functions
 
 ```typescript
-import { isMTGTerm, getAllMTGTerms } from '@/lib/game-state';
+import { isMTGTerm, getAllMTGTerms } from "@/lib/game-state";
 
 // Check if a term needs translation
-if (isMTGTerm('battlefield')) {
-  console.log('This is an MTG term');
+if (isMTGTerm("battlefield")) {
+  console.log("This is an MTG term");
 }
 
 // Get all MTG terms that need translation
@@ -203,6 +204,7 @@ isTapped: boolean;
 ### Backward Compatibility
 
 The translation layer includes:
+
 - Reverse mapping for translating generic terminology back to MTG terms
 - Round-trip translation support
 - Type definitions that maintain internal compatibility
@@ -220,6 +222,7 @@ Comprehensive tests are provided in `src/lib/game-state/__tests__/terminology-tr
 ## When to Use Translation
 
 ### Use Translation When:
+
 - Displaying text to users
 - Showing zone names in the UI
 - Displaying phase names
@@ -228,6 +231,7 @@ Comprehensive tests are provided in `src/lib/game-state/__tests__/terminology-tr
 - Creating user-facing documentation
 
 ### Don't Use Translation When:
+
 - Working with internal type definitions
 - Processing card data from external sources
 - Implementing game logic

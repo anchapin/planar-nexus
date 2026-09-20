@@ -21,14 +21,17 @@ Created a comprehensive `GenericCard` interface that:
 #### Core Components
 
 **GenericCardType Enum**
+
 - `CREATURE`, `ARTIFACT`, `ENCHANTMENT`, `LAND`
 - `INSTANT`, `SORCERY`, `PLANESWALKER`, `TOKEN`
 
 **GenericColor Enum**
+
 - `RED`, `BLUE`, `GREEN`, `BLACK`, `WHITE`, `COLORLESS`
 - Maps to game colors without using MTG color pie terminology
 
 **AbilityKeyword Enum**
+
 - Evergreen keywords: `FIRST_STRIKE`, `DOUBLE_STRIKE`, `DEATHTOUCH`, `HEXPROOF`, `LIFELINK`
 - Evasion keywords: `FLYING`, `TRAMPLE`, `HASTE`, `VIGILANCE`, `REACH`, `MENACE`
 - Protection keywords: `INDESTRUCTIBLE`, `PROTECTION`, `REGENERATION`
@@ -153,38 +156,43 @@ Conversion Functions:
 ### Creating a Generic Card
 
 ```typescript
-import { GenericCard, GenericCardType, GenericColor, AbilityKeyword } from '@/lib/card-database';
+import {
+  GenericCard,
+  GenericCardType,
+  GenericColor,
+  AbilityKeyword,
+} from "@/lib/card-database";
 
 const card: GenericCard = {
-  id: 'original-001',
-  name: 'Fire Bolt',
+  id: "original-001",
+  name: "Fire Bolt",
   type: GenericCardType.INSTANT,
   subtypes: [],
-  manaCost: '{R}',
+  manaCost: "{R}",
   cmc: 1,
   colors: [GenericColor.RED],
   colorIdentity: [GenericColor.RED],
-  text: 'Fire Bolt deals 3 damage to any target.',
+  text: "Fire Bolt deals 3 damage to any target.",
   keywords: [],
   legalities: {
-    commander: 'legal',
-    standard: 'legal',
-    modern: 'legal',
-    pioneer: 'legal',
-    legacy: 'legal',
-    vintage: 'legal',
-    pauper: 'legal'
-  }
+    commander: "legal",
+    standard: "legal",
+    modern: "legal",
+    pioneer: "legal",
+    legacy: "legal",
+    vintage: "legal",
+    pauper: "legal",
+  },
 };
 ```
 
 ### Converting Scryfall Cards
 
 ```typescript
-import { scryfallToGenericCard } from '@/app/actions';
+import { scryfallToGenericCard } from "@/app/actions";
 
 // Scryfall card from API
-const scryfallCard: ScryfallCard = await fetchScryfallCard('Lightning Bolt');
+const scryfallCard: ScryfallCard = await fetchScryfallCard("Lightning Bolt");
 
 // Convert to generic card
 const genericCard = scryfallToGenericCard(scryfallCard);
@@ -198,14 +206,17 @@ console.log(genericCard.colors); // [GenericColor.RED]
 ### Searching Cards
 
 ```typescript
-import { initializeCardDatabase, searchCardsOffline } from '@/lib/card-database';
+import {
+  initializeCardDatabase,
+  searchCardsOffline,
+} from "@/lib/card-database";
 
 // Initialize database
 await initializeCardDatabase();
 
 // Search for cards
-const results = searchCardsOffline('fire');
-results.forEach(card => {
+const results = searchCardsOffline("fire");
+results.forEach((card) => {
   if (isGenericCard(card)) {
     console.log(`Found: ${card.name} (${card.type})`);
   }
@@ -215,7 +226,7 @@ results.forEach(card => {
 ### Type Checking
 
 ```typescript
-import { isGenericCard, isScryfallCard } from '@/app/actions';
+import { isGenericCard, isScryfallCard } from "@/app/actions";
 
 function processCard(card: UnifiedCard) {
   if (isGenericCard(card)) {
@@ -260,12 +271,12 @@ Existing code using Scryfall cards continues to work:
 ```typescript
 // This still works
 const deck: SavedDeck = {
-  id: 'deck-001',
-  name: 'My Deck',
-  format: 'commander',
+  id: "deck-001",
+  name: "My Deck",
+  format: "commander",
   cards: cards as DeckCard[], // Scryfall cards
   createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString()
+  updatedAt: new Date().toISOString(),
 };
 ```
 
@@ -276,12 +287,12 @@ New code can use generic cards:
 ```typescript
 // New way with generic cards
 const deck: GenericSavedDeck = {
-  id: 'deck-001',
-  name: 'My Deck',
-  format: 'commander',
+  id: "deck-001",
+  name: "My Deck",
+  format: "commander",
   cards: cards as GenericDeckCard[], // Generic cards
   createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString()
+  updatedAt: new Date().toISOString(),
 };
 ```
 
@@ -291,7 +302,7 @@ The unified types allow mixing both formats:
 
 ```typescript
 function processDeck(deck: UnifiedSavedDeck) {
-  deck.cards.forEach(card => {
+  deck.cards.forEach((card) => {
     if (isGenericCard(card)) {
       // Process generic card
     } else {
