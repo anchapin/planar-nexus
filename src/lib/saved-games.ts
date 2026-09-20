@@ -15,19 +15,21 @@
  * - Backward compatibility with localStorage
  */
 
-import {
-  type GameState,
-  type Replay,
-  compressGameStateJson,
-  decompressGameStateJson,
-  compressReplayJson,
-  decompressReplayJson,
-} from "@/lib/game-state";
+import type { GameState } from "./game-state/types";
+import type { Replay } from "./game-state/replay";
 import {
   serializeGameState,
   deserializeGameState,
   mapReviver,
 } from "./game-state/state-serialization";
+import {
+  compressGameStateJson,
+  decompressGameStateJson,
+} from "./game-state/game-state-compression";
+import {
+  compressReplayJson,
+  decompressReplayJson,
+} from "./game-state/replay-compression";
 import {
   indexedDBStorage,
   StoredGame,

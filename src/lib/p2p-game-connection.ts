@@ -15,11 +15,8 @@
  *   signed under the pre-migration key, satisfying acceptance criterion #2.
  */
 
+import type { GameState, Phase, PlayerId, GameAction } from "@/lib/game-state";
 import {
-  type GameState,
-  type Phase,
-  type PlayerId,
-  type GameAction,
   serializeGameState,
   deserializeGameState,
   type SerializedGameState,
