@@ -23,6 +23,8 @@ import {
   getStorageEstimate,
   QUOTA_WARN_THRESHOLD,
   FALLBACK_QUOTA_BYTES,
+  isQuotaExceededError,
+  MigrationQuotaError,
 } from "./storage-quota";
 import {
   calculateChecksumAsync,
@@ -422,6 +424,7 @@ export const RECENT_SEARCHES_STORE = "recent-searches";
 export class IndexedDBStorage {
   private config: StorageConfig;
   private db: IDBDatabase | null = null;
+  private _migrationQuotaError: Error | null = null;
 
   constructor(config: StorageConfig) {
     this.config = config;
@@ -783,6 +786,65 @@ export class IndexedDBStorage {
         }
       };
     });
+
+    // Issue #1572 — once the upgrade (if any) has committed, lazily
+    // migrate any remaining legacy saved-games rows into the v3 split.
+    // The migration is gated by the meta store being empty, so re-opens
+    // are no-ops. Errors are swallowed and logged so a corrupt legacy
+    // store can't take the rest of the app down with it.
+    if (this.hasStore(SAVED_GAMES_META_STORE)) {
+      try {
+        await ensureLegacyV3Split(this);
+      } catch (error) {
+        console.warn(
+          "[indexeddb-storage] v3 saved-games split migration failed:",
+          error,
+        );
+      }
+    }
+
+    // Issue #1811 — PERSISTENCE_ARCHITECTURE §6 stage 1. Once the v4
+    // upgrade has committed, lazily fold every row of the four
+    // standalone legacy DBs (PlanarNexusGameDB, PlanarNexusSearchDB,
+    // PlanarNexusPresetsDB, PlanarNexusRecentSearchesDB) into the new
+    // consolidated stores, then delete the legacy DBs. Gated by a
+    // marker row in `preferences`, so re-opens are no-ops. Errors are
+    // swallowed and logged (a corrupt legacy store cannot take the
+    // rest of the app down).
+    //
+    // The migration module is dynamically imported so its code lives in
+    // a separate webpack chunk and does not bloat the shared client
+    // bundle. Re-runs of `initialize()` pay this cost only when the
+    // marker row is absent (i.e. the user is mid-upgrade).
+    try {
+      const { ensureLegacyV4Consolidation } =
+        await import("./migrations/indexeddb-v4-consolidation");
+      await ensureLegacyV4Consolidation(this);
+    } catch (error) {
+      // Issue #1920: store quota-related errors so the UI layer can
+      // surface a blocking 'free space or export backup' prompt.
+      if (isQuotaExceededError(error)) {
+        this._migrationQuotaError =
+          error instanceof Error
+            ? error
+            : new MigrationQuotaError(String(error));
+      }
+      console.warn(
+        "[indexeddb-storage] v4 consolidation migration failed:",
+        error,
+      );
+    }
+>>>>>>> 397bfa8c (fix(storage): resolve #1920— add quota pre-check to v4 consolidation)
+  }
+
+  /**
+   * Issue #1920 — returns the error from the most recent v4 consolidation
+   * migration attempt, if one occurred and was a quota-related failure.
+   * Callers (e.g. `use-storage-backup.ts`) use this to surface a blocking
+   * toast prompting the user to free space or export a backup.
+   */
+  getMigrationError(): Error | null {
+    return this._migrationQuotaError;
   }
 
   /**

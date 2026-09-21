@@ -103,6 +103,33 @@ export class QuotaExceededError extends Error {
   }
 }
 
+/**
+ * Typed error raised when the v4 consolidation migration cannot proceed
+ * because the origin's storage quota is exhausted or would be exceeded by
+ * the migration write batch.
+ *
+ * Distinct from {@link QuotaExceededError} so callers can identify this
+ * specific failure mode and present the 'free space or export backup' prompt
+ * to the user. Extends QuotaExceededError so quota-classification helpers
+ * ({@link isQuotaExceededError}) also return true for this type.
+ *
+ * Issue #1920.
+ */
+export class MigrationQuotaError extends QuotaExceededError {
+  constructor(
+    message = "Migration blocked: not enough storage space",
+    bytesNeeded?: number,
+  ) {
+    const detail =
+      bytesNeeded !== undefined
+        ? `${message} (needs ~${Math.round(bytesNeeded / 1024)} KB)`
+        : message;
+    super(detail);
+    this.name = "MigrationQuotaError";
+    Object.setPrototypeOf(this, MigrationQuotaError.prototype);
+  }
+}
+
 // ============================================================================
 // CLASSIFICATION
 // ============================================================================

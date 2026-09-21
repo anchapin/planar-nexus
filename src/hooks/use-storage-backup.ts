@@ -37,6 +37,7 @@ import {
 import {
   predictQuotaHeadroom,
   QUOTA_SAFETY_MARGIN_BYTES,
+  MigrationQuotaError,
 } from "@/lib/storage-quota";
 import { toast } from "@/hooks/use-toast";
 
@@ -141,6 +142,21 @@ export function useStorageBackup() {
       setIsInitialized(true);
       loadStorageQuota();
       refreshBackupManifest();
+
+      // Issue #1920: check if the v4 consolidation migration failed due to
+      // quota exhaustion. If so, surface a blocking toast so the user knows
+      // to free up space or export a backup before the next open.
+      const migrationError = indexedDBStorage.getMigrationError();
+      if (migrationError instanceof MigrationQuotaError) {
+        toast({
+          variant: "destructive",
+          title: "Storage Full — Migration Blocked",
+          description:
+            "Not enough storage space to complete the data migration. " +
+            "Free up space or export a backup to continue.",
+          duration: 0, // persistent until dismissed
+        });
+      }
     });
   }, []);
 
