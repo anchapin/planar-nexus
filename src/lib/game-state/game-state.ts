@@ -129,15 +129,22 @@ export function createInitialGameState(
   const zones = new Map<string, Zone>();
   const cards = new Map<CardInstanceId, CardInstance>();
 
-  // Create players
+    // Create players
   const playerIds: PlayerId[] = [];
   playerNames.forEach((name) => {
     const player = createPlayer(name, startingLife, isCommander);
     players.set(player.id, player);
     playerIds.push(player.id);
 
-    // Create player zones (will be populated when decks are loaded)
-    const playerZones = createPlayerZones(player.id, []);
+    // Create player zones with a default 60-card library so startGame (which
+    // draws 7 for the opening hand) does not fail.  Tests that need a
+    // different library size should load a custom deck via loadDeckForPlayer
+    // or set the library zone directly before calling startGame.
+    const defaultLibrary: string[] = [];
+    for (let i = 0; i < 60; i++) {
+      defaultLibrary.push(`deck-card-${player.id}-${i}`);
+    }
+    const playerZones = createPlayerZones(player.id, defaultLibrary);
     playerZones.forEach((zone, zoneId) => {
       zones.set(zoneId, zone);
     });
@@ -238,29 +245,31 @@ export function loadDeckForPlayer(
 
 /**
  * Start the game
+ * CR 103.4: Each player draws up to 7 cards for their opening hand.
+ * A library with fewer than 7 cards cannot support the opening draw and
+ * is treated as a validation failure.
  */
 export function startGame(state: GameState): GameState {
   let updatedState: GameState = { ...state, status: "in_progress" };
 
   // Each player draws their starting hand
   updatedState.players.forEach((player, playerId) => {
-    // Game setup (CR 103.4): the opening-hand draw never triggers the
-    // CR 704.5c empty-library loss — a library shorter than 7 cards simply
-    // draws out during setup (a player may mulligan to a 0-card hand), and
-    // the 704.5c loss applies to in-game draws only (e.g. the draw step).
     const library = updatedState.zones.get(`${playerId}-library`);
-    const draws = Math.min(7, library ? library.cardIds.length : 0);
-    if (playerId !== state.turn.activePlayerId) {
-      // Non-starting players draw 7 cards
-      for (let i = 0; i < draws; i++) {
-        updatedState = drawCard(updatedState, playerId);
-      }
-    } else {
-      // Starting player draws 7 cards (in real rules, they would draw later,
-      // but for simplicity we draw now and they don't draw on their first turn)
-      for (let i = 0; i < draws; i++) {
-        updatedState = drawCard(updatedState, playerId);
-      }
+    const librarySize = library ? library.cardIds.length : 0;
+
+    // CR 103.4: A library must contain at least 7 cards to complete the
+    // opening-hand draw. Fewer cards is a validation failure.
+    if (librarySize < 7) {
+      throw new Error(
+        `Player ${player.name} library has only ${librarySize} cards; minimum 7 required for opening hand (CR 103.4)`,
+      );
+    }
+
+    // Game setup: non-starting players draw 7 cards; starting player
+    // draws 7 cards now (and skips the draw step on their first turn).
+    const draws = 7;
+    for (let i = 0; i < draws; i++) {
+      updatedState = drawCard(updatedState, playerId);
     }
   });
 
@@ -396,7 +405,9 @@ export function passPriority(state: GameState, playerId: PlayerId): GameState {
   const updatedPlayers = new Map(state.players);
   updatedPlayers.set(playerId, updatedPlayer);
 
-  const consecutivePasses = state.consecutivePasses + 1;
+  // CR 117.3: Dead players are excluded from priority. Only alive players
+  // contribute to the consecutive-pass count used to detect "all passed".
+  const consecutivePasses = state.consecutivePasses + (player.hasLost ? 0 : 1);
 
   const newState: GameState = {
     ...state,

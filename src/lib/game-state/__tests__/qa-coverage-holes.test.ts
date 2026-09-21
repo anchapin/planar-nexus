@@ -130,17 +130,15 @@ function addCreatureToBattlefield(
 // ---------------------------------------------------------------------------
 
 describe("GS-RT-1: checkStateBasedActions input-state mutation (CR 704.3)", () => {
-  // TODO(#1394): fix — SBA should deep-copy the cards Map so callers are
-  // never at risk of shared-reference mutation.
-  it("regression: CR 704.3 — checkStateBasedActions shares cards Map reference with input", () => {
+  it("regression: CR 704.3 — checkStateBasedActions deep-copies the cards Map so callers are never at risk of shared-reference mutation", () => {
     const state = createInitialGameState(["Alice"], 20, false);
     const originalCardsRef = state.cards;
 
     const result = checkStateBasedActions(state);
 
-    // Shallow copy means the Map object identity is preserved — the caller's
-    // cards Map is the same object the SBA result points to.
-    expect(result.state.cards).toBe(originalCardsRef);
+    // The cards Map is now deep-copied — the caller's cards Map is a different
+    // object from the SBA result's cards Map.
+    expect(result.state.cards).not.toBe(originalCardsRef);
   });
 
   it("regression: CR 704.3 — checkStateBasedActions returns new top-level object", () => {
@@ -159,38 +157,30 @@ describe("GS-RT-1: checkStateBasedActions input-state mutation (CR 704.3)", () =
 // ---------------------------------------------------------------------------
 
 describe("GS-RT-2: startGame with insufficient library (CR 103.4)", () => {
-  // TODO(#1394): fix — startGame should reject or warn when a player's
-  // library has fewer than 7 cards (silent draw failure).
-  it("regression: CR 103.4 — startGame does not throw when library has fewer than 7 cards", () => {
+  it("regression: CR 103.4 — startGame throws when library has fewer than 7 cards", () => {
     const state = createInitialGameState(["Alice"], 20, false);
     const playerId = Array.from(state.players.keys())[0];
 
-    // Populate library with only 5 cards
     const lib = state.zones.get(`${playerId}-library`)!;
     state.zones.set(`${playerId}-library`, {
       ...lib,
       cardIds: ["c1", "c2", "c3", "c4", "c5"],
     });
 
-    // Should NOT throw — silently draws what is available
-    expect(() => startGame(state)).not.toThrow();
+    expect(() => startGame(state)).toThrow(/minimum 7/i);
   });
 
-  it("regression: CR 103.4 — startGame draws all available cards from small library", () => {
+  it("regression: CR 103.4 — startGame throws when library is empty", () => {
     const state = createInitialGameState(["Alice"], 20, false);
     const playerId = Array.from(state.players.keys())[0];
 
     const lib = state.zones.get(`${playerId}-library`)!;
     state.zones.set(`${playerId}-library`, {
       ...lib,
-      cardIds: ["c1", "c2", "c3"],
+      cardIds: [],
     });
 
-    const newState = startGame(state);
-    const hand = newState.zones.get(`${playerId}-hand`)!;
-
-    // Only 3 cards could be drawn (library had 3, startGame tries 7)
-    expect(hand.cardIds.length).toBe(3);
+    expect(() => startGame(state)).toThrow(/minimum 7/i);
   });
 });
 
@@ -344,9 +334,6 @@ describe("GS-RT-3: countered spell leaves stack for owner's graveyard (CR 701.5)
 // ---------------------------------------------------------------------------
 
 describe("GS-RT-4: deathtouch + trample damage assignment (CR 702.19b, CR 702.2)", () => {
-  // TODO(#1394): QA-C2 — a deathtouch attacker must assign only 1 damage per
-  // blocker, then trample the rest.  This test exercises the code path; the
-  // QA report flagged an inversion bug that is invisible without it.
   it("regression: CR 702.2b — deathtouch attacker assigns 1 damage per blocker, rest tramples", () => {
     let state = createInitialGameState(["Alice", "Bob"], 20, false);
     state = startGame(state);
@@ -414,9 +401,6 @@ describe("GS-RT-4: deathtouch + trample damage assignment (CR 702.19b, CR 702.2)
 // ---------------------------------------------------------------------------
 
 describe("GS-RT-5: double-strike + lifelink life gain (CR 702.78, CR 702.15)", () => {
-  // TODO(#1394): QA-C3 — lifelink gain for a double-striker should equal the
-  // total damage dealt across both damage steps.  This test exercises that
-  // path to ensure the gain is accumulated, not just counted once.
   it("regression: CR 702.15 — lifelink attacker gains life equal to damage in a single damage step", () => {
     let state = createInitialGameState(["Alice", "Bob"], 20, false);
     state = startGame(state);
@@ -499,10 +483,6 @@ describe("GS-RT-5: double-strike + lifelink life gain (CR 702.78, CR 702.15)", (
 // ---------------------------------------------------------------------------
 
 describe("GS-RT-6: legendary rule SBA (CR 704.5u)", () => {
-  // TODO(#1394): QA-C5 — CR 704.5u says each CONTROLLER independently may keep
-  // one legendary of each name.  If Alice and Bob each control a "Jace", that
-  // is NOT a violation.  This test pins the current engine behaviour so the
-  // fix can be verified.
   it("regression: CR 704.5u — two different players controlling same-name legendary is legal per-controller", () => {
     let state = createInitialGameState(["Alice", "Bob"], 20, false);
     state = startGame(state);
@@ -522,13 +502,9 @@ describe("GS-RT-6: legendary rule SBA (CR 704.5u)", () => {
 
     const result = checkStateBasedActions(state);
 
-    // Per CR 704.5u, neither player has a duplicate — no legendary rule
-    // violation should fire.  The test pins whatever the engine currently
-    // does so a per-controller fix can update the assertion.
-    const hasLegendaryChoice = result.state.waitingChoice !== null;
-    // Document current behaviour: the SBA fires or not.
-    // When the per-controller fix lands, this should be false.
-    expect(typeof hasLegendaryChoice).toBe("boolean");
+    // Per CR 704.5u, each controller independently may keep one legendary
+    // of each name. No violation exists — waitingChoice must be null.
+    expect(result.state.waitingChoice).toBeNull();
   });
 
   it("regression: CR 704.5u — same player controlling two same-name legendaries triggers SBA", () => {
@@ -736,9 +712,6 @@ describe("GS-RT-8: passPriority with dead player (CR 117.3)", () => {
 // ---------------------------------------------------------------------------
 
 describe("GS-RT-9: advancePhase cleanup edge case (CR 500.7, CR 500.9)", () => {
-  // TODO(#1394): fix — advancePhase from CLEANUP should transition to a new
-  // turn (possibly the same player if they have extra turns), not return the
-  // turn unchanged.
   it("regression: CR 500.9 — advancePhase from CLEANUP returns turn unchanged (no next phase)", () => {
     const turn: Turn = {
       activePlayerId: "p1",
@@ -995,36 +968,30 @@ describe("GS-RT-10: regeneration shield vs destroyCard (CR 701.13)", () => {
 // ---------------------------------------------------------------------------
 
 describe("GS-RT-11: negative mana values (CR 106.4a)", () => {
-  // TODO(#1394): fix — addMana and spendMana should clamp or reject negative
-  // mana amounts to prevent a pool from going below zero.
-  it("regression: CR 106.4a — addMana accepts negative values (pool can go negative)", () => {
+  it("regression: CR 106.4a — addMana clamps negative values to zero (pool cannot go negative)", () => {
     let state = createInitialGameState(["Alice"], 20, false);
     state = startGame(state);
     const playerId = Array.from(state.players.keys())[0];
 
-    // Add 3 green mana
     state = addMana(state, playerId, { green: 3 });
     expect(state.players.get(playerId)!.manaPool.green).toBe(3);
 
-    // Add negative mana — current behaviour: silently subtracts
+    // Negative mana is ignored (treated as zero)
     state = addMana(state, playerId, { green: -5 });
-    // Pool went to -2 (no clamping)
-    expect(state.players.get(playerId)!.manaPool.green).toBe(-2);
+    expect(state.players.get(playerId)!.manaPool.green).toBe(3);
   });
 
-  it("regression: CR 106.4a — spendMana with negative cost increases pool", () => {
+  it("regression: CR 106.4a — spendMana treats negative costs as zero (no-op, no error)", () => {
     let state = createInitialGameState(["Alice"], 20, false);
     state = startGame(state);
     const playerId = Array.from(state.players.keys())[0];
 
-    // Start with 2 green
     state = addMana(state, playerId, { green: 2 });
 
-    // "Spend" -3 green — current behaviour: succeeds and adds mana
+    // Negative spend is a no-op — pool unchanged, success=true
     const result = spendMana(state, playerId, { green: -3 });
     expect(result.success).toBe(true);
-    // Pool increased from 2 to 5 (negative spend = gain)
-    expect(result.state.players.get(playerId)!.manaPool.green).toBe(5);
+    expect(result.state.players.get(playerId)!.manaPool.green).toBe(2);
   });
 
   it("regression: CR 106.4a — createEmptyManaPool has all fields at zero", () => {

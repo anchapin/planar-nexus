@@ -112,6 +112,15 @@ function seedLibrary(state: GameState, owner: PlayerId, count: number) {
   });
 }
 
+function clearHands(state: GameState, alice: PlayerId, bob: PlayerId): GameState {
+  const updatedZones = new Map(state.zones);
+  const aliceHand = updatedZones.get(`${alice}-hand`);
+  const bobHand = updatedZones.get(`${bob}-hand`);
+  if (aliceHand) updatedZones.set(`${alice}-hand`, { ...aliceHand, cardIds: [] });
+  if (bobHand) updatedZones.set(`${bob}-hand`, { ...bobHand, cardIds: [] });
+  return { ...state, zones: updatedZones };
+}
+
 function setupTwoPlayerState(): {
   state: GameState;
   alice: PlayerId;
@@ -120,6 +129,7 @@ function setupTwoPlayerState(): {
   let state = createInitialGameState(["Alice", "Bob"], 20, false);
   state = startGame(state);
   const [alice, bob] = Array.from(state.players.keys()) as PlayerId[];
+  state = clearHands(state, alice, bob);
   return { state, alice, bob };
 }
 
