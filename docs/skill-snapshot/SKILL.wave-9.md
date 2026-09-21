@@ -394,7 +394,7 @@ See [REFERENCE.md — Merge Ordering Strategy](REFERENCE.md#merge-ordering-strat
 ### 4b. Spawn CI Sub-agents
 
 Spawn one sub-agent per PR using the prompt template in
-[REFERENCE.md — CI Sub-agent Template](REFERENCE.md#ci-sub-agent-template).
+[REFERENCE.md — CI Sub-agent Template](REFERENCE.md#implementation-sub-agent-template).
 
 Each sub-agent monitors CI, fixes failures, resolves merge conflicts,
 and merges the PR.
