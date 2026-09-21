@@ -94,6 +94,7 @@ module.exports = {
     "src/lib/game-state/spell-casting/*.ts",
     "src/lib/game-state/trigger-system.ts",
     "src/lib/game-state/state-based-actions.ts",
+    "src/lib/game-state/combat.ts",
     "src/lib/game-state/mana.ts",
   ],
 
@@ -145,15 +146,11 @@ module.exports = {
   //                              annihilation, indestructible gate, 0-loyalty
   //                              exile-vs-destroy, commander-damage boundary,
   //                              per-player legend rule & PW uniqueness.
-  //   • combat.ts              : EXCLUDED from allowlist (issue #1989). The
-  //                              module takes >40 min to mutation-test on a
-  //                              4-core runner — too slow for any per-PR gate.
-  //                              Its targeted `combat.mutation.test.ts` remains
-  //                              in place; it runs in the nightly workflow only
-  //                              where a ~40 min job is acceptable. To re-add:
-  //                              (a) measure the baseline on a fast machine,
-  //                              (b) confirm the nightly score is >=70%,
-  //                              (c) add back to the `mutate` array above.
+  //   • combat.ts              : 45.00% measured (839 mutants, 45% static).
+  //                              Issue #1988: re-added to allowlist to fix
+  //                              suiteFor mismatch. Runs in nightly workflow
+  //                              only (~40 min job timeout); too slow for
+  //                              per-PR gate.
   //   • mana.ts                : PENDING measurement (issue #1717). Targeted
   //                              `mana.mutation.test.ts` added; covers the
   //                              canAffordMana per-color `<` boundaries and
