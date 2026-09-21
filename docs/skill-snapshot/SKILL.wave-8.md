@@ -25,6 +25,7 @@ monitors CI, merges PRs, then proceeds to the next wave.
 ```
 
 **Flags:**
+
 - `--auto` — skip Phase 2 confirmation, proceed directly to wave execution. Wave plan is written to state file for auditability.
 - `--state-file <path>` — override the default state-file location (issue #3145). The default is `../worktrees/wave-state.<repo-slug>.json`; pass an explicit path when running concurrent orchestrators against the same repo or when migrating away from the legacy `wave-state.json`. Equivalent env var: `WAVE_STATE_FILE=<path>`.
 - `--force` — bypass the per-repo pre-flight collision check (issue #3145). By default the orchestrator refuses to overwrite a state file that belongs to a different repo. Use only when you intentionally want to clobber a prior run.
@@ -67,6 +68,7 @@ gh issue list --state open --json number,title,body,labels,assignees
 ```
 
 Filter out issues that are:
+
 - Assigned to someone else (unless unassigned)
 - Blocked by a label (e.g., `blocked`, `on-hold`)
 - Already linked to an open PR (`gh pr list --search "fixes #N"`)
@@ -111,6 +113,7 @@ the same way. **OFF** (`--no-mix-rule` / `WAVE_MIX_RULE=0`) disables the
 rule for a deliberate hygiene-only run.
 
 **Confirmation & Decision Protocol:**
+
 - If `--auto` flag is passed: proceed immediately (no confirmation required).
 - Otherwise: **Consult the Foreman MCP first** via `ask_foreman` before prompting the human:
   - `question`: "Approve execution plan for wave sequence ({wave_count} waves, {issue_count} issues)?"
@@ -193,11 +196,11 @@ instead of passively waiting for a done signal:
    and create the PR — bypassing the sub-agent entirely.
 
 1.5. **Pre-PR verification** (after sub-agent reports "done", before polling
-    for the PR): verify all changes are committed AND the targeted tests pass
-    before the orchestrator creates a PR. Catches the #311-style failure
-    mode where a sub-agent reports "done" with uncommitted changes or
-    failing tests left in the worktree.
-    ```bash
+for the PR): verify all changes are committed AND the targeted tests pass
+before the orchestrator creates a PR. Catches the #311-style failure
+mode where a sub-agent reports "done" with uncommitted changes or
+failing tests left in the worktree.
+`bash
     # Step 1.5: pre-PR verification
     # Verify the sub-agent's worktree has all changes committed + tests pass
     cd ../worktrees/issue-{N}-{slug}
@@ -208,55 +211,59 @@ instead of passively waiting for a done signal:
     # Run the targeted test file(s) and confirm green
     .venv/bin/pytest tests/test_{affected_file}.py -q
     # If this fails, re-spawn a continuation sub-agent with a focused prompt
-    ```
-    Manual drill: drop an untracked file into a worktree (`touch
+    `
+Manual drill: drop an untracked file into a worktree (`touch
     ../worktrees/issue-{N}-{slug}/.junk`) and run the snippet above — the
-    `git status --porcelain` check must exit 1 before any `gh pr create`
-    is invoked. Catches #311-style incompleteness.
+`git status --porcelain` check must exit 1 before any `gh pr create`
+is invoked. Catches #311-style incompleteness.
 
 2. **PR verification loop** (while timer is active):
    After the sub-agent reports "done", poll every 10s for up to 60s:
+
    ```bash
    gh pr list --search "fix/issue-{N}" --json number,title,state --jq '.[] | select(.state=="OPEN") | .number'
    ```
-    - **PR found** → record PR number in wave-state.<repo-slug>.json, move to next issue
-    - **PR NOT found after 60s** → if `wave-state.<repo-slug>.json` records a prior
-      PR number for this issue (status `pr_created`), run the `pr_recreate`
-      sub-step below; otherwise enter the recovery sequence.
-    - **`pr_recreate` sub-step** (when the previous PR is stuck CLOSED
-      because `gh pr reopen` failed after a force-push; issue #364):
-      ```bash
-      # 1. Look up the prior PR number from wave-state.<repo-slug>.json
-      PRIOR_PR=$(jq -r '.issues["{N}"].pr_number // empty' ../worktrees/wave-state.<repo-slug>.json)
-      if [ -n "$PRIOR_PR" ]; then
-        STATE=$(gh pr view "$PRIOR_PR" --json state --jq '.state')
-        if [ "$STATE" = "CLOSED" ]; then
-          # 2. Attempt reopen; on failure, recreate the PR (issue #364)
-          if ! gh pr reopen "$PRIOR_PR" 2>/dev/null; then
-            OLD_TITLE=$(gh pr view "$PRIOR_PR" --json title --jq '.title' 2>/dev/null)
-            OLD_BODY=$(gh pr view "$PRIOR_PR" --json body --jq '.body' 2>/dev/null)
-            gh pr close "$PRIOR_PR"  # confirm closed
-            NEW_PR=$(gh pr create --base develop \
-              --title "$OLD_TITLE" \
-              --body "$OLD_BODY" \
-              --head fix/issue-{N}-{slug} | tail -1 | awk -F'/' '{print $NF}')
-            # 3. Update wave-state.<repo-slug>.json with the new PR number
-            jq --arg n "{N}" --arg p "$NEW_PR" \
-              '.issues[$n].pr_number = ($p | tonumber)' \
-              ../worktrees/wave-state.<repo-slug>.json > ../worktrees/wave-state.<repo-slug>.json.tmp \
-              && mv ../worktrees/wave-state.<repo-slug>.json.tmp ../worktrees/wave-state.<repo-slug>.json
-          fi
-        fi
-      fi
-      ```
-     The verification loop re-runs Phase 3c § 4 (PR base) and § 5
-     (PR body) on the new PR before recording it.
+   - **PR found** → record PR number in wave-state.<repo-slug>.json, move to next issue
+   - **PR NOT found after 60s** → if `wave-state.<repo-slug>.json` records a prior
+     PR number for this issue (status `pr_created`), run the `pr_recreate`
+     sub-step below; otherwise enter the recovery sequence.
+   - **`pr_recreate` sub-step** (when the previous PR is stuck CLOSED
+     because `gh pr reopen` failed after a force-push; issue #364):
+     ```bash
+     # 1. Look up the prior PR number from wave-state.<repo-slug>.json
+     PRIOR_PR=$(jq -r '.issues["{N}"].pr_number // empty' ../worktrees/wave-state.<repo-slug>.json)
+     if [ -n "$PRIOR_PR" ]; then
+       STATE=$(gh pr view "$PRIOR_PR" --json state --jq '.state')
+       if [ "$STATE" = "CLOSED" ]; then
+         # 2. Attempt reopen; on failure, recreate the PR (issue #364)
+         if ! gh pr reopen "$PRIOR_PR" 2>/dev/null; then
+           OLD_TITLE=$(gh pr view "$PRIOR_PR" --json title --jq '.title' 2>/dev/null)
+           OLD_BODY=$(gh pr view "$PRIOR_PR" --json body --jq '.body' 2>/dev/null)
+           gh pr close "$PRIOR_PR"  # confirm closed
+           NEW_PR=$(gh pr create --base develop \
+             --title "$OLD_TITLE" \
+             --body "$OLD_BODY" \
+             --head fix/issue-{N}-{slug} | tail -1 | awk -F'/' '{print $NF}')
+           # 3. Update wave-state.<repo-slug>.json with the new PR number
+           jq --arg n "{N}" --arg p "$NEW_PR" \
+             '.issues[$n].pr_number = ($p | tonumber)' \
+             ../worktrees/wave-state.<repo-slug>.json > ../worktrees/wave-state.<repo-slug>.json.tmp \
+             && mv ../worktrees/wave-state.<repo-slug>.json.tmp ../worktrees/wave-state.<repo-slug>.json
+         fi
+       fi
+     fi
+     ```
+
+   The verification loop re-runs Phase 3c § 4 (PR base) and § 5
+   (PR body) on the new PR before recording it.
 
 3. **Recovery sequence** (when PR missing or timeout):
    ```bash
    cd ../worktrees/issue-{N}-{slug}
+   ```
 
 # Step A: check if branch was pushed
+
     git fetch origin
     if git branch --list origin/fix/issue-{N}-{slug} > /dev/null 2>&1; then
       # Branch exists remotely — PR was not created
@@ -285,80 +292,83 @@ instead of passively waiting for a done signal:
         --head fix/issue-{N}-{slug}
     fi
 
-   # Step B: verify PR was created
-   gh pr list --search "fix/issue-{N}" --json number --jq 'length'
-   # Must return 1 — if 0, escalate to user with worktree path
-   ```
+# Step B: verify PR was created
 
-  4. **PR base verification** (after PR is found, before recording it):
-     ```bash
-     BASE_REF=$(gh pr view {PR_NUMBER} --json baseRefName --jq '.baseRefName')
-     if [ "$BASE_REF" != "develop" ]; then
-       # Auto-fix: close wrong-base PR and recreate targeting develop
-       gh pr close {PR_NUMBER}
-       gh pr create --base develop \
-         --title "$(gh pr view {PR_NUMBER} --json title --jq '.title')" \
-         --body "$(gh pr view {PR_NUMBER} --json body --jq '.body')" \
-         --head fix/issue-{N}-{slug}
-     fi
-     ```
-     This catches sub-agents that omit `--base develop` from `gh pr create`.
+gh pr list --search "fix/issue-{N}" --json number --jq 'length'
+
+# Must return 1 — if 0, escalate to user with worktree path
+
+````
+
+4. **PR base verification** (after PR is found, before recording it):
+  ```bash
+  BASE_REF=$(gh pr view {PR_NUMBER} --json baseRefName --jq '.baseRefName')
+  if [ "$BASE_REF" != "develop" ]; then
+    # Auto-fix: close wrong-base PR and recreate targeting develop
+    gh pr close {PR_NUMBER}
+    gh pr create --base develop \
+      --title "$(gh pr view {PR_NUMBER} --json title --jq '.title')" \
+      --body "$(gh pr view {PR_NUMBER} --json body --jq '.body')" \
+      --head fix/issue-{N}-{slug}
+  fi
+  ```
+  This catches sub-agents that omit `--base develop` from `gh pr create`.
 
 5. **PR body validation** (after PR is found, before recording it):
-      ```bash
-      BODY=$(gh pr view {PR_NUMBER} --json body --jq '.body')
-      # Determine keyword from commit message: resolve → Closes, refs → Refs
-      COMMIT_SUBJECT=$(gh pr view {PR_NUMBER} --json headRefName --jq '.headRefName' | xargs -I{} git log -1 --format=%s origin/{})
-      if echo "$COMMIT_SUBJECT" | grep -q "resolve #{N}"; then
-        KEYWORD="Closes"
-      else
-        KEYWORD="Refs"
-      fi
-      if echo "$BODY" | grep -qE "(Closes|Fixes|Refs|for|touches)\s+#{N}"; then
-         # Keyword found — record PR number in wave-state.<repo-slug>.json, move to next issue
-         :
-       else
-         # Auto-fix: append the required keyword to the PR body
-         gh pr edit {PR_NUMBER} --body "${BODY}
+   ```bash
+   BODY=$(gh pr view {PR_NUMBER} --json body --jq '.body')
+   # Determine keyword from commit message: resolve → Closes, refs → Refs
+   COMMIT_SUBJECT=$(gh pr view {PR_NUMBER} --json headRefName --jq '.headRefName' | xargs -I{} git log -1 --format=%s origin/{})
+   if echo "$COMMIT_SUBJECT" | grep -q "resolve #{N}"; then
+     KEYWORD="Closes"
+   else
+     KEYWORD="Refs"
+   fi
+   if echo "$BODY" | grep -qE "(Closes|Fixes|Refs|for|touches)\s+#{N}"; then
+      # Keyword found — record PR number in wave-state.<repo-slug>.json, move to next issue
+      :
+    else
+      # Auto-fix: append the required keyword to the PR body
+      gh pr edit {PR_NUMBER} --body "${BODY}
 
 ${KEYWORD} #{N}"
-       fi
-      if echo "$BODY" | grep -qE "^Scope guard:"; then
-        # Scope guard already present — record PR number in wave-state.<repo-slug>.json
-        :
-      else
-        # Auto-fix: append the default scope-guard line (issue #365;
-        # fence from issue #301). Set NEXT_ISSUE to the next-priority
-        # open issue in the same wave, or leave "#M" as a placeholder
-        # the orchestrator substitutes before editing. The shape uses
-        # "#M" so the appended block always satisfies all four
-        # check_pr_body_scope.sh assertions (keyword, scope guard line,
-        # issue reference, rationale phrase).
-        NEXT_ISSUE="#M"
-        gh pr edit {PR_NUMBER} --body "${BODY}
+    fi
+   if echo "$BODY" | grep -qE "^Scope guard:"; then
+     # Scope guard already present — record PR number in wave-state.<repo-slug>.json
+     :
+   else
+     # Auto-fix: append the default scope-guard line (issue #365;
+     # fence from issue #301). Set NEXT_ISSUE to the next-priority
+     # open issue in the same wave, or leave "#M" as a placeholder
+     # the orchestrator substitutes before editing. The shape uses
+     # "#M" so the appended block always satisfies all four
+     # check_pr_body_scope.sh assertions (keyword, scope guard line,
+     # issue reference, rationale phrase).
+     NEXT_ISSUE="#M"
+     gh pr edit {PR_NUMBER} --body "${BODY}
 
 Scope guard: Do NOT touch any other area of the codebase; ${NEXT_ISSUE} owns the follow-up area."
-      fi
-      ```
-      This catches sub-agents that omit either the `Closes #N` /
-      `Fixes #N` / `Refs #N` keyword or the `Scope guard:` line from the PR body
-      (issues #2340 and #365 respectively; the Scope guard contract is
-      the gate added by #301). The keyword regex accepts both exact
-      and whitespace-variant forms (e.g., `Closes  #123`, `Closes#123`);
-      the Scope guard regex is anchored at start-of-line (`^Scope
-      guard:`) so mentions inside fenced code blocks or prose do not
-      false-positive.
+   fi
+   ```
+   This catches sub-agents that omit either the `Closes #N` /
+   `Fixes #N` / `Refs #N` keyword or the `Scope guard:` line from the PR body
+   (issues #2340 and #365 respectively; the Scope guard contract is
+   the gate added by #301). The keyword regex accepts both exact
+   and whitespace-variant forms (e.g., `Closes  #123`, `Closes#123`);
+   the Scope guard regex is anchored at start-of-line (`^Scope
+   guard:`) so mentions inside fenced code blocks or prose do not
+   false-positive.
 
-  6. **Idempotency**: All orchestrator push commands use `--force-with-lease`.
-     All `gh pr create` calls are safe to re-run — GitHub returns error if PR
-     already exists for that head branch, but the verification above prevents
-     reaching that case.
+6. **Idempotency**: All orchestrator push commands use `--force-with-lease`.
+  All `gh pr create` calls are safe to re-run — GitHub returns error if PR
+  already exists for that head branch, but the verification above prevents
+  reaching that case.
 
-  7. **Escalation**: If recovery sequence fails or PR still missing after push,
-    record issue as `escalated` in wave-state.<repo-slug>.json and report to user with
-    worktree path so they can inspect and push manually.
+7. **Escalation**: If recovery sequence fails or PR still missing after push,
+ record issue as `escalated` in wave-state.<repo-slug>.json and report to user with
+ worktree path so they can inspect and push manually.
 
- **Do not proceed to Phase 4 until every PR in the wave exists (on develop) or is escalated.**
+**Do not proceed to Phase 4 until every PR in the wave exists (on develop) or is escalated.**
 
 ## Phase 4: CI and Merge
 
@@ -384,7 +394,7 @@ See [REFERENCE.md — Merge Ordering Strategy](REFERENCE.md#merge-ordering-strat
 ### 4b. Spawn CI Sub-agents
 
 Spawn one sub-agent per PR using the prompt template in
-[REFERENCE.md — CI Sub-agent Template](REFERENCE.md#ci-sub-agent-template).
+[REFERENCE.md — Implementation Sub-agent Template](REFERENCE.md#implementation-sub-agent-template).
 
 Each sub-agent monitors CI, fixes failures, resolves merge conflicts,
 and merges the PR.
@@ -396,17 +406,17 @@ In that case, recreate the PR instead of escalating:
 
 ```bash
 if ! gh pr reopen <N> 2>/dev/null; then
-  OLD_TITLE=$(gh pr view <N> --json title --jq '.title' 2>/dev/null)
-  OLD_BODY=$(gh pr view <N> --json body --jq '.body' 2>/dev/null)
-  gh pr close <N>  # confirm closed
-  NEW_PR=$(gh pr create --base develop \
-    --title "$OLD_TITLE" \
-    --body "$OLD_BODY" \
-    --head fix/issue-{N}-{slug} | tail -1 | awk -F'/' '{print $NF}')
-  # Phase 3c verification loop picks up the new PR on its next poll;
-  # update wave-state.<repo-slug>.json with the new number.
+OLD_TITLE=$(gh pr view <N> --json title --jq '.title' 2>/dev/null)
+OLD_BODY=$(gh pr view <N> --json body --jq '.body' 2>/dev/null)
+gh pr close <N>  # confirm closed
+NEW_PR=$(gh pr create --base develop \
+ --title "$OLD_TITLE" \
+ --body "$OLD_BODY" \
+ --head fix/issue-{N}-{slug} | tail -1 | awk -F'/' '{print $NF}')
+# Phase 3c verification loop picks up the new PR on its next poll;
+# update wave-state.<repo-slug>.json with the new number.
 fi
-```
+````
 
 The recreate path carries over the old title/body verbatim, so re-run
 Phase 3c § 4 (PR base) and § 5 (PR body) checks on the new PR before
@@ -527,6 +537,7 @@ Merged: {count} | Escalated: {count} | Skipped: {count}
 Whenever the orchestrator or its sub-agents encounter an ambiguous situation, blocker, plan approval, or decision point that would normally require asking the human operator for input, **always query the Foreman MCP first** using the `ask_foreman` tool.
 
 ### Tool Invocation Schema
+
 ```json
 {
   "question": "<Clear, concise decision question as would be asked to the human>",
@@ -538,11 +549,13 @@ Whenever the orchestrator or its sub-agents encounter an ambiguous situation, bl
 ```
 
 ### Protocol Rules
+
 1. **Foreman First**: Call `ask_foreman` before any escalation, confirmation prompt, or question to the human operator.
 2. **Handle Answered**: If Foreman returns `{"status": "answered", "choice": "...", "rationale": "..."}`, log the decision and rationale in the state file / journal and proceed immediately with that choice without interrupting the human.
 3. **Handle Abstained / Fallback**: If Foreman returns `{"status": "abstained", "rationale": "..."}` or the Foreman MCP is unreachable/errors, only then fall back to asking the human operator, providing the options and Foreman's rationale for full context.
 
 ### Key Decision Points Handled by Foreman
+
 - **Wave Plan Approval (Phase 2)**: Approving wave groupings when not in `--auto` mode.
 - **Merge Conflict Strategy (Phase 3c / 4)**: Deciding whether to adopt branch changes, adopt develop changes, attempt manual semantic rebase, or escalate.
 - **Persistent CI Failures (Phase 3c / 4)**: Deciding whether to retry with a clean worktree, skip the issue to preserve wave progress, use `--admin` merge if locally verified, or escalate.
@@ -588,10 +601,10 @@ See [REFERENCE.md — Resume and Recovery](REFERENCE.md#resume-and-recovery).
 
 ## Limits
 
-| Parameter | Value |
-|---|---|
-| Max issues per wave | 3 |
-| Max CI fix iterations per PR | 10 |
-| Max conflict resolution attempts | 2 |
-| Freeze-breaker sub-agents per frozen wave | 1 |
-| Worktree location | `../worktrees/` (parent of repo root) |
+| Parameter                                 | Value                                 |
+| ----------------------------------------- | ------------------------------------- |
+| Max issues per wave                       | 3                                     |
+| Max CI fix iterations per PR              | 10                                    |
+| Max conflict resolution attempts          | 2                                     |
+| Freeze-breaker sub-agents per frozen wave | 1                                     |
+| Worktree location                         | `../worktrees/` (parent of repo root) |

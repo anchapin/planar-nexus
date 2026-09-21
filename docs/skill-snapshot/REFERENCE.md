@@ -1,5 +1,9 @@
 # Reference — GitHub Wave Orchestrator
 
+## Merge Ordering Strategy
+
+When merging PRs within a wave, merge in ascending issue-number order to minimize merge conflicts. After each merge, check remaining PRs for conflicts with the updated base branch.
+
 ## Resume and Recovery
 
 If a wave run is interrupted (Ctrl+C, network loss, CI timeout), the orchestrator state is persisted to the namespaced state file (`../worktrees/wave-state.<repo-slug>.json`). To resume:
