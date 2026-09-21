@@ -52,6 +52,20 @@ import {
   classifyMessagePriority,
   type PeerQueueStats,
 } from "./peer-send-queue";
+import { gzipCompress, gzipDecompress } from "./compression/native-gzip";
+
+/**
+ * Streaming compression threshold for P2P data channel messages (issue #2010).
+ * Messages below this size are sent uncompressed to avoid compression overhead.
+ */
+const P2P_COMPRESSION_THRESHOLD_BYTES = 1024;
+
+/**
+ * Magic prefix marking a gzip-compressed, base64-encoded message payload.
+ * Uncompressed messages have no prefix (plain JSON string).
+ */
+const P2P_COMPRESSED_PREFIX = "1:";
+const P2P_UNCOMPRESSED_PREFIX = "0:";
 
 /**
  * WebRTC configuration with STUN/TURN servers
@@ -800,12 +814,12 @@ export class WebRTCConnection {
       this.events.onError(errorToReport, "");
     };
 
-    this.dataChannel.onmessage = (event) => {
+    this.dataChannel.onmessage = async (event) => {
       if (typeof event.data !== "string") {
         p2pLogger.warn("[WebRTC] Received non-string message, ignoring");
         return;
       }
-      this.handleMessage(event.data);
+      await this.handleMessage(event.data);
     };
   }
 
@@ -819,13 +833,16 @@ export class WebRTCConnection {
    *   2. Hard byte cap on the raw message — checked BEFORE JSON.parse so the
    *      parser never allocates an unbounded buffer (cf. GHSA-96hv-2xvq-fx4p,
    *      the ws memory-exhaustion advisory).
-   *   3. Structural limits — max nesting depth + max total key count, so a
+   *   3. Decompression (for compressed messages, issue #2010) — done after
+   *      size check but before parse so the decompressor never processes an
+   *      unbounded buffer.
+   *   4. Structural limits — max nesting depth + max total key count, so a
    *      deeply-nested or key-bloated payload cannot blow the stack or burn
    *      CPU in the recursive handlers below.
    *
    * Every limit violation is rejected silently (logged) rather than thrown.
    */
-  private handleMessage(data: string): void {
+  private async handleMessage(data: string): Promise<void> {
     try {
       // 1. Rate-limit first: never do parse work for a flooding peer.
       if (!this.rateLimiter.tryAcquire()) {
@@ -844,7 +861,24 @@ export class WebRTCConnection {
         return;
       }
 
-      const message: P2PMessage = JSON.parse(data);
+      // 3. Decompress if the message is marked as compressed (issue #2010).
+      let parseData = data;
+      if (data.startsWith(P2P_COMPRESSED_PREFIX)) {
+        try {
+          const encoded = data.slice(P2P_COMPRESSED_PREFIX.length);
+          const compressed = Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0));
+          const decompressed = await gzipDecompress(compressed);
+          parseData = new TextDecoder().decode(decompressed);
+        } catch (decompressError) {
+          p2pLogger.warn(
+            "[WebRTC] Failed to decompress peer message, dropping:",
+            decompressError,
+          );
+          return;
+        }
+      }
+
+      const message: P2PMessage = JSON.parse(parseData);
 
       // 3. Structural caps: reject pathologically deep / wide payloads before
       // the recursive message handlers run.
@@ -1361,27 +1395,50 @@ export class WebRTCConnection {
    * messages (chat / emotes) are dropped under sustained pressure with a
    * per-type counter exposed via {@link WebRTCConnection.getQueueStats}.
    *
-   * Note: this method is `void` for backward compatibility with every
+   * Issue #2010: messages larger than 1 KB are gzip-compressed before being
+   * queued to reduce bandwidth. The receiver detects the compression marker
+   * and decompresses automatically.
+   *
+   * Note: this method is `Promise<void>` for backward compatibility with every
    * existing call site. Callers that need to know whether the message was
    * actually delivered should consult `getQueueStats()`.
    */
-  send(message: P2PMessage): void {
+  async send(message: P2PMessage): Promise<void> {
     if (!this.dataChannel || this.dataChannel.readyState !== "open") {
       p2pLogger.warn("[WebRTC] Data channel not ready");
       return;
     }
-    this.enqueueOutbound(message);
+
+    let payload = JSON.stringify(message);
+    const uncompressedLen = payload.length;
+
+    if (uncompressedLen > P2P_COMPRESSION_THRESHOLD_BYTES) {
+      try {
+        const compressed = await gzipCompress(payload);
+        payload = P2P_COMPRESSED_PREFIX + btoa(String.fromCharCode(...compressed));
+      } catch (compressError) {
+        p2pLogger.warn(
+          "[WebRTC] Compression failed, sending uncompressed:",
+          compressError,
+        );
+      }
+    }
+    // else: payload is already plain JSON (no prefix needed for backward compat)
+
+    this.enqueueOutbound(payload, message.type);
   }
 
   /**
    * Enqueue a message via the per-peer send queue (#1251) and drain. The
    * queue tracks `bufferedAmount` via the onbufferedamountlow event so a
    * slow peer's outgoing buffer no longer head-of-line-blocks sends.
+   *
+   * @param payload  The serialized (and possibly compressed) message string.
+   * @param type     The message type string, used for priority classification.
    */
-  private enqueueOutbound(message: P2PMessage): void {
+  private enqueueOutbound(payload: string, type: string): void {
     if (!this.dataChannel) return;
-    const payload = JSON.stringify(message);
-    const priority = classifyMessagePriority(message.type);
+    const priority = classifyMessagePriority(type);
     const inFlight = this.dataChannel.bufferedAmount ?? 0;
     // Surface the current channel pressure to the queue so the stalled
     // flag flips on the rising edge even before the next drain runs.
