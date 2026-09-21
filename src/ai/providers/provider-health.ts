@@ -120,6 +120,13 @@ const COOLDOWN_SCHEDULE: Record<ProviderFailureReason, CooldownSchedule> = {
 export const MAX_ENTRIES = 32;
 
 /**
+ * Rolling window size for TTFT (time-to-first-token) history per provider
+ * (issue #1997). Keeps the last N measurements to compute a moving average
+ * that is responsive to latency changes without being noisy.
+ */
+export const TTFT_HISTORY_SIZE = 5;
+
+/**
  * Compute the cooldown duration for the `n`-th consecutive failure of a given
  * reason. Exported for unit testing; not part of the public tracker API.
  *
@@ -143,6 +150,8 @@ interface ProviderHealthEntry {
   lastFailureAt: number;
   lastFailureReason: ProviderFailureReason;
   cooldownUntil: number;
+  /** Rolling TTFT history (ms), newest last; max {@link TTFT_HISTORY_SIZE} entries. */
+  ttftHistory: number[];
 }
 
 /**
@@ -173,6 +182,41 @@ export class ProviderHealthTracker {
   /** Remove all entries. Intended for test reset. */
   clear(): void {
     this.entries.clear();
+  }
+
+  /**
+   * Record the time-to-first-token (TTFT) for `provider` in ms (issue #1997).
+   * Maintains a rolling window of up to {@link TTFT_HISTORY_SIZE} measurements.
+   * If the provider has no prior entry, creates one with an empty failure state.
+   */
+  recordTtft(provider: string, ttftMs: number): void {
+    let entry = this.entries.get(provider);
+    if (!entry) {
+      entry = {
+        failureCount: 0,
+        lastFailureAt: 0,
+        lastFailureReason: "stream-before-first-token",
+        cooldownUntil: 0,
+        ttftHistory: [],
+      };
+    }
+    const history = [...entry.ttftHistory, ttftMs];
+    // Keep only the newest TTFT_HISTORY_SIZE entries.
+    if (history.length > TTFT_HISTORY_SIZE) {
+      history.splice(0, history.length - TTFT_HISTORY_SIZE);
+    }
+    this.entries.set(provider, { ...entry, ttftHistory: history });
+  }
+
+  /**
+   * The moving-average TTFT for `provider` in ms, or `undefined` when no TTFT
+   * data has been recorded yet. Returns `0` when the history is empty.
+   */
+  getAverageTtft(provider: string): number | undefined {
+    const entry = this.entries.get(provider);
+    if (!entry || entry.ttftHistory.length === 0) return undefined;
+    const sum = entry.ttftHistory.reduce((a, b) => a + b, 0);
+    return sum / entry.ttftHistory.length;
   }
 
   /**
@@ -219,6 +263,7 @@ export class ProviderHealthTracker {
       lastFailureAt: now,
       lastFailureReason: reason,
       cooldownUntil: now + cooldownMs,
+      ttftHistory: existing?.ttftHistory ?? [],
     };
     // Delete + set so the provider moves to the tail of insertion order
     // (LRU semantics for `enforceBound`).
