@@ -103,7 +103,6 @@ const EXPECTED_MUTATE_ENTRIES = [
   "src/lib/game-state/spell-casting/*.ts",
   "src/lib/game-state/trigger-system.ts",
   "src/lib/game-state/state-based-actions.ts",
-  "src/lib/game-state/combat.ts",
   "src/lib/game-state/mana.ts",
 ];
 
