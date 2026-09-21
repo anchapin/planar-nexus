@@ -549,6 +549,67 @@ location.reload();
 
 ---
 
+#### Signaling server unreachable
+
+**Cause**: The signaling server is down, unreachable, or returning errors
+
+**Solution**:
+1. Check [status page / GitHub](https://github.com/anchapin/planar-nexus/issues) for ongoing incidents
+2. Verify your network can reach the signaling endpoint:
+   ```bash
+   curl https://your-deploy-domain.com/api/signaling
+   ```
+   A `405 Method Not Allowed` response means the server is up; a connection failure means it is unreachable
+3. Try a different network (mobile hotspot) to rule out local firewall/ISP blocking
+4. If self-hosting: verify the `NEXT_PUBLIC_SIGNALING_URL` environment variable is set correctly and the server process is running
+
+---
+
+#### TURN relay fallback when direct ICE fails
+
+**Cause**: Direct peer-to-peer ICE connection fails due to symmetric NAT or firewall blocking
+
+**Solution**:
+1. The app automatically attempts TURN relay via `openrelayproject.org` when direct ICE fails
+2. If TURN also fails:
+   - Check that UDP port 3478 (and 5349 for TLS) is not blocked by your firewall
+   - Contact your network administrator to allow UDP outbound on these ports
+3. For self-hosted TURN: set `NEXT_PUBLIC_TURN_URL`, `NEXT_PUBLIC_TURN_USER`, and `NEXT_PUBLIC_TURN_PASS` in your environment (see §5.1.6 for credential security)
+
+---
+
+#### Game code expired / session timed out
+
+**Cause**: Signaling sessions expire after 5 minutes of inactivity (issue #1583)
+
+**Solution**:
+1. Create a new game and share the fresh code with your opponent
+2. If the game was in progress: both players should rejoin the new session
+3. To avoid this issue: do not leave multiplayer lobby idle for more than 5 minutes
+
+---
+
+#### How to configure NEXT_PUBLIC_TURN_* when heuristic TURN fails
+
+**Cause**: The default `openrelayproject.org` public TURN server may be blocked or rate-limited in some network environments
+
+**Solution**:
+1. Obtain TURN credentials from a TURN provider (e.g., Twilio, Metered, or your own TURN server)
+2. Set the following environment variables (desktop builds: use Tauri secrets plugin, not `.env`):
+
+   | Variable | Description | Example |
+   |----------|-------------|---------|
+   | `NEXT_PUBLIC_TURN_URL` | TURN server URL | `turn:your-turn-server.com:3478` |
+   | `NEXT_PUBLIC_TURN_USER` | TURN username | `your-username` |
+   | `NEXT_PUBLIC_TURN_PASS` | TURN credential | `your-password` |
+
+   > **Security note**: Never commit `NEXT_PUBLIC_TURN_*` values to the repository. The `turn-credentials-guard` CI job will reject any commit containing these variables with non-empty credentials. Use Tauri secrets plugin or a server-side credential proxy instead (see `docs/API.md` §4 TURN credential leak guard).
+
+3. Restart the app after updating credentials
+4. Test with a friend on a different network to verify the TURN connection works
+
+---
+
 ### 5.2 Game Sync Issues
 
 #### Game state out of sync
@@ -571,6 +632,18 @@ location.reload();
 1. Wait a few seconds for action to propagate
 2. Check network connection
 3. Refresh page if action doesn't appear after 30 seconds
+
+---
+
+#### Desync after reconnection
+
+**Cause**: State divergence between peers after a network interruption
+
+**Solution**:
+1. Both players should close their sessions and rejoin using the same game code
+2. The host should verify game state in the lobby before restarting
+3. If desync persists: export the game log from each player's console and compare
+4. In rare cases a full restart is required — the game does not auto-recover from deep desyncs
 
 ---
 
