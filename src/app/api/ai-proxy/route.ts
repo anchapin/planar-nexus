@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { assertSameOrigin } from "@/lib/security/same-origin";
 import { streamText, generateText } from "ai";
 import { getAIModel } from "@/ai/providers/factory";
 import { AIProvider, AI_PROVIDER_IDS } from "@/ai/providers/types";
@@ -116,6 +117,7 @@ export async function POST(
   // for the safe error summary in the catch block below.
   let validatedProvider: AIProvider | undefined;
   try {
+    assertSameOrigin(request);
     // Parse request body
     let body: AIProxyRequest;
     try {

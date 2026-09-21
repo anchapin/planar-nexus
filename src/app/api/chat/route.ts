@@ -16,6 +16,7 @@ import {
 } from "@/lib/server-rate-limiter";
 import { getClientIdentifier } from "@/lib/server-request-identity";
 import { UsageLogger } from "@/lib/server-usage-logger";
+import { assertSameOrigin } from "@/lib/security/same-origin";
 
 // Use force-dynamic to prevent response buffering
 export const dynamic = "force-dynamic";
@@ -159,6 +160,7 @@ async function* withUsageLogging(
 
 export async function POST(req: NextRequest) {
   try {
+    assertSameOrigin(req);
     // 1. Parse request body
     let body: unknown;
     try {

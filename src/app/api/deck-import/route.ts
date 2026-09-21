@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUnsupportedSiteSuggestion } from "@/lib/decklist-utils";
+import { assertSameOrigin } from "@/lib/security/same-origin";
 
 /**
  * Issue #1277 — body-size cap on the deck-import API.
@@ -579,6 +580,7 @@ function validateDecklist(decklist: string): {
 
 export async function POST(request: NextRequest) {
   try {
+    assertSameOrigin(request);
     // Issue #1277 — enforce a request body cap BEFORE deserialization so a
     // streaming attacker cannot exhaust memory by holding the connection
     // open with a multi-MB body. We use `request.text()` so we can stop
