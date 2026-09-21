@@ -210,7 +210,7 @@ function clampEntry(text: string): string {
  * case-insensitively. Returns a new array (immutability for safe merge).
  */
 function withEntry(list: string[], value: string): string[] {
-  const cleaned = clampEntry(value);
+  const cleaned = clampEntry(sanitizeUserInput(value));
   if (!cleaned) return list;
   const lower = cleaned.toLowerCase();
   if (list.some((existing) => existing.toLowerCase() === lower)) return list;
@@ -679,12 +679,12 @@ export function renderCoachMemorySummaryForPrompt(
   // would be just as dangerous in the summary as in the original message.
   const sanitized = sanitizeUserInput(body, { maxLength: 8_000 });
 
-  // Defend against fence-breakout: strip any attempt to close the
-  // `coach_memory` tag from inside the (sanitized) content. Same pattern as
-  // `wrapUntrusted`, but applied to our dedicated tag.
+  // Defend against fence-breakout: by HTML-escaping < first, any attempt to
+  // close the `coach_memory` tag from inside the content becomes &lt;/coach_memory&gt;
+  // which does not match the real fence closing tag </coach_memory>. The only
+  // legitimate closing tag is the one this function adds at the end.
   const tag = "coach_memory";
-  const breakout = new RegExp(`<\\/?\\s*${tag}\\b[^>]*>`, "gi");
-  const inner = sanitized.replace(breakout, "[redacted-tag]");
+  const inner = sanitized.replace(/&/g, "&amp;").replace(/</g, "&lt;");
 
   const preamble =
     "<!-- SYSTEM-MAINTAINED COACH MEMORY: durable summary of prior (now-pruned) turns. " +

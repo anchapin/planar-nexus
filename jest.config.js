@@ -74,6 +74,10 @@ module.exports = {
       lines: 64,
       statements: 63,
     },
+    "src/ai/flows/**": {
+      branches: 55,
+      lines: 65,
+    },
   },
   // `json-summary` emits coverage/coverage-summary.json, consumed by
   // scripts/ratchet-coverage.js (npm run test:coverage:ratchet, issue #1099).

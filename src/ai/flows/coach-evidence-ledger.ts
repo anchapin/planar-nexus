@@ -36,6 +36,7 @@
 
 import { z } from "zod";
 import type { StructuredDeckAnalysis } from "./coach-deck-analysis";
+import { sanitizeUserInput } from "@/ai/prompt-security";
 
 /**
  * The categories of factual deck claims the ledger can ground. Mirrors the
@@ -402,7 +403,7 @@ function buildWinConditionEntries(
       {
         id: "wincondition-derived",
         category: "winCondition",
-        summary: `No explicit win-condition data; archetype is "${analysis.archetype}".`,
+        summary: `No explicit win-condition data; archetype is "${sanitizeUserInput(analysis.archetype)}".`,
         categoricalFacts: categorical,
       },
     ];
@@ -443,20 +444,24 @@ function buildStrengthAndGapEntries(
     entries.push({
       id: "strengths-summary",
       category: "strength",
-      summary: analysis.strengths
-        .slice(0, 6)
-        .map((s, i) => `${i + 1}. ${s}`)
-        .join(" "),
+      summary: sanitizeUserInput(
+        analysis.strengths
+          .slice(0, 6)
+          .map((s, i) => `${i + 1}. ${s}`)
+          .join(" "),
+      ),
     });
   }
   if (analysis.gaps.length > 0) {
     entries.push({
       id: "gaps-summary",
       category: "gap",
-      summary: analysis.gaps
-        .slice(0, 6)
-        .map((g, i) => `${i + 1}. ${g}`)
-        .join(" "),
+      summary: sanitizeUserInput(
+        analysis.gaps
+          .slice(0, 6)
+          .map((g, i) => `${i + 1}. ${g}`)
+          .join(" "),
+      ),
     });
   }
 
@@ -654,7 +659,10 @@ export function renderLedgerForPrompt(ledger: EvidenceLedger): string {
     "**Evidence Ledger** — cite by id after factual deck claims (e.g. `[E:curve-lands]`):",
   );
   for (const entry of ledger.entries) {
-    lines.push(`- [E:${entry.id}] (${entry.category}) ${entry.summary}`);
+    const safeSummary = entry.summary
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;");
+    lines.push(`- [E:${entry.id}] (${entry.category}) ${safeSummary}`);
   }
   if (ledger.insufficientCategories.length > 0) {
     lines.push(
