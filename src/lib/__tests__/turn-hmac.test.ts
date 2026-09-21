@@ -425,3 +425,182 @@ describe("verifyTurnCredential", () => {
     ).toBe(false);
   });
 });
+
+describe("Credential lifecycle — mint → use → expire (#2003)", () => {
+  const secret = FIXED_SECRET;
+  const clientId = "peer-lifecycle";
+  const now = 1_700_000_000;
+  const ttl = 3600; // 1 hour
+
+  it("freshly minted credential verifies successfully at mint time", () => {
+    const minted = mintTurnCredential({
+      secret,
+      clientId,
+      nowEpochSeconds: now,
+      ttlSeconds: ttl,
+    });
+    expect(
+      verifyTurnCredential(secret, minted.username, minted.credential, now),
+    ).toBe(true);
+  });
+
+  it("credential is still valid just before expiry", () => {
+    const minted = mintTurnCredential({
+      secret,
+      clientId,
+      nowEpochSeconds: now,
+      ttlSeconds: ttl,
+    });
+    const justBeforeExpiry = now + ttl - 1;
+    expect(
+      verifyTurnCredential(secret, minted.username, minted.credential, justBeforeExpiry),
+    ).toBe(true);
+  });
+
+  it("credential is rejected immediately after expiry", () => {
+    const minted = mintTurnCredential({
+      secret,
+      clientId,
+      nowEpochSeconds: now,
+      ttlSeconds: ttl,
+    });
+    const justAfterExpiry = now + ttl + 1;
+    expect(
+      verifyTurnCredential(secret, minted.username, minted.credential, justAfterExpiry),
+    ).toBe(false);
+  });
+
+  it("credential is rejected long after expiry", () => {
+    const minted = mintTurnCredential({
+      secret,
+      clientId,
+      nowEpochSeconds: now,
+      ttlSeconds: ttl,
+    });
+    const farAfterExpiry = now + ttl + 100_000;
+    expect(
+      verifyTurnCredential(secret, minted.username, minted.credential, farAfterExpiry),
+    ).toBe(false);
+  });
+});
+
+describe("Credential rotation — same client, different sessions (#2003)", () => {
+  const secret = FIXED_SECRET;
+  const clientId = "peer-rotate";
+
+  it("two mints at different times produce different credentials (time-based rotation)", () => {
+    const first = mintTurnCredential({
+      secret,
+      clientId,
+      nowEpochSeconds: 1_700_000_000,
+      ttlSeconds: 3600,
+    });
+    const second = mintTurnCredential({
+      secret,
+      clientId,
+      nowEpochSeconds: 1_700_003_600, // exactly 1 hour later
+      ttlSeconds: 3600,
+    });
+    expect(first.credential).not.toBe(second.credential);
+    expect(first.username).not.toBe(second.username);
+  });
+
+  it("second mint while first is still valid produces a different valid credential", () => {
+    const now = 1_700_000_000;
+    const first = mintTurnCredential({
+      secret,
+      clientId,
+      nowEpochSeconds: now,
+      ttlSeconds: 3600,
+    });
+    // Mint a new credential 30 minutes later — first is still valid at that moment
+    const later = now + 1800;
+    const second = mintTurnCredential({
+      secret,
+      clientId,
+      nowEpochSeconds: later,
+      ttlSeconds: 3600,
+    });
+    expect(first.credential).not.toBe(second.credential);
+    // Both verify against their respective mint times
+    expect(verifyTurnCredential(secret, first.username, first.credential, now)).toBe(true);
+    expect(verifyTurnCredential(secret, second.username, second.credential, later)).toBe(true);
+    // First has expired by 2 hours after mint
+    const afterFirstExpiry = now + 7200;
+    expect(verifyTurnCredential(secret, first.username, first.credential, afterFirstExpiry)).toBe(false);
+  });
+});
+
+describe("Wrong-secret and tampered credential rejection (#2003)", () => {
+  const secret = FIXED_SECRET;
+  const now = 1_700_000_000;
+
+  it("verifying with a different secret is rejected", () => {
+    const minted = mintTurnCredential({
+      secret,
+      clientId: "peer-1",
+      nowEpochSeconds: now,
+      ttlSeconds: 3600,
+    });
+    expect(
+      verifyTurnCredential("wrong-secret", minted.username, minted.credential, now),
+    ).toBe(false);
+  });
+
+  it("verifying with an empty secret is rejected", () => {
+    const minted = mintTurnCredential({
+      secret,
+      clientId: "peer-1",
+      nowEpochSeconds: now,
+      ttlSeconds: 3600,
+    });
+    expect(verifyTurnCredential("", minted.username, minted.credential, now)).toBe(
+      false,
+    );
+  });
+
+  it("tampered credential (one char changed) is rejected", () => {
+    const minted = mintTurnCredential({
+      secret,
+      clientId: "peer-1",
+      nowEpochSeconds: now,
+      ttlSeconds: 3600,
+    });
+    const tampered =
+      minted.credential.slice(0, 5) +
+      (minted.credential[5] === "A" ? "B" : "A") +
+      minted.credential.slice(6);
+    expect(tampered).not.toBe(minted.credential);
+    expect(
+      verifyTurnCredential(secret, minted.username, tampered, now),
+    ).toBe(false);
+  });
+
+  it("completely wrong credential is rejected", () => {
+    const minted = mintTurnCredential({
+      secret,
+      clientId: "peer-1",
+      nowEpochSeconds: now,
+      ttlSeconds: 3600,
+    });
+    const fakeCredential = "AAAAABBBBBCCCCCDDDDDEEEEE=";
+    expect(
+      verifyTurnCredential(secret, minted.username, fakeCredential, now),
+    ).toBe(false);
+  });
+
+  it("username with tampered clientId is rejected (HMAC mismatch)", () => {
+    const minted = mintTurnCredential({
+      secret,
+      clientId: "peer-1",
+      nowEpochSeconds: now,
+      ttlSeconds: 3600,
+    });
+    // Replace "peer-1" with "peer-2" in the username
+    const tamperedUsername = minted.username.replace("peer-1", "peer-2");
+    expect(tamperedUsername).not.toBe(minted.username);
+    expect(
+      verifyTurnCredential(secret, tamperedUsername, minted.credential, now),
+    ).toBe(false);
+  });
+});
