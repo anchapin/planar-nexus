@@ -377,7 +377,7 @@ export function applyDelta(
 }
 
 function deepCloneState<T>(state: T): T {
-  return JSON.parse(JSON.stringify(state));
+  return structuredClone(state);
 }
 
 /**
