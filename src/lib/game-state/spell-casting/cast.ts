@@ -4,18 +4,43 @@
  * Mechanically extracted from spell-casting.ts (issue #1725);
  * behavior pinned by the existing engine suites.
  */
-import type { GameState, PlayerId, CardInstanceId, StackObject, Target } from '../types';
-import { Phase, ZoneType } from '../types';
-import { moveCardBetweenZones } from '../zones';
-import { isPriorityPlayer } from '../priority-guard';
-import { spendMana, getSpellManaCost } from '../mana';
-import { ValidationService } from '../validation-service';
-import { hasSplitSecondOnStack } from '../auto-pass-priority';
-import { parseKicker, parseBuyback, parseFlashback, parseBestow, parseBlitz, parseForetell, parseSpectacle, parseConvoke, parseDelve, parseEscape, parseMutate, parseSplitSecond, parseStorm, isModalSpell, getModesForModalSpell, isSplitCard, getSplitCardHalves } from '../oracle-text-parser';
-import { detectStormTrigger, detectProwessTriggers } from '../trigger-system';
-import { applyProwessBoost } from '../evergreen-keywords';
-import { canCastWithMutate } from '../mutate';
-import { copySpellOnStack } from './resolve';
+import type {
+  GameState,
+  PlayerId,
+  CardInstanceId,
+  StackObject,
+  Target,
+} from "../types";
+import { Phase, ZoneType } from "../types";
+import { moveCardBetweenZones } from "../zones";
+import { isPriorityPlayer } from "../priority-guard";
+import { spendMana, getSpellManaCost } from "../mana";
+import { ValidationService } from "../validation-service";
+import { hasSplitSecondOnStack } from "../auto-pass-priority";
+import {
+  parseKicker,
+  parseBuyback,
+  parseFlashback,
+  parseBestow,
+  parseBlitz,
+  parseForetell,
+  parseSpectacle,
+  parseConvoke,
+  parseDelve,
+  parseEscape,
+  parseMutate,
+  parseSplitSecond,
+  parseStorm,
+  parseCascade,
+  isModalSpell,
+  getModesForModalSpell,
+  isSplitCard,
+  getSplitCardHalves,
+} from "../oracle-text-parser";
+import { detectStormTrigger, detectProwessTriggers } from "../trigger-system";
+import { applyProwessBoost } from "../evergreen-keywords";
+import { canCastWithMutate } from "../mutate";
+import { copySpellOnStack } from "./resolve";
 
 /**
  * Generate a unique stack object ID
@@ -1086,6 +1111,10 @@ export function castSpell(
     // StackObject so the on-cast trigger can fire (see detectStormTrigger /
     // copySpellOnStack below).
     storm: parseStorm(card.cardData.oracle_text || "").hasStorm,
+    // CR 702.84 - Cascade: parsed from Oracle text and stamped onto the spell's
+    // StackObject so the cascade trigger fires when the spell resolves (see
+    // resolveCascade in spell-casting/resolve.ts).
+    cascade: parseCascade(card.cardData.oracle_text || "").hasCascade,
   };
 
   // Move card from hand (or graveyard for flashback) to stack
@@ -1217,4 +1246,3 @@ export function getSpellManaValueFromCard(card: {
   // Mana value is already available from card.cardData.cmc
   return card.cmc ?? 0;
 }
-

@@ -4,11 +4,11 @@
  * Mechanically extracted from types.ts (issue #1725);
  * behavior pinned by the existing engine suites.
  */
-import type { ScryfallCard } from './card-data';
-import { CardInstanceId } from './cards';
-import { ChoiceOption } from './choices';
-import { DungeonId, DungeonRoomId } from './dungeon';
-import { PlayerId } from './players';
+import type { ScryfallCard } from "./card-data";
+import { CardInstanceId } from "./cards";
+import { ChoiceOption } from "./choices";
+import { DungeonId, DungeonRoomId } from "./dungeon";
+import { PlayerId } from "./players";
 
 /**
  * Unique identifier for an ability or effect on the stack
@@ -98,6 +98,19 @@ export interface StackObject {
    * CR 707.10d). Multiple instances are redundant (CR 702.41c).
    */
   storm?: boolean;
+  /**
+   * Cascade (CR 702.84).
+   *
+   * Set on a spell's StackObject when its Oracle text contains "Cascade". Cascade
+   * is a triggered ability that fires "when you cast this spell". At resolution,
+   * the controller reveals cards from the top of their library until they find a
+   * card with mana value strictly less than the original spell's mana value.
+   * That card is cast for free. The rest go to the graveyard (CR 702.84a). If
+   * no card is found, all revealed cards go to the graveyard. This field is
+   * consumed by `resolveCascade` in spell-casting/resolve.ts at spell-completion
+   * time.
+   */
+  cascade?: boolean;
   /**
    * Whether this stack object is a COPY of a spell rather than a spell that was
    * cast (CR 707.10). Copies share the original's characteristics — name,
@@ -300,4 +313,3 @@ export type StackEffect =
       nextRoomId?: DungeonRoomId;
       targetId?: PlayerId;
     };
-

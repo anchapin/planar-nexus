@@ -222,3 +222,43 @@ export function parseAttraction(oracleText: string): AttractionInfo {
   };
 }
 
+/**
+ * Result of detecting Cascade (CR 702.84).
+ */
+export interface CascadeInfo {
+  hasCascade: boolean;
+  description: string;
+}
+
+/**
+ * Parse the Cascade keyword from oracle text.
+ *
+ * CR 702.84a: "Cascade" is a triggered ability that functions when you cast the
+ * spell. "When you cast this spell, reveal cards from the top of your library
+ * until you reveal a card that shares a card type with it, that costs less to cast,
+ * or that has the mana value less than this spell's mana value. That card shares
+ * the characteristics of this spell and is cast without paying its mana cost. The
+ * rest of the revealed cards are put into your graveyard."
+ *
+ * This implementation follows CR 702.84a for the mana value variant (cards like
+ * Bloodbraid Elf): exile cards from the top of the library until a card with
+ * mana value strictly less than the original spell's mana value is found.
+ * That card is cast for free. The rest go to the graveyard.
+ *
+ * Detection is a word-boundary anchored, case-insensitive match so "Cascade"
+ * matches while a hypothetical "cascadedout" would not.
+ *
+ * Example oracle text: "Cascade" (Bloodbraid Elf, Maelstrom Wanderer).
+ */
+export function parseCascade(oracleText: string): CascadeInfo {
+  if (!oracleText) {
+    return { hasCascade: false, description: "" };
+  }
+
+  const hasCascade = /\bcascade\b/i.test(oracleText);
+
+  return {
+    hasCascade,
+    description: hasCascade ? "Cascade" : "",
+  };
+}
