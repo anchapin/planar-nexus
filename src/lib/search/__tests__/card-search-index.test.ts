@@ -62,6 +62,17 @@ describe("CardSearchIndex result cache", () => {
     expect(searchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("treats case-variant queries as the same cache entry (issue #2009)", async () => {
+    searchMock.mockResolvedValueOnce(hitsFor([{ id: "1", name: "Lightning Bolt" }]));
+
+    await index.search("Lightning");
+    await index.search("lightning");
+    await index.search("LIGHTNING");
+    await index.search("LiGhTnInG");
+
+    expect(searchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("treats different options (limit/offset/where) as distinct queries", async () => {
     searchMock
       .mockResolvedValueOnce(hitsFor([{ id: "1", name: "Lightning Bolt" }]))
