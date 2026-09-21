@@ -39,6 +39,7 @@ import {
   type RateLimitConfig,
 } from "@/lib/server-rate-limiter";
 import { getClientIdentifier } from "@/lib/server-request-identity";
+import { assertSameOrigin } from "@/lib/security/same-origin";
 import {
   HTTP_STATUS_BY_CLASS,
   newCorrelationId,
@@ -142,6 +143,7 @@ function clampHistoryKnob(value: unknown, max: number): number | undefined {
 
 export async function POST(request: NextRequest) {
   try {
+    assertSameOrigin(request);
     // 1. Parse request body
     let body;
     try {
