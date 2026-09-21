@@ -416,6 +416,10 @@ export class LayerSystem {
     }
   > = new Map();
 
+  private sortedEffectsCache: ContinuousEffect[] | null = null;
+  private effectsVersion = 0;
+  private sortedEffectsVersion = 0;
+
   /**
    * Compute a state hash based on all registered effects, dependencies, and overrides.
    * This hash uniquely identifies the current state that affects card characteristics.
@@ -471,6 +475,7 @@ export class LayerSystem {
    */
   registerEffect(effect: ContinuousEffect): void {
     this.effects.push(effect);
+    this.effectsVersion++;
     this.sortEffects();
     this.invalidateCache();
   }
@@ -481,9 +486,7 @@ export class LayerSystem {
    */
   removeEffectsFromSource(sourceCardId: CardInstanceId): void {
     this.effects = this.effects.filter((e) => e.sourceCardId !== sourceCardId);
-    // Also clear overrides from this source
-    // In a full implementation, we'd track which effect created which override
-    // For now, overrides are cleared when effects are removed via clearOverrides()
+    this.effectsVersion++;
     this.invalidateCache();
   }
 
@@ -493,6 +496,7 @@ export class LayerSystem {
    */
   registerCDA(cda: CharacteristicDefiningAbility): void {
     this.cdas.push(cda);
+    this.effectsVersion++;
     this.sortEffects();
     this.invalidateCache();
   }
@@ -516,6 +520,7 @@ export class LayerSystem {
       return false;
     }
     this.dependencies.push(dependency);
+    this.effectsVersion++;
     // Re-sort effects to account for the new dependency
     this.sortEffects();
     this.invalidateCache();
@@ -708,9 +713,12 @@ export class LayerSystem {
   }
 
   /**
-   * Sort effects by layer, timestamp, and dependencies (CR 613.7-613.8)
+   * Sort effects by layer, timestamp, and dependencies (CR 613.7-613.8).
+   * Uses a version counter to skip re-sorting when effects haven't changed.
    */
   private sortEffects(): void {
+    if (this.effectsVersion === this.sortedEffectsVersion) return;
+    this.sortedEffectsVersion = this.effectsVersion;
     this.effects.sort((a, b) => {
       // First sort by layer
       if (a.layer !== b.layer) {
