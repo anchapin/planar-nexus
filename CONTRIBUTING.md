@@ -103,8 +103,8 @@ cp .env.example .env
 ### 3.4 Start Development Server
 
 ```bash
-# Start the development server (runs on port 9002)
-npm run dev
+# Start the development server
+npm run dev  # (port 9002)
 
 # Open http://localhost:9002 in your browser
 ```
