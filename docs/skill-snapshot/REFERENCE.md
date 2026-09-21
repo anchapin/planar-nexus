@@ -28,6 +28,10 @@ mv ../worktrees/wave-state.<repo-slug>.json ../worktrees/wave-state.<repo-slug>.
 
 **Forced resume:** Use `--force` to bypass the collision check when you intentionally want to restart from a known state.
 
+## Merge Ordering Strategy
+
+Merge PRs in ascending issue-number order within a wave to minimize conflict surface. After each merge, check remaining PRs for conflicts.
+
 ## Implementation Sub-agent Template
 
 When spawning an implementation sub-agent for a single issue, use this prompt template:

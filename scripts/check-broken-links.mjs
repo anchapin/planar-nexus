@@ -101,6 +101,10 @@ const IGNORED_DIRS = new Set([
   // positives. The user-facing docs surface (docs/, root `*.md`) is
   // what the issue targets; legacy planning noise stays out of scope.
   ".planning",
+  // `.stryker-tmp/` is created by local Stryker runs; its sandboxed
+  // copies of source files may contain broken links relative to the
+  // real repo and are not part of the committed state the guard gates.
+  ".stryker-tmp",
 ]);
 
 /** `docs/implementation/` is repo-tracked engineering noise (older issue

@@ -89,11 +89,6 @@ module.exports = {
     // back up once the pending test backfill lands.
     "src/lib/game-state/trigger-system.ts": 44,
     "src/lib/game-state/state-based-actions.ts": 50,
-    // Issue #1597: 6th Stryker module. Conservative pending-measurement
-    // floor (local single-module run exceeded the time budget) — ratchet
-    // upward to floor(measured − 1) once the first successful nightly run
-    // (#1785) records its score.
-    "src/lib/game-state/combat.ts": 50,
     // Issue #1717: 7th Stryker module. Conservative pending-measurement
     // floor — ratchet to floor(measured − 1) once the first successful
     // nightly run (#1785) records its score.

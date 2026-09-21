@@ -121,6 +121,11 @@ const SKIP_DIRS = new Set([
   ".claude",
   ".opencode",
   ".husky",
+  // `.stryker-tmp/` is created by local Stryker runs; its sandboxed
+  // copies of source files contain synthetic TURN credential fixtures
+  // that are not part of the committed state and would falsely trip
+  // the credential guard when running against a stale sandbox.
+  ".stryker-tmp",
 ]);
 
 // File extensions we treat as source for the inline-URL and hardcoded-var
