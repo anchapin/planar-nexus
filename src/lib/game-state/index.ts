@@ -87,6 +87,8 @@ export * from "./format-rules";
 // and must be self-contained. The compression path is a re-export facade.
 export * from "./dungeon-data";
 export * from "./native-gzip";
+// #1900: engine error containment types
+export * from "./errors";
 
 // Local exports for common functions with consistent naming
 export { tapCard, untapCard, checkStateBasedActions };

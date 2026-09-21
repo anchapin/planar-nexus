@@ -26,6 +26,7 @@ import { spendMana, addMana, isManaAbility } from "./mana";
 import { destroyCard, discardCards } from "./keyword-actions";
 import { isPriorityPlayer } from "./priority-guard";
 import { hasSplitSecondOnStack } from "./auto-pass-priority";
+import { createEngineUncaughtException } from "./errors";
 
 /**
  * Event types that can trigger triggered abilities (CR 603.2)
@@ -1014,13 +1015,18 @@ function countControlledByType(
  * @deprecated Use detectTriggeredAbilities() for detection only, then put on stack manually.
  *             TODO(#763): Migrate all callers to use detectTriggeredAbilities() + stack management.
  *             Once all callers are migrated, remove this function.
+ *
+ * #1900: wrapped in try/catch — uncaught exceptions from trigger detection
+ * or stack object creation are caught and returned so the engine stays consistent.
  */
 export function checkTriggeredAbilities(
   state: GameState,
   event: TriggerEvent,
   context?: TriggerContext,
 ): TriggeredAbilityResult {
-  const triggeredAbilities = detectTriggeredAbilities(state, event, context);
+  const originalState = state;
+  try {
+    const triggeredAbilities = detectTriggeredAbilities(state, event, context);
 
   // Put triggered abilities on the stack
   let currentState = state;
@@ -1057,6 +1063,14 @@ export function checkTriggeredAbilities(
     abilities: triggeredAbilities,
     state: currentState,
   };
+  } catch (err) {
+    // #1900: on uncaught exception, return original state so the engine stays consistent
+    void createEngineUncaughtException(err, 'checkTriggeredAbilities', originalState);
+    return {
+      abilities: [],
+      state: originalState,
+    };
+  }
 }
 
 /**

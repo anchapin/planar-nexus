@@ -16,6 +16,7 @@
 
 import type { GameState, GameAction, PlayerId } from "./types";
 import { computeStateHash, type HashDiscrepancy } from "./state-hash";
+import { createEngineUncaughtException } from "./errors";
 import {
   SNAPSHOT_INTERVAL,
   computeStateDelta,
@@ -664,10 +665,19 @@ export class EventSourcingGameState {
     state: GameState,
     actionEvent: ActionEvent,
   ): GameState {
-    // Import the mutation functions lazily to avoid circular dependencies
-    // These will be set during initialization if using event-sourced mode
+    // #1900: wrap mutation applier call in try/catch to contain errors
     if (this.mutationApplier) {
-      return this.mutationApplier(state, actionEvent.action);
+      try {
+        return this.mutationApplier(state, actionEvent.action);
+      } catch (err) {
+        // Capture error but don't crash the replay/state reconstruction
+        void createEngineUncaughtException(
+          err,
+          'applyAction',
+          state,
+        );
+        return state;
+      }
     }
     // Fallback: return state as-is if no applier is registered
     // This should not happen in normal operation
