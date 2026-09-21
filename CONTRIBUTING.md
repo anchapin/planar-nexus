@@ -122,6 +122,38 @@ npm run typecheck
 npm run lint
 ```
 
+### 3.6 Tauri Desktop Development
+
+For testing in the desktop shell or working on Tauri-specific features:
+
+```bash
+# Start the Tauri dev server (boots Next.js on port 9002 + opens the desktop window)
+npm run dev:tauri
+```
+
+**What happens under the hood:**
+
+1. `tauri dev` spawns a Next.js dev server on port 9002 (same as `npm run dev`)
+2. It compiles the Rust backend (`src-tauri/`) with `cargo build` in watch mode
+3. A desktop window opens loading the Next.js app in a WebView
+
+**Common failure modes:**
+
+| Symptom                                                       | Cause                                                                                                                 | Fix                                                                                                    |
+| ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `Error: Cannot find module '...'` after adding a Tauri plugin | Plugin not registered in `src-tauri/src/lib.rs`                                                                       | Add `.plugin(...)` in plugin registration order — `tauri-plugin-single-instance` must be first (#1441) |
+| CSP violation in desktop                                      | New hostname/URL not allowlisted in `next.config.ts` (`REMOTE_IMAGE_HOSTS`) and `src-tauri/tauri.conf.json` `img-src` | Keep both in sync; the `csp-audit` test asserts alignment (#1273)                                      |
+| Rust build fails with "unresolved import"                     | New Rust dependency not added to `src-tauri/Cargo.toml`                                                               | Add the crate to `[dependencies]`                                                                      |
+| Desktop app loads but API calls fail                          | `.env` not set or missing AI keys                                                                                     | Copy `.env.example` → `.env` and fill in at least one AI provider key                                  |
+
+**Debugging in the desktop shell:**
+
+- **Rust panics:** Check the terminal running `npm run dev:tauri` — panics print a backtrace there
+- **Frontend issues:** Open browser DevTools in the WebView (right-click → Inspect Element or use the Tauri devtools flag)
+- **Plugin issues:** Verify plugin registration order in `src-tauri/src/lib.rs`; run `cargo check` in `src-tauri/` to surface Rust compilation errors early
+
+For the Tauri/Rust upgrade policy see [docs/RUST_UPGRADE_STRATEGY.md](docs/RUST_UPGRADE_STRATEGY.md).
+
 ---
 
 ## 4. Project Structure
