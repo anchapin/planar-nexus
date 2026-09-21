@@ -453,23 +453,12 @@ const googleConfig = {
 **Example Usage**:
 
 ```typescript
-import { sendGoogleAIChat } from "@/ai/providers/google";
+import { getDeckReview } from "@/lib/ai-client";
 
-const response = await sendGoogleAIChat(
-  {
-    provider: "google",
-    model: "gemini-1.5-flash-latest",
-    temperature: 0.7,
-  },
-  {
-    contents: [
-      {
-        role: "user",
-        parts: [{ text: "Analyze this deck: ..." }],
-      },
-    ],
-  },
-);
+const review = await getDeckReview({
+  decklist: "4 Lightning Bolt\n4 Goblin Guide\n20 Mountain",
+  format: "standard",
+});
 ```
 
 ---
@@ -502,21 +491,13 @@ const openaiConfig = {
 **Example Usage**:
 
 ```typescript
-import { sendOpenAIChat } from "@/ai/providers/openai";
+import { generateOpponent } from "@/lib/ai-client";
 
-const response = await sendOpenAIChat(
-  {
-    provider: "openai",
-    model: "gpt-4o-mini",
-    temperature: 0.7,
-  },
-  {
-    messages: [
-      { role: "system", content: "You are an MTG expert." },
-      { role: "user", content: "Analyze this deck: ..." },
-    ],
-  },
-);
+const opponent = await generateOpponent({
+  format: "standard",
+  difficulty: "medium",
+  theme: "aggro",
+});
 ```
 
 ---
@@ -552,21 +533,12 @@ const claudeConfig = {
 **Example Usage**:
 
 ```typescript
-import { sendClaudeChat } from "@/ai/providers/claude";
+import { getDeckReview } from "@/lib/ai-client";
 
-const response = await sendClaudeChat(
-  {
-    provider: "anthropic",
-    model: "claude-3-haiku-20240307",
-    temperature: 0.7,
-  },
-  {
-    messages: [
-      { role: "system", content: "You are an MTG expert." },
-      { role: "user", content: "Analyze this deck: ..." },
-    ],
-  },
-);
+const review = await getDeckReview({
+  decklist: "4 Thoughtflare\n4 Terminate\n4 Blood Crypt",
+  format: "commander",
+});
 ```
 
 ---
