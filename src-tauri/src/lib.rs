@@ -297,4 +297,35 @@ mod tests {
             Some("panic-1700000000.log")
         );
     }
+
+    /// Regression test for issue #1993 — verifies that `tauri_plugin_single_instance`
+    /// is registered before `tauri_plugin_window_state` (a window-owning plugin) in the
+    /// builder chain. The single-instance plugin must be first so a second
+    /// `app.run()` invocation is intercepted and the first instance is focused rather
+    /// than racing two processes against the same on-disk IndexedDB / app-data directory.
+    ///
+    /// Parses the `.plugin(` call sequence in this file's source text and asserts
+    /// `single_instance` appears before any window-owning plugin.
+    #[test]
+    fn single_instance_plugin_registered_before_window_owning_plugins() {
+        let src = std::fs::read_to_string(file!()).expect("lib.rs must be readable");
+
+        let single_instance_pos = src.find(".plugin(tauri_plugin_single_instance::init");
+        let window_state_pos = src.find(".plugin(tauri_plugin_window_state::Builder");
+
+        assert!(
+            single_instance_pos.is_some(),
+            "tauri_plugin_single_instance::init must be called in lib.rs"
+        );
+        assert!(
+            window_state_pos.is_some(),
+            "tauri_plugin_window_state::Builder must be called in lib.rs"
+        );
+
+        assert!(
+            single_instance_pos < window_state_pos,
+            "tauri_plugin_single_instance must be registered BEFORE \
+             tauri_plugin_window_state (issue #1441)"
+        );
+    }
 }
