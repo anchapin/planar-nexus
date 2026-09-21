@@ -126,6 +126,10 @@ const SKIP_DIRS = new Set([
   // that are not part of the committed state and would falsely trip
   // the credential guard when running against a stale sandbox.
   ".stryker-tmp",
+  // `__tests__/` directories contain test fixtures with synthetic TURN
+  // credentials that exercise the detection logic; they hold no production
+  // code and are excluded at the directory level.
+  "__tests__",
 ]);
 
 // File extensions we treat as source for the inline-URL and hardcoded-var

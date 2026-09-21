@@ -175,7 +175,7 @@ describe("TURN credentials guard (issue #1571)", () => {
       try {
         writeInTree(
           tree,
-          "src/lib/__tests__/_turn-cred-fixture-leak.ts",
+          "tests/_turn-cred-fixture-leak.ts",
           [
             "// Synthetic fixture for #1571 — should fail the guard.",
             "export const TURN: ICEServerConfig = {",
@@ -196,7 +196,7 @@ describe("TURN credentials guard (issue #1571)", () => {
       try {
         writeInTree(
           tree,
-          "src/lib/__tests__/_turn-cred-fixture-leak.ts",
+          "tests/_turn-cred-fixture-leak.ts",
           [
             "// Synthetic fixture for #1571 — should fail the guard.",
             "export const TURN = {",
@@ -216,7 +216,7 @@ describe("TURN credentials guard (issue #1571)", () => {
       try {
         writeInTree(
           tree,
-          "src/lib/__tests__/_turn-cred-fixture-clean.ts",
+          "tests/_turn-cred-fixture-clean.ts",
           [
             "// Synthetic fixture for #1571 — should pass the guard.",
             "export const TURN = {",
