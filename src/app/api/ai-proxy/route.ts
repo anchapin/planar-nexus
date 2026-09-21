@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertSameOrigin } from "@/lib/security/same-origin";
+import { requireApiSession } from "@/lib/api-session";
 import { streamText, generateText } from "ai";
 import { getAIModel, isModelAllowed } from "@/ai/providers/factory";
 import { AIProvider, AI_PROVIDER_IDS } from "@/ai/providers/types";
@@ -113,6 +114,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 export async function POST(
   request: NextRequest,
 ): Promise<NextResponse | Response> {
+  const authResult = await requireApiSession(request);
+  if (authResult instanceof NextResponse) return authResult;
+
   // Issue #1585: the validated provider name (allowlist-checked) is kept
   // for the safe error summary in the catch block below.
   let validatedProvider: AIProvider | undefined;

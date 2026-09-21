@@ -1,3 +1,24 @@
+// Mock next/headers with a test session cookie for API route tests
+jest.mock("next/headers", () => {
+  const mockCookieStore = {
+    get: jest.fn().mockImplementation((name) => {
+      if (name === "pn_session") {
+        return {
+          name: "pn_session",
+          value: "test-user",
+          path: "/",
+          httpOnly: true,
+          sameSite: "strict",
+        };
+      }
+      return undefined;
+    }),
+  };
+  return {
+    cookies: jest.fn().mockResolvedValue(mockCookieStore),
+  };
+});
+
 // Jest setup for browser APIs
 require("fake-indexeddb/auto");
 

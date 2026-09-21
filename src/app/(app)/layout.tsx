@@ -14,6 +14,7 @@ import { RouteAnnouncer } from "@/components/route-announcer";
 import { usePathname } from "next/navigation";
 import { prewarmSearchWorker } from "@/lib/search/prewarm-search-worker";
 import { LongTaskProbe } from "@/lib/perf/long-task-probe";
+import { syncApiSession } from "@/lib/client-api-session";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -27,6 +28,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   // `searchWorkerClient.getStatus()` and `searchWorkerPrewarm.subscribe`.
   useEffect(() => {
     prewarmSearchWorker();
+    syncApiSession();
   }, []);
 
   return (

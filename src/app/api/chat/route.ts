@@ -17,6 +17,7 @@ import {
 import { getClientIdentifier } from "@/lib/server-request-identity";
 import { UsageLogger } from "@/lib/server-usage-logger";
 import { assertSameOrigin } from "@/lib/security/same-origin";
+import { requireApiSession } from "@/lib/api-session";
 
 // Use force-dynamic to prevent response buffering
 export const dynamic = "force-dynamic";
@@ -159,6 +160,9 @@ async function* withUsageLogging(
 }
 
 export async function POST(req: NextRequest) {
+  const authResult = await requireApiSession(req);
+  if (authResult instanceof NextResponse) return authResult;
+
   try {
     assertSameOrigin(req);
     // 1. Parse request body
