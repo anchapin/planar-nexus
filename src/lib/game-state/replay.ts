@@ -412,7 +412,9 @@ export class ReplaySystem {
       ...(turnNumber !== undefined ? { turnNumber } : {}),
       description,
       recordedAt: Date.now(),
-      ...(isSnapshotAction ? { resultingState: cloneGameState(resultingState) } : {}),
+      ...(isSnapshotAction
+        ? { resultingState: cloneGameState(resultingState) }
+        : {}),
       ...(delta ? { delta } : {}),
     };
 
@@ -553,7 +555,10 @@ export class ReplaySystem {
 
     // Fast path: v2 replays carry `turnNumber` on each action so we never
     // have to reconstruct state just to compare turn numbers.
-    if (this.replay.schemaVersion === 2 || actions.some((a) => "turnNumber" in a)) {
+    if (
+      this.replay.schemaVersion === 2 ||
+      actions.some((a) => "turnNumber" in a)
+    ) {
       const targetPosition = actions.findIndex(
         (action) => action.turnNumber === turnNumber,
       );
@@ -883,7 +888,8 @@ export function computeStateDelta(
   }
   if (
     (previous.pendingCorpseOffers ?? []) !== (next.pendingCorpseOffers ?? []) &&
-    (previous.pendingCorpseOffers?.length !== next.pendingCorpseOffers?.length ||
+    (previous.pendingCorpseOffers?.length !==
+      next.pendingCorpseOffers?.length ||
       previous.pendingCorpseOffers?.some(
         (v, i) => v !== next.pendingCorpseOffers?.[i],
       ))
@@ -891,8 +897,10 @@ export function computeStateDelta(
     fields.pendingCorpseOffers = next.pendingCorpseOffers ?? [];
   }
   if (
-    (previous.pendingTributeOffers ?? []) !== (next.pendingTributeOffers ?? []) &&
-    (previous.pendingTributeOffers?.length !== next.pendingTributeOffers?.length ||
+    (previous.pendingTributeOffers ?? []) !==
+      (next.pendingTributeOffers ?? []) &&
+    (previous.pendingTributeOffers?.length !==
+      next.pendingTributeOffers?.length ||
       previous.pendingTributeOffers?.some(
         (v, i) => v !== next.pendingTributeOffers?.[i],
       ))
@@ -968,8 +976,9 @@ export function applyStateDelta(
       next.pendingTributeOffers = [...f.pendingTributeOffers];
     }
     if (f.priorityPlayerIndex !== undefined) {
-      (next as unknown as { priorityPlayerIndex?: number }).priorityPlayerIndex =
-        f.priorityPlayerIndex;
+      (
+        next as unknown as { priorityPlayerIndex?: number }
+      ).priorityPlayerIndex = f.priorityPlayerIndex;
     }
   }
 
@@ -978,7 +987,12 @@ export function applyStateDelta(
       if (value === undefined) {
         next.players.delete(id);
       } else {
-        next.players.set(id, value as GameState["players"] extends Map<PlayerId, infer V> ? V : never);
+        next.players.set(
+          id,
+          value as GameState["players"] extends Map<PlayerId, infer V>
+            ? V
+            : never,
+        );
       }
     }
   }
@@ -987,7 +1001,10 @@ export function applyStateDelta(
       if (value === undefined) {
         next.zones.delete(id);
       } else {
-        next.zones.set(id, value as GameState["zones"] extends Map<string, infer V> ? V : never);
+        next.zones.set(
+          id,
+          value as GameState["zones"] extends Map<string, infer V> ? V : never,
+        );
       }
     }
   }
@@ -996,7 +1013,12 @@ export function applyStateDelta(
       if (value === undefined) {
         next.cards.delete(id);
       } else {
-        next.cards.set(id, value as GameState["cards"] extends Map<CardInstanceId, infer V> ? V : never);
+        next.cards.set(
+          id,
+          value as GameState["cards"] extends Map<CardInstanceId, infer V>
+            ? V
+            : never,
+        );
       }
     }
   }
@@ -1046,8 +1068,9 @@ export function applyStateDeltaInPlace(
       state.pendingTributeOffers = [...f.pendingTributeOffers];
     }
     if (f.priorityPlayerIndex !== undefined) {
-      (state as unknown as { priorityPlayerIndex?: number }).priorityPlayerIndex =
-        f.priorityPlayerIndex;
+      (
+        state as unknown as { priorityPlayerIndex?: number }
+      ).priorityPlayerIndex = f.priorityPlayerIndex;
     }
   }
 
@@ -1056,7 +1079,12 @@ export function applyStateDeltaInPlace(
       if (value === undefined) {
         state.players.delete(id);
       } else {
-        state.players.set(id, value as GameState["players"] extends Map<PlayerId, infer V> ? V : never);
+        state.players.set(
+          id,
+          value as GameState["players"] extends Map<PlayerId, infer V>
+            ? V
+            : never,
+        );
       }
     }
   }
@@ -1065,7 +1093,10 @@ export function applyStateDeltaInPlace(
       if (value === undefined) {
         state.zones.delete(id);
       } else {
-        state.zones.set(id, value as GameState["zones"] extends Map<string, infer V> ? V : never);
+        state.zones.set(
+          id,
+          value as GameState["zones"] extends Map<string, infer V> ? V : never,
+        );
       }
     }
   }
@@ -1074,7 +1105,12 @@ export function applyStateDeltaInPlace(
       if (value === undefined) {
         state.cards.delete(id);
       } else {
-        state.cards.set(id, value as GameState["cards"] extends Map<CardInstanceId, infer V> ? V : never);
+        state.cards.set(
+          id,
+          value as GameState["cards"] extends Map<CardInstanceId, infer V>
+            ? V
+            : never,
+        );
       }
     }
   }
@@ -1151,12 +1187,13 @@ function deepValueEqual(a: unknown, b: unknown): boolean {
     // Cheap size probe: count enumerable keys + the rough shape. If the
     // value is small enough, do the JSON comparison; otherwise bail to a
     // "different" verdict.
-    const MAX_DEEP_VALUE_BYTES = 1024;
+    const MAX_DEEP_VALUE_BYTES = 50 * 1024; // 50 KB — Commander players with 60 cards serialize to several KB
     const aJson = JSON.stringify(a);
     if (aJson === undefined) return false;
     if (aJson.length > MAX_DEEP_VALUE_BYTES) return false;
     const bJson = JSON.stringify(b);
-    if (bJson === undefined || bJson.length > MAX_DEEP_VALUE_BYTES) return false;
+    if (bJson === undefined || bJson.length > MAX_DEEP_VALUE_BYTES)
+      return false;
     return aJson === bJson;
   } catch {
     return false;
