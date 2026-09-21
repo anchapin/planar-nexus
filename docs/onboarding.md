@@ -6,7 +6,7 @@
 
 ## What is Planar Nexus
 
-Planar Nexus is a digital Magic: The Gathering tabletop built as a single Next.js 16 + React 19 web app wrapped in a Tauri 2 desktop shell (`src-tauri/`). It pairs a deck builder, an AI deck coach (Genkit flows over the Vercel AI SDK with a heuristic fallback that needs no API key), an AI opponent you can play against in the browser, and direct-peer WebRTC P2P multiplayer for real-table feel — all backed by a custom MTG rules engine in `src/lib/game-state/` whose only public surface is its barrel.
+Planar Nexus is a digital Magic: The Gathering tabletop built as a single Next.js 16 + React 19 web app wrapped in a Tauri 2 desktop shell (`src-tauri/`). It pairs a deck builder, an AI deck coach (heuristic flows + an SSE-based conversational coach via `streamCoachResponse` with a fallback that needs no API key), an AI opponent you can play against in the browser, and direct-peer WebRTC P2P multiplayer for real-table feel — all backed by a custom MTG rules engine in `src/lib/game-state/` whose only public surface is its barrel.
 
 ## Setup
 
@@ -27,7 +27,7 @@ Top-level directories a first-time contributor needs to recognize:
 - `src/app/` — Next.js App Router (`(app)/` route group for protected pages, `api/` for route handlers: `ai-proxy`, `chat`, `deck-import`, `signaling`).
 - `src/lib/` — shared client libraries, including `card-database.ts`, `ai-client.ts`, `indexeddb-storage.ts`, and the engine barrel.
 - `src/lib/game-state/` — the MTG rules engine. Its **only public API is the barrel** (`src/lib/game-state/index.ts`); deep imports outside this tree are blocked by ESLint (#1710) and are the only place Stryker mutation scoring is enforced.
-- `src/ai/` — Genkit flows (`deck-coach-review`, `opponent-generation`) and AI simulation tests.
+- `src/ai/` — AI flows: heuristic deck-review and opponent-deck flows, the SSE-based `streamCoachResponse` conversational coach, and AI simulation tests.
 - `src-tauri/` — Rust desktop shell (`tauri-plugin-single-instance` must stay registered FIRST in `lib.rs`, enforced by a Rust regression test #1441).
 - `tests/` — cross-module integration tests; unit tests are co-located under `__tests__/` directories next to the source they cover.
 - `scripts/` — Node/TS check + ratchet scripts that gate CI (`check-broken-links.mjs`, `check-coverage-docs-sync.mjs`, `ratchet-coverage.js`, …).
