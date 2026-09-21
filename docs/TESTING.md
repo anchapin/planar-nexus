@@ -907,6 +907,138 @@ npm run test:coverage -- --coverageReporters=text
 npx playwright test --headed --debug
 ```
 
+### Game-state debugging
+
+The rules engine (`src/lib/game-state/`) is plain JavaScript classes; the Jest
+`jsdom` environment means there is no browser DOM to interact with, but the
+entire object graph is accessible in the debugger.
+
+#### Isolating a rules scenario
+
+Use `describe`/`it` blocks with a focused game state built via the
+`createGameState` factory from `@/test-utils`:
+
+```typescript
+import { createGameState } from "@/test-utils";
+
+describe("layer system — pt pump", () => {
+  it("should apply both buffs in layer 7", () => {
+    const state = createGameState({
+      players: 2,
+      // Pass explicit initial state for deterministic ordering:
+      battlefield: [
+        { id: "c1", controller: 0, card: { name: "Glistener Elf", power: 1, toughness: 1 } },
+      ],
+    });
+
+    // Set up the effect chain directly on the card's dynamic modifiers:
+    state.battlefield[0].card.manaValue = 1;
+    state.battlefield[0].card.power = 1;
+    state.battlefield[0].card.toughness = 1;
+
+    // Act — apply the effect that adds +1/+1
+    applyEffect(state, { source: "c1", target: "c1", layer: "pump" });
+
+    // Assert
+    expect(state.battlefield[0].card.power).toBe(2);
+    expect(state.battlefield[0].card.toughness).toBe(2);
+  });
+});
+```
+
+Group by **layer** (613.1 of the MTG rules) when testing effects that interact:
+
+```typescript
+describe("layer 7 — characteristic-defining abilities", () => {
+  it("Aura attachment sets {*} to defined value in layer 7b", () => { ... });
+  it("P/T pump applies after CDA in layer 7c", () => { ... });
+});
+```
+
+#### Engine internal logging
+
+`console.error` is used in the engine for rule-event emissions (trigger
+detection, SBA evaluation, layer application). These appear in Jest output even
+in non-verbose runs when a test fails. To see them on passing tests:
+
+```bash
+npm test -- --testNamePattern="layer" --verbose 2>&1 | grep -i "layer\|sba\|trigger"
+```
+
+For per-module trace output, temporarily insert a logger in the test file:
+
+```typescript
+const orig = console.error;
+beforeEach(() => {
+  console.error = jest.fn((...args) => {
+    // filter or breakpoint here
+    orig(...args);
+  });
+});
+afterEach(() => { console.error = orig; });
+```
+
+#### Setting breakpoints in the stateful object graph
+
+Because the engine is mutable class instances, the "stateful object graph" is
+the `GameState` tree. In Jest's jsdom environment:
+
+1. Run the failing test with `--testNamePattern` scoped to the minimal scenario.
+2. Add `debugger;` in the test or the engine source before the failure point.
+3. Run `npm test -- --runInBand` — this runs tests serially and keeps the
+   process alive, so you can attach a Node.js inspector (VS Code "Debug Jest"
+   config with `node --inspect-brk`).
+
+```typescript
+// In a test file:
+it("pump applies after combat damage", () => {
+  debugger;
+  const result = applyCombatDamage(state, { attacker: "c1", defender: "c2" });
+  expect(result.damageToDefender).toBe(3); // ← stop here
+});
+```
+
+```json
+// .vscode/launch.json
+{
+  "type": "node",
+  "request": "launch",
+  "name": "Debug Jest",
+  "program": "${workspaceFolder}/node_modules/.bin/jest",
+  "args": ["--runInBand", "--testNamePattern", "pump applies after combat damage"]
+}
+```
+
+#### Common layer-system debugging patterns
+
+Layer-system bugs typically surface as wrong power/toughness or wrong
+characteristic values after applying effects. Use this checklist:
+
+| Check | What to look for |
+| ----- | ---------------- |
+| **Layer order** | Effects in the same layer are applied by timestamp (613.2). A missing or duplicate timestamp on a modifier is the most common cause of wrong ordering. |
+| **Dependency cycles** | 613.3 dependencies must be checked — an effect that depends on another must be in a later layer or have `timestamp >` the effect it depends on. |
+| **Sublayer boundary** | Within layer 7, sublayers (7a CDA → 7b defined → 7c counters → 7d other) must be respected; an effect in the wrong sublayer never fires. |
+| **Dependency graph** | `dependencies[]` on each `ContinuousEffect` must accurately describe what it reads — if it depends on a characteristic, the dependency must point to the right object+property. |
+
+Dump the full effect graph for a card:
+
+```typescript
+const card = state.battlefield.find(c => c.card.name === "Glistener Elf");
+// card.card.dynamicModifiers[] holds all active ContinuousEffects
+console.error("Active modifiers:", card.card.dynamicModifiers.map(m => ({
+  layer: m.layer,
+  sublayer: m.sublayer,
+  source: m.sourceCard,
+  timestamp: m.timestamp,
+  value: m.value,
+})));
+```
+
+If the output shows a modifier missing from the list, the effect was never
+created — trace back to the rule/ability that should have generated it.
+
+
 ---
 
 ## 13. CI Integration
