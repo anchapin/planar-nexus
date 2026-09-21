@@ -268,7 +268,9 @@ function minifyReplay(replay: Replay): MinifiedReplay {
       t: action.action.type,
       pid: action.action.playerId,
       d: action.action.data,
-      rs: minifyGameState(action.resultingState ?? getStateAtPosition(replay, position)!),
+      rs: minifyGameState(
+        action.resultingState ?? getStateAtPosition(replay, position)!,
+      ),
       desc: action.description,
       ra: action.recordedAt,
     })),
@@ -340,18 +342,24 @@ function minifyGameState(state: GameState): MinifiedGameState {
  * Expand minified replay back to full format
  */
 function expandReplay(minified: MinifiedReplay): Replay {
-  const actions = minified.a.map((action: MinifiedAction) => ({
-    sequenceNumber: action.s,
-    action: {
-      type: action.t,
-      playerId: action.pid,
-      data: action.d || {},
-      timestamp: action.ra,
-    },
-    resultingState: expandGameState(action.rs),
-    description: action.desc,
-    recordedAt: action.ra,
-  }));
+  const actions = minified.a.map((action: MinifiedAction) => {
+    const resultingState = expandGameState(action.rs);
+    if (resultingState === null) {
+      throw new Error("Invalid phase or status in replay action");
+    }
+    return {
+      sequenceNumber: action.s,
+      action: {
+        type: action.t,
+        playerId: action.pid,
+        data: action.d || {},
+        timestamp: action.ra,
+      },
+      resultingState,
+      description: action.desc,
+      recordedAt: action.ra,
+    };
+  });
 
   return {
     id: minified.i,
@@ -373,11 +381,30 @@ function expandReplay(minified: MinifiedReplay): Replay {
   };
 }
 
+const VALID_PHASES = new Set(Object.values(Phase));
+const VALID_STATUSES = new Set<string>([
+  "not_started",
+  "in_progress",
+  "paused",
+  "completed",
+]);
+
 /**
  * Expand minimized game state back to full format
- * Note: This creates a simplified GameState suitable for replay display
+ * Note: This creates a simplified GameState suitable for replay display.
+ * Returns null if phase or status values are invalid (security: prevents
+ * attacker-controlled strings from being threaded into the rules engine as
+ * enum members — cf. issue #1904).
  */
-function expandGameState(minified: MinifiedGameState): GameState {
+function expandGameState(minified: MinifiedGameState): GameState | null {
+  const cp = minified.t?.cp;
+  if (cp !== undefined && !VALID_PHASES.has(cp as Phase)) {
+    return null;
+  }
+  const s = minified.s;
+  if (s !== undefined && !VALID_STATUSES.has(s)) {
+    return null;
+  }
   const now = Date.now();
 
   // Create players map
@@ -482,7 +509,7 @@ function expandGameState(minified: MinifiedGameState): GameState {
     stack: [],
     turn: {
       activePlayerId: firstPlayerId,
-      currentPhase: (minified.t?.cp || Phase.UNTAP) as Phase,
+      currentPhase: (cp || Phase.UNTAP) as Phase,
       turnNumber: minified.t?.tn || 1,
       extraTurns: 0,
       isFirstTurn: false,
@@ -497,11 +524,8 @@ function expandGameState(minified: MinifiedGameState): GameState {
     waitingChoice: null,
     priorityPlayerId: minified.t?.pp || firstPlayerId,
     consecutivePasses: 0,
-    status: (minified.s || "in_progress") as
-      | "not_started"
-      | "in_progress"
-      | "paused"
-      | "completed",
+    status: (s || "in_progress") as
+      "not_started" | "in_progress" | "paused" | "completed",
     winners: minified.w || [],
     endReason: minified.er || null,
     format: "unknown",
