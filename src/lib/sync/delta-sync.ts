@@ -336,8 +336,11 @@ export function shouldUseFullSync(
   const delta = computeStateDelta(currentState, lastSyncedState);
 
   if (delta.playerDeltas.length > 3) return true;
-  if (delta.cardDeltas.length > 50) return true;
   if (delta.stackDeltas.length > 5) return true;
+  if (delta.cardDeltas.length > 100) {
+    const serialized = JSON.stringify(delta);
+    if (serialized.length > 50 * 1024) return true;
+  }
 
   return !isDeltaSmallEnough(delta);
 }
