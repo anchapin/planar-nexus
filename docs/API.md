@@ -31,7 +31,7 @@ that genuinely need a server. The application is primarily client-side;
   (`/api/chat`, `/api/chat/coach`).
 - **Deck import** — server-side fetch + parse of a decklist from a supported
   hosting URL (`/api/deck-import`).
-- **Multiplayer signaling** — WebRTC handshake exchange for PeerJS P2P
+- **Multiplayer signaling** — direct-peer WebRTC with in-server signaling exchange
   (`/api/signaling`).
 
 > Gameplay (the AI opponent's turn loop) runs **client-side** through the AI
