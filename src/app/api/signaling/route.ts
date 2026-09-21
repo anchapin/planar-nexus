@@ -24,25 +24,38 @@
 import { NextResponse } from "next/server";
 
 /** 410 body: machine-readable deprecation + the replacement path. */
-const GONE_BODY = {
+const GONE_BODY_BASE = {
   error: "The signaling session-store API has been removed.",
   status: 410,
   deprecated: true,
   replacement: "src/lib/p2p-direct-connection.ts",
-  migration: "Use the serverless P2P direct connection (QR/manual code exchange). See issues #641 and #1730.",
+  migration: "Use the serverless P2P direct connection (QR/manual code exchange). See issues #641, #1730, and #2008.",
 } as const;
 
-/** All retired session-store verbs answer 410 Gone (issue #1730). */
-export async function GET(): Promise<NextResponse> {
-  return NextResponse.json(GONE_BODY, { status: 410 });
+function goneBody(sessionId?: string | null) {
+  return {
+    ...GONE_BODY_BASE,
+    ...(sessionId ? { sessionId, reconnectHint: `Use sessionId "${sessionId}" to reconnect via the direct connection path.` } : { reconnectHint: "Use the direct connection path (src/lib/p2p-direct-connection.ts) to reconnect." }),
+  };
 }
 
-export async function POST(): Promise<NextResponse> {
-  return NextResponse.json(GONE_BODY, { status: 410 });
+/** All retired session-store verbs answer 410 Gone (issue #1730, #2008). */
+export async function GET(request: Request): Promise<NextResponse> {
+  const url = new URL(request.url);
+  const sessionId = url.searchParams.get("sessionId") ?? url.pathname.split("/").pop();
+  return NextResponse.json(goneBody(sessionId), { status: 410 });
 }
 
-export async function DELETE(): Promise<NextResponse> {
-  return NextResponse.json(GONE_BODY, { status: 410 });
+export async function POST(request: Request): Promise<NextResponse> {
+  const url = new URL(request.url);
+  const sessionId = url.searchParams.get("sessionId") ?? url.pathname.split("/").pop();
+  return NextResponse.json(goneBody(sessionId), { status: 410 });
+}
+
+export async function DELETE(request: Request): Promise<NextResponse> {
+  const url = new URL(request.url);
+  const sessionId = url.searchParams.get("sessionId") ?? url.pathname.split("/").pop();
+  return NextResponse.json(goneBody(sessionId), { status: 410 });
 }
 
 /**
