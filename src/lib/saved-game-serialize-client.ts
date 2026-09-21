@@ -1,15 +1,17 @@
 /**
- * @fileoverview Saved-game replay serialization worker client (issue #1577).
+ * @fileoverview Saved-game replay serialization worker client (issue #1577,
+ * fix #1912).
  *
  * Singleton that lazily initialises the saved-game serialize Web Worker and
  * exposes a Comlink proxy. Mirrors the pattern in
- * `src/lib/backup/backup-checksum-client.ts` (issue #1249) and
- * `src/ai/worker/ai-worker-client.ts` (#1079, #1080):
+ * `src/lib/search/search-worker-client.ts` (issue #1389, fix #1894):
  *
- * - Worker URL is resolved with `import.meta.url` (via a `Function`
- *   constructor so ts-jest CommonJS never parses the token) so Next.js can
- *   bundle the worker module correctly under ESM. Falls back to
- *   `self.location.href` and then a plain string path.
+ * - Worker URL is resolved via the dedicated `saved-game-serialize-factory.ts`
+ *   module, loaded through dynamic `import()` wrapped in try/catch — the factory
+ *   captures `import.meta.url` at module top-level so webpack/Turbopack can
+ *   statically analyse the `new URL(..., MODULE_URL)` shape and emit the worker
+ *   as its own chunk. The dynamic import keeps the `import.meta` token out of
+ *   ts-jest's CJS parser.
  * - The client returns `null` from `getSerializeApi()` when the worker cannot
  *   be initialised (no `Worker` global — jsdom, SSR, server tests) so the
  *   bridge layer falls back to the synchronous main-thread serialization.
@@ -48,7 +50,7 @@ class SavedGameSerializeWorkerClient {
 
   private constructor() {
     if (typeof window !== "undefined" && typeof Worker !== "undefined") {
-      this.init();
+      void this.init();
     }
   }
 
@@ -77,38 +79,41 @@ class SavedGameSerializeWorkerClient {
    * `initError` is recorded and both handles are left `null` so callers see
    * a clean fallback signal rather than an exception.
    */
-  private init(): void {
+  private async init(): Promise<void> {
     try {
-      let workerUrl: string;
+      let w: Worker | null = null;
 
-      // Resolve the worker URL relative to the current module.
-      //
-      // We avoid the `import.meta.url` syntax here because it is invalid
-      // in CommonJS (Jest's ts-jest default), even when wrapped in
-      // `typeof import.meta !== "undefined"`. The `Function` constructor
-      // evaluates the expression at runtime in the host realm so:
-      //   - in browsers / Next.js ESM: `import.meta.url` resolves to the
-      //     bundled module URL (used by the Webpack worker loader)
-      //   - in jsdom / Node CJS: the check evaluates `false` and we fall
-      //     through to a plain string path
-      const metaUrl = resolveImportMetaUrl();
-      if (metaUrl) {
-        workerUrl = new URL("./saved-game-serialize.worker.ts", metaUrl).href;
-      } else if (
-        typeof self !== "undefined" &&
-        (self as unknown as { location?: Location }).location?.href
-      ) {
-        workerUrl = new URL(
-          "./saved-game-serialize.worker.ts",
-          (self as unknown as { location: Location }).location.href,
-        ).href;
-      } else {
-        // Plain string path — Next.js and Vite both resolve this against
-        // the worker chunk directory at build time.
-        workerUrl = "./saved-game-serialize.worker.ts";
+      // Load the factory via dynamic import so the `import.meta.url`
+      // token in the factory never reaches ts-jest's CJS parser.
+      try {
+        const mod =
+          (await import("./saved-game-serialize-factory")) as unknown as {
+            createSavedGameSerializeWorker?: () => Worker | null;
+          };
+        w = mod.createSavedGameSerializeWorker?.() ?? null;
+      } catch {
+        /* factory chunk failed to load — fall through to last-resort */
       }
 
-      this.worker = new Worker(workerUrl, { type: "module" });
+      if (!w && typeof self !== "undefined" && self.location?.href) {
+        try {
+          w = new Worker(
+            new URL("./saved-game-serialize.worker.ts", self.location.href)
+              .href,
+            { type: "module" },
+          );
+        } catch {
+          /* last-resort failed */
+        }
+      }
+
+      if (!w) {
+        this.worker = null;
+        this.proxy = null;
+        return;
+      }
+
+      this.worker = w;
       this.proxy = Comlink.wrap<SavedGameSerializeRemoteApi>(this.worker);
     } catch (error) {
       this.initError =
@@ -151,26 +156,6 @@ class SavedGameSerializeWorkerClient {
       SavedGameSerializeWorkerClient.instance.terminate();
     }
     SavedGameSerializeWorkerClient.instance = null;
-  }
-}
-
-/**
- * Resolve `import.meta.url` at runtime in a way that survives both ESM
- * (browser / Next.js worker loader) and CJS (Jest ts-jest, Node SSR)
- * contexts. Uses a `Function` constructor so the `import.meta` token is
- * only evaluated in the host realm — Node's CommonJS parser would
- * otherwise reject it as a SyntaxError.
- *
- * Returns `null` when the host has no ESM module URL — callers fall back to
- * `self.location.href` or a plain string path.
- */
-function resolveImportMetaUrl(): string | null {
-  try {
-    return new Function(
-      'try { return typeof import.meta !== "undefined" && import.meta && import.meta.url ? import.meta.url : null; } catch (_) { return null; }',
-    )() as string | null;
-  } catch {
-    return null;
   }
 }
 
