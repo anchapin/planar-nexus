@@ -27,6 +27,11 @@ import {
   MigrationQuotaError,
 } from "./storage-quota";
 import {
+  encrypt,
+  decrypt,
+  isEncryptionOptedOut,
+} from "./indexeddb-encryption";
+import {
   calculateChecksumAsync,
   type CalculateChecksumOptions,
   type CalculateChecksumProgress,
@@ -820,6 +825,10 @@ export class IndexedDBStorage {
 
   /**
    * Get a single item by key
+   *
+   * Issue #1984 — transparent AES-GCM decryption. If the stored record has
+   * `_encrypted: true`, the `_data` field is decrypted and parsed from JSON.
+   * Unencrypted records are returned as-is (backward compat).
    */
   async get<T>(storeName: string, key: string): Promise<T | null> {
     await this.ensureInitialized();
@@ -829,8 +838,29 @@ export class IndexedDBStorage {
       const store = transaction.objectStore(storeName);
       const request = store.get(key);
 
-      request.onsuccess = () => {
-        resolve(request.result || null);
+      request.onsuccess = async () => {
+        const record = request.result;
+        if (!record) {
+          resolve(null);
+          return;
+        }
+        if ((record as Record<string, unknown>)._encrypted === true) {
+          try {
+            const decrypted = await decrypt(
+              (record as Record<string, string>)._data as string,
+            );
+            const parsed = JSON.parse(decrypted) as T;
+            resolve(parsed);
+          } catch (err) {
+            reject(
+              new Error(
+                `Failed to decrypt item for key "${key}": ${err instanceof Error ? err.message : String(err)}`,
+              ),
+            );
+          }
+        } else {
+          resolve(record as T);
+        }
       };
 
       request.onerror = () => {
@@ -841,14 +871,23 @@ export class IndexedDBStorage {
 
   /**
    * Set a single item
+   *
+   * Issue #1984 — transparent AES-GCM encryption. If encryption is enabled,
+   * the entire record is JSON-serialized, encrypted, and stored as
+   * `{ id, _encrypted: true, _data: <ciphertext> }`. Unencrypted records
+   * are left as-is (no re-encryption of existing data).
    */
   async set<T>(storeName: string, value: T & { id: string }): Promise<void> {
     await this.ensureInitialized();
 
+    const toStore = isEncryptionOptedOut()
+      ? value
+      : await this._encryptRecord(value);
+
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction(storeName, "readwrite");
       const store = transaction.objectStore(storeName);
-      const request = store.put(value);
+      const request = store.put(toStore);
 
       request.onsuccess = () => {
         resolve();
@@ -863,7 +902,20 @@ export class IndexedDBStorage {
   }
 
   /**
+   * Issue #1984 — encrypt a record for storage.
+   * Returns the original record if encryption is opted out.
+   */
+  private async _encryptRecord<T>(value: T & { id: string }): Promise<T & Record<string, unknown>> {
+    const json = JSON.stringify(value);
+    const ciphertext = await encrypt(json);
+    return { ...value, _encrypted: true, _data: ciphertext } as T & Record<string, unknown>;
+  }
+
+  /**
    * Get all items from a store
+   *
+   * Issue #1984 — transparent decryption. Each encrypted record is decrypted
+   * in-place; unencrypted records are returned as-is.
    */
   async getAll<T>(storeName: string): Promise<T[]> {
     await this.ensureInitialized();
@@ -873,8 +925,28 @@ export class IndexedDBStorage {
       const store = transaction.objectStore(storeName);
       const request = store.getAll();
 
-      request.onsuccess = () => {
-        resolve(request.result || []);
+      request.onsuccess = async () => {
+        const results = request.result || [];
+        if (isEncryptionOptedOut()) {
+          resolve(results as T[]);
+          return;
+        }
+        const decrypted: T[] = [];
+        for (const record of results) {
+          if ((record as Record<string, unknown>)._encrypted === true) {
+            try {
+              const decryptedJson = await decrypt(
+                (record as Record<string, string>)._data as string,
+              );
+              decrypted.push(JSON.parse(decryptedJson) as T);
+            } catch {
+              decrypted.push(record as T);
+            }
+          } else {
+            decrypted.push(record as T);
+          }
+        }
+        resolve(decrypted);
       };
 
       request.onerror = () => {
@@ -886,6 +958,8 @@ export class IndexedDBStorage {
   /**
    * Set multiple items in a store using a single transaction.
    * All items are queued before any success callbacks fire.
+   *
+   * Issue #1984 — transparent encryption per record (see {@link set}).
    */
   async setAll<T>(
     storeName: string,
@@ -894,6 +968,12 @@ export class IndexedDBStorage {
     await this.ensureInitialized();
 
     if (values.length === 0) return;
+
+    const toStore = isEncryptionOptedOut()
+      ? values
+      : await Promise.all(
+          values.map((v) => this._encryptRecord(v)),
+        );
 
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction(storeName, "readwrite");
@@ -931,7 +1011,7 @@ export class IndexedDBStorage {
         reject(error || new Error("Transaction aborted"));
       };
 
-      for (const value of values) {
+      for (const value of toStore) {
         const request = store.put(value);
 
         request.onerror = () => {
@@ -972,6 +1052,12 @@ export class IndexedDBStorage {
     const { batchSize = 500, onProgress } = options ?? {};
     let imported = 0;
 
+    const toStore = isEncryptionOptedOut()
+      ? values
+      : await Promise.all(
+          values.map((v) => this._encryptRecord(v)),
+        );
+
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction(storeName, "readwrite");
       const store = transaction.objectStore(storeName);
@@ -1011,10 +1097,10 @@ export class IndexedDBStorage {
       let index = 0;
 
       const queueBatch = () => {
-        const batchEnd = Math.min(index + batchSize, values.length);
+        const batchEnd = Math.min(index + batchSize, toStore.length);
 
         while (index < batchEnd) {
-          const value = values[index];
+          const value = toStore[index];
           const request = store.put(value);
 
           request.onerror = () => {
@@ -1033,10 +1119,10 @@ export class IndexedDBStorage {
 
         imported = batchEnd;
         if (onProgress) {
-          onProgress(imported, values.length);
+          onProgress(imported, toStore.length);
         }
 
-        if (index < values.length) {
+        if (index < toStore.length) {
           queueBatch();
         }
       };
