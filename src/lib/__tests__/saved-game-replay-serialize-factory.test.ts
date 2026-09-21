@@ -66,7 +66,7 @@ describe("saved-game-serialize-factory (issue #1912)", () => {
     it("factory source resolves the worker URL with the static-analysis-friendly shape", () => {
       const code = stripComments(readFileSync(FACTORY_PATH, "utf8"));
       expect(code).toMatch(
-        /new\s+URL\s*\(\s*['"]\.\/saved-game-serialize\.worker\.ts['"][\s\S]*?MODULE_URL\s*,?\s*\)\.href/,
+        /new\s+URL\s*\(\s*['"]\.\/saved-game-serialize\.worker\.ts['"]\s*,\s*MODULE_URL\s*\)\s*\.href/,
       );
     });
   });
