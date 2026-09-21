@@ -92,6 +92,15 @@ export const SUMMARY_ENTRY_MAX_CHARS = 200;
 export const SUMMARY_MAX_ENTRIES_PER_CATEGORY = 50;
 
 /**
+ * Hard cap applied to a single inbound memory entry at the trust boundary
+ * (issue #1905). Generous relative to the builder-side
+ * {@link SUMMARY_ENTRY_MAX_CHARS} cap so legitimately-built summaries never
+ * lose content here, while a hostile single entry cannot dominate the
+ * rendered block.
+ */
+export const MEMORY_ENTRY_SANITIZE_MAX_CHARS = 500;
+
+/**
  * zod schema describing the persisted coach-memory summary.
  *
  * Every category is a list of short strings; absent categories are
@@ -107,14 +116,14 @@ export const CoachMemorySummarySchema = z.object({
    * Short, durable player goals ("win the long game", "build a tight
    * budget Rakdos aggro", "beat Control"). Extracted from user turns.
    */
-  goals: z.array(z.string().max(500)).max(SUMMARY_MAX_ENTRIES_PER_CATEGORY),
+  goals: z.array(z.string().max(MEMORY_ENTRY_SANITIZE_MAX_CHARS + 100)).max(SUMMARY_MAX_ENTRIES_PER_CATEGORY),
   /**
    * Budget / power-level / format constraints the player stated ("under
    * $50", "no proxies", "casual, not cEDH", "Modern legal"). Extracted
    * from user turns.
    */
   constraints: z
-    .array(z.string().max(500))
+    .array(z.string().max(MEMORY_ENTRY_SANITIZE_MAX_CHARS + 100))
     .max(SUMMARY_MAX_ENTRIES_PER_CATEGORY),
   /**
    * Card swaps the player has agreed to in earlier (now-pruned) turns
@@ -122,11 +131,11 @@ export const CoachMemorySummarySchema = z.object({
    * rejected cut or re-recommend an already-accepted addition.
    */
   acceptedSwaps: z
-    .array(z.string().max(500))
+    .array(z.string().max(MEMORY_ENTRY_SANITIZE_MAX_CHARS + 100))
     .max(SUMMARY_MAX_ENTRIES_PER_CATEGORY),
   /** Swaps the coach proposed and the player explicitly rejected. */
   rejectedSwaps: z
-    .array(z.string().max(500))
+    .array(z.string().max(MEMORY_ENTRY_SANITIZE_MAX_CHARS + 100))
     .max(SUMMARY_MAX_ENTRIES_PER_CATEGORY),
   /**
    * Archetypes / decks the player asked about ("How do I beat Mono-Red?",
@@ -134,7 +143,7 @@ export const CoachMemorySummarySchema = z.object({
    * discussion.
    */
   matchupTargets: z
-    .array(z.string().max(500))
+    .array(z.string().max(MEMORY_ENTRY_SANITIZE_MAX_CHARS + 100))
     .max(SUMMARY_MAX_ENTRIES_PER_CATEGORY),
   /**
    * Open questions the player asked but that were pruned before the coach
@@ -142,7 +151,7 @@ export const CoachMemorySummarySchema = z.object({
    * context for the next turn.
    */
   unresolvedQuestions: z
-    .array(z.string().max(500))
+    .array(z.string().max(MEMORY_ENTRY_SANITIZE_MAX_CHARS + 100))
     .max(SUMMARY_MAX_ENTRIES_PER_CATEGORY),
   /**
    * Tokens of the rendered summary, cached at build time so the prompt
@@ -731,15 +740,6 @@ export function parseCoachMemorySummary(
   if (!parsed.success) return null;
   return sanitizeSummaryEntries(parsed.data);
 }
-
-/**
- * Hard cap applied to a single inbound memory entry at the trust boundary
- * (issue #1905). Generous relative to the builder-side
- * {@link SUMMARY_ENTRY_MAX_CHARS} cap so legitimately-built summaries never
- * lose content here, while a hostile single entry cannot dominate the
- * rendered block.
- */
-export const MEMORY_ENTRY_SANITIZE_MAX_CHARS = 500;
 
 /**
  * Replacement returned for an inbound entry that matches a known injection
