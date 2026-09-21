@@ -23,6 +23,9 @@ import {
   redactErrorMessage,
   redactSecrets,
   redactText,
+  scrubDecklist,
+  scrubDigestedContext,
+  scrubMessages,
   toSafeClientError,
   truncateForSafety,
 } from "../redact-error";
@@ -294,5 +297,136 @@ describe("newCorrelationId", () => {
     const b = newCorrelationId();
     expect(a.length).toBeGreaterThan(0);
     expect(a).not.toBe(b);
+  });
+});
+
+// ----------------------------------------------------------------------------
+// User-supplied prompt payload scrubbing (issue #1916)
+// ----------------------------------------------------------------------------
+
+describe("scrubDecklist", () => {
+  it("scrubs decklist lines from error message", () => {
+    const input =
+      "400 Bad Request: Decklist:\n1 Lightning Bolt\n4 Brainstorm\n3 Counterspell\n\nOther text";
+    const output = scrubDecklist(input);
+    expect(output).not.toContain("1 Lightning Bolt");
+    expect(output).not.toContain("4 Brainstorm");
+    expect(output).not.toContain("3 Counterspell");
+    expect(output).toContain("Decklist:");
+    expect(output).toContain("Other text");
+  });
+
+  it("returns text unchanged when no Decklist: marker present", () => {
+    const input = "No decklist here, just some text";
+    expect(scrubDecklist(input)).toBe(input);
+  });
+
+  it("reports card count in redaction token", () => {
+    const input = "Decklist:\n1 Bolt\n4 Brainstorm";
+    const output = scrubDecklist(input);
+    expect(output).toContain("[redacted-decklist");
+    expect(output).toContain("2 cards");
+  });
+
+  it("leaves ordinary text untouched", () => {
+    expect(scrubDecklist("just some regular text")).toBe(
+      "just some regular text",
+    );
+  });
+});
+
+describe("scrubMessages", () => {
+  it("scrubs messages[].content from error message", () => {
+    const input =
+      '{"messages":[{"role":"user","content":"What is my best play?"},{"role":"assistant","content":"Cast Lightning Bolt."}]}';
+    const output = scrubMessages(input);
+    expect(output).not.toContain("What is my best play?");
+    expect(output).not.toContain("Cast Lightning Bolt.");
+    expect(output).toContain("[redacted-content");
+  });
+
+  it("reports character count of redacted content", () => {
+    const input =
+      '{"messages":[{"role":"user","content":"What is my best play?"}]}';
+    const output = scrubMessages(input);
+    expect(output).toContain("[redacted-content 21 chars]");
+  });
+
+  it("returns text unchanged when no message content present", () => {
+    const input = '{"other":"json","without":"messages"}';
+    expect(scrubMessages(input)).toBe(input);
+  });
+
+  it("handles empty content values", () => {
+    const input = '{"messages":[{"role":"user","content":""}]}';
+    const output = scrubMessages(input);
+    expect(output).toBe(input);
+  });
+});
+
+describe("scrubDigestedContext", () => {
+  it("scrubs digestedContext JSON from error message", () => {
+    const input =
+      '{"digestedContext":{"cards":[{"name":"Lightning Bolt"}],"totalCards":1}}';
+    const output = scrubDigestedContext(input);
+    expect(output).not.toContain("Lightning Bolt");
+    expect(output).not.toContain("digestedContext");
+    expect(output).toContain("[redacted-context]");
+  });
+
+  it("returns text unchanged when no digestedContext present", () => {
+    const input = '{"normal":"json","data":"here"}';
+    expect(scrubDigestedContext(input)).toBe(input);
+  });
+
+  it("handles nested digestedContext JSON", () => {
+    const input = '{"outer":{"digestedContext":{"inner":{"cards":[]}}}}';
+    const output = scrubDigestedContext(input);
+    expect(output).not.toContain("digestedContext");
+    expect(output).toContain("[redacted-context]");
+  });
+});
+
+describe("redactSecrets (prompt payload integration, issue #1916)", () => {
+  it("scrubs decklist lines as part of the standard pipeline", () => {
+    const input = "Decklist:\n1 Lightning Bolt\n4 Brainstorm";
+    const output = redactSecrets(input);
+    expect(output).not.toContain("Lightning Bolt");
+    expect(output).not.toContain("Brainstorm");
+    expect(output).toContain("[redacted-decklist");
+  });
+
+  it("scrubs messages[].content as part of the standard pipeline", () => {
+    const input =
+      '{"messages":[{"role":"user","content":"Should I mulligan?"}]}';
+    const output = redactSecrets(input);
+    expect(output).not.toContain("Should I mulligan?");
+    expect(output).toContain("[redacted-content");
+  });
+
+  it("scrubs digestedContext JSON as part of the standard pipeline", () => {
+    const input =
+      '{"digestedContext":{"cards":[{"name":"Terramorphic Expanse"}]}}';
+    const output = redactSecrets(input);
+    expect(output).not.toContain("Terramorphic Expanse");
+    expect(output).toContain("[redacted-context]");
+  });
+
+  it("reports character count of redacted content", () => {
+    const input =
+      '{"messages":[{"role":"user","content":"What is my best play?"}]}';
+    const output = scrubMessages(input);
+    expect(output).toContain("[redacted-content 21 chars]");
+  });
+
+  it("a decklist never reaches the server log line", () => {
+    const errorMessage =
+      "400 Bad Request\nDecklist:\n4 Brainstorm\n3 Ponder\n2 Lightning Bolt\nuser question: is this good?";
+    const output = redactSecrets(errorMessage);
+    expect(output).not.toContain("Brainstorm");
+    expect(output).not.toContain("Ponder");
+    expect(output).not.toContain("Lightning Bolt");
+    expect(output).toContain("400 Bad Request");
+    expect(output).toContain("user question:");
   });
 });

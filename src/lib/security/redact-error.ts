@@ -19,6 +19,15 @@
 /** Replacement token for anything that looks like a secret. */
 export const REDACTED = "[REDACTED]";
 
+/** Replacement token for user-supplied decklist content (issue #1916). */
+export const REDACTED_DECKLIST = "[redacted-decklist]";
+
+/** Replacement token for user-supplied message content (issue #1916). */
+export const REDACTED_CONTENT = "[redacted-content]";
+
+/** Replacement token for digested context JSON (issue #1916). */
+export const REDACTED_CONTEXT = "[redacted-context]";
+
 /**
  * Maximum characters retained from an upstream/provider message before it
  * is handed to a log line or usage entry. Issue #1585: any embedded
@@ -31,6 +40,70 @@ export const MAX_REDACTED_MESSAGE_LENGTH = 200;
  * false positives on trivially short configured values.
  */
 const MIN_ENV_SECRET_LENGTH = 8;
+
+// ----------------------------------------------------------------------------
+// User-supplied prompt payload scrubbing (issue #1916)
+// ----------------------------------------------------------------------------
+
+/**
+ * Scrub decklist lines (e.g. `1 Lightning Bolt`, `4 Brainstorm`) that appear
+ * after a `Decklist:` marker. Issue #1916: Vercel AI SDK error messages can
+ * embed request body fragments containing the user's decklist.
+ */
+export function scrubDecklist(text: string): string {
+  const markerIndex = text.indexOf("Decklist:");
+  if (markerIndex === -1) return text;
+  const beforeMarker = text.slice(0, markerIndex + "Decklist:".length);
+  const afterMarker = text.slice(markerIndex + "Decklist:".length);
+  const decklistPattern = /\d+\s+[A-Za-z].*/g;
+  const matches = [...afterMarker.matchAll(decklistPattern)];
+  if (matches.length === 0) return text;
+  let redacted = afterMarker;
+  for (const match of matches) {
+    redacted = redacted.split(match[0]).join(REDACTED_DECKLIST);
+  }
+  const cardCount = matches.length;
+  const token = `[redacted-decklist ${cardCount} cards]`;
+  return `${beforeMarker}${redacted.split(REDACTED_DECKLIST).join(token)}`;
+}
+
+/**
+ * Scrub `content:` field values from JSON message arrays embedded in error
+ * text. Issue #1916: coach questions and user prompts appear as
+ * `messages[N].content` in SDK error payloads.
+ */
+export function scrubMessages(text: string): string {
+  const messageContentPattern =
+    /("content"\s*:\s*")([^"\\]*(?:\\.[^"\\]*)*)(")/gi;
+  return text.replace(
+    messageContentPattern,
+    (_full, prefix, content, suffix) => {
+      if (content.length === 0) return `${prefix}${suffix}`;
+      return `${prefix}[redacted-content ${content.length} chars]${suffix}`;
+    },
+  );
+}
+
+/**
+ * Scrub `digestedContext` JSON blobs from error text. Issue #1916: AI proxy
+ * errors may embed the full digested context including card data.
+ */
+export function scrubDigestedContext(text: string): string {
+  const contextPattern =
+    /("digestedContext"\s*:\s*)\{[^}]*(?:\{[^}]*\}[^}]*)*\}/gi;
+  if (!contextPattern.test(text)) return text;
+  return text.replace(contextPattern, REDACTED_CONTEXT);
+}
+
+/**
+ * Full pipeline for scrubbing user-supplied prompt payloads from text headed
+ * to a log line. Issue #1916: decklists, messages[].content, and
+ * digestedContext must not appear in server logs.
+ */
+export function scrubPromptPayloads(text: string | null | undefined): string {
+  if (typeof text !== "string" || !text) return "";
+  return scrubDigestedContext(scrubMessages(scrubDecklist(text)));
+}
 
 /**
  * Environment variables holding provider API keys (mirrors
@@ -118,6 +191,9 @@ export function redactSecrets(text: string | null | undefined): string {
   if (!out) {
     return out;
   }
+
+  // User-supplied prompt payloads first — issue #1916
+  out = scrubPromptPayloads(out);
 
   // Literal configured secrets first — highest fidelity, catches keys the
   // structural patterns cannot (e.g. unusual custom-provider formats).
