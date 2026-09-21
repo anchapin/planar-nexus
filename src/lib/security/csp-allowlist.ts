@@ -193,36 +193,105 @@ function buildConnectSrc(): string {
   return sources.join(" ");
 }
 
-export const TAURI_CSP = [
-  "default-src 'self'",
-  // No `'unsafe-inline'` for scripts: Next.js 15 streams chunks as
-  // <script src="..."> tags, and the Tauri webview is built with a
-  // strict nonce-free CSP. If a future feature requires inline scripts
-  // it must use a nonce injected by a Tauri command.
-  "script-src 'self' 'wasm-unsafe-eval'",
-  // `'unsafe-inline'` here is required by Next.js streaming SSR styles
-  // and by Tailwind's runtime style injection. Documented in
-  // CONTRIBUTING.md § "Security model".
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "img-src 'self' data: https://cards.scryfall.io https://img.scryfall.com https://images.unsplash.com https://picsum.photos https://fastly.picsum.photos https://placehold.co",
-  "font-src 'self' data: https://fonts.googleapis.com https://fonts.gstatic.com",
-  // HTTPS endpoints are enumerated from REMOTE_CONNECT_HOSTS; no WSS
-  // wildcard (the PeerJS broker pattern was removed with the orphaned
-  // dependency — multiplayer is direct WebRTC DataChannels + TURN).
-  // See issue #1584 — no bare `https:` or `wss:` scheme wildcards.
-  `connect-src ${buildConnectSrc()}`,
-  // MSW runs in the browser as a service-worker shim that compiles
-  // handlers into blob: URLs at runtime.
-  "worker-src 'self' blob:",
-  // WebRTC peer streams + board-state replay viewer use MediaStream
-  // and Blob URLs.
-  "media-src 'self' blob:",
-  "object-src 'none'",
-  "base-uri 'self'",
-  "form-action 'self'",
-  "frame-ancestors 'none'",
-  "frame-src 'none'",
-].join("; ");
+/**
+ * Build the Tauri Content Security Policy (issue #1918).
+ *
+ * When a nonce is provided it is embedded in `script-src` so that inline
+ * `<script>` tags carrying the matching `nonce="<value>"` attribute are
+ * allowed to execute.  When no nonce is passed the directive is the
+ * strict, nonce-free variant documented before #1918.
+ *
+ * @param nonce - The per-build nonce injected by the prebuild:tauri
+ *                 script (read from `TAURI_CSP_NONCE` env or from the
+ *                 `csp-nonce.json` file written by that script).  Pass
+ *                 `undefined` to obtain the legacy nonce-free policy.
+ */
+export function buildTauriCsp(nonce?: string): string {
+  const scriptSrc = nonce
+    ? `script-src 'self' 'nonce-${nonce}' 'wasm-unsafe-eval'`
+    : "script-src 'self' 'wasm-unsafe-eval'";
+
+  return [
+    "default-src 'self'",
+    // No `'unsafe-inline'` for scripts without a nonce: Next.js 15
+    // streams chunks as <script src="..."> tags, and the Tauri webview
+    // is built with a strict CSP.  If a future feature requires inline
+    // scripts it must use a nonce injected at build time (#1918).
+    scriptSrc,
+    // `'unsafe-inline'` here is required by Next.js streaming SSR styles
+    // and by Tailwind's runtime style injection. Documented in
+    // CONTRIBUTING.md § "Security model".
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "img-src 'self' data: https://cards.scryfall.io https://img.scryfall.com https://images.unsplash.com https://picsum.photos https://fastly.picsum.photos https://placehold.co",
+    "font-src 'self' data: https://fonts.googleapis.com https://fonts.gstatic.com",
+    // HTTPS endpoints are enumerated from REMOTE_CONNECT_HOSTS; no WSS
+    // wildcard (the PeerJS broker pattern was removed with the orphaned
+    // dependency — multiplayer is direct WebRTC DataChannels + TURN).
+    // See issue #1584 — no bare `https:` or `wss:` scheme wildcards.
+    `connect-src ${buildConnectSrc()}`,
+    // MSW runs in the browser as a service-worker shim that compiles
+    // handlers into blob: URLs at runtime.
+    "worker-src 'self' blob:",
+    // WebRTC peer streams + board-state replay viewer use MediaStream
+    // and Blob URLs.
+    "media-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "frame-src 'none'",
+  ].join("; ");
+}
+
+/**
+ * Resolve the per-build CSP nonce.
+ *
+ * Priority:
+ *   1. `TAURI_CSP_NONCE` environment variable (set by the shell-level
+ *      build command, e.g. `TAURI_CSP_NONCE=$NONCE npm run build`).
+ *   2. `csp-nonce.json` written by `scripts/inject-tauri-csp-nonce.ts`
+ *      (the `prebuild:tauri` npm script) — this file is generated before
+ *      `beforeBuildCommand` runs so it is available when this module is
+ *      evaluated during the test or build phase.
+ *   3. The nonce embedded in `src-tauri/tauri.conf.json` (fallback for
+ *      the `csp-audit` test baseline before the prebuild script has
+ *      run, or when the test suite is invoked without a preceding build).
+ *   4. `undefined` (returns the legacy nonce-free policy).
+ */
+function resolveNonce(): string | undefined {
+  if (process.env.TAURI_CSP_NONCE) return process.env.TAURI_CSP_NONCE;
+  // Read the nonce written by the prebuild:tauri script.
+  // The file is at `src/lib/security/csp-nonce.json` (same dir as this module).
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { nonce } = require("./csp-nonce.json") as { nonce: string };
+    if (nonce) return nonce;
+  } catch {
+    // Fall through to tauri.conf.json fallback.
+  }
+  // Fallback: extract nonce from the canonical tauri.conf.json.
+  // This keeps the test baseline in sync before the prebuild script runs.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const tauriConf = require("../../../src-tauri/tauri.conf.json") as {
+      app: { security: { csp: string } };
+    };
+    const match = /'nonce-([A-Za-z0-9+/=_-]+)'/.exec(
+      tauriConf.app.security.csp,
+    );
+    return match ? match[1] : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Legacy constant — kept to avoid a breaking change in the `csp-audit`
+ * test baseline.  New code should use {@link buildTauriCsp} and pass a
+ * nonce obtained from the `TAURI_CSP_NONCE` environment variable or the
+ * `csp-nonce.json` file written by `prebuild:tauri`.
+ */
+export const TAURI_CSP = buildTauriCsp(resolveNonce());
 
 /**
  * Extract every hostname that appears in `TAURI_CSP`. Used by the

@@ -10,6 +10,7 @@
 // flushes a crash record (message + location) to disk before the process
 // exits, so "the app just closes" reports leave a diagnostic artifact.
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 use tauri::Manager;
 
@@ -97,6 +98,44 @@ fn install_panic_hook(crash_dir: PathBuf) {
     }));
 }
 
+/// Cached nonce — read once from `.next/csp-nonce.txt` (written by the
+/// `prebuild:tauri` script before the Rust build starts).  `OnceLock`
+/// ensures the file is read at most once even if multiple commands query it.
+static NONCE: OnceLock<Option<String>> = OnceLock::new();
+
+/// Read the per-build CSP nonce from `.next/csp-nonce.txt`.
+///
+/// Returns `None` if the file does not exist (e.g. running `tauri dev`
+/// without having run `npm run build` first).  Callers on the frontend
+/// should fall back gracefully when the nonce is absent.
+fn read_nonce() -> &'static Option<String> {
+    NONCE.get_or_init(|| {
+        // `frontendDist` from tauri.conf.json is `../.next` relative to the
+        // working directory when `tauri build` runs (the repo root).
+        let nonce_path = PathBuf::from(".next").join("csp-nonce.txt");
+        std::fs::read_to_string(&nonce_path)
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    })
+}
+
+/// Issue #1918: expose the per-build CSP nonce to the webview.
+///
+/// The frontend calls this command once at startup (e.g. in a `<script>` at
+/// the top of `_app.tsx` or via a `useEffect`) and uses the returned
+/// value as the `nonce` attribute when creating inline `<script>` elements
+/// dynamically.  This ensures dynamically-inserted scripts are allowed by
+/// the Tauri webview's strict `script-src 'nonce-<value>'` CSP.
+///
+/// Statically inlined scripts (SSR output from Next.js) are handled by the
+/// `prebuild:tauri` script which injects the nonce directly into those
+/// `<script>` tags at build time.
+#[tauri::command]
+fn get_csp_nonce() -> Option<String> {
+    read_nonce().clone()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let mut builder = tauri::Builder::default();
@@ -127,6 +166,7 @@ pub fn run() {
     }
 
     builder
+        .invoke_handler(tauri::generate_handler![get_csp_nonce])
         .setup(|app| {
             // Issue #1727: install the panic hook FIRST so a panic anywhere
             // later in setup (or at the terminal `.expect(...)` on run)
