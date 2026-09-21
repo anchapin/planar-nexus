@@ -89,7 +89,7 @@ export const SUMMARY_ENTRY_MAX_CHARS = 200;
  * Per-category entry cap. Prevents a single category (e.g. unresolved
  * questions) from filling the entire summary budget at the expense of others.
  */
-export const SUMMARY_MAX_ENTRIES_PER_CATEGORY = 8;
+export const SUMMARY_MAX_ENTRIES_PER_CATEGORY = 50;
 
 /**
  * zod schema describing the persisted coach-memory summary.
@@ -107,34 +107,42 @@ export const CoachMemorySummarySchema = z.object({
    * Short, durable player goals ("win the long game", "build a tight
    * budget Rakdos aggro", "beat Control"). Extracted from user turns.
    */
-  goals: z.array(z.string()).max(SUMMARY_MAX_ENTRIES_PER_CATEGORY),
+  goals: z.array(z.string().max(500)).max(SUMMARY_MAX_ENTRIES_PER_CATEGORY),
   /**
    * Budget / power-level / format constraints the player stated ("under
    * $50", "no proxies", "casual, not cEDH", "Modern legal"). Extracted
    * from user turns.
    */
-  constraints: z.array(z.string()).max(SUMMARY_MAX_ENTRIES_PER_CATEGORY),
+  constraints: z
+    .array(z.string().max(500))
+    .max(SUMMARY_MAX_ENTRIES_PER_CATEGORY),
   /**
    * Card swaps the player has agreed to in earlier (now-pruned) turns
    * ("+ Doom Blade, - Murder"). Used so the coach does not re-suggest a
    * rejected cut or re-recommend an already-accepted addition.
    */
-  acceptedSwaps: z.array(z.string()).max(SUMMARY_MAX_ENTRIES_PER_CATEGORY),
+  acceptedSwaps: z
+    .array(z.string().max(500))
+    .max(SUMMARY_MAX_ENTRIES_PER_CATEGORY),
   /** Swaps the coach proposed and the player explicitly rejected. */
-  rejectedSwaps: z.array(z.string()).max(SUMMARY_MAX_ENTRIES_PER_CATEGORY),
+  rejectedSwaps: z
+    .array(z.string().max(500))
+    .max(SUMMARY_MAX_ENTRIES_PER_CATEGORY),
   /**
    * Archetypes / decks the player asked about ("How do I beat Mono-Red?",
    * "vs control"). Used to ground future matchup questions in the prior
    * discussion.
    */
-  matchupTargets: z.array(z.string()).max(SUMMARY_MAX_ENTRIES_PER_CATEGORY),
+  matchupTargets: z
+    .array(z.string().max(500))
+    .max(SUMMARY_MAX_ENTRIES_PER_CATEGORY),
   /**
    * Open questions the player asked but that were pruned before the coach
    * could answer in a retained turn. Surfaces as "you may want to revisit"
    * context for the next turn.
    */
   unresolvedQuestions: z
-    .array(z.string())
+    .array(z.string().max(500))
     .max(SUMMARY_MAX_ENTRIES_PER_CATEGORY),
   /**
    * Tokens of the rendered summary, cached at build time so the prompt

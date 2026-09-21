@@ -33,6 +33,7 @@ import {
   renderSummaryText,
   boundSummary,
 } from "../coach-memory-summary";
+import { validateCoachMemorySummary } from "../context-builder";
 import type { ChatMessage } from "@/types/chat";
 
 function user(content: string): ChatMessage {
@@ -416,5 +417,31 @@ describe("issue #1417 acceptance — follow-up can reference a pruned decision",
     expect(
       summary.acceptedSwaps.some((s) => /Cancel|Sinister Sabotage/.test(s)),
     ).toBe(true);
+  });
+});
+
+describe("issue #1917 acceptance — memorySummary shape bounds", () => {
+  it("rejects goals with more than 50 entries", () => {
+    const summary = {
+      ...emptyCoachMemorySummary(),
+      goals: Array.from({ length: 200 }, () => "a"),
+    };
+    expect(validateCoachMemorySummary(summary)).toBeNull();
+  });
+
+  it("rejects goals with entries exceeding 500 chars", () => {
+    const summary = {
+      ...emptyCoachMemorySummary(),
+      goals: Array.from({ length: 200 }, () => "a".repeat(2000)),
+    };
+    expect(validateCoachMemorySummary(summary)).toBeNull();
+  });
+
+  it("accepts a summary within bounds", () => {
+    const summary = {
+      ...emptyCoachMemorySummary(),
+      goals: Array.from({ length: 50 }, () => "a".repeat(500)),
+    };
+    expect(validateCoachMemorySummary(summary)).not.toBeNull();
   });
 });
