@@ -25,6 +25,7 @@ import { WebRTCConnection, createP2PConnection } from "./webrtc-p2p";
 import { safeParseJson } from "./p2p-json-validation";
 import { redactSensitive } from "./p2p-log-redact";
 import { p2pLogger } from "./p2p-logger";
+import { sanitizePlayerName } from "@/lib/security/chat-sanitize";
 
 /**
  * Connection information for P2P handshake
@@ -196,7 +197,10 @@ export class P2PSignalingClient {
       await this.connection.initialize();
     } catch (error) {
       // #982: redact — init errors may embed ICE config / TURN credentials.
-      p2pLogger.error("[Signaling] Failed to initialize:", redactSensitive(error));
+      p2pLogger.error(
+        "[Signaling] Failed to initialize:",
+        redactSensitive(error),
+      );
       this.events.onError(
         error instanceof Error ? error : new Error("Failed to initialize"),
       );
@@ -454,7 +458,7 @@ export function createHostSignalingClient(
   events: SignalingEvents,
 ): P2PSignalingClient {
   return new P2PSignalingClient({
-    playerName,
+    playerName: sanitizePlayerName(playerName),
     isHost: true,
     events,
   });
@@ -468,7 +472,7 @@ export function createClientSignalingClient(
   events: SignalingEvents,
 ): P2PSignalingClient {
   return new P2PSignalingClient({
-    playerName,
+    playerName: sanitizePlayerName(playerName),
     isHost: false,
     events,
   });

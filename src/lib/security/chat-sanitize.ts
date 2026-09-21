@@ -126,3 +126,39 @@ export function capMessageLength(
   const marker = "…";
   return text.slice(0, Math.max(0, maxLength - marker.length)) + marker;
 }
+
+/**
+ * Issue #1919 — sanitize a playerName before it is embedded in a P2P
+ * handshake, signaling envelope, lobby roster, or replay metadata.
+ *
+ * Player names flow into:
+ *   - the WebRTC DataChannel handshake envelope (`createHandshakeInit`)
+ *   - the signaling client (`createHostSignalingClient` /
+ *     `createClientSignalingClient`)
+ *   - the lobby roster (`lobby-manager.addPlayer` / `addSpectator`)
+ *   - replay-sharing URL strings (`replay-sharing.ts`)
+ *
+ * Unlike {@link sanitizeChatMessage}, playerName:
+ *   - is capped at 64 chars (single-line identifier; no multi-line risk)
+ *   - strips C0/C1 controls (no legitimate display-name needs \x00–\x1F)
+ *   - strips bidi / zero-width (no legitimate name needs Unicode direction
+ *     override or invisible characters — Trojan Source risk)
+ *   - strips markup chars (`<>` backtick) to prevent injection into
+ *     replay/URL strings that may be parsed loosely
+ *   - NFC normalizes so comparisons are stable and confusable sequences
+ *     (homoglyph abuse) are canonicalized
+ *
+ * Safe for non-string input — coerces to `""`. Idempotent.
+ *
+ * @param raw - the untrusted player name (any type; non-strings coerced)
+ * @returns the sanitized name (never null/undefined; may be empty)
+ */
+export function sanitizePlayerName(raw: unknown): string {
+  const text = typeof raw === "string" ? raw : raw == null ? "" : String(raw);
+  const normalized = text.normalize("NFC");
+  const stripped = normalized
+    .replace(CHAT_CONTROL_CHARS, "")
+    .replace(CHAT_BIDI_ZW_CHARS, "")
+    .replace(CHAT_MARKUP_CHARS, "");
+  return stripped.slice(0, 64);
+}

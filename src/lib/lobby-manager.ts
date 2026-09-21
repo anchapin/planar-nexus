@@ -44,6 +44,7 @@ import {
   signSpectatorCapabilityToken,
   type SpectatorCapabilityToken,
 } from "./p2p-handshake";
+import { sanitizePlayerName } from "@/lib/security/chat-sanitize";
 
 // Default team configurations
 const DEFAULT_TEAMS: Team[] = [
@@ -421,7 +422,7 @@ class LobbyManager {
 
     const newPlayer: Player = {
       id: generatePlayerId(),
-      name: playerName,
+      name: sanitizePlayerName(playerName),
       status: "not-ready",
       joinedAt: Date.now(),
     };
@@ -700,10 +701,10 @@ class LobbyManager {
     if (!this.currentLobby.settings.allowSpectators) return null;
     const roster = this.currentLobby.spectators ?? [];
     if (roster.length >= LOBBY_MAX_SPECTATORS) return null;
-    const trimmedName = name.trim() || "Spectator";
+    const sanitizedName = sanitizePlayerName(name.trim() || "Spectator");
     const spectator: Spectator = {
       id: generateSpectatorId(),
-      name: trimmedName,
+      name: sanitizedName,
       joinedAt: Date.now(),
     };
     if (!this.currentLobby.spectators) {
