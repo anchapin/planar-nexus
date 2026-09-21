@@ -55,8 +55,8 @@ module.exports = {
   ],
   // Coverage thresholds — ENFORCED by CI (ci.yml "Run unit tests with coverage").
   // Values are set just below MEASURED coverage so the gate catches real
-  // regressions without being flaky. Measured 2026-09-19 (jest --coverage):
-  //   statements 64.20% | branches 55.55% | functions 57.08% | lines 65.10%
+  // regressions without being flaky. Measured 2026-09-21 (jest --coverage):
+  //   lines 65.35% | statements 64.44% | functions 57.39% | branches 55.69%
   // The "last measured" snapshot above is refreshed automatically by
   // `scripts/ratchet-coverage.js` on every bump (issue #1819) and therefore
   // stays consistent with the floors below. The documented project target
