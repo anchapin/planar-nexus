@@ -70,3 +70,4 @@ Copy `.env.example` → `.env`. AI keys are optional (heuristic fallback works).
 - `docs/onboarding.md` — quick contributor onboarding (what Planar Nexus is, project layout, current test count, where to start). The test-count block is ratcheted by `scripts/ratchet-test-count.mjs` and verified by `scripts/check-test-count-docs.mjs` (#1902).
 - `docs/TESTING.md` — canonical testing guide (root `TESTING.md` redirects there).
 - `CLAUDE.md` — broader architecture notes. Largely current (correctly states Next.js 16 and `src/lib/game-state/`). Trust code over `CLAUDE.md` where they differ.
+- `docs/PERSISTENCE_ARCHITECTURE.md` — IndexedDB architecture, migration conventions, and quota management (#1722).
