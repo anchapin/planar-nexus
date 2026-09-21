@@ -1,5 +1,6 @@
 import type { AIProvider } from "./types";
 import { AI_PROVIDER_IDS } from "./types";
+import { providerHealth } from "./provider-health";
 
 /**
  * Default models for each provider
@@ -161,17 +162,38 @@ function normalizeProviderName(provider: string): string {
  *   first while still failing over transparently on error.
  * - Otherwise the {@link DEFAULT_PROVIDER_ORDER} is returned.
  *
+ * - If `sortByLatency` is true (issue #1997), the chain is re-ordered by
+ *   moving-average TTFT so the lowest-latency available provider is tried first.
+ *   Providers without TTFT data retain their default-order position.
+ *
  * The chain is provider *names* (strings), not model instances, so it stays
  * cheap to compute and easy to unit-test. Consumers resolve each entry via
  * {@link getAIModel} lazily.
  */
-export function getProviderFailoverChain(primary?: string | null): string[] {
-  if (!primary) {
-    return [...DEFAULT_PROVIDER_ORDER];
+export function getProviderFailoverChain(
+  primary?: string | null,
+  sortByLatency?: boolean,
+): string[] {
+  const base = !primary
+    ? [...DEFAULT_PROVIDER_ORDER]
+    : [
+        normalizeProviderName(primary),
+        ...DEFAULT_PROVIDER_ORDER.filter(
+          (p) => p !== normalizeProviderName(primary),
+        ),
+      ];
+
+  if (!sortByLatency) {
+    return base;
   }
 
-  const head = normalizeProviderName(primary);
-  const tail = DEFAULT_PROVIDER_ORDER.filter((p) => p !== head);
-  // 'custom' is not in DEFAULT_PROVIDER_ORDER; still lead with it when asked.
-  return [head, ...tail];
+  return [...base].sort((a, b) => {
+    const ttftA = providerHealth.getAverageTtft(a);
+    const ttftB = providerHealth.getAverageTtft(b);
+    // Unmeasured providers sort after measured ones (they keep their default order).
+    if (ttftA === undefined && ttftB === undefined) return 0;
+    if (ttftA === undefined) return 1;
+    if (ttftB === undefined) return -1;
+    return ttftA - ttftB;
+  });
 }

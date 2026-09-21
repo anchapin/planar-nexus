@@ -499,7 +499,7 @@ export async function* streamCoachResponse(
   const chain =
     options.providers && options.providers.length > 0
       ? [...options.providers]
-      : getProviderFailoverChain();
+      : getProviderFailoverChain(undefined, true);
 
   // Issue #1536: resolve the effective output-token cap once per request. The
   // resolved value is forwarded to `streamText` so the provider truncates
@@ -595,6 +595,7 @@ export async function* streamCoachResponse(
     let result: Awaited<ReturnType<typeof streamText>> | undefined;
 
     while (!providerDone) {
+      const streamStartMs = Date.now();
       result = streamText({
         model,
         system: systemPrompt,
@@ -609,6 +610,7 @@ export async function* streamCoachResponse(
       let streamedAny = false;
       let preTokenError: unknown;
       let midStreamError: unknown;
+      let ttftRecorded = false;
 
       try {
         for await (const delta of result.textStream) {
@@ -620,6 +622,11 @@ export async function* streamCoachResponse(
           }
           if (delta) {
             streamedAny = true;
+            // Issue #1997: record TTFT on first token and sort next request by latency.
+            if (!ttftRecorded) {
+              ttftRecorded = true;
+              healthTracker.recordTtft(provider, Date.now() - streamStartMs);
+            }
             yield { type: "text", value: delta };
           }
         }
