@@ -59,6 +59,46 @@ function validateCustomBaseUrl(): void {
 validateCustomBaseUrl();
 
 /**
+ * Issue #1985 — per-provider server-side model allowlist.
+ * Unknown model IDs are rejected with HTTP 400 + INVALID_MODEL.
+ * zaic/custom are open (any model ID accepted — the backend decides).
+ */
+export const PROVIDER_ALLOWED_MODELS: Record<string, readonly string[]> = {
+  openai: [
+    "gpt-4o",
+    "gpt-4o-mini",
+    "gpt-4-turbo",
+    "gpt-3.5-turbo",
+  ] as const,
+  anthropic: [
+    "claude-3-5-sonnet-20241022",
+    "claude-3-opus-20240229",
+    "claude-3-haiku-20240307",
+    "claude-3-5-haiku-20241022",
+  ] as const,
+  google: [
+    "gemini-1.5-flash-latest",
+    "gemini-1.5-flash-8b",
+    "gemini-1.5-pro-latest",
+    "gemini-2.0-flash-exp",
+    "gemini-exp-1206",
+  ] as const,
+  zaic: [] as const,
+  custom: [] as const,
+} as const;
+
+/**
+ * Validate a model ID against a provider's allowlist.
+ * Returns true if the model is allowed; false otherwise.
+ */
+export function isModelAllowed(provider: string, modelId: string): boolean {
+  const normalized = provider.toLowerCase() === "z-ai" ? "zaic" : provider.toLowerCase();
+  const allowed = PROVIDER_ALLOWED_MODELS[normalized];
+  if (!allowed || allowed.length === 0) return true;
+  return (allowed as readonly string[]).includes(modelId);
+}
+
+/**
  * Default models for each provider
  */
 export const PROVIDER_DEFAULT_MODELS: Record<string, string> = {

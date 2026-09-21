@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertSameOrigin } from "@/lib/security/same-origin";
 import { streamText, generateText } from "ai";
-import { getAIModel } from "@/ai/providers/factory";
+import { getAIModel, isModelAllowed } from "@/ai/providers/factory";
 import { AIProvider, AI_PROVIDER_IDS } from "@/ai/providers/types";
 import { searchCardsTool } from "@/ai/tools/card-search";
 import {
@@ -156,6 +156,18 @@ export async function POST(
       );
     }
     validatedProvider = provider as AIProvider;
+
+    // Issue #1985 — reject unknown model IDs server-side
+    if (modelId && !isModelAllowed(provider, modelId)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Model "${modelId}" is not allowed for provider "${provider}"`,
+          errorCode: "INVALID_MODEL",
+        },
+        { status: 400 },
+      );
+    }
 
     // Initialize logger with correct provider
     const usageLogger = new UsageLogger(
