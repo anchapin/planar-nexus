@@ -22,8 +22,18 @@
  *
  * Errors are swallowed and logged so a corrupt legacy store cannot take
  * the rest of the app down with it (mirroring the v3 split behavior).
+ *
+ * Issue #1920: quota pre-flight via {@link predictQuotaHeadroom} aborts
+ * before any writes when the origin lacks sufficient space, preventing
+ * partial migration and retry loops. The marker row is only written on
+ * success.
  */
 import type { IndexedDBStorage } from "../indexeddb-storage";
+import {
+  predictQuotaHeadroom,
+  QUOTA_SAFETY_MARGIN_BYTES,
+  MigrationQuotaError,
+} from "../storage-quota";
 
 /**
  * Issue #1811 — list of standalone legacy databases that need to be
@@ -271,6 +281,43 @@ export async function ensureLegacyV4Consolidation(
     if (!storage.hasStore(name)) return;
   }
 
+  // Issue #1920 — quota pre-flight: estimate total bytes needed across all
+  // legacy stores before opening any transactions. If quota is insufficient,
+  // throw MigrationQuotaError BEFORE any writes so the marker row is never
+  // written and the next open retries cleanly.
+  const legacyRowsByTarget: Array<{
+    target: (typeof V4_CONSOLIDATION_TARGETS)[number];
+    rows: Map<string, Record<string, unknown>>;
+  }> = [];
+
+  for (const target of V4_CONSOLIDATION_TARGETS) {
+    const legacyRows = await readAllLegacyRows(
+      target.legacyDbName,
+      target.legacyVersion,
+      target.legacyStoreName,
+    );
+    if (legacyRows === null || legacyRows.size === 0) continue;
+    legacyRowsByTarget.push({ target, rows: legacyRows });
+  }
+
+  const totalBytes = legacyRowsByTarget.reduce((sum, { rows }) => {
+    for (const value of rows.values()) {
+      sum += new TextEncoder().encode(JSON.stringify(value)).length;
+    }
+    return sum;
+  }, 0);
+
+  const headroom = await predictQuotaHeadroom(
+    totalBytes + QUOTA_SAFETY_MARGIN_BYTES,
+  );
+  if (!headroom.ok) {
+    throw new MigrationQuotaError(
+      headroom.reason ??
+        "Storage quota insufficient for v4 consolidation migration",
+      totalBytes,
+    );
+  }
+
   let migratedAny = false;
 
   // Track per-DB counts so we only delete a legacy DB after every
@@ -279,17 +326,9 @@ export async function ensureLegacyV4Consolidation(
   // would orphan the second.
   const dbHadAnyRows = new Map<string, boolean>();
 
-  for (const target of V4_CONSOLIDATION_TARGETS) {
+  for (const { target, rows } of legacyRowsByTarget) {
     try {
-      const legacyRows = await readAllLegacyRows(
-        target.legacyDbName,
-        target.legacyVersion,
-        target.legacyStoreName,
-      );
-      if (legacyRows === null) continue; // IDB unavailable — skip
-      if (legacyRows.size === 0) continue; // Nothing to migrate
-
-      if (legacyRows.size > 0) {
+      if (rows.size > 0) {
         dbHadAnyRows.set(target.legacyDbName, true);
       }
 
@@ -297,7 +336,7 @@ export async function ensureLegacyV4Consolidation(
       // Skip rows whose target id already exists so re-runs (e.g. after
       // a process crash between the row write and the DB delete) do
       // not overwrite fresh data with stale legacy bytes.
-      for (const [key, value] of legacyRows) {
+      for (const [key, value] of rows) {
         const targetRow = target.toTargetRow(value, key);
         const id = targetRow.id as string;
         if (!id) continue;

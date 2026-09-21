@@ -23,6 +23,8 @@ import {
   getStorageEstimate,
   QUOTA_WARN_THRESHOLD,
   FALLBACK_QUOTA_BYTES,
+  isQuotaExceededError,
+  MigrationQuotaError,
 } from "./storage-quota";
 import {
   calculateChecksumAsync,
@@ -520,6 +522,7 @@ async function ensureLegacyV3Split(storage: IndexedDBStorage): Promise<void> {
 export class IndexedDBStorage {
   private config: StorageConfig;
   private db: IDBDatabase | null = null;
+  private _migrationQuotaError: Error | null = null;
 
   constructor(config: StorageConfig) {
     this.config = config;
@@ -806,11 +809,29 @@ export class IndexedDBStorage {
         await import("./migrations/indexeddb-v4-consolidation");
       await ensureLegacyV4Consolidation(this);
     } catch (error) {
+      // Issue #1920: store quota-related errors so the UI layer can
+      // surface a blocking 'free space or export backup' prompt.
+      if (isQuotaExceededError(error)) {
+        this._migrationQuotaError =
+          error instanceof Error
+            ? error
+            : new MigrationQuotaError(String(error));
+      }
       console.warn(
         "[indexeddb-storage] v4 consolidation migration failed:",
         error,
       );
     }
+  }
+
+  /**
+   * Issue #1920 — returns the error from the most recent v4 consolidation
+   * migration attempt, if one occurred and was a quota-related failure.
+   * Callers (e.g. `use-storage-backup.ts`) use this to surface a blocking
+   * toast prompting the user to free space or export a backup.
+   */
+  getMigrationError(): Error | null {
+    return this._migrationQuotaError;
   }
 
   /**
@@ -1595,9 +1616,7 @@ export class IndexedDBStorage {
     //
     // Dynamic import for the same cycle-avoidance reason as in
     // {@link exportBackup}.
-    const { restoreBackupScopeData } = await import(
-      "./backup/backup-scope"
-    );
+    const { restoreBackupScopeData } = await import("./backup/backup-scope");
     await restoreBackupScopeData({
       coachConversations: backupData.coachConversations ?? [],
       matchRecords: backupData.matchRecords ?? [],
