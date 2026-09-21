@@ -40,18 +40,23 @@ jest.mock("../indexeddb-storage", () => {
         return Promise.resolve(store[key] ?? null);
       }),
       set: jest.fn(
-        (_store: string, _key: string | { id: string }, value: unknown) => {
+        (_store: string, _value: { id: string } & Record<string, unknown>) => {
           const store =
             _store === "preferences"
               ? storage.preferences
               : storage.achievements;
-          const key =
-            typeof _key === "object" ? (_key as any).id : String(_key);
-          store[key] = value;
+          const key = _value.id;
+          store[key] = _value;
           return Promise.resolve();
         },
       ),
-      delete: jest.fn(() => Promise.resolve()),
+      delete: jest.fn((_store: string, _key: string) => {
+        const store =
+          _store === "preferences" ? storage.preferences : storage.achievements;
+        const key = typeof _key === "object" ? (_key as any).id : String(_key);
+        delete store[key];
+        return Promise.resolve();
+      }),
       getAll: jest.fn(() => Promise.resolve([])),
       clearStorage: jest.fn(() => {
         storage.clear();
@@ -647,9 +652,16 @@ describe("AchievementManager", () => {
       expect(collectionAchievement).toBeDefined();
     });
 
-    it.skip("should not unlock achievements that are already unlocked", async () => {
-      // Skipped: This test has async storage race conditions in Jest environment
-      // The test requires proper async storage mocking to reliably test re-unlock prevention
+    it("should not unlock achievements that are already unlocked", async () => {
+      // First unlock collection_10
+      await achievementManager.checkCollectionAchievements(testPlayerId, 10);
+
+      // Call again - should not unlock again (re-unlock prevention)
+      const notifications2 =
+        await achievementManager.checkCollectionAchievements(testPlayerId, 15);
+
+      // Should have no notifications (already unlocked)
+      expect(notifications2).toEqual([]);
     });
 
     it("should unlock collection_10 at 10 cards", async () => {
@@ -661,8 +673,16 @@ describe("AchievementManager", () => {
       expect(collectionNotification).toBeDefined();
     });
 
-    it.skip("should not unlock achievements that are already unlocked", async () => {
-      // Skipped: This test has async storage race conditions
+    it("should not unlock achievements that are already unlocked", async () => {
+      // First unlock collection_10
+      await achievementManager.checkCollectionAchievements(testPlayerId, 10);
+
+      // Call again - should not unlock again (re-unlock prevention)
+      const notifications2 =
+        await achievementManager.checkCollectionAchievements(testPlayerId, 10);
+
+      // Should have no notifications (already unlocked)
+      expect(notifications2).toEqual([]);
     });
   });
 
@@ -673,8 +693,16 @@ describe("AchievementManager", () => {
       expect(unlocked).toEqual([]);
     });
 
-    it.skip("should return unlocked achievements after manual unlock", async () => {
-      // Skipped: Requires proper async storage mocking
+    it("should return unlocked achievements after manual unlock", async () => {
+      // Unlock collection_10 via normal flow
+      await achievementManager.checkCollectionAchievements(testPlayerId, 10);
+
+      // getUnlockedAchievements should return the unlocked achievement
+      const unlocked =
+        await achievementManager.getUnlockedAchievements(testPlayerId);
+
+      expect(unlocked.length).toBeGreaterThan(0);
+      expect(unlocked.some((a) => a.id === "collection_10")).toBe(true);
     });
   });
 
@@ -744,8 +772,22 @@ describe("AchievementManager", () => {
   });
 
   describe("resetAchievements", () => {
-    it.skip("should reset achievements for a player", async () => {
-      // Skipped: Requires proper async storage mocking
+    it("should reset achievements for a player", async () => {
+      // First unlock an achievement
+      await achievementManager.checkCollectionAchievements(testPlayerId, 10);
+
+      // Verify it was unlocked
+      const beforeReset =
+        await achievementManager.getUnlockedAchievements(testPlayerId);
+      expect(beforeReset.length).toBeGreaterThan(0);
+
+      // Reset achievements
+      await achievementManager.resetAchievements(testPlayerId);
+
+      // Verify achievements are cleared
+      const afterReset =
+        await achievementManager.getUnlockedAchievements(testPlayerId);
+      expect(afterReset).toEqual([]);
     });
   });
 });
