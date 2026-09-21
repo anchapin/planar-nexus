@@ -57,13 +57,17 @@ class TestResponse {
 // Route is imported AFTER the polyfill is installed (see top-of-file note).
 import { GET, POST, DELETE, generateGameCode } from "../route";
 
+function makeMockRequest(url = "http://localhost:9002/api/signaling"): Request {
+  return { url } as unknown as Request;
+}
+
 // ----------------------------------------------------------------------------
 // 410 Gone — retired session-store API (issue #1730)
 // ----------------------------------------------------------------------------
 
 describe("GET /api/signaling — retired, answers 410 Gone", () => {
   it("returns 410 (never 200) even for well-formed polls", async () => {
-    const res = await GET();
+    const res = await GET(makeMockRequest());
     expect(res.status).toBe(410);
     const body = (await res.json()) as Record<string, unknown>;
     expect(body.deprecated).toBe(true);
@@ -75,7 +79,7 @@ describe("POST /api/signaling — retired, answers 410 Gone", () => {
   it.each(["create", "join", "offer", "answer", "ice-candidate", "close"])(
     "returns 410 (never 200) for message type %s",
     async (type) => {
-      const res = await POST();
+      const res = await POST(makeMockRequest());
       expect(res.status).toBe(410);
       const body = (await res.json()) as Record<string, unknown>;
       expect(body.deprecated).toBe(true);
@@ -87,7 +91,7 @@ describe("POST /api/signaling — retired, answers 410 Gone", () => {
 
 describe("DELETE /api/signaling — retired, answers 410 Gone", () => {
   it("returns 410 (never 200) even with a sessionId", async () => {
-    const res = await DELETE();
+    const res = await DELETE(makeMockRequest());
     expect(res.status).toBe(410);
     const body = (await res.json()) as Record<string, unknown>;
     expect(body.deprecated).toBe(true);
@@ -98,7 +102,7 @@ describe("DELETE /api/signaling — retired, answers 410 Gone", () => {
 describe("regression — no session-store verb returns 200", () => {
   it("GET, POST, and DELETE all answer non-200 (410)", async () => {
     for (const handler of [GET, POST, DELETE]) {
-      const res = await handler();
+      const res = await handler(makeMockRequest());
       expect(res.status).not.toBe(200);
       expect(res.status).toBe(410);
     }

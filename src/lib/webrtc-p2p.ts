@@ -1449,7 +1449,7 @@ export class WebRTCConnection {
     }
     const accepted = this.sendQueue.enqueue(
       payload,
-      message.type,
+      type,
       priority,
       inFlight,
     );
@@ -1459,7 +1459,7 @@ export class WebRTCConnection {
       // know the wire write didn't happen.
       this.events.onError(
         new Error(
-          `[WebRTC] Send queue rejected outbound ${message.type} (depth=${this.sendQueue.depth}, inFlight=${inFlight})`,
+          `[WebRTC] Send queue rejected outbound ${type} (depth=${this.sendQueue.depth}, inFlight=${inFlight})`,
         ),
         "",
       );
