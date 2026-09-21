@@ -4,17 +4,29 @@
  * Mechanically extracted from spell-casting.ts (issue #1725);
  * behavior pinned by the existing engine suites.
  */
-import type { GameState, CardInstanceId, StackObject, Target } from '../types';
-import { ZoneType } from '../types';
-import { moveCardBetweenZones } from '../zones';
-import { initializePlaneswalkerLoyalty } from '../card-instance';
-import { checkTriggeredAbilities, evaluateInterveningIfClause } from '../abilities';
-import { destroyCard, createTokenCard } from '../keyword-actions';
-import { resolveStackObjectEffects, parseSpellEffects, getEffectsForChosenModes } from '../effect-resolution';
-import { applyWardResolution } from '../ward-system';
-import { applyMutate } from '../mutate';
-import { destroysIndestructibleCreatures, executeBoardSweeper, isBoardSweeper } from './board-sweepers';
-import { generateStackObjectId } from './cast';
+import type { GameState, CardInstanceId, StackObject, Target } from "../types";
+import { ZoneType } from "../types";
+import { moveCardBetweenZones } from "../zones";
+import { initializePlaneswalkerLoyalty } from "../card-instance";
+import {
+  checkTriggeredAbilities,
+  evaluateInterveningIfClause,
+} from "../abilities";
+import { destroyCard, createTokenCard } from "../keyword-actions";
+import { resolveCascade } from "../keyword-actions/cascade";
+import {
+  resolveStackObjectEffects,
+  parseSpellEffects,
+  getEffectsForChosenModes,
+} from "../effect-resolution";
+import { applyWardResolution } from "../ward-system";
+import { applyMutate } from "../mutate";
+import {
+  destroysIndestructibleCreatures,
+  executeBoardSweeper,
+  isBoardSweeper,
+} from "./board-sweepers";
+import { generateStackObjectId } from "./cast";
 
 /**
  * Copy a spell on the stack (CR 707.10).
@@ -550,6 +562,26 @@ function resolveSpellCompletion(
           // Flashback spells resolve normally
         }
 
+        // CR 702.84 - Cascade: after the spell has moved to its destination zone,
+        // fire the cascade trigger. The controller reveals cards from the top of
+        // their library until they find a card with mana value strictly less than
+        // the original spell's mana value. That card is cast for free; the rest
+        // go to the graveyard. Cascade does not fire for copies (CR 707.10) or
+        // for spells that were countered.
+        if (
+          stackObject.cascade &&
+          !stackObject.isCopy &&
+          stackObject.sourceCardId
+        ) {
+          const cascadeResult = resolveCascade(
+            currentState,
+            stackObject.sourceCardId,
+          );
+          if (cascadeResult.success) {
+            return cascadeResult.state;
+          }
+        }
+
         return currentState;
       }
     }
@@ -625,4 +657,3 @@ function removeFromStack(state: GameState, stackObjectId: string): GameState {
 // Note: counterSpell is already exported in keyword-actions.ts
 // Re-export it here for convenience
 // export { counterSpell } from "./keyword-actions";
-
