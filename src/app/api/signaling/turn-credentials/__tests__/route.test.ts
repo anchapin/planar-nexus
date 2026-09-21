@@ -319,7 +319,7 @@ describe("GET /api/signaling/turn-credentials — rate limiting (issue #1798)", 
         remaining: 0,
         retryAfter: 3600,
       }),
-      expect.objectContaining({ maxRequests: 5, windowMs: 60 * 60 * 1000 }),
+      expect.objectContaining({ maxRequests: 12, windowMs: 60 * 60 * 1000 }),
     );
   });
 
@@ -370,7 +370,7 @@ describe("GET /api/signaling/turn-credentials — rate limiting (issue #1798)", 
     expect(enforceRateLimitMock).toHaveBeenCalledWith(
       "ip:10.0.0.42",
       expect.objectContaining({
-        maxRequests: 5,
+        maxRequests: 12,
         windowMs: 60 * 60 * 1000,
       }),
     );
@@ -444,7 +444,7 @@ describe("GET /api/signaling/turn-credentials — rate limiting (issue #1798)", 
     // above. Assert at the mock boundary (Findings #10).
     expect(getRateLimitHeadersMock).toHaveBeenCalledWith(
       expect.objectContaining({ success: true, remaining: 4 }),
-      expect.objectContaining({ maxRequests: 5, windowMs: 60 * 60 * 1000 }),
+      expect.objectContaining({ maxRequests: 12, windowMs: 60 * 60 * 1000 }),
     );
   });
 

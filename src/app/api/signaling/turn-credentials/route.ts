@@ -110,7 +110,7 @@ const ENV_TURN_HMAC_TTL = "TURN_HMAC_TTL_SECONDS";
  * `/api/chat`, and `/api/ai-proxy/validate` (#1782/#1868/#1795).
  */
 const TURN_CREDENTIAL_RATE_LIMIT: RateLimitConfig = {
-  maxRequests: 5,
+  maxRequests: 12,
   windowMs: 60 * 60 * 1000,
   message: "TURN credential mint rate limit exceeded. Please try again later.",
 };
@@ -219,6 +219,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const secret = process.env[ENV_TURN_HMAC_SECRET];
   if (typeof secret !== "string" || secret.length === 0) {
+    const legacyUrl = process.env[ENV_TURN_URL_LEGACY];
+    const legacyUser = process.env["NEXT_PUBLIC_TURN_USER"];
+    const legacyPass = process.env["NEXT_PUBLIC_TURN_PASS"];
+    if (legacyUrl || legacyUser || legacyPass) {
+      console.warn(
+        "[signaling/turn-credentials] DEPRECATION WARNING: Legacy static TURN " +
+          "credentials (NEXT_PUBLIC_TURN_URL/NEXT_PUBLIC_TURN_USER/NEXT_PUBLIC_TURN_PASS) " +
+          "are present but TURN_HMAC_SECRET is not configured. " +
+          "Static credentials lack expiry and are a security risk. " +
+          "Migrate to TURN_HMAC_SECRET to enable short-lived HMAC credentials (issue #1986 / #1583).",
+      );
+    }
     return NextResponse.json(
       {
         error:
