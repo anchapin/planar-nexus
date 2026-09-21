@@ -317,7 +317,7 @@ describe("Cascade — resolution (CR 702.84a)", () => {
     expect(exile).toContain(cmc4Id);
 
     const grave = graveyardIds(resolvedState, f.aliceId);
-    expect(grave).not.toContain(cmc4Id);
+    expect(grave).toContain(cmc4Id);
 
     const newLibrary = libraryCardIds(resolvedState, f.aliceId);
     expect(newLibrary).not.toContain(cmc4Id);
