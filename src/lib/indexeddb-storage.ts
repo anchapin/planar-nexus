@@ -23,6 +23,8 @@ import {
   getStorageEstimate,
   QUOTA_WARN_THRESHOLD,
   FALLBACK_QUOTA_BYTES,
+  isQuotaExceededError,
+  MigrationQuotaError,
 } from "./storage-quota";
 import {
   calculateChecksumAsync,
@@ -422,6 +424,7 @@ export const RECENT_SEARCHES_STORE = "recent-searches";
 export class IndexedDBStorage {
   private config: StorageConfig;
   private db: IDBDatabase | null = null;
+  private _migrationQuotaError: Error | null = null;
 
   constructor(config: StorageConfig) {
     this.config = config;
@@ -783,6 +786,17 @@ export class IndexedDBStorage {
         }
       };
     });
+
+  }
+
+  /**
+   * Issue #1920 — returns the error from the most recent v4 consolidation
+   * migration attempt, if one occurred and was a quota-related failure.
+   * Callers (e.g. `use-storage-backup.ts`) use this to surface a blocking
+   * toast prompting the user to free space or export a backup.
+   */
+  getMigrationError(): Error | null {
+    return this._migrationQuotaError;
   }
 
   /**

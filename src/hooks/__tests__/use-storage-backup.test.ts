@@ -35,6 +35,7 @@ jest.mock("@/lib/indexeddb-storage", () => ({
     importBackup: jest.fn(),
     importIncrementalBackup: jest.fn(),
     clearAll: jest.fn(),
+    getMigrationError: jest.fn().mockReturnValue(null),
   },
   formatBytes: (n: number) => `${n} B`,
 }));
