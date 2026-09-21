@@ -91,9 +91,9 @@ npm install
 
 ```bash
 # Create local environment file (optional, for AI features)
-cp .env.example .env.local
+cp .env.example .env
 
-# Edit .env.local and add your API keys if testing AI features
+# Edit .env and add your API keys if testing AI features
 # OPENAI_API_KEY=your_key_here
 # ANTHROPIC_API_KEY=your_key_here
 # GOOGLE_API_KEY=your_key_here
