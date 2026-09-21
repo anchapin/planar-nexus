@@ -57,4 +57,6 @@ If the numbers above do not match the latest `npm test` run on `main`, a contrib
 
 When you finish a change, run `npm run typecheck && npm run lint && npm test` locally before pushing — `pre-commit` runs `eslint --fix` → `tsc --noEmit` → `prettier --write` on staged files, and the `build` job in `.github/workflows/ci.yml` is gated by `test`, `lint`, `typecheck`, and every named guard job (broken-links, coverage-docs, mutation-docs, e2e-asserts, jest-mock-boundary, no-prompt-in-engine, turn-credentials, …).
 
+For setup or AI provider issues, see [`docs/TROUBLESHOOTING.md`](TROUBLESHOOTING.md).
+
 Welcome aboard.
