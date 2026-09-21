@@ -41,6 +41,7 @@ import { detectStormTrigger, detectProwessTriggers } from "../trigger-system";
 import { applyProwessBoost } from "../evergreen-keywords";
 import { canCastWithMutate } from "../mutate";
 import { copySpellOnStack } from "./resolve";
+import { createEngineUncaughtException } from "../errors";
 
 /**
  * Generate a unique stack object ID
@@ -236,7 +237,10 @@ export function castSpell(
    */
   timesKicked?: number,
 ): { success: boolean; state: GameState; error?: string } {
-  // Canonicalize the kicker count: an explicit `timesKicked` argument wins;
+  // #1900: capture original state for error recovery before any mutations
+  const originalState = state;
+  try {
+    // Canonicalize the kicker count: an explicit `timesKicked` argument wins;
   // otherwise derive from the boolean `isKicked` flag (1 if true, 0 if false).
   const effectiveTimesKicked =
     typeof timesKicked === "number"
@@ -1233,6 +1237,11 @@ export function castSpell(
   }
 
   return { success: true, state: finalState };
+  } catch (err) {
+    // #1900: on uncaught exception, return original state so the engine stays consistent
+    const engineError = createEngineUncaughtException(err, 'castSpell', originalState, cardId);
+    return { success: false, state: originalState, error: engineError.message };
+  }
 }
 
 /**

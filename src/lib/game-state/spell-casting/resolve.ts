@@ -27,6 +27,7 @@ import {
   isBoardSweeper,
 } from "./board-sweepers";
 import { generateStackObjectId } from "./cast";
+import { createEngineUncaughtException } from "../errors";
 
 /**
  * Copy a spell on the stack (CR 707.10).
@@ -130,11 +131,18 @@ export function copySpellOnStack(
 /**
  * Resolve the top object on the stack
  * CR 608 - Resolving Spells and Abilities
+ *
+ * #1900: wrapped in try/catch — uncaught exceptions from oracle-text-parser,
+ * ability resolution, or effect resolution are caught and returned as
+ * EngineUncaughtException so the UI can surface a recoverable error toast
+ * instead of crashing the session.
  */
 export function resolveTopOfStack(state: GameState): GameState {
-  if (state.stack.length === 0) {
-    return state;
-  }
+  const originalState = state;
+  try {
+    if (state.stack.length === 0) {
+      return state;
+    }
 
   // Get the top object (last one added resolves first - LIFO)
   const stackObject = state.stack[state.stack.length - 1];
@@ -258,6 +266,11 @@ export function resolveTopOfStack(state: GameState): GameState {
 
   // Move the card from stack to appropriate zone and handle post-resolution
   return resolveSpellCompletion(currentState, stackObject);
+  } catch (err) {
+    // #1900: on uncaught exception, return original state so the engine stays consistent
+    void createEngineUncaughtException(err, 'resolveTopOfStack', originalState);
+    return originalState;
+  }
 }
 
 /**

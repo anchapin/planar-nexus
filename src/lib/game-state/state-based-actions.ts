@@ -34,6 +34,7 @@ import {
   createLegendaryWaitingChoice,
 } from "./legendary-rule";
 import { processCorpseOnDeath } from "./corpse-keyword";
+import { createEngineUncaughtException } from "./errors";
 
 // Helper functions to check card types
 function isAura(card: CardInstance): boolean {
@@ -60,13 +61,18 @@ export interface StateBasedActionResult {
  * Check and perform state-based actions
  * Called after any game event that could trigger SBAs
  * Issue #15: Handle state-based actions
+ *
+ * #1900: wrapped in try/catch — uncaught exceptions from SBA evaluation
+ * are caught and returned so the engine stays in a consistent state.
  */
 export function checkStateBasedActions(
   state: GameState,
 ): StateBasedActionResult {
-  let updatedState = { ...state, cards: new Map(state.cards) };
-  const descriptions: string[] = [];
-  let actionsPerformed = false;
+<  const originalState = state;
+  try {
+    let updatedState = { ...state, cards: new Map(state.cards) };
+    const descriptions: string[] = [];
+    let actionsPerformed = false;
 
   // Check each player for SBAs
   for (const [playerId, player] of updatedState.players) {
@@ -591,6 +597,15 @@ export function checkStateBasedActions(
     state: updatedState,
     descriptions,
   };
+  } catch (err) {
+    // #1900: on uncaught exception, return original state so the engine stays consistent
+    void createEngineUncaughtException(err, 'checkStateBasedActions', originalState);
+    return {
+      actionsPerformed: false,
+      state: originalState,
+      descriptions: [`SBA check failed: ${err instanceof Error ? err.message : String(err)}`],
+    };
+  }
 }
 
 /**
