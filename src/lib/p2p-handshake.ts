@@ -9,6 +9,7 @@ import type { GameState } from "@/lib/game-state";
 import { serializeGameState } from "@/lib/game-state";
 import { TIMEOUTS } from "./config/timeouts";
 import type { PeerRole } from "./peer-role";
+import { sanitizePlayerName } from "@/lib/security/chat-sanitize";
 
 /**
  * Handshake message types
@@ -347,7 +348,7 @@ export function createHandshakeInit(
     timestamp: Date.now(),
     payload: {
       protocolVersion: PROTOCOL_VERSION,
-      playerName,
+      playerName: sanitizePlayerName(playerName),
       playerId,
       gameCode,
       capabilities,
