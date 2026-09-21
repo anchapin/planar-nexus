@@ -161,10 +161,7 @@ export function createLocalCardLookup(): CardLookupFn {
 /** Collapse whitespace and lowercase for case-insensitive text comparison. */
 function norm(value: unknown): string {
   if (value === null || value === undefined) return "";
-  return String(value)
-    .replace(/\s+/g, " ")
-    .trim()
-    .toLowerCase();
+  return String(value).replace(/\s+/g, " ").trim().toLowerCase();
 }
 
 /** Mana costs are compared ignoring spaces and case: "{1}{R}" == "{1} {r}". */
@@ -215,10 +212,7 @@ function diffAttributes(
 
   if (cited.cmc !== undefined) {
     const claimedCmc = Number(cited.cmc);
-    if (
-      Number.isFinite(claimedCmc) &&
-      claimedCmc !== Number(resolved.cmc)
-    ) {
+    if (Number.isFinite(claimedCmc) && claimedCmc !== Number(resolved.cmc)) {
       corrections.push({
         field: "cmc",
         claimed: cited.cmc,
@@ -262,7 +256,17 @@ export async function verifyCitations(
 
   return Promise.all(
     safe.map(async (cited): Promise<CitationVerification> => {
-      const result = await lookup(cited.name);
+      let result: CitationLookupResult;
+      try {
+        result = await lookup(cited.name);
+      } catch {
+        return {
+          cited,
+          status: "unverifiable",
+          corrections: [],
+          note: noteFor("unverifiable", cited.name),
+        };
+      }
 
       if (!result.dbHasCards) {
         return {
@@ -439,7 +443,12 @@ export function annotateAdviceWithVerification(
   verifications: ReadonlyArray<CitationVerification>,
 ): AnnotatedAdvice {
   if (typeof text !== "string" || text.length === 0) {
-    return { text: text ?? "", verifiedCount: 0, totalCount: 0, verifications: [] };
+    return {
+      text: text ?? "",
+      verifiedCount: 0,
+      totalCount: 0,
+      verifications: [],
+    };
   }
 
   const verifs = Array.isArray(verifications) ? verifications : [];
@@ -474,7 +483,9 @@ export function annotateAdviceWithVerification(
         lines.push(`- ⚠ ${v.cited.name}: not found in local database`);
       } else if (v.status === "mismatch") {
         const fields = v.corrections
-          .map((c) => `${c.field}: "${String(c.claimed)}" → "${String(c.actual)}"`)
+          .map(
+            (c) => `${c.field}: "${String(c.claimed)}" → "${String(c.actual)}"`,
+          )
           .join("; ");
         lines.push(`- ⚠ ${v.cited.name}: corrected (${fields})`);
       } else if (v.status === "unverifiable") {
