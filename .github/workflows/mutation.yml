@@ -30,6 +30,9 @@ name: Mutation Testing
 # The allowlist grew from 3 → 5 modules in #1395 (added trigger-system.ts and
 # state-based-actions.ts), from 5 → 6 in #1597 (added combat.ts, CR 506-510),
 # and from 6 → 7 in #1717 (added mana.ts, CR 106 mana pools / CR 305 lands).
+# Issue #1989: combat.ts is EXCLUDED from the nightly matrix (takes >40 min
+# per run on a 4-core runner — too slow for any per-PR gate; its
+# combat.mutation.test.ts remains in place for manual/local runs).
 # `break` is currently 44 (issue #1939: lowered from 50 after trigger-system
 # measured 45.00% — zero-coverage debt from #1524/#1528 pending test
 # backfill); it is raised to 70 once the nightly run confirms
@@ -70,7 +73,6 @@ on:
           - spell-casting
           - trigger-system
           - state-based-actions
-          - combat
           - mana
 
 # Queue concurrent triggers (nightly + manual dispatch landing together)
@@ -96,8 +98,8 @@ jobs:
     # 00:08:56Z) without producing a report, because the file's mutants
     # + the perTest test-suite fanout outpace the 90-min cap on this
     # runner class. 180 min is well under GitHub Actions' 6h job cap
-    # and bounds the slowest module (layer-system or combat.ts) at
-    # ~3h; the six lighter modules are expected to clear in 30-60 min.
+    # and bounds the slowest module (layer-system) at ~3h; the five
+    # lighter modules are expected to clear in 30-60 min.
     # The first green nightly run will record measured runtimes per
     # module and a follow-up PR can tighten this back toward 90 min
     # for the lighter entries if it becomes a budget concern.
@@ -105,8 +107,8 @@ jobs:
     strategy:
       # `fail-fast: false` (issue #1785 acceptance criterion 1): one slow
       # or hung module must not abort the others. With fail-fast enabled,
-      # a hung layer-system job would cancel the still-running combat.ts
-      # job and we'd lose its score — the exact regression this fix is
+    # a hung layer-system job would cancel the still-running
+    # job and we'd lose its score — the exact regression this fix is
       # supposed to surface. Matrix entries are the canonical 7-module
       # allowlist; `workflow_dispatch` overrides via the `inputs.module`
       # choice so a single module can be re-run on demand.
@@ -116,7 +118,7 @@ jobs:
           ${{ fromJSON(github.event_name == 'workflow_dispatch' &&
             github.event.inputs.module != 'all' &&
             format('["{0}"]', github.event.inputs.module) ||
-            '["layer-system","replacement-effects","spell-casting","trigger-system","state-based-actions","combat","mana"]') }}
+            '["layer-system","replacement-effects","spell-casting","trigger-system","state-based-actions","mana"]') }}
 
     steps:
       - name: Checkout code
