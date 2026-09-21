@@ -68,7 +68,7 @@ export interface StateBasedActionResult {
 export function checkStateBasedActions(
   state: GameState,
 ): StateBasedActionResult {
-<  const originalState = state;
+  const originalState = state;
   try {
     let updatedState = { ...state, cards: new Map(state.cards) };
     const descriptions: string[] = [];
