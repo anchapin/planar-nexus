@@ -63,7 +63,7 @@
     "ratchet:test-count": "node scripts/ratchet-test-count.mjs",
     "check:bundle-budget": "node scripts/check-bundle-budget.mjs",
     "check:bundle-budget:capture": "node scripts/check-bundle-budget.mjs --capture",
-    "prepare": "husky"
+    "prepare": "husky install"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.52",
