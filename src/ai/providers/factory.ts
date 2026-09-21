@@ -3,6 +3,62 @@ import { AI_PROVIDER_IDS } from "./types";
 import { providerHealth } from "./provider-health";
 
 /**
+ * Hostname allowlist for the custom AI provider (issue #2001).
+ *
+ * Comma-separated list or JSON array of allowed hostnames.
+ * If not set, a warning is logged at module load and the custom provider
+ * is allowed in backward-compatibility mode.
+ */
+function getCustomBaseUrlAllowlist(): string[] {
+  const raw = process.env.CUSTOM_AI_BASE_URL_ALLOWED;
+  if (!raw) return [];
+  try {
+    return JSON.parse(raw) as string[];
+  } catch {
+    return raw.split(",").map((h) => h.trim());
+  }
+}
+
+/**
+ * Validates that the CUSTOM_AI_BASE_URL resolves to an allowed hostname.
+ * Logs to console so the operator catches misconfiguration at startup.
+ */
+function validateCustomBaseUrl(): void {
+  const baseUrl = process.env.CUSTOM_AI_BASE_URL;
+  if (!baseUrl) return;
+
+  let hostname: string;
+  try {
+    hostname = new URL(baseUrl).hostname;
+  } catch {
+    console.error(
+      "[AI Factory] CUSTOM_AI_BASE_URL is not a valid URL — custom provider will be unavailable.",
+    );
+    return;
+  }
+
+  const allowlist = getCustomBaseUrlAllowlist();
+  if (allowlist.length === 0) {
+    console.warn(
+      "[AI Factory] CUSTOM_AI_BASE_URL is set but CUSTOM_AI_BASE_URL_ALLOWED is not configured. " +
+        "Custom provider is running without hostname validation (backward compat). " +
+        "Set CUSTOM_AI_BASE_URL_ALLOWED to restrict endpoints.",
+    );
+    return;
+  }
+
+  if (!allowlist.includes(hostname)) {
+    throw new Error(
+      `[AI Factory] CUSTOM_AI_BASE_URL hostname "${hostname}" is not in CUSTOM_AI_BASE_URL_ALLOWED. ` +
+        `Allowed: ${allowlist.join(", ")}. ` +
+        "Custom provider blocked — either add the hostname to CUSTOM_AI_BASE_URL_ALLOWED or unset CUSTOM_AI_BASE_URL.",
+    );
+  }
+}
+
+validateCustomBaseUrl();
+
+/**
  * Default models for each provider
  */
 export const PROVIDER_DEFAULT_MODELS: Record<string, string> = {
