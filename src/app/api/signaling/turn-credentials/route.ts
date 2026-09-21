@@ -103,14 +103,17 @@ const ENV_TURN_HMAC_TTL = "TURN_HMAC_TTL_SECONDS";
  * a `clientId`-only endpoint with no throttle is an open mint for
  * the operator's coturn deployment (an attacker can re-mint faster
  * than any per-credential TTL elapses, eroding the short-lived HMAC
- * guarantee at the layer above the crypto). Capped at 5 requests
+ * guarantee at the layer above the crypto). Capped at 12 requests
  * per hour per server-verified client identifier (IP / forwarded
  * header / coarse UA fingerprint — see {@link getClientIdentifier}),
  * mirroring the shared policy already used by `/api/ai-proxy`,
  * `/api/chat`, and `/api/ai-proxy/validate` (#1782/#1868/#1795).
+ *
+ * #1982 — raised to 12 to support worst-case 1 reconnection per 5
+ * minutes for a 60-minute game (12 × 5min = 60min window).
  */
 const TURN_CREDENTIAL_RATE_LIMIT: RateLimitConfig = {
-  maxRequests: 5,
+  maxRequests: 12,
   windowMs: 60 * 60 * 1000,
   message: "TURN credential mint rate limit exceeded. Please try again later.",
 };
