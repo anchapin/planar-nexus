@@ -30,8 +30,10 @@ jest.mock("ai", () => ({
 }));
 
 const getAIModel = jest.fn() as unknown as jest.Mock<(...args: any[]) => any>;
+const isModelAllowed = jest.fn().mockReturnValue(true);
 jest.mock("@/ai/providers/factory", () => ({
   getAIModel: (...args: unknown[]) => getAIModel(...args),
+  isModelAllowed: (...args: unknown[]) => isModelAllowed(...args),
 }));
 
 const searchCardsTool = { description: "mocked search tool" };

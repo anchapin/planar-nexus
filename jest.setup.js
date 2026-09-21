@@ -160,20 +160,32 @@ if (typeof structuredClone === "undefined") {
   };
 }
 
-// Mock Web Crypto API for SHA-256 checksums
-if (!global.crypto || !global.crypto.subtle) {
-  global.crypto = global.crypto || {};
-  global.crypto.subtle = {
-    digest: async (algorithm, data) => {
-      // Simple mock implementation for testing
-      const encoder = new TextEncoder();
-      const hash = Array.from(data).reduce(
-        (acc, byte) => acc + byte.toString(16).padStart(2, "0"),
-        "",
-      );
-      return new Uint8Array(hash).buffer;
-    },
+// Use Node's Web Crypto API for all crypto operations in Jest tests.
+// Node 18+ provides crypto.webcrypto with full Web Crypto support.
+const nodeCrypto = require("crypto");
+if (nodeCrypto.webcrypto) {
+  if (!global.crypto) global.crypto = {};
+  global.crypto.subtle = nodeCrypto.webcrypto.subtle;
+  global.crypto.getRandomValues = (array) => {
+    require("crypto").randomFillSync(array);
+    return array;
   };
+  global.crypto.randomUUID = () => require("crypto").randomUUID();
+} else {
+  // Legacy fallback for older Node versions
+  global.crypto = global.crypto || {};
+  global.crypto.getRandomValues = (array) => {
+    const bytes = require("crypto").randomBytes(array.length);
+    array.set(bytes);
+    return array;
+  };
+  global.crypto.subtle = global.crypto.subtle || {};
+  if (!global.crypto.subtle.digest) {
+    global.crypto.subtle.digest = async (algorithm, data) => {
+      const hash = require("crypto").createHash("sha256").update(data).digest();
+      return hash.buffer;
+    };
+  }
 }
 
 // Mock localStorage

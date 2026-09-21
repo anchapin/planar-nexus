@@ -5,16 +5,21 @@
  * and integration with IndexedDBStorage get/set operations.
  */
 
-import { describe, it, expect, beforeEach, afterEach, jest } from "@jest/globals";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  jest,
+} from "@jest/globals";
 import {
   encrypt,
   decrypt,
   setEncryptionEnabled,
   isEncryptionOptedOut,
 } from "../indexeddb-encryption";
-import {
-  IndexedDBStorage,
-} from "../indexeddb-storage";
+import { IndexedDBStorage } from "../indexeddb-storage";
 
 const TEST_SECRET = "test-device-secret-for-encryption";
 const TEST_DB_NAME = "TestEncryptionDB";
@@ -39,7 +44,11 @@ describe("indexeddb-encryption", () => {
 
   describe("encrypt / decrypt round-trip", () => {
     it("returns the original plaintext after decrypt(encrypt(x))", async () => {
-      const plaintext = JSON.stringify({ id: "deck-1", name: "Test Deck", cards: [] });
+      const plaintext = JSON.stringify({
+        id: "deck-1",
+        name: "Test Deck",
+        cards: [],
+      });
       const ciphertext = await encrypt(plaintext);
       expect(ciphertext).not.toBe(plaintext);
       expect(typeof ciphertext).toBe("string");
@@ -122,8 +131,8 @@ describe("IndexedDBStorage + encryption integration", () => {
     await storage.set("decks", { id: "deck-1", name: "Deck One", cards: [] });
     await storage.set("decks", { id: "deck-2", name: "Deck Two", cards: [] });
     const all = await storage.getAll<{ id: string; name: string }>("decks");
-    expect(all).toContainEqual({ id: "deck-1", name: "Deck One" });
-    expect(all).toContainEqual({ id: "deck-2", name: "Deck Two" });
+    expect(all).toContainEqual({ id: "deck-1", name: "Deck One", cards: [] });
+    expect(all).toContainEqual({ id: "deck-2", name: "Deck Two", cards: [] });
   });
 
   it("setAll stores multiple encrypted records", async () => {
@@ -135,8 +144,8 @@ describe("IndexedDBStorage + encryption integration", () => {
     await storage.setAll("decks", records);
     const all = await storage.getAll<{ id: string; name: string }>("decks");
     expect(all).toHaveLength(2);
-    expect(all).toContainEqual({ id: "deck-a", name: "Alpha" });
-    expect(all).toContainEqual({ id: "deck-b", name: "Beta" });
+    expect(all).toContainEqual({ id: "deck-a", name: "Alpha", cards: [] });
+    expect(all).toContainEqual({ id: "deck-b", name: "Beta", cards: [] });
   });
 
   it("deletes an encrypted record", async () => {

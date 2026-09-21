@@ -117,7 +117,62 @@ beforeAll(() => {
           hash.byteOffset + hash.byteLength,
         );
       },
+      importKey: async (
+        format: string,
+        keyData: BufferSource,
+        algorithm: AlgorithmIdentifier | HmacKeyGenParams | Pbkdf2Params,
+        extractable: boolean,
+        keyUsages: KeyUsage[],
+      ) => ({ format, algorithm, extractable, keyUsages, keyData }),
+      deriveKey: async (
+        algorithm: AlgorithmIdentifier | Pbkdf2Params,
+        baseKey: CryptoKey,
+        derivedKeyAlgorithm: AlgorithmIdentifier | AesDerivedKeyParams,
+        extractable: boolean,
+        keyUsages: KeyUsage[],
+      ) => ({
+        algorithm,
+        baseKey,
+        derivedKeyAlgorithm,
+        extractable,
+        keyUsages,
+      }),
+      encrypt: async (
+        algorithm: AlgorithmIdentifier | AesGcmParams,
+        key: CryptoKey,
+        data: BufferSource,
+      ) => {
+        const buf =
+          data instanceof ArrayBuffer
+            ? Buffer.from(data)
+            : Buffer.from(
+                (data as Uint8Array).buffer,
+                (data as Uint8Array).byteOffset,
+                (data as Uint8Array).byteLength,
+              );
+        return buf.buffer;
+      },
+      decrypt: async (
+        algorithm: AlgorithmIdentifier | AesGcmParams,
+        key: CryptoKey,
+        data: BufferSource,
+      ) => {
+        const buf =
+          data instanceof ArrayBuffer
+            ? Buffer.from(data)
+            : Buffer.from(
+                (data as Uint8Array).buffer,
+                (data as Uint8Array).byteOffset,
+                (data as Uint8Array).byteLength,
+              );
+        return buf.buffer;
+      },
     },
+    getRandomValues: (array: Uint8Array) => {
+      nodeCrypto.randomFillSync(array);
+      return array;
+    },
+    randomUUID: () => nodeCrypto.randomUUID(),
   };
   Object.defineProperty(global, "crypto", {
     value: mockCrypto,
@@ -125,13 +180,6 @@ beforeAll(() => {
     configurable: true,
   });
 });
-
-if (typeof globalThis.crypto?.randomUUID !== "function") {
-  let uuidCounter = 0;
-  globalThis.crypto = globalThis.crypto || {};
-  globalThis.crypto.randomUUID = () =>
-    `00000000-0000-4000-8000-${String(++uuidCounter).padStart(12, "0")}`;
-}
 
 // ============================================================================
 // CONSTANTS
@@ -538,9 +586,7 @@ describe("Backup scope (issue #1812) — round-trip across the three new stores"
     } finally {
       console.warn = originalWarn;
     }
-    expect(
-      warnings.some((w) => w.includes("newer schemaVersion")),
-    ).toBe(true);
+    expect(warnings.some((w) => w.includes("newer schemaVersion"))).toBe(true);
 
     const reloadedDecks = await storage.getAll<StoredDeck>("decks");
     expect(reloadedDecks.map((d) => d.id).sort()).toEqual(["future-deck"]);
