@@ -146,7 +146,7 @@
     "@typescript-eslint/parser": "^8.70.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "@typescript/typescript6": "^6.0.2",
-    "@vitest/web-worker": "^4.1.11",
+    "@vitest/web-worker": "^5.0.1",
     "eslint": "^10.10.0",
     "eslint-config-next": "^16.3.4",
     "eslint-plugin-react": "^7.37.5",
