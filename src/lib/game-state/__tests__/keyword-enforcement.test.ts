@@ -515,13 +515,14 @@ describe("Keyword Enforcement — Combat", () => {
     });
 
     it("getExcessTrampleDamage computes correct overflow for a trampling attacker", () => {
-      const { state } = setupGameWithCreatures(
+      const { state, aliceId, bobId } = setupGameWithCreatures(
         [{ name: "Trampler", power: 5, toughness: 5, keywords: ["Trample"] }],
         [{ name: "Blocker", power: 2, toughness: 2 }],
       );
-      const ids = Array.from(state.zones.values()).flatMap((z) => z.cardIds);
-      const attacker = state.cards.get(ids[0])!;
-      const blocker = state.cards.get(ids[1])!;
+      const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
+      const blockerId = state.zones.get(`${bobId}-battlefield`)!.cardIds[0];
+      const attacker = state.cards.get(attackerId)!;
+      const blocker = state.cards.get(blockerId)!;
       // 5 damage, 2 already assigned, blocker toughness 2 -> excess 3
       expect(getExcessTrampleDamage(5, 2, blocker, attacker)).toBe(3);
     });
@@ -1412,7 +1413,7 @@ describe("Keyword Enforcement — Spell Targeting", () => {
     });
 
     it("shouldPreventDamageToTarget reports true for damage from a protected source", () => {
-      const { state } = setupGameWithCreatures(
+      const { state, aliceId, bobId } = setupGameWithCreatures(
         [
           {
             name: "Paladin",
@@ -1432,9 +1433,10 @@ describe("Keyword Enforcement — Spell Targeting", () => {
           },
         ],
       );
-      const ids = Array.from(state.zones.values()).flatMap((z) => z.cardIds);
-      const paladin = state.cards.get(ids[0])!;
-      const terror = state.cards.get(ids[1])!;
+      const paladinId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
+      const terrorId = state.zones.get(`${bobId}-battlefield`)!.cardIds[0];
+      const paladin = state.cards.get(paladinId)!;
+      const terror = state.cards.get(terrorId)!;
       expect(shouldPreventDamageToTarget(paladin, terror)).toBe(true);
     });
   });

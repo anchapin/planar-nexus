@@ -30,6 +30,8 @@ export function createEmptyManaPool(): ManaPool {
 
 /**
  * Add mana to a player's mana pool
+ * CR 106.4a: A player cannot have a negative amount of any type of mana.
+ * Negative values in the mana argument are ignored (treated as zero).
  */
 export function addMana(
   state: GameState,
@@ -41,18 +43,29 @@ export function addMana(
     return state;
   }
 
+  // Ignore negative mana values per CR 106.4a
+  const safeMana: ManaPool = {
+    colorless: Math.max(0, mana.colorless ?? 0),
+    white: Math.max(0, mana.white ?? 0),
+    blue: Math.max(0, mana.blue ?? 0),
+    black: Math.max(0, mana.black ?? 0),
+    red: Math.max(0, mana.red ?? 0),
+    green: Math.max(0, mana.green ?? 0),
+    generic: Math.max(0, mana.generic ?? 0),
+  };
+
   const updatedPlayers = new Map(state.players);
   const updatedPlayer = {
     ...player,
     manaPool: {
       ...player.manaPool,
-      colorless: player.manaPool.colorless + (mana.colorless ?? 0),
-      white: player.manaPool.white + (mana.white ?? 0),
-      blue: player.manaPool.blue + (mana.blue ?? 0),
-      black: player.manaPool.black + (mana.black ?? 0),
-      red: player.manaPool.red + (mana.red ?? 0),
-      green: player.manaPool.green + (mana.green ?? 0),
-      generic: player.manaPool.generic + (mana.generic ?? 0),
+      colorless: player.manaPool.colorless + safeMana.colorless,
+      white: player.manaPool.white + safeMana.white,
+      blue: player.manaPool.blue + safeMana.blue,
+      black: player.manaPool.black + safeMana.black,
+      red: player.manaPool.red + safeMana.red,
+      green: player.manaPool.green + safeMana.green,
+      generic: player.manaPool.generic + safeMana.generic,
     },
   };
   updatedPlayers.set(playerId, updatedPlayer);
@@ -121,6 +134,8 @@ export function canAffordMana(
  * Generic mana costs can be paid with any type of mana (colored, colorless, or generic).
  * Colored mana costs must be paid with the specific color.
  * Colorless mana costs must be paid with colorless mana (not colored).
+ * CR 106.4a: A player cannot spend more mana than they have; negative values
+ * are treated as zero-cost (no-op) rather than an error.
  */
 export function spendMana(
   state: GameState,
@@ -132,21 +147,32 @@ export function spendMana(
     return { success: false, state };
   }
 
+  // Ignore negative mana costs per CR 106.4a (treating them as zero-cost)
+  const safeMana: ManaPool = {
+    colorless: Math.max(0, mana.colorless ?? 0),
+    white: Math.max(0, mana.white ?? 0),
+    blue: Math.max(0, mana.blue ?? 0),
+    black: Math.max(0, mana.black ?? 0),
+    red: Math.max(0, mana.red ?? 0),
+    green: Math.max(0, mana.green ?? 0),
+    generic: Math.max(0, mana.generic ?? 0),
+  };
+
   const pool = player.manaPool;
 
   // Check if player has enough colored mana (specific color requirements)
   if (
-    pool.white < (mana.white ?? 0) ||
-    pool.blue < (mana.blue ?? 0) ||
-    pool.black < (mana.black ?? 0) ||
-    pool.red < (mana.red ?? 0) ||
-    pool.green < (mana.green ?? 0)
+    pool.white < (safeMana.white ?? 0) ||
+    pool.blue < (safeMana.blue ?? 0) ||
+    pool.black < (safeMana.black ?? 0) ||
+    pool.red < (safeMana.red ?? 0) ||
+    pool.green < (safeMana.green ?? 0)
   ) {
     return { success: false, state };
   }
 
   // Check if player has enough colorless mana (colorless is specific, like colored)
-  if (pool.colorless < (mana.colorless ?? 0)) {
+  if (pool.colorless < (safeMana.colorless ?? 0)) {
     return { success: false, state };
   }
 
@@ -155,31 +181,31 @@ export function spendMana(
   const totalColored =
     pool.white + pool.blue + pool.black + pool.red + pool.green;
   const neededColored =
-    (mana.white ?? 0) +
-    (mana.blue ?? 0) +
-    (mana.black ?? 0) +
-    (mana.red ?? 0) +
-    (mana.green ?? 0);
+    (safeMana.white ?? 0) +
+    (safeMana.blue ?? 0) +
+    (safeMana.black ?? 0) +
+    (safeMana.red ?? 0) +
+    (safeMana.green ?? 0);
   const availableForGeneric =
     pool.generic +
     (totalColored - neededColored) +
-    (pool.colorless - (mana.colorless ?? 0));
+    (pool.colorless - (safeMana.colorless ?? 0));
 
-  if (availableForGeneric < (mana.generic ?? 0)) {
+  if (availableForGeneric < (safeMana.generic ?? 0)) {
     return { success: false, state };
   }
 
   // Calculate deductions
-  let whiteRemaining = pool.white - (mana.white ?? 0);
-  let blueRemaining = pool.blue - (mana.blue ?? 0);
-  let blackRemaining = pool.black - (mana.black ?? 0);
-  let redRemaining = pool.red - (mana.red ?? 0);
-  let greenRemaining = pool.green - (mana.green ?? 0);
-  let colorlessRemaining = pool.colorless - (mana.colorless ?? 0);
+  let whiteRemaining = pool.white - (safeMana.white ?? 0);
+  let blueRemaining = pool.blue - (safeMana.blue ?? 0);
+  let blackRemaining = pool.black - (safeMana.black ?? 0);
+  let redRemaining = pool.red - (safeMana.red ?? 0);
+  let greenRemaining = pool.green - (safeMana.green ?? 0);
+  let colorlessRemaining = pool.colorless - (safeMana.colorless ?? 0);
   let genericRemaining = pool.generic;
 
   // Pay generic costs - first from generic pool, then from colored/colorless
-  let genericToPay = mana.generic ?? 0;
+  let genericToPay = safeMana.generic ?? 0;
 
   // First use generic pool mana
   const fromGeneric = Math.min(genericRemaining, genericToPay);

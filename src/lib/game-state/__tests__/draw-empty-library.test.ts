@@ -144,18 +144,27 @@ describe("drawCard — empty library loss (CR 704.5c, issue #1580)", () => {
   it("startGame with a short deck draws out the library without loss", () => {
     let state = createInitialGameState(["Alice", "Bob"], 20, false);
     const [aliceId] = Array.from(state.players.keys());
-    setZoneCards(state, aliceId, "library", ["card-a", "card-b"]);
-
+    // startGame requires a minimum 7-card library (CR 103.4 / GS-RT-2), so
+    // we let it run with the seeded 60-card library first, then reduce to 2.
     state = startGame(state);
+    setZoneCards(state, aliceId, "library", ["card-a", "card-b"]);
+    setZoneCards(state, aliceId, "hand", []);
 
-    // Both cards were drawn into hand, the library is empty, but the
-    // player is NOT lost — the 704.5c loss is for in-game draws only.
-    expect(state.zones.get(`${aliceId}-hand`)!.cardIds).toEqual([
+    // First drawCard draws card-b (top of library), library now has 1 card.
+    state = drawCard(state, aliceId);
+    expect(state.zones.get(`${aliceId}-hand`)!.cardIds).toEqual(["card-b"]);
+    expect(state.zones.get(`${aliceId}-library`)!.cardIds).toEqual(["card-a"]);
+    expect(state.players.get(aliceId)!.hasLost).toBe(false);
+
+    // Second drawCard draws card-a (library now empty) — no loss yet (SBAs
+    // run after the draw, not during).  CR 704.5c loss fires when the player
+    // NEXT attempts to draw from the now-empty library.
+    const finalState = drawCard(state, aliceId);
+    expect(finalState.zones.get(`${aliceId}-hand`)!.cardIds).toEqual([
       "card-b",
       "card-a",
     ]);
-    expect(state.zones.get(`${aliceId}-library`)!.cardIds).toEqual([]);
-    expect(state.players.get(aliceId)!.hasLost).toBe(false);
-    expect(state.status).toBe("in_progress");
+    expect(finalState.players.get(aliceId)!.hasLost).toBe(false);
+    expect(finalState.status).toBe("in_progress");
   });
 });
