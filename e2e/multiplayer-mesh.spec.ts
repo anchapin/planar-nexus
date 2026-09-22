@@ -218,20 +218,7 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
 
   test("a slow peer (200ms delivery delay) does not block the other peers", async ({
     browser,
-    browserName,
   }) => {
-    // reason: #1895 — the "B after 100ms has received <=1 sync" assertion
-    // depends on tight `setTimeout` resolution in the bridge. WebKit's
-    // timer drift under CI load occasionally pushes the delivery past
-    // 200ms (the configured B slow-pipe delay), after which B begins
-    // recording and the strict `<=1` assertion fails. Chromium/Firefox
-    // pass cleanly. The sibling #1881 fix already made the Chromium
-    // path deterministic; the cross-engine equivalent awaits a broader
-    // timing-flake follow-up tracked under #1895.
-    test.skip(
-      browserName !== "chromium",
-      "Slow-peer timing assertion is browser-timer-resolution sensitive on non-chromium (#1895)",
-    );
     // Rebuild the mesh with peer B configured as a "slow" link.
     const { host, peerB, peerC, peerD, close } = await createFourPeers(browser);
     try {
@@ -274,6 +261,11 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
         };
       });
 
+      // Install Playwright's Clock API on peerB to control timer advancement
+      // deterministically (#1895). This replaces the flaky wall-clock-based
+      // waitForTimeout which varies under CI load, especially on WebKit.
+      await peerB.clock.install({ time: 0 });
+
       // Open the full mesh with the slow B inbound.
       await openMeshChannels(
         [host, peerB, peerC, peerD],
@@ -298,16 +290,12 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
         );
       }
 
-      // Issue #1881: sample B's in-flight state BEFORE waiting on C/D so
-      // the implicit "100ms after start" window isn't consumed by C/D's
-      // (potentially slow on a loaded CI runner) `waitForReceiveCount`
-      // trips. Under heavy load that consumed window can exceed B's
-      // 200ms inbound delay, after which B begins recording delayed
-      // messages and the original strict `<=1` assertion fails. We make
-      // the timing window explicit (`peerB.waitForTimeout(100)` after
-      // the broadcast loop, well below B's 200ms slow-pipe delay) so the
-      // assertion is deterministic regardless of CI load.
-      await peerB.waitForTimeout(100);
+      // Issue #1881/#1895: sample B's in-flight state using deterministic
+      // clock control instead of wall-clock waitForTimeout. We advance
+      // peerB's clock by 100ms to sample the slow peer's state at a
+      // precise virtual time. At t=100ms, B's 200ms slow-pipe has not
+      // elapsed yet, so B should have received <=1 message.
+      await peerB.clock.runFor(100);
       const bAfter100ms = await peerB.evaluate(
         () =>
           (
@@ -327,30 +315,21 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
       const cDoneAt = Date.now();
       const cLatency = cDoneAt - start;
       // C and D done within the budget — host broadcast is non-blocking
-      // (the +100ms wait above is part of cLatency's window but still
-      // well under 1s even on a slow CI runner).
+      // (the +100ms clock advance above is part of cLatency's window but
+      // still well under 1s even on a slow CI runner).
       expect(cLatency).toBeLessThan(1000);
 
       // B finishes its delayed delivery within 1.5s total.
       await waitForReceiveCount(peerB, 3, "game-state-sync", 1500);
     } finally {
+      await peerB.clock.runFor(200); // drain any remaining timers before close
       await close();
     }
   });
 
   test("replay of a captured envelope from another peer is rejected", async ({
     browser,
-    browserName,
   }) => {
-    // reason: #1895 — the 150ms settle window after the host "replays" the
-    // captured envelope is tight enough that WebKit's slower `setTimeout`
-    // resolution occasionally delivers the duplicate past the assertion
-    // point. Same mesh contract on Chromium/Firefox; cross-engine flakiness
-    // is environmental, not a wire-contract bug.
-    test.skip(
-      browserName !== "chromium",
-      "Replay-dedup settle window is tight on non-chromium timers (#1895)",
-    );
     // The mesh's anti-replay contract (issue #1091) is: a peer replays a
     // captured envelope verbatim (same `seq`) and the receiving mesh's
     // per-sender seq high-water mark drops it. The harness implements the
@@ -388,6 +367,11 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
           ).__peer.removeNeighbor("peer-d"),
         );
       }
+
+      // Install Playwright's Clock API on peerB for deterministic timing
+      // (#1895). The original waitForTimeout(150) was flaky under CI load
+      // on WebKit due to timer resolution drift.
+      await peerB.clock.install({ time: 0 });
 
       // Step 1: host sends a chat. B receives it on the wire and applies it.
       await host.evaluate(() =>
@@ -436,8 +420,10 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
         });
       }, capturedSeq);
 
-      // Give the duplicate time to traverse the mesh.
-      await peerB.waitForTimeout(150);
+      // Issue #1895: use deterministic clock advancement instead of
+      // wall-clock waitForTimeout. This ensures the 150ms settle window
+      // is the same in CI as locally regardless of browser timer precision.
+      await peerB.clock.runFor(150);
 
       // Step 3: assert the replay is REJECTED by peer B's high-water
       // mark. The wire-level log shows the duplicate but
@@ -492,6 +478,7 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
       );
       expect(highwater).toBe(capturedSeq);
     } finally {
+      await peerB.clock.runFor(200); // drain any remaining timers before close
       await close();
     }
   });
