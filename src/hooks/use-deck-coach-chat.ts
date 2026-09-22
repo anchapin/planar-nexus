@@ -517,10 +517,12 @@ export function useDeckCoachChat(
         updateStreamingDraft((prev) => (prev ? { ...prev, ...patch } : prev));
       };
 
-      // Persist the user's message immediately so it survives a refresh even if
-      // the stream is interrupted mid-flight (issue #1074). The finalized
-      // assistant message is persisted again in `finally` below.
-      void persistCurrent();
+      // Note: we do NOT persist the user's message here (fire-and-forget) because
+      // that creates a race with the finally block's persistCurrent() — the async
+      // write can land AFTER the finally write and overwrite a 2-message conversation
+      // with a 1-message one (issue #1074). The finally block always runs on
+      // unmount/interrupt and persists the complete conversation including the user
+      // message, so an early fire-and-forget persist is unnecessary.
 
       try {
         const currentDeckCards =
