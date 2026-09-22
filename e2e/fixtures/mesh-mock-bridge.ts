@@ -263,6 +263,22 @@ function buildMeshPeerHarness(opts: MeshPeerOptions): string {
       return window.__peer.broadcast(stamp("game-action", { action: action, data: data }));
     },
     sendGameState: function (gameState, isFullSync) {
+      // Update local state so __getLastStateHash reflects what was sent
+      // (mimics production behavior where the host tracks its own authoritative state)
+      if (gameState) {
+        lastGameState = gameState;
+        lastStateHash = computeSimpleHash(JSON.stringify(gameState));
+        // Also extract graveyard card ids for the test's catch-up verification
+        graveyardCardIds = [];
+        if (gameState.zones) {
+          for (var zoneId in gameState.zones) {
+            if (String(zoneId).endsWith("-graveyard")) {
+              graveyardCardIds = (gameState.zones[zoneId].cardIds || []).slice().sort();
+              break;
+            }
+          }
+        }
+      }
       return window.__peer.broadcast(stamp("game-state-sync", { gameState: gameState, isFullSync: !!isFullSync }));
     },
     // Issue #1570: host-authoritative terminal-event channel. Mirrors

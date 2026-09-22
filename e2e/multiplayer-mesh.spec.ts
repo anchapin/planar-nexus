@@ -872,22 +872,25 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
     // --- Step 1: suppress ONE inbound game-state-sync on the peer BEFORE the
     // first turn is sent. Drop the FIRST game-state-sync from the host; all
     // subsequent ones pass through. This models a transient packet drop.
-    let suppressFirst = true;
+    // Note: suppressFirst uses window property to avoid closure timing issues
+    // in page.evaluate async delivery path.
     await peerCtx.page.evaluate((hostId: string) => {
       const w = window as unknown as {
         __p2pRecord: (raw: string) => unknown;
+        __pnSuppressFirst?: boolean;
       };
+      w.__pnSuppressFirst = true;
       const orig = w.__p2pRecord;
       w.__p2pRecord = (raw: string) => {
         try {
           const msg = JSON.parse(raw);
           if (
-            suppressFirst &&
+            w.__pnSuppressFirst &&
             msg &&
             msg.type === "game-state-sync" &&
             msg.senderId === hostId
           ) {
-            suppressFirst = false;
+            w.__pnSuppressFirst = false;
             return null; // drop the first envelope silently
           }
         } catch {
