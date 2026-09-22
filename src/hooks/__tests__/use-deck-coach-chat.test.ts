@@ -18,7 +18,7 @@ import {
   beforeEach,
   beforeAll,
 } from "@jest/globals";
-import { renderHook, act, render } from "@testing-library/react";
+import { renderHook, act, render, waitFor } from "@testing-library/react";
 import {
   useDeckCoachChat,
   clearAllCoachConversations,
@@ -320,20 +320,23 @@ describe("useDeckCoachChat — IndexedDB persistence (#1074)", () => {
     expect(
       first.result.current.messages.some((m) => m.role === "assistant"),
     ).toBe(true);
-    first.unmount();
+
+    await act(async () => {
+      first.unmount();
+    });
 
     // Simulate a page reload: a brand-new hook instance mounts and its
     // auto-resume effect should load the most-recent conversation.
     const reloaded = renderHook(() =>
       useDeckCoachChat({ format: "modern", deckId: "deck-z" }),
     );
-    await act(async () => {
-      await flush();
-      await flush();
+    // Wait for the auto-resume effect to complete loading the persisted conversation.
+    await flush();
+    await waitFor(() => {
+      expect(reloaded.result.current.messages.length).toBeGreaterThanOrEqual(2);
     });
 
     const restored = reloaded.result.current.messages;
-    expect(restored.length).toBeGreaterThanOrEqual(2);
     expect(restored.some((m) => m.content === "how do I sideboard?")).toBe(
       true,
     );
@@ -770,7 +773,9 @@ describe("useDeckCoachChat — error fallback and clearMessages (#1241)", () => 
         deckCards: [{ name: "Sol Ring", count: 1 } as never],
       });
     });
-    seed.unmount();
+    await act(async () => {
+      seed.unmount();
+    });
 
     const app = renderHook(() =>
       useDeckCoachChat({ format: "modern", deckId: "deck-clear-empty" }),
