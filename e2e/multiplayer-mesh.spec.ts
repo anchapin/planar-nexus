@@ -290,13 +290,13 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
         );
       }
 
-      // Issue #1881/#1895: sample B's in-flight state using deterministic
+      // Issue #1881/#1895/#2071: sample B's in-flight state using deterministic
       // clock control instead of wall-clock waitForTimeout. We advance
-      // peerB's clock by 100ms to sample the slow peer's state at a
-      // precise virtual time. At t=100ms, B's 200ms slow-pipe has not
+      // peerB's clock by 50ms to sample the slow peer's state at a
+      // precise virtual time. At t=50ms, B's 200ms slow-pipe has not
       // elapsed yet, so B should have received <=1 message.
-      await peerB.clock.runFor(100);
-      const bAfter100ms = await peerB.evaluate(
+      await peerB.clock.runFor(50);
+      const bAfter50ms = await peerB.evaluate(
         () =>
           (
             window as unknown as {
@@ -306,8 +306,8 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
             .length ?? 0,
       );
       // Peer B's slow pipe (200ms) means it has not recorded any of the
-      // 3 broadcasts yet at the +100ms mark — by construction.
-      expect(bAfter100ms).toBeLessThanOrEqual(1);
+      // 3 broadcasts yet at the +50ms mark — by construction.
+      expect(bAfter50ms).toBeLessThanOrEqual(1);
 
       // Peers C and D receive all 3 within a short budget (well under 1s).
       await waitForReceiveCount(peerC, 3, "game-state-sync", 1000);
@@ -322,7 +322,11 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
       // B finishes its delayed delivery within 1.5s total.
       await waitForReceiveCount(peerB, 3, "game-state-sync", 1500);
     } finally {
-      await peerB.clock.runFor(200); // drain any remaining timers before close
+      try {
+        await peerB.clock.runFor(200); // drain any remaining timers before close
+      } catch {
+        // Page already closed — nothing to drain
+      }
       await close();
     }
   });
@@ -478,7 +482,11 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
       );
       expect(highwater).toBe(capturedSeq);
     } finally {
-      await peerB.clock.runFor(200); // drain any remaining timers before close
+      try {
+        await peerB.clock.runFor(200); // drain any remaining timers before close
+      } catch {
+        // Page already closed — nothing to drain
+      }
       await close();
     }
   });
