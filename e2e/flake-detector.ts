@@ -51,11 +51,7 @@ import { join, resolve } from "node:path";
 // ---------- Public types (exported for jest) ----------
 
 export type SpecStatus =
-  | "passed"
-  | "failed"
-  | "timedOut"
-  | "interrupted"
-  | "skipped";
+  "passed" | "failed" | "timedOut" | "interrupted" | "skipped";
 
 export interface SpecResult {
   /** Stable key — file::project::title */
@@ -122,6 +118,8 @@ interface PlaywrightJsonSpec {
   project?: string;
   line?: number;
   column?: number;
+  ok?: boolean;
+  tests?: Array<{ results?: PlaywrightJsonTestOutcome[] }>;
   results?: PlaywrightJsonTestOutcome[];
   specs?: PlaywrightJsonSpec[];
   suites?: PlaywrightJsonSpec[];
@@ -234,14 +232,21 @@ export function collectSpecsFromReport(
   const visit = (nodes: PlaywrightJsonSpec[] | undefined): void => {
     if (!nodes) return;
     for (const node of nodes) {
-      // A spec row has `title` + `results`; a suite row has `specs` or `suites`.
-      if (node.title && node.results && node.file) {
+      // A spec row has `title` + `tests[]` (each test has `results[]`);
+      // a suite row has `specs` or `suites`.
+      // The `tests[0].results[0].status` gives the actual test outcome.
+      if (node.title && node.tests && node.file && node.tests.length > 0) {
         const file = node.file;
         const project = node.project ?? "chromium";
         const title = node.title;
         const key = specKey({ file, title, project });
-        const finalResult = node.results[node.results.length - 1];
-        const status = asStatus(finalResult?.status);
+        const testRun = node.tests[0];
+        const finalResult = testRun.results?.[testRun.results.length - 1];
+        // Use `ok` boolean as fallback when results array is empty/absent;
+        // prefer the explicit status string from results when available.
+        const rawStatus =
+          finalResult?.status ?? (node.ok ? "passed" : "failed");
+        const status = asStatus(rawStatus);
         if (!out.has(key)) {
           out.set(key, {
             key,
