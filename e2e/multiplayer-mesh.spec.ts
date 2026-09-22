@@ -322,7 +322,11 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
       // B finishes its delayed delivery within 1.5s total.
       await waitForReceiveCount(peerB, 3, "game-state-sync", 1500);
     } finally {
-      await peerB.clock.runFor(200); // drain any remaining timers before close
+      try {
+        await peerB.clock.runFor(200); // drain any remaining timers before close
+      } catch {
+        // Page already closed — nothing to drain
+      }
       await close();
     }
   });
@@ -478,7 +482,11 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
       );
       expect(highwater).toBe(capturedSeq);
     } finally {
-      await peerB.clock.runFor(200); // drain any remaining timers before close
+      try {
+        await peerB.clock.runFor(200); // drain any remaining timers before close
+      } catch {
+        // Page already closed — nothing to drain
+      }
       await close();
     }
   });
