@@ -42,7 +42,7 @@ test.describe("Game Flow E2E", () => {
       await skipTourButton.waitFor({ state: "visible", timeout: 5000 });
       await skipTourButton.click();
       await expect(skipTourButton).toBeHidden();
-    } catch (error) {
+    } catch {
       // Tour might not always appear in every test run/environment
       console.info("Tutorial tour skip button not found or already gone");
     }
@@ -106,7 +106,7 @@ test.describe("Game Flow E2E", () => {
       await skipTourButton.waitFor({ state: "visible", timeout: 5000 });
       await skipTourButton.click();
       await expect(skipTourButton).toBeHidden();
-    } catch (error) {
+    } catch {
       console.info("Tour not found or already skipped");
     }
 
@@ -117,6 +117,20 @@ test.describe("Game Flow E2E", () => {
       .catch(() => {
         console.warn("Overlay backdrop did not hide");
       });
+
+    // Wait for AI thinking indicator to disappear before interacting with the board.
+    // If the AI is still thinking, card clicks may not register properly.
+    const aiThinking = page.locator('[data-testid="ai-thinking-indicator"]');
+    await aiThinking.waitFor({ state: "hidden", timeout: 15000 }).catch(() => {
+      console.warn("AI thinking indicator did not hide within 15s");
+    });
+
+    // Advance phase once to ensure we're past the initial setup phase.
+    // During very early game phases (Beginning phase), card interactions may
+    // not be fully processed. Clicking Next Phase moves us into Main Phase
+    // where card selection is reliable.
+    const nextPhaseButton = page.getByRole("button", { name: "Next Phase" });
+    await nextPhaseButton.click({ force: true });
 
     // Locate cards in hand. Only the current player's cards expose
     // role="checkbox" (opponents render card backs), so this locator is
@@ -130,13 +144,16 @@ test.describe("Game Flow E2E", () => {
     await expect(firstCard).toBeVisible({ timeout: 10000 });
     await expect(firstCard).toBeEnabled();
 
-    // Select the card. click() auto-waits for actionability (visible, stable,
-    // enabled, receives pointer events) — no manual timing.
+    // Select the card using normal click (no force:true). This ensures
+    // Playwright dispatches a proper pointer event that React's synthetic
+    // event system will capture and process.
     await firstCard.click();
 
-    // Verify it is selected. This is a web-first (auto-retrying) assertion:
-    // Playwright re-checks aria-pressed up to the expect timeout rather than
-    // doing a one-shot check — the state-based wait for the selection state.
-    await expect(firstCard).toHaveAttribute("aria-pressed", "true");
+    // Verify it is selected. Use expect with timeout - Playwright's auto-retry
+    // handles the race against React's async state update. The toHaveAttribute
+    // assertion polls up to the expect timeout (5s by default) before failing.
+    await expect(firstCard).toHaveAttribute("aria-pressed", "true", {
+      timeout: 10000,
+    });
   });
 });
