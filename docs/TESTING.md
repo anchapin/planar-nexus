@@ -619,9 +619,9 @@ npm test -- --testPathPattern=video-derived --coverage
 
 | Metric     | Project target | CI-enforced floor (`jest.config.js`) |
 | ---------- | -------------- | ------------------------------------ |
-| Lines      | **70%**        | 64%                                  |
-| Functions  | **70%**        | 56%                                  |
-| Statements | **70%**        | 63%                                  |
+| Lines      | **70%**        | 63%                                  |
+| Functions  | **70%**        | 55%                                  |
+| Statements | **70%**        | 62%                                  |
 | Branches   | **60%**        | 54%                                  |
 
 <!-- coverage-floor:end -->
@@ -927,7 +927,11 @@ describe("layer system — pt pump", () => {
       players: 2,
       // Pass explicit initial state for deterministic ordering:
       battlefield: [
-        { id: "c1", controller: 0, card: { name: "Glistener Elf", power: 1, toughness: 1 } },
+        {
+          id: "c1",
+          controller: 0,
+          card: { name: "Glistener Elf", power: 1, toughness: 1 },
+        },
       ],
     });
 
@@ -975,7 +979,9 @@ beforeEach(() => {
     orig(...args);
   });
 });
-afterEach(() => { console.error = orig; });
+afterEach(() => {
+  console.error = orig;
+});
 ```
 
 #### Setting breakpoints in the stateful object graph
@@ -1005,7 +1011,11 @@ it("pump applies after combat damage", () => {
   "request": "launch",
   "name": "Debug Jest",
   "program": "${workspaceFolder}/node_modules/.bin/jest",
-  "args": ["--runInBand", "--testNamePattern", "pump applies after combat damage"]
+  "args": [
+    "--runInBand",
+    "--testNamePattern",
+    "pump applies after combat damage"
+  ]
 }
 ```
 
@@ -1014,30 +1024,32 @@ it("pump applies after combat damage", () => {
 Layer-system bugs typically surface as wrong power/toughness or wrong
 characteristic values after applying effects. Use this checklist:
 
-| Check | What to look for |
-| ----- | ---------------- |
-| **Layer order** | Effects in the same layer are applied by timestamp (613.2). A missing or duplicate timestamp on a modifier is the most common cause of wrong ordering. |
-| **Dependency cycles** | 613.3 dependencies must be checked — an effect that depends on another must be in a later layer or have `timestamp >` the effect it depends on. |
-| **Sublayer boundary** | Within layer 7, sublayers (7a CDA → 7b defined → 7c counters → 7d other) must be respected; an effect in the wrong sublayer never fires. |
-| **Dependency graph** | `dependencies[]` on each `ContinuousEffect` must accurately describe what it reads — if it depends on a characteristic, the dependency must point to the right object+property. |
+| Check                 | What to look for                                                                                                                                                                |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Layer order**       | Effects in the same layer are applied by timestamp (613.2). A missing or duplicate timestamp on a modifier is the most common cause of wrong ordering.                          |
+| **Dependency cycles** | 613.3 dependencies must be checked — an effect that depends on another must be in a later layer or have `timestamp >` the effect it depends on.                                 |
+| **Sublayer boundary** | Within layer 7, sublayers (7a CDA → 7b defined → 7c counters → 7d other) must be respected; an effect in the wrong sublayer never fires.                                        |
+| **Dependency graph**  | `dependencies[]` on each `ContinuousEffect` must accurately describe what it reads — if it depends on a characteristic, the dependency must point to the right object+property. |
 
 Dump the full effect graph for a card:
 
 ```typescript
-const card = state.battlefield.find(c => c.card.name === "Glistener Elf");
+const card = state.battlefield.find((c) => c.card.name === "Glistener Elf");
 // card.card.dynamicModifiers[] holds all active ContinuousEffects
-console.error("Active modifiers:", card.card.dynamicModifiers.map(m => ({
-  layer: m.layer,
-  sublayer: m.sublayer,
-  source: m.sourceCard,
-  timestamp: m.timestamp,
-  value: m.value,
-})));
+console.error(
+  "Active modifiers:",
+  card.card.dynamicModifiers.map((m) => ({
+    layer: m.layer,
+    sublayer: m.sublayer,
+    source: m.sourceCard,
+    timestamp: m.timestamp,
+    value: m.value,
+  })),
+);
 ```
 
 If the output shows a modifier missing from the list, the effect was never
 created — trace back to the rule/ability that should have generated it.
-
 
 ---
 

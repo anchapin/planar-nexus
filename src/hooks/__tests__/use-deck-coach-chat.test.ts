@@ -810,7 +810,9 @@ describe("useDeckCoachChat — error fallback and clearMessages (#1241)", () => 
       await import("@/lib/coach-conversation-storage")
     ).loadConversations("deck-clear-empty");
     expect(after).toEqual([]);
-    app.unmount();
+    await act(async () => {
+      app.unmount();
+    });
   });
 });
 
