@@ -33,6 +33,7 @@ import { createCardInstance } from "../card-instance";
 import { Phase } from "../types";
 import type { ScryfallCard } from "../types";
 import type { ManaPool, StackObject } from "../types";
+import { createLandEntersTappedReplacementEffect } from "../replacement-effects";
 
 // Helper function to create a mock land card
 function createMockLand(name: string): ScryfallCard {
@@ -542,6 +543,112 @@ describe("Land Playing", () => {
       const updatedPlayer = state.players.get(playerId)!;
       expect(updatedPlayer.landsPlayedThisTurn).toBe(0);
       expect(updatedPlayer.hasActivatedManaAbility).toBe(false);
+    });
+  });
+
+  describe("CR 614.1 - Replacement effects on land enter", () => {
+    it("should apply replacement effects before determining enters-tapped outcome", () => {
+      let state = createInitialGameState(["Alice"], 20, false);
+      state = startGame(state);
+
+      const playerId = Array.from(state.players.keys())[0];
+
+      // Create a land without "enters tapped" in oracle text
+      const landData = createMockLand("Forest");
+      const land = createCardInstance(landData, playerId, playerId);
+      state.cards.set(land.id, land);
+
+      const hand = state.zones.get(`${playerId}-hand`)!;
+      state.zones.set(`${playerId}-hand`, {
+        ...hand,
+        cardIds: [...hand.cardIds, land.id],
+      });
+
+      state.turn.currentPhase = Phase.PRECOMBAT_MAIN;
+      state.priorityPlayerId = playerId;
+      state.stack = [];
+
+      // Register a replacement effect that makes the land enter tapped
+      const entersTappedEffect = createLandEntersTappedReplacementEffect(
+        land.id,
+        playerId,
+      );
+      state.replacementEffectManager.registerEffect(entersTappedEffect);
+
+      const result = playLand(state, playerId, land.id);
+
+      expect(result.success).toBe(true);
+
+      // The land should enter tapped because of the replacement effect
+      const playedLand = result.state.cards.get(land.id);
+      expect(playedLand?.isTapped).toBe(true);
+    });
+
+    it("should use oracle text default when no replacement effects apply", () => {
+      let state = createInitialGameState(["Alice"], 20, false);
+      state = startGame(state);
+
+      const playerId = Array.from(state.players.keys())[0];
+
+      // Create a land that enters tapped via oracle text
+      const landData: ScryfallCard = {
+        ...createMockLand("Tapland"),
+        oracle_text: "T: Add {G}. This land enters the battlefield tapped.",
+      } as ScryfallCard;
+      const land = createCardInstance(landData, playerId, playerId);
+      state.cards.set(land.id, land);
+
+      const hand = state.zones.get(`${playerId}-hand`)!;
+      state.zones.set(`${playerId}-hand`, {
+        ...hand,
+        cardIds: [...hand.cardIds, land.id],
+      });
+
+      state.turn.currentPhase = Phase.PRECOMBAT_MAIN;
+      state.priorityPlayerId = playerId;
+      state.stack = [];
+
+      const result = playLand(state, playerId, land.id);
+
+      expect(result.success).toBe(true);
+
+      // The land should enter tapped due to oracle text
+      const playedLand = result.state.cards.get(land.id);
+      expect(playedLand?.isTapped).toBe(true);
+    });
+
+    it("should allow entersTappedOverride to bypass both oracle text and replacement effects", () => {
+      let state = createInitialGameState(["Alice"], 20, false);
+      state = startGame(state);
+
+      const playerId = Array.from(state.players.keys())[0];
+
+      // Create a land that normally enters tapped
+      const landData: ScryfallCard = {
+        ...createMockLand("Tapland"),
+        oracle_text: "T: Add {G}. This land enters the battlefield tapped.",
+      } as ScryfallCard;
+      const land = createCardInstance(landData, playerId, playerId);
+      state.cards.set(land.id, land);
+
+      const hand = state.zones.get(`${playerId}-hand`)!;
+      state.zones.set(`${playerId}-hand`, {
+        ...hand,
+        cardIds: [...hand.cardIds, land.id],
+      });
+
+      state.turn.currentPhase = Phase.PRECOMBAT_MAIN;
+      state.priorityPlayerId = playerId;
+      state.stack = [];
+
+      // Force the land to enter untapped via override
+      const result = playLand(state, playerId, land.id, undefined, false);
+
+      expect(result.success).toBe(true);
+
+      // The land should enter untapped despite oracle text saying otherwise
+      const playedLand = result.state.cards.get(land.id);
+      expect(playedLand?.isTapped).toBe(false);
     });
   });
 });

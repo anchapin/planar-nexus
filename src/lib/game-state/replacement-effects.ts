@@ -40,7 +40,8 @@ export type ReplacementEffectType =
   | "counters" // Add/remove counters
   | "as_though" // "As though" effects
   | "sacrifice_replacement" // Replace sacrifice
-  | "command_zone_replacement"; // Commander redirect (CR 903.9)
+  | "command_zone_replacement" // Commander redirect (CR 903.9)
+  | "land_enter_replacement"; // Replace how a land enters (e.g., enters tapped)
 
 /**
  * A replacement or prevention ability
@@ -102,7 +103,8 @@ export type ReplacementEventType =
   | "tap"
   | "untap"
   | "put_into_hand" // CR 903.9a — commander bounced to hand
-  | "put_into_library"; // CR 903.9a — commander shuffled into library
+  | "put_into_library" // CR 903.9a — commander shuffled into library
+  | "landEnterBattlefield"; // CR 614.1 — replacement effects for land entering battlefield
 
 export interface ReplacementEvent {
   type: ReplacementEventType;
@@ -114,6 +116,7 @@ export interface ReplacementEvent {
   damageTypes?: ("combat" | "noncombat" | "damage" | "lethal")[];
   hasLifelink?: boolean;
   hasDeathtouch?: boolean;
+  entersTapped?: boolean; // CR 614.1 — for landEnterBattlefield events
   context?: Record<string, unknown>;
 }
 
@@ -412,7 +415,9 @@ export class ReplacementEffectManager {
 
       // Self-replacements always apply without prompting (CR 614.6).
       const selfEffects = possibleEffects.filter((e) => e.isSelfReplacement);
-      const nonSelfEffects = possibleEffects.filter((e) => !e.isSelfReplacement);
+      const nonSelfEffects = possibleEffects.filter(
+        (e) => !e.isSelfReplacement,
+      );
 
       if (selfEffects.length > 0) {
         const selfSorted = [...selfEffects].sort(
@@ -778,6 +783,7 @@ export class ReplacementEffectManager {
       untap: [],
       put_into_hand: ["command_zone_replacement"],
       put_into_library: ["command_zone_replacement"],
+      landEnterBattlefield: ["land_enter_replacement"],
     };
     return mapping[eventType]?.includes(effectType) || false;
   }
@@ -1091,6 +1097,44 @@ export function createCommandZoneReplacementEffect(
 }
 
 /**
+ * CR 614.1 — Creates a self-replacement effect that makes a land enter tapped.
+ *
+ * Used by the oracle text parser when encountering static abilities like
+ * "enters the battlefield tapped" on lands. The replacement effect modifies
+ * the landEnterBattlefield event so the land enters tapped instead of untapped.
+ *
+ * @param landCardId   - The card instance id of the land entering the battlefield
+ * @param controllerId - The player who controls the land
+ */
+export function createLandEntersTappedReplacementEffect(
+  landCardId: CardInstanceId,
+  controllerId: PlayerId,
+): ReplacementAbility {
+  return {
+    id: `land-enters-tapped-${landCardId}-${Date.now()}`,
+    sourceCardId: landCardId,
+    controllerId,
+    effectType: "land_enter_replacement",
+    description: "Land enters tapped instead of untapped (CR 614.1)",
+    layer: 4, // Same layer as other replacement effects
+    timestamp: Date.now(),
+    isSelfReplacement: true,
+    isInstead: true,
+    canApply: (e) =>
+      e.type === "landEnterBattlefield" && e.sourceId === landCardId,
+    apply: (e) => ({
+      modified: true,
+      modifiedEvent: {
+        ...e,
+        entersTapped: true,
+      },
+      description: `Land ${landCardId} enters tapped instead of untapped`,
+      instead: true,
+    }),
+  };
+}
+
+/**
  * CR 903.9a — Helper for downstream callers (state-based-actions, destroyCard,
  * moveCardToZone, etc.). Inspects the processed {@link ReplacementEvent} and,
  * if the commander zone replacement redirected the event, performs the
@@ -1119,7 +1163,8 @@ export function resolveCommanderZoneRedirect<
 ): CommanderZoneRedirectOutcome | null {
   const ctx = event.context as Record<string, unknown> | undefined;
   if (!ctx || ctx.replacedToCommandZone !== true) return null;
-  const commanderCardId = (ctx.originalCardId as CardInstanceId) ??
+  const commanderCardId =
+    (ctx.originalCardId as CardInstanceId) ??
     (event.sourceId as CardInstanceId) ??
     (event.targetId as CardInstanceId);
   const ownerId = ctx.commandZoneOwnerId as PlayerId;

@@ -12,6 +12,7 @@ import { Phase } from "./types";
 import { moveCardBetweenZones } from "./zones";
 import { isPriorityPlayer } from "./priority-guard";
 import { ValidationService } from "./validation-service";
+import { ReplacementEvent } from "./replacement-effects";
 
 /**
  * Create an empty mana pool
@@ -403,12 +404,28 @@ export function playLand(
     return { success: false, state, error: "Card not found." };
   }
 
-  // Check if land enters tapped (e.g., "enters tapped" or "tapped")
-  // This is a basic check - a full implementation would use replacement effects
+  // CR 614.1: Apply replacement effects before determining if the default outcome applies.
+  // Build a land-enter-battlefield event with the default enters-tapped value from oracle text,
+  // then let the replacement effect system modify it.
   const oracleText = card.cardData.oracle_text?.toLowerCase() || "";
-  let entersTapped =
+  const defaultEntersTapped =
     oracleText.includes("enters tapped") ||
     oracleText.includes("enters the battlefield tapped");
+
+  // Create a replacement event for the land entering the battlefield
+  const landEnterEvent: ReplacementEvent = {
+    type: "landEnterBattlefield",
+    timestamp: Date.now(),
+    sourceId: cardId,
+    targetId: cardId,
+    amount: 1,
+    entersTapped: defaultEntersTapped,
+  };
+
+  // Process replacement effects (CR 614.1 - replacement effects apply before determining outcome)
+  const processedEvent =
+    state.replacementEffectManager.processEvent(landEnterEvent);
+  let entersTapped = processedEvent.entersTapped ?? defaultEntersTapped;
 
   // Apply override if provided
   if (entersTappedOverride !== undefined) {
