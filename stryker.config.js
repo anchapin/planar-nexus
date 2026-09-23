@@ -94,7 +94,9 @@ module.exports = {
     "src/lib/game-state/spell-casting/*.ts",
     "src/lib/game-state/trigger-system.ts",
     "src/lib/game-state/state-based-actions.ts",
-    "src/lib/game-state/combat.ts",
+    // combat.ts excluded: issue #1989 + #2055 — 40+ min Stryker runtime;
+    // suite is pin/neutered so mutation score is meaningless; removed from
+    // strykerConfig.mutate and matched in mutation-floor.test.ts suiteFor.
     "src/lib/game-state/mana.ts",
   ],
 
