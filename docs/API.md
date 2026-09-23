@@ -32,7 +32,8 @@ that genuinely need a server. The application is primarily client-side;
 - **Deck import** — server-side fetch + parse of a decklist from a supported
   hosting URL (`/api/deck-import`).
 - **Multiplayer signaling** — direct-peer WebRTC with in-server signaling exchange
-  (`/api/signaling`).
+  (`/api/signaling`) — **DEPRECATED** (returns `410 Gone`); P2P direct-connection
+  is now used instead. TURN credentials still available at `/api/signaling/turn-credentials`.
 
 > Gameplay (the AI opponent's turn loop) runs **client-side** through the AI
 > flows in [`src/ai/`](../src/ai) (e.g. `ai-turn-loop.ts`,
@@ -91,9 +92,9 @@ that genuinely need a server. The application is primarily client-side;
 | POST   | `/api/chat`                       | Unified streaming chat (Vercel AI SDK)                                                                                                                                                                                                                 | [`chat/route.ts`](../src/app/api/chat/route.ts)                                             |
 | POST   | `/api/chat/coach`                 | Conversational deck coach (Server-Sent Events stream)                                                                                                                                                                                                  | [`chat/coach/route.ts`](../src/app/api/chat/coach/route.ts)                                 |
 | POST   | `/api/deck-import`                | Fetch + parse a decklist from a supported hosting URL                                                                                                                                                                                                  | [`deck-import/route.ts`](../src/app/api/deck-import/route.ts)                               |
-| GET    | `/api/signaling`                  | Poll a multiplayer signaling session                                                                                                                                                                                                                   | [`signaling/route.ts`](../src/app/api/signaling/route.ts)                                   |
-| POST   | `/api/signaling`                  | Create / join / exchange offers+answers+ICE / close a session                                                                                                                                                                                          | [`signaling/route.ts`](../src/app/api/signaling/route.ts)                                   |
-| DELETE | `/api/signaling`                  | Tear down a session (`?sessionId=`)                                                                                                                                                                                                                    | [`signaling/route.ts`](../src/app/api/signaling/route.ts)                                   |
+| ~~GET~~    | ~~`/api/signaling`~~                  | ~~Poll a multiplayer signaling session~~ — **DEPRECATED** (returns `410 Gone`)                                                                                                                                                                                            | [`signaling/route.ts`](../src/app/api/signaling/route.ts)                                   |
+| ~~POST~~   | ~~`/api/signaling`~~                  | ~~Create / join / exchange offers+answers+ICE / close a session~~ — **DEPRECATED** (returns `410 Gone`)                                                                                                                                                                                          | [`signaling/route.ts`](../src/app/api/signaling/route.ts)                                   |
+| ~~DELETE~~ | ~~`/api/signaling`~~                  | ~~Tear down a session (`?sessionId=`)}~~ — **DEPRECATED** (returns `410 Gone`)                                                                                                                                                                                                                    | [`signaling/route.ts`](../src/app/api/signaling/route.ts)                                   |
 | GET    | `/api/signaling/turn-credentials` | Mint short-lived TURN HMAC credentials (`?clientId=<id>`); rate-limited (returns `X-RateLimit-*` headers), response shape `{ iceServers: RTCIceServer[]; expiresAt: number }`; failure modes: 429 (rate limit), 503 (no `TURN_HMAC_SECRET` configured) | [`signaling/turn-credentials/route.ts`](../src/app/api/signaling/turn-credentials/route.ts) |
 
 ---
@@ -354,70 +355,24 @@ interface DeckImportRequest {
 
 ---
 
-### 2.7 GET /api/signaling
+### 2.7–2.9 /api/signaling — DEPRECATED
 
-Poll a multiplayer signaling session by game code or session id. Returns the
-session state appropriate to the caller's `role`. Sessions are in-memory and
-expire after 5 minutes.
+> **Deprecated:** The in-memory signaling server (`/api/signaling`) was retired
+> in issue #2109 and returns `410 Gone` for all requests. The documentation
+> sections below are kept for historical reference only.
 
-**Query Parameters**:
+**Section 2.7 GET /api/signaling** — was: poll a multiplayer signaling session.
+**Section 2.8 POST /api/signaling** — was: create/join/exchange WebRTC signaling data.
+**Section 2.9 DELETE /api/signaling** — was: tear down a signaling session.
 
-| Param       | Required                      | Description                                                  |
-| ----------- | ----------------------------- | ------------------------------------------------------------ |
-| `gameCode`  | one of `gameCode`/`sessionId` | The human-readable room code                                 |
-| `sessionId` | one of `gameCode`/`sessionId` | The internal session id                                      |
-| `role`      | no                            | `host` or `client`; selects which WebRTC fields are returned |
+All three endpoints are now non-functional. The replacement is the **P2P
+direct-connection flow** using WebRTC DataChannels directly between peers, which
+eliminates the server-side signaling relay entirely. See the multiplayer
+architecture docs for the new connection establishment sequence.
 
-**Response (host)**: includes `answer`, `clientCandidates`, `clientId`,
-`clientName`. **Response (client)**: includes `offer`, `hostCandidates`,
-`hostId`. Both shapes include `sessionId`, `gameCode`, `hostName`,
-`clientName`, `createdAt`, `expiresAt`.
-
-**Errors**: `400` (`gameCode or sessionId required`), `404` (`Session not found`).
-
-> **Tests:** [`src/app/api/signaling/__tests__/route.test.ts`](../src/app/api/signaling/__tests__/route.test.ts)
-
----
-
-### 2.8 POST /api/signaling
-
-Create a session, join one, or exchange WebRTC signaling data. The `type`
-field selects the handler; `payload` is type-specific.
-
-**Request**:
-
-```typescript
-interface SignalingMessage {
-  type: "create" | "join" | "offer" | "answer" | "ice-candidate" | "close";
-  payload: unknown; // shape depends on `type` (see handler)
-}
-```
-
-| `type`          | `payload`                                                          |
-| --------------- | ------------------------------------------------------------------ |
-| `create`        | `{ hostId, hostName, offer? }` → returns `{ sessionId, gameCode }` |
-| `join`          | `{ gameCode, clientId, clientName }`                               |
-| `offer`         | `{ sessionId, offer }`                                             |
-| `answer`        | `{ sessionId, answer }`                                            |
-| `ice-candidate` | `{ sessionId, candidate, role: "host" \| "client" }`               |
-| `close`         | `{ sessionId }`                                                    |
-
-**Errors**: `400` (invalid JSON, unknown `type`, or missing required fields),
-`404` (session not found for join/exchange/close).
-
----
-
-### 2.9 DELETE /api/signaling
-
-Tear down a signaling session.
-
-**Query Parameters**:
-
-| Param       | Required | Description           |
-| ----------- | -------- | --------------------- |
-| `sessionId` | yes      | The session to delete |
-
-**Response (success)**: `{ "success": true }`. **Errors**: `400` (`sessionId required`), `404` (`Session not found`).
+For TURN relay credentials (needed when direct peer connection fails due to
+symmetric NAT), use [`GET /api/signaling/turn-credentials`](#27-get-apisignalingturn-credentials)
+which remains active.
 
 ---
 
