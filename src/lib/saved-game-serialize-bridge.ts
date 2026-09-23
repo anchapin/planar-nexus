@@ -31,7 +31,7 @@
  *   untouched by this module.
  */
 
-import type { Replay } from "./game-state/replay";
+import type { Replay } from "@/lib/game-state";
 import {
   serializeReplayOnMainThread,
   replayJsonFromBytes,

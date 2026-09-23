@@ -38,9 +38,15 @@ export * from "./state-hash";
 // still exports the hash types deterministic-sync used to re-export
 // (HashComparisonResult / HashDiscrepancy come from "./state-hash" above).
 export * from "./replay";
+export { getStateAtPosition } from "./replay";
 export * from "./serialization";
 export * from "./replacement-effects";
-export { mapReviver } from "./state-serialization";
+export {
+  serializeGameState as serializeGameStateString,
+  deserializeGameState as deserializeGameStateString,
+  mapReplacer,
+  mapReviver,
+} from "./state-serialization";
 export * from "./layer-system";
 export {
   destroyCard as destroyPermanentAction,
@@ -78,6 +84,7 @@ export * from "./card-instance";
 export * from "./zones";
 export * from "./ward-system";
 export * from "./replay-compression";
+export * from "./game-state-compression";
 // #1724: format / game-mode configuration is engine-owned versioned input
 // data (FORMAT_RULES_VERSION). The root-level @/lib/game-rules module is a
 // facade that re-exports this surface for app consumers.
