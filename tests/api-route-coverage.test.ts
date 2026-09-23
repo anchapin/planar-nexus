@@ -144,9 +144,15 @@ function extractRouteMapRows(docContent: string): TableRow[] {
       .split("|")
       .map((c) => c.trim())
       .map((c) => {
+        // Strip markdown strikethrough (e.g. `~~DELETE~~`, `~~/api/signaling~~`)
+        // used to mark deprecated endpoints. Do this BEFORE backtick stripping
+        // since backticks can be nested inside strikethrough (e.g. ~~`/api/signaling`~~).
+        if (c.startsWith("~~") && c.endsWith("~~")) {
+          c = c.slice(2, -2);
+        }
         // Strip inline-code backticks (e.g. `"/api/ai-proxy"`) so the
         // path column compares cleanly against the bare URL the route
-        // walker emits. Also drop a leading bullet artefact if any.
+        // walker emits.
         if (c.length >= 2 && c.startsWith("`") && c.endsWith("`")) {
           return c.slice(1, -1);
         }

@@ -371,8 +371,8 @@ eliminates the server-side signaling relay entirely. See the multiplayer
 architecture docs for the new connection establishment sequence.
 
 For TURN relay credentials (needed when direct peer connection fails due to
-symmetric NAT), use [`GET /api/signaling/turn-credentials`](#27-get-apisignalingturn-credentials)
-which remains active.
+symmetric NAT), use `GET /api/signaling/turn-credentials` (documented in the
+route map above) which remains active.
 
 ---
 

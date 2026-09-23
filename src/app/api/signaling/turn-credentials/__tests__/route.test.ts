@@ -91,6 +91,15 @@ jest.mock("@/lib/server-request-identity", () => ({
   getClientIdentifier: (...args: unknown[]) => getClientIdentifierMock(...args),
 }));
 
+jest.mock("@/lib/api-session", () => ({
+  getApiSession: jest.fn<
+    () => Promise<{ userId: string }>
+  >().mockResolvedValue({ userId: "test-user-1" }),
+  requireApiSession: jest
+    .fn<() => Promise<{ userId: string }>>()
+    .mockResolvedValue({ userId: "test-user-1" }),
+}));
+
 // ---- Minimal NextResponse / Request polyfill (parity with the
 // ---- existing `/api/signaling/__tests__/route.test.ts` harness so
 // ---- dynamic-import semantics stay consistent across the suite).

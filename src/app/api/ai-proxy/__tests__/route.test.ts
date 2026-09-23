@@ -130,6 +130,15 @@ jest.mock("@/lib/server-usage-logger", () => ({
   UsageLogger: MockUsageLogger,
 }));
 
+jest.mock("@/lib/api-session", () => ({
+  getApiSession: jest.fn<
+    () => Promise<{ userId: string }>
+  >().mockResolvedValue({ userId: "test-user-1" }),
+  requireApiSession: jest
+    .fn<() => Promise<{ userId: string }>>()
+    .mockResolvedValue({ userId: "test-user-1" }),
+}));
+
 // ---- Functional fetch stand-ins --------------------------------------------
 // jest.setup.js installs minimal jsdom-flavoured Request/Response stand-ins
 // that don't expose the .json() body parser or Response.json() factory. We

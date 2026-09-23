@@ -66,6 +66,15 @@ class TestResponse {
 
 (globalThis as unknown as { Response: unknown }).Response = TestResponse;
 
+jest.mock("@/lib/api-session", () => ({
+  getApiSession: jest.fn<
+    () => Promise<{ userId: string }>
+  >().mockResolvedValue({ userId: "test-user-1" }),
+  requireApiSession: jest
+    .fn<() => Promise<{ userId: string }>>()
+    .mockResolvedValue({ userId: "test-user-1" }),
+}));
+
 // Imported AFTER the polyfill so the route picks it up.
 import { POST } from "../route";
 

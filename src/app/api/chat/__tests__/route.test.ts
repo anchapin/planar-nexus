@@ -48,6 +48,15 @@ jest.mock("@/lib/server-usage-logger", () => ({
   UsageLogger: jest.fn(),
 }));
 
+jest.mock("@/lib/api-session", () => ({
+  getApiSession: jest.fn<
+    () => Promise<{ userId: string }>
+  >().mockResolvedValue({ userId: "test-user-1" }),
+  requireApiSession: jest
+    .fn<() => Promise<{ userId: string }>>()
+    .mockResolvedValue({ userId: "test-user-1" }),
+}));
+
 // --- functional fetch-primitive stand-ins (scoped to this file) -----------
 
 class TestRequest {
