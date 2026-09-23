@@ -18,6 +18,7 @@ export type ConnectionFailureCategory =
   | "ICE_FAILED"
   | "SIGNALING_UNREACHABLE"
   | "PEER_UNREACHABLE"
+  | "TURN_QUOTA_EXCEEDED" // Issue #2116: TURN relay rate-limit exceeded (HTTP 429)
   | "UNKNOWN";
 
 /**
@@ -27,6 +28,7 @@ export type ConnectionFailureContext =
   | "ice" // ICE gathering/connection could not establish a path
   | "signaling" // signaling channel could not be reached
   | "peer" // remote peer never answered / dropped after retries
+  | "turn_quota" // Issue #2116: TURN relay rate-limit exceeded (HTTP 429)
   | "generic"; // cause unknown
 
 /**
@@ -100,6 +102,12 @@ const DIAGNOSTICS: Record<
     remediation:
       "Make sure both peers are online and on compatible networks, then retry.",
   },
+  TURN_QUOTA_EXCEEDED: {
+    reason:
+      "The TURN relay rate limit has been exceeded. Too many TURN credential requests have been made in a short period.",
+    remediation:
+      "Please try again in a few minutes. The rate limit will reset automatically.",
+  },
   UNKNOWN: {
     reason: "The peer-to-peer connection failed for an unknown reason.",
     remediation:
@@ -115,6 +123,7 @@ const DIAGNOSTICS: Record<
  *  - `peer` context                   → PEER_UNREACHABLE
  *  - `ice` context + no TURN server   → TURN_UNCONFIGURED (the #926 silent failure)
  *  - `ice` context + TURN configured  → ICE_FAILED
+ *  - `turn_quota` context             → TURN_QUOTA_EXCEEDED (issue #2116)
  *  - anything else                    → UNKNOWN
  */
 export function classifyConnectionFailure(
@@ -134,6 +143,9 @@ export function classifyConnectionFailure(
       category = hasTurnServer(input.rtcConfig)
         ? "ICE_FAILED"
         : "TURN_UNCONFIGURED";
+      break;
+    case "turn_quota":
+      category = "TURN_QUOTA_EXCEEDED";
       break;
     case "generic":
     default:

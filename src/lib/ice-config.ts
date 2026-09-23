@@ -854,6 +854,18 @@ export async function fetchTurnHmacCredential(
     headers: { Accept: "application/json" },
   });
   if (!response.ok) {
+    let detail = "";
+    if (response.status === 429) {
+      try {
+        const body = (await response.json()) as Record<string, unknown>;
+        detail = typeof body.error === "string" ? body.error : "";
+      } catch {
+        detail = "Rate limit exceeded";
+      }
+      throw new Error(
+        `fetchTurnHmacCredential: TURN relay rate limit exceeded${detail ? `: ${detail}` : ""}`,
+      );
+    }
     throw new Error(
       `fetchTurnHmacCredential: server returned HTTP ${response.status}` +
         (response.status === 503
