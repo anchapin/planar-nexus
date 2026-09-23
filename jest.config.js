@@ -69,9 +69,9 @@ module.exports = {
   coverageThreshold: {
     global: {
       branches: 54,
-      functions: 55,
-      lines: 63,
-      statements: 62,
+      functions: 56,
+      lines: 64,
+      statements: 63,
     },
   },
   // `json-summary` emits coverage/coverage-summary.json, consumed by
