@@ -266,10 +266,7 @@ export async function POST(req: NextRequest) {
               encoder.encode(
                 eventToSse({
                   type: "error",
-                  value:
-                    error instanceof Error
-                      ? error.message
-                      : "Internal streaming error",
+                  value: "Internal streaming error",
                 }),
               ),
             );
