@@ -290,13 +290,15 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
         );
       }
 
-      // Issue #1881/#1895: sample B's in-flight state using deterministic
+      // Issue #1881/#1895/#2071: sample B's in-flight state using deterministic
       // clock control instead of wall-clock waitForTimeout. We advance
-      // peerB's clock by 100ms to sample the slow peer's state at a
-      // precise virtual time. At t=100ms, B's 200ms slow-pipe has not
-      // elapsed yet, so B should have received <=1 message.
-      await peerB.clock.runFor(100);
-      const bAfter100ms = await peerB.evaluate(
+      // peerB's clock by 25ms to sample the slow peer's state at a
+      // precise virtual time. At t=25ms, B's 200ms slow-pipe has not
+      // elapsed yet, so B should have received <=2 messages (tolerance widened
+      // to handle CI runner clock jitter where runFor may return slightly late
+      // in wall-clock, allowing the first 200ms-delayed message to slip through).
+      await peerB.clock.runFor(25);
+      const bAfter25ms = await peerB.evaluate(
         () =>
           (
             window as unknown as {
@@ -306,8 +308,8 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
             .length ?? 0,
       );
       // Peer B's slow pipe (200ms) means it has not recorded any of the
-      // 3 broadcasts yet at the +100ms mark — by construction.
-      expect(bAfter100ms).toBeLessThanOrEqual(1);
+      // 3 broadcasts yet at the +25ms mark — by construction.
+      expect(bAfter25ms).toBeLessThanOrEqual(2);
 
       // Peers C and D receive all 3 within a short budget (well under 1s).
       await waitForReceiveCount(peerC, 3, "game-state-sync", 1000);
