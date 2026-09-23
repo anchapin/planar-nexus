@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertSameOrigin } from "@/lib/security/same-origin";
 import { requireApiSession } from "@/lib/api-session";
-import { streamText, generateText } from "ai";
+import { streamText, generateText, type ModelMessage } from "ai";
 import { getAIModel, isModelAllowed } from "@/ai/providers/factory";
 import { AIProvider, AI_PROVIDER_IDS } from "@/ai/providers/types";
 import { searchCardsTool } from "@/ai/tools/card-search";
@@ -170,7 +170,6 @@ export async function POST(
     // computed by getClientIdentifier() from request metadata, never the body.
     const { provider, model: modelId, body: providerBody } = body;
     const currentUserId = "anonymous";
-    const currentUserId = "anonymous";
 
     // Validate provider
     if (
@@ -309,7 +308,9 @@ export async function POST(
     const model = await getAIModel(provider, modelId);
 
     // Extract messages (standard for most chat completions)
-    const messages = providerBody.messages as Array<unknown>;
+    // Zod validates structure at parse time; the cast through `unknown` tells
+    // TypeScript that the validated array conforms to the AI SDK's ModelMessage shape.
+    const messages = providerBody.messages as unknown as ModelMessage[];
 
     if (isStreaming) {
       const result = streamText({
@@ -319,9 +320,7 @@ export async function POST(
           searchCards: searchCardsTool,
         },
         temperature: providerBody.temperature ?? 0.7,
-        maxOutputTokens:
-          providerBody.max_tokens ??
-          providerBody.maxTokens,
+        maxOutputTokens: providerBody.max_tokens ?? providerBody.maxTokens,
         onFinish: async (finishResult) => {
           // Log usage on completion - usage is now a Promise in AI SDK v6
           const usage = await finishResult.usage;
@@ -344,9 +343,7 @@ export async function POST(
           searchCards: searchCardsTool,
         },
         temperature: providerBody.temperature ?? 0.7,
-        maxOutputTokens:
-          providerBody.max_tokens ??
-          providerBody.maxTokens,
+        maxOutputTokens: providerBody.max_tokens ?? providerBody.maxTokens,
       });
 
       // AI SDK v6: usage is now a Promise with inputTokens/outputTokens
