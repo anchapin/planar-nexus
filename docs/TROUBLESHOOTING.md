@@ -27,6 +27,7 @@
 **Cause**: App not yet recognized by Windows SmartScreen (common for new applications)
 
 **Solution**:
+
 1. When SmartScreen appears, click **"More info"**
 2. Click **"Run anyway"**
 3. Application will install normally
@@ -40,6 +41,7 @@
 **Cause**: Architecture mismatch (trying to run 64-bit app on 32-bit Windows)
 
 **Solution**:
+
 1. Check your Windows version: Settings → System → About
 2. If you have 32-bit Windows, you'll need to use the web version
 3. For 64-bit Windows, re-download the installer
@@ -51,6 +53,7 @@
 **Cause**: Permission issues or antivirus interference
 
 **Solution**:
+
 1. Right-click installer → **"Run as administrator"**
 2. Temporarily disable antivirus
 3. Add Planar Nexus to antivirus exclusion list
@@ -63,6 +66,7 @@
 **Cause**: Installer permission issue
 
 **Solution**:
+
 1. Navigate to installation folder (default: `C:\Program Files\Planar Nexus`)
 2. Find `Planar Nexus.exe`
 3. Right-click → **Send to** → **Desktop (create shortcut)**
@@ -76,11 +80,13 @@
 **Cause**: Gatekeeper blocking unsigned application
 
 **Solution 1** (Recommended):
+
 1. Right-click (or Control-click) the app
 2. Select **"Open"** from context menu
 3. Click **"Open"** in the dialog
 
 **Solution 2** (Command line):
+
 ```bash
 # Remove quarantine attribute
 xattr -d com.apple.quarantine /Applications/Planar\ Nexus.app
@@ -96,6 +102,7 @@ xattr -cr /Applications/Planar\ Nexus.app
 **Cause**: Missing dependencies or corrupted installation
 
 **Solution**:
+
 1. Delete the app from Applications folder
 2. Re-download the DMG file
 3. Reinstall the application
@@ -108,6 +115,7 @@ xattr -cr /Applications/Planar\ Nexus.app
 **Cause**: Download was corrupted or incomplete
 
 **Solution**:
+
 1. Delete the downloaded DMG file
 2. Clear browser cache
 3. Re-download the DMG
@@ -123,6 +131,7 @@ xattr -cr /Applications/Planar\ Nexus.app
 **Cause**: Missing dependencies
 
 **Solution**:
+
 ```bash
 # Install required dependencies
 sudo apt-get update
@@ -142,6 +151,7 @@ sudo apt-get install -f
 **Cause**: Missing FUSE or execution permissions
 
 **Solution**:
+
 ```bash
 # Make executable
 chmod +x Planar-Nexus.AppImage
@@ -160,6 +170,7 @@ sudo apt-get install libfuse2
 **Cause**: Missing system libraries
 
 **Solution**:
+
 ```bash
 # Install common dependencies
 sudo apt-get install -y libgtk-3-0 libnotify4 libnss3 libxss1 libxtst6 xdg-utils libatspi2.0-0
@@ -177,6 +188,7 @@ sudo dnf install gtk3 libnotify nss libXScrnSaver libXtst at-spi2-atk
 **Cause**: Browser compatibility or network issue
 
 **Solution**:
+
 1. Try a different browser (Chrome, Firefox, Safari, Edge)
 2. Clear browser cache and cookies
 3. Check internet connection
@@ -190,6 +202,7 @@ sudo dnf install gtk3 libnotify nss libXScrnSaver libXtst at-spi2-atk
 **Cause**: Using an outdated browser
 
 **Solution**:
+
 - Update your browser to the latest version
 - Minimum supported versions:
   - Chrome 90+
@@ -208,6 +221,7 @@ sudo dnf install gtk3 libnotify nss libXScrnSaver libXtst at-spi2-atk
 **Cause**: IndexedDB corruption or browser storage issue
 
 **Solution**:
+
 1. Open DevTools (F12)
 2. Go to **Application** tab → **IndexedDB**
 3. Delete the `planar-nexus` database
@@ -215,9 +229,10 @@ sudo dnf install gtk3 libnotify nss libXScrnSaver libXtst at-spi2-atk
 5. Database will reinitialize
 
 **Alternative**:
+
 ```javascript
 // Run in browser console
-indexedDB.deleteDatabase('PlanarNexusCardDB');
+indexedDB.deleteDatabase("PlanarNexusCardDB");
 location.reload();
 ```
 
@@ -228,6 +243,7 @@ location.reload();
 **Cause**: Import didn't complete or JSON file is invalid
 
 **Solution**:
+
 1. Check that your JSON file is valid:
    ```bash
    # Validate JSON
@@ -244,6 +260,7 @@ location.reload();
 **Cause**: Large file or browser performance issue
 
 **Solution**:
+
 1. Wait at least 2-3 minutes for large imports (1000+ cards)
 2. Don't refresh the page during import
 3. Try importing a smaller file first (500 cards)
@@ -259,6 +276,7 @@ location.reload();
 **Cause**: Database is empty or search index not built
 
 **Solution**:
+
 1. Check database status: Settings → Database Management
 2. If card count is 0, import cards
 3. Wait for index to build after import (few seconds)
@@ -271,6 +289,7 @@ location.reload();
 **Cause**: Fuzzy search threshold too low or index issue
 
 **Solution**:
+
 1. Try more specific search terms
 2. Use exact card name for precise results
 3. Clear and rebuild database if issue persists
@@ -282,6 +301,7 @@ location.reload();
 **Cause**: Image cache corruption or network issue
 
 **Solution**:
+
 1. Go to Settings → Database Management
 2. Click **"Clear Image Cache"**
 3. Refresh the page
@@ -296,6 +316,7 @@ location.reload();
 **Cause**: Card not imported or name mismatch
 
 **Solution**:
+
 1. Search for the card by name to verify it exists
 2. If not found, import more cards
 3. Check for typos in card name
@@ -308,6 +329,7 @@ location.reload();
 **Cause**: Format rules not applied correctly
 
 **Solution**:
+
 1. Verify you selected the correct format
 2. Check commander color identity matches deck
 3. Ensure card count matches format (100 for Commander, 60 for Standard)
@@ -324,6 +346,7 @@ location.reload();
 **Cause**: API key not configured, rate limit, or network issue
 
 **Solution**:
+
 1. **Check API key configuration**:
    - Go to Settings → AI
    - Verify API key is entered and saved
@@ -347,6 +370,7 @@ location.reload();
 **Cause**: API key is incorrect or expired
 
 **Solution**:
+
 1. Go to Settings → AI
 2. Delete the current API key
 3. Get a new key from the provider:
@@ -363,6 +387,7 @@ location.reload();
 **Cause**: Response exceeded max tokens or network interruption
 
 **Solution**:
+
 1. Try again (temporary issue)
 2. Reduce deck size for testing
 3. Check network connection
@@ -377,6 +402,7 @@ location.reload();
 **Cause**: AI calculation taking too long or infinite loop
 
 **Solution**:
+
 1. Wait up to 30 seconds for complex decisions
 2. If still frozen, refresh the page
 3. Try a lower difficulty level
@@ -392,6 +418,7 @@ location.reload();
 **Cause**: This may be intentional (Easy difficulty) or a bug
 
 **Solution**:
+
 1. Check difficulty setting:
    - Easy: Makes intentional mistakes
    - Medium/Hard/Expert: Should play optimally
@@ -405,6 +432,7 @@ location.reload();
 **Cause**: API issue or rate limit
 
 **Solution**:
+
 1. AI opponent will fall back to heuristic mode
 2. Game continues without LLM assistance
 3. Check API key configuration after game
@@ -418,6 +446,7 @@ location.reload();
 **Cause**: Browser storage issue or validation failure
 
 **Solution**:
+
 1. Clear browser cache
 2. Ensure API key format is correct:
    - Google: Starts with `AIza`
@@ -433,6 +462,7 @@ location.reload();
 **Cause**: Local storage sync issue
 
 **Solution**:
+
 1. Refresh the page
 2. Clear usage history: Settings → AI → Clear Usage
 3. Counts will reset and track accurately going forward
@@ -448,6 +478,7 @@ location.reload();
 **Cause**: Large card database, memory leak, or browser issue
 
 **Solution**:
+
 1. **Clear image cache**: Settings → Database Management → Clear Image Cache
 2. **Close other browser tabs** to free memory
 3. **Restart the application**
@@ -461,6 +492,7 @@ location.reload();
 **Cause**: Card database or image cache
 
 **Solution**:
+
 1. Clear image cache
 2. Reduce number of open decks
 3. Close and reopen application
@@ -475,6 +507,7 @@ location.reload();
 **Cause**: Large database or browser performance
 
 **Solution**:
+
 1. Wait for initial index build (first search after load)
 2. Subsequent searches should be fast (<100ms)
 3. If still slow, clear and rebuild database
@@ -489,6 +522,7 @@ location.reload();
 **Cause**: GPU acceleration or browser issue
 
 **Solution**:
+
 1. Enable hardware acceleration in browser settings
 2. Update graphics drivers
 3. Disable browser extensions
@@ -501,6 +535,7 @@ location.reload();
 **Cause**: System resources or browser issue
 
 **Solution**:
+
 1. Disable animations: Settings → Appearance → Animations
 2. Close other applications
 3. Check system resource usage
@@ -516,6 +551,7 @@ location.reload();
 **Cause**: Network, firewall, or WebRTC issue
 
 **Solution**:
+
 1. **Check internet connection**
 2. **Verify game code** is entered correctly
 3. **Check firewall settings**:
@@ -531,6 +567,7 @@ location.reload();
 **Cause**: Network instability or NAT traversal issue
 
 **Solution**:
+
 1. Game state is preserved for reconnection
 2. Rejoin using the same game code
 3. If reconnection fails, start a new game
@@ -543,6 +580,7 @@ location.reload();
 **Cause**: No public games or network issue
 
 **Solution**:
+
 1. Create your own game and share code with friends
 2. Check if signaling server is reachable
 3. Try again later
@@ -554,12 +592,13 @@ location.reload();
 **Cause**: The signaling server is down, unreachable, or returning errors
 
 **Solution**:
+
 1. Check [status page / GitHub](https://github.com/anchapin/planar-nexus/issues) for ongoing incidents
 2. Verify your network can reach the signaling endpoint:
    ```bash
-   curl https://your-deploy-domain.com/api/signaling
+   curl https://your-deploy-domain.com/api/signaling/turn-credentials
    ```
-   A `405 Method Not Allowed` response means the server is up; a connection failure means it is unreachable
+   A `200 OK` response means the TURN credential endpoint is reachable. The legacy `/api/signaling` endpoint is deprecated and returns `410 Gone` for all requests — do not use it for reachability checks.
 3. Try a different network (mobile hotspot) to rule out local firewall/ISP blocking
 4. If self-hosting: verify the `NEXT_PUBLIC_SIGNALING_URL` environment variable is set correctly and the server process is running
 
@@ -570,6 +609,7 @@ location.reload();
 **Cause**: Direct peer-to-peer ICE connection fails due to symmetric NAT or firewall blocking
 
 **Solution**:
+
 1. The app automatically attempts TURN relay via `openrelayproject.org` when direct ICE fails
 2. If TURN also fails:
    - Check that UDP port 3478 (and 5349 for TLS) is not blocked by your firewall
@@ -583,6 +623,7 @@ location.reload();
 **Cause**: Signaling sessions expire after 5 minutes of inactivity (issue #1583)
 
 **Solution**:
+
 1. Create a new game and share the fresh code with your opponent
 2. If the game was in progress: both players should rejoin the new session
 3. To avoid this issue: do not leave multiplayer lobby idle for more than 5 minutes
@@ -594,14 +635,15 @@ location.reload();
 **Cause**: The default `openrelayproject.org` public TURN server may be blocked or rate-limited in some network environments
 
 **Solution**:
+
 1. Obtain TURN credentials from a TURN provider (e.g., Twilio, Metered, or your own TURN server)
 2. Set the following environment variables (desktop builds: use Tauri secrets plugin, not `.env`):
 
-   | Variable | Description | Example |
-   |----------|-------------|---------|
-   | `NEXT_PUBLIC_TURN_URL` | TURN server URL | `turn:your-turn-server.com:3478` |
-   | `NEXT_PUBLIC_TURN_USER` | TURN username | `your-username` |
-   | `NEXT_PUBLIC_TURN_PASS` | TURN credential | `your-password` |
+   | Variable                | Description     | Example                          |
+   | ----------------------- | --------------- | -------------------------------- |
+   | `NEXT_PUBLIC_TURN_URL`  | TURN server URL | `turn:your-turn-server.com:3478` |
+   | `NEXT_PUBLIC_TURN_USER` | TURN username   | `your-username`                  |
+   | `NEXT_PUBLIC_TURN_PASS` | TURN credential | `your-password`                  |
 
    > **Security note**: Never commit `NEXT_PUBLIC_TURN_*` values to the repository. The `turn-credentials-guard` CI job will reject any commit containing these variables with non-empty credentials. Use Tauri secrets plugin or a server-side credential proxy instead (see `docs/API.md` §4 TURN credential leak guard).
 
@@ -617,6 +659,7 @@ location.reload();
 **Cause**: Desync between players
 
 **Solution**:
+
 1. Game has automatic sync detection
 2. If desync detected, game will pause
 3. Host can force resync
@@ -629,6 +672,7 @@ location.reload();
 **Cause**: Network latency or packet loss
 
 **Solution**:
+
 1. Wait a few seconds for action to propagate
 2. Check network connection
 3. Refresh page if action doesn't appear after 30 seconds
@@ -640,6 +684,7 @@ location.reload();
 **Cause**: State divergence between peers after a network interruption
 
 **Solution**:
+
 1. Both players should close their sessions and rejoin using the same game code
 2. The host should verify game state in the lobby before restarting
 3. If desync persists: export the game log from each player's console and compare
@@ -656,6 +701,7 @@ location.reload();
 **Cause**: Node version mismatch or network issue
 
 **Solution**:
+
 ```bash
 # Check Node version (should be 22+)
 node --version
@@ -679,6 +725,7 @@ npm ci
 **Cause**: Port in use or configuration issue
 
 **Solution**:
+
 ```bash
 # Check if port 9002 is in use
 lsof -i :9002
@@ -697,6 +744,7 @@ npm run dev -- -p 9003
 **Cause**: Type mismatches or outdated types
 
 **Solution**:
+
 ```bash
 # Run type check to see errors
 npm run typecheck
@@ -716,6 +764,7 @@ npm install --save-dev @types/node @types/react
 **Cause**: Build configuration or code issue
 
 **Solution**:
+
 ```bash
 # Check for linting errors
 npm run lint
@@ -738,6 +787,7 @@ npm run build
 **Cause**: Missing Rust dependencies or system libraries
 
 **Solution**:
+
 ```bash
 # Install Rust toolchain
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
@@ -761,6 +811,7 @@ npm run build:tauri
 **Cause**: Browser doesn't support IndexedDB or private browsing mode
 
 **Solution**:
+
 - Use a modern browser (Chrome, Firefox, Safari, Edge)
 - Exit private/incognito browsing mode
 - Enable IndexedDB in browser settings
@@ -772,6 +823,7 @@ npm run build:tauri
 **Cause**: Network connectivity issue or CORS
 
 **Solution**:
+
 1. Check internet connection
 2. Verify Scryfall API is accessible
 3. Disable ad blockers temporarily
@@ -784,6 +836,7 @@ npm run build:tauri
 **Cause**: Infinite recursion in code
 
 **Solution**:
+
 1. Refresh the page
 2. Clear browser cache
 3. Report as bug with steps to reproduce
@@ -795,6 +848,7 @@ npm run build:tauri
 **Cause**: Browser doesn't support WebRTC
 
 **Solution**:
+
 - Use a modern browser with WebRTC support
 - Enable WebRTC in browser settings
 - Check that WebRTC isn't blocked by extensions
@@ -806,6 +860,7 @@ npm run build:tauri
 **Cause**: Browser ran out of memory
 
 **Solution**:
+
 1. Close other tabs and applications
 2. Clear browser cache
 3. Restart browser
@@ -839,6 +894,7 @@ Create a [GitHub Issue](https://github.com/anchapin/planar-nexus/issues/new) wit
 Clear description of the issue
 
 **Steps to Reproduce**:
+
 1. Step 1
 2. Step 2
 3. Step 3
@@ -861,21 +917,23 @@ Any other relevant information
 
 ### Support Channels
 
-| Channel | Best For | Response Time |
-|---------|----------|---------------|
-| [GitHub Issues](https://github.com/anchapin/planar-nexus/issues) | Bug reports, feature requests | 1-3 days |
-| [GitHub Discussions](https://github.com/anchapin/planar-nexus/discussions) | Questions, general discussion | 1-5 days |
-| Discord (if available) | Quick questions, community help | Variable |
+| Channel                                                                    | Best For                        | Response Time |
+| -------------------------------------------------------------------------- | ------------------------------- | ------------- |
+| [GitHub Issues](https://github.com/anchapin/planar-nexus/issues)           | Bug reports, feature requests   | 1-3 days      |
+| [GitHub Discussions](https://github.com/anchapin/planar-nexus/discussions) | Questions, general discussion   | 1-5 days      |
+| Discord (if available)                                                     | Quick questions, community help | Variable      |
 
 ### Providing Debug Information
 
 **Browser Console** (Web version):
+
 1. Press F12 to open DevTools
 2. Go to Console tab
 3. Copy error messages
 4. Include in bug report
 
 **Application Logs** (Desktop version):
+
 1. Check `%APPDATA%\Planar Nexus\logs` (Windows)
 2. Check `~/Library/Application Support/Planar Nexus/logs` (macOS)
 3. Check `~/.config/Planar Nexus/logs` (Linux)
@@ -887,23 +945,23 @@ Any other relevant information
 
 ### Minimum Requirements
 
-| Component | Requirement |
-|-----------|-------------|
-| **OS** | Windows 10+, macOS 10.15+, Linux Ubuntu 22.04+ |
-| **CPU** | Dual-core 2.0 GHz |
-| **RAM** | 4 GB |
-| **Storage** | 500 MB |
-| **Browser** | Chrome 90+, Firefox 88+, Safari 14+, Edge 90+ |
+| Component   | Requirement                                    |
+| ----------- | ---------------------------------------------- |
+| **OS**      | Windows 10+, macOS 10.15+, Linux Ubuntu 22.04+ |
+| **CPU**     | Dual-core 2.0 GHz                              |
+| **RAM**     | 4 GB                                           |
+| **Storage** | 500 MB                                         |
+| **Browser** | Chrome 90+, Firefox 88+, Safari 14+, Edge 90+  |
 
 ### Recommended Requirements
 
-| Component | Requirement |
-|-----------|-------------|
-| **OS** | Windows 11+, macOS 12+, Linux Ubuntu 24.04+ |
-| **CPU** | Quad-core 2.5 GHz+ |
-| **RAM** | 8 GB |
-| **Storage** | 1 GB SSD |
-| **Browser** | Latest Chrome, Firefox, or Edge |
+| Component   | Requirement                                 |
+| ----------- | ------------------------------------------- |
+| **OS**      | Windows 11+, macOS 12+, Linux Ubuntu 24.04+ |
+| **CPU**     | Quad-core 2.5 GHz+                          |
+| **RAM**     | 8 GB                                        |
+| **Storage** | 1 GB SSD                                    |
+| **Browser** | Latest Chrome, Firefox, or Edge             |
 
 ---
 
