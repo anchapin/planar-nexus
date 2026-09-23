@@ -166,40 +166,6 @@ const eslintConfig = [
       "**/__tests__/**",
       "**/*.test.ts",
       "**/*.test.tsx",
-      // Allowlisted: these files do relative deep imports into the engine
-      // not (yet) provided by the barrel.  They get the relative-import
-      // rule separately at WARNING level (below).
-      //
-      // #2016: saved-game-serialize-core.ts needs mapReplacer + mapReviver
-      // from ./game-state/state-serialization for JSON serialization.
-      // Fix: add `export { mapReplacer } from "./state-serialization"` (or
-      // `export *`) to the barrel — mapReviver is already there at index.ts:43.
-      "src/lib/saved-game-serialize-core.ts",
-      //
-      // #2016: saved-game-serialize-bridge.ts imports type Replay from
-      // ./game-state/replay.  Replay is exported via `export * from "./replay"`
-      // in the barrel; this may be a type-only import that the ESLint regex
-      // pattern does not distinguish from a value import.  Fix: confirm Replay
-      // is reachable via the barrel and remove this entry, or refine the regex
-      // to allow type-only imports through the barrel.
-      "src/lib/saved-game-serialize-bridge.ts",
-      //
-      // #2016: replay-sharing.ts imports getStateAtPosition from
-      // ./game-state/replay, and Phase/ZoneType from ./game-state/types.
-      // Phase and ZoneType are in the barrel (`export * from "./types"`).
-      // getStateAtPosition should be reachable via `export * from "./replay"` —
-      // fix: confirm getStateAtPosition is barrel-exported and remove this
-      // entry; alternatively add it to the barrel explicitly.
-      "src/lib/replay-sharing.ts",
-      //
-      // #2016: saved-games.ts imports state-serialization helpers
-      // (serializeGameState, deserializeGameState), game-state-compression
-      // (compressGameState, decompressGameState), and types (GameState, Replay).
-      // Types are in the barrel.  The serialization/compression helpers are NOT
-      // in the barrel — fix: add `export * from "./state-serialization"` and
-      // `export * from "./game-state-compression"` to index.ts to eliminate
-      // these relative imports.
-      "src/lib/saved-games.ts",
     ],
     rules: {
       "no-restricted-imports": [
@@ -232,48 +198,6 @@ const eslintConfig = [
               regex: "^\\.\\./game-state/[a-z]",
               message:
                 'Import from "@/lib/game-state" (the barrel) — relative deep imports bypass the barrel and are not allowed (issue #1925).',
-            },
-          ],
-        },
-      ],
-    },
-  },
-  // Allowlisted files: receive only the relative-import rule at WARNING level
-  // (they don't do barrel imports, only relative imports for internal helpers).
-  // Using "warn" instead of "error" so these known exceptions don't fail CI
-  // while still being visible in lint output.
-  //
-  // Per-file rationale (fix by adding the listed export to the barrel — see #2016):
-  //   saved-game-serialize-core.ts    → mapReplacer missing from barrel
-  //   saved-game-serialize-bridge.ts  → type Replay may need barrel path verification
-  //   replay-sharing.ts               → getStateAtPosition may need barrel export
-  //   saved-games.ts                  → state-serialization + game-state-compression not in barrel
-  {
-    files: [
-      "src/lib/saved-game-serialize-core.ts",
-      "src/lib/saved-game-serialize-bridge.ts",
-      "src/lib/replay-sharing.ts",
-      "src/lib/saved-games.ts",
-    ],
-    ignores: [
-      "**/__tests__/**",
-      "**/*.test.ts",
-      "**/*.test.tsx",
-    ],
-    rules: {
-      "no-restricted-imports": [
-        "warn",
-        {
-          patterns: [
-            {
-              regex: "^\\./game-state/[a-z]",
-              message:
-                "Allowlisted: internal helpers not in barrel (issue #1925).",
-            },
-            {
-              regex: "^\\.\\./game-state/[a-z]",
-              message:
-                "Allowlisted: internal helpers not in barrel (issue #1925).",
             },
           ],
         },

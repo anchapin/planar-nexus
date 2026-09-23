@@ -16,7 +16,7 @@
  * Jest/jsdom realm (no `import.meta`, no Worker global references).
  */
 
-import { mapReplacer, mapReviver } from "./game-state/state-serialization";
+import { mapReplacer, mapReviver } from "@/lib/game-state";
 
 /**
  * Serialize a replay payload with the Map-preserving replacer — the exact

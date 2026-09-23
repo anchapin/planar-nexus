@@ -10,17 +10,20 @@
  * - Import/export replay files
  */
 
-import type { Replay } from "./game-state/replay";
-import { getStateAtPosition } from "./game-state/replay";
 import type {
+  Replay,
   ActionType,
   GameState,
   Zone,
   LinkedEffectRegistry,
-} from "./game-state/types";
-import { Phase, ZoneType } from "./game-state/types";
-import { ReplacementEffectManager } from "./game-state/replacement-effects";
-import { LayerSystem } from "./game-state/layer-system";
+} from "@/lib/game-state";
+import {
+  Phase,
+  ZoneType,
+  getStateAtPosition,
+  ReplacementEffectManager,
+  LayerSystem,
+} from "@/lib/game-state";
 
 const REPLAY_PARAM = "replay";
 
