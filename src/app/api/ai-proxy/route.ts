@@ -48,7 +48,7 @@ const AIProxyRequestBodySchema = z.object({
 });
 
 const AIProxyRequestSchema = z.object({
-  provider: z.string(),
+  provider: z.string().optional(),
   endpoint: z.string(),
   model: z.string().optional(),
   body: AIProxyRequestBodySchema,
