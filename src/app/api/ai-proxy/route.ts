@@ -9,6 +9,8 @@ import {
   getProviderConfig,
   getConfiguredProviders,
 } from "@/lib/server-api-key-storage";
+// Issue #2084: proactive provider health check with fast-fail
+import { pingProvider } from "@/ai/providers/provider-health";
 import {
   enforceRateLimit,
   RateLimitError,
@@ -252,6 +254,27 @@ export async function POST(
         );
       }
       throw error;
+    }
+
+    // Issue #2084: proactive health check with 5-second timeout.
+    // If the provider is unhealthy (network error, 401/403/429, etc.),
+    // fail fast instead of waiting for the full AI call timeout.
+    const pingResult = await pingProvider(provider);
+    if (!pingResult.healthy) {
+      await usageLogger
+        .markFailure(
+          `Provider unhealthy: ${pingResult.error}`,
+          "PROVIDER_UNHEALTHY",
+        )
+        .save();
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Provider ${provider} is currently unavailable: ${pingResult.error}`,
+          errorCode: "PROVIDER_UNHEALTHY",
+        },
+        { status: 503 },
+      );
     }
 
     // Check for streaming request
