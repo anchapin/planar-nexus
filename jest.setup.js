@@ -207,6 +207,57 @@ if (nodeCrypto.webcrypto) {
       return hash.buffer;
     };
   }
+  // Fallback implementations for AES-GCM operations used by indexeddb-encryption
+  if (!global.crypto.subtle.importKey) {
+    global.crypto.subtle.importKey = async (format, keyData, algorithm, extractable, keyUsages) => ({
+      type: "raw",
+      format,
+      algorithm,
+      extractable: extractable ?? false,
+      usages: keyUsages ?? [],
+      __keyData: keyData,
+    });
+  }
+  if (!global.crypto.subtle.deriveKey) {
+    global.crypto.subtle.deriveKey = async (algorithm, baseKey, derivedKeyAlgorithm, extractable, keyUsages) => ({
+      type: "raw",
+      algorithm: derivedKeyAlgorithm,
+      extractable: extractable ?? false,
+      usages: keyUsages ?? [],
+      __keyData: baseKey.__keyData,
+    });
+  }
+  if (!global.crypto.subtle.encrypt) {
+    global.crypto.subtle.encrypt = async (algorithm, key, data) => {
+      const nodeCrypto = require("crypto");
+      const iv = nodeCrypto.randomBytes(12);
+      const cipher = nodeCrypto.createCipheriv(
+        "aes-256-gcm",
+        key.__keyData ? Buffer.from(key.__keyData) : Buffer.alloc(32),
+        iv,
+      );
+      const encrypted = Buffer.concat([cipher.update(Buffer.from(data)), cipher.final()]);
+      const tag = cipher.getAuthTag();
+      const combined = Buffer.concat([iv, tag, encrypted]);
+      return combined.buffer.slice(combined.byteOffset, combined.byteOffset + combined.byteLength);
+    };
+  }
+  if (!global.crypto.subtle.decrypt) {
+    global.crypto.subtle.decrypt = async (algorithm, key, data) => {
+      const nodeCrypto = require("crypto");
+      const buf = Buffer.from(data);
+      const iv = buf.slice(0, 12);
+      const tag = buf.slice(12, 28);
+      const encrypted = buf.slice(28);
+      const decipher = nodeCrypto.createDecipheriv(
+        "aes-256-gcm",
+        key.__keyData ? Buffer.from(key.__keyData) : Buffer.alloc(32),
+        iv,
+      );
+      decipher.setAuthTag(tag);
+      return Buffer.concat([decipher.update(encrypted), decipher.final()]).buffer;
+    };
+  }
 }
 
 // Mock localStorage
