@@ -329,3 +329,133 @@ export class ProviderHealthTracker {
  * uses server-side.
  */
 export const providerHealth = new ProviderHealthTracker();
+
+// =============================================================================
+// Issue #2084: Proactive provider health checking with fast-fail
+// =============================================================================
+
+/**
+ * Timeout for a proactive health ping in milliseconds.
+ * 5 seconds is long enough to detect a slow provider but short enough to
+ * avoid wasting the user's time on a dead endpoint.
+ */
+export const PING_TIMEOUT_MS = 5_000;
+
+/**
+ * How long a successful health ping result is cached before being re-checked.
+ * 60 seconds avoids hammering the provider on every request while staying
+ * responsive to provider recovery.
+ */
+export const HEALTH_CACHE_TTL_MS = 60_000;
+
+/** Result of a proactive provider health ping. */
+export interface ProviderPingResult {
+  provider: string;
+  healthy: boolean;
+  checkedAt: number;
+  latencyMs?: number;
+  error?: string;
+}
+
+/**
+ * In-memory cache for proactive health ping results.
+ * Key: normalized provider name. Value: ping result with timestamp.
+ */
+const healthCache = new Map<string, ProviderPingResult>();
+
+/**
+ * Performs a lightweight proactive health check for a provider.
+ *
+ * Uses `generateText` with maxTokens=1 and a minimal prompt so the network
+ * round-trip is the dominant factor, not model inference time. The actual
+ * text content is discarded — only success/failure and latency matter.
+ *
+ * @param provider  Normalized provider name (e.g. "openai", "anthropic")
+ * @param now       Current timestamp (default Date.now()), injected for testing
+ * @returns ProviderPingResult with healthy flag and latency/error details
+ */
+export async function pingProvider(
+  provider: string,
+  now: number = Date.now(),
+): Promise<ProviderPingResult> {
+  const cached = healthCache.get(provider);
+  if (cached && now - cached.checkedAt < HEALTH_CACHE_TTL_MS) {
+    return cached;
+  }
+
+  let result: ProviderPingResult;
+
+  try {
+    const { getAIModel } = await import("./factory");
+    const model = await getAIModel(provider, undefined);
+
+    // Dynamically import generateText from the Vercel AI SDK
+    const { generateText } = await import("ai");
+
+    const start = Date.now();
+    // Use AbortSignal.timeout for the 5-second deadline
+    await generateText({
+      model,
+      prompt: "ping",
+      maxOutputTokens: 1,
+      abortSignal: AbortSignal.timeout(PING_TIMEOUT_MS),
+    });
+    const latencyMs = Date.now() - start;
+
+    result = {
+      provider,
+      healthy: true,
+      checkedAt: now,
+      latencyMs,
+    };
+  } catch (error) {
+    result = {
+      provider,
+      healthy: false,
+      checkedAt: now,
+      error:
+        error instanceof Error
+          ? `${error.name}: ${error.message}`
+          : String(error),
+    };
+  }
+
+  healthCache.set(provider, result);
+  return result;
+}
+
+/**
+ * Returns the cached health status for a provider, or undefined if no cached
+ * result exists (caller should call pingProvider to get a fresh result).
+ */
+export function getCachedHealth(
+  provider: string,
+): ProviderPingResult | undefined {
+  return healthCache.get(provider);
+}
+
+/**
+ * Whether a provider has a valid cached health result that has not expired.
+ */
+export function isHealthCached(
+  provider: string,
+  now: number = Date.now(),
+): boolean {
+  const cached = healthCache.get(provider);
+  if (!cached) return false;
+  return now - cached.checkedAt < HEALTH_CACHE_TTL_MS;
+}
+
+/**
+ * Clears the proactive health cache. Intended for test reset.
+ */
+export function clearHealthCache(): void {
+  healthCache.clear();
+}
+
+/**
+ * Returns all currently cached health results (for telemetry/debugging).
+ */
+export function getAllCachedHealth(): Map<string, ProviderPingResult> {
+  return new Map(healthCache);
+}
