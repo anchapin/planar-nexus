@@ -87,10 +87,10 @@ module.exports = {
     // back up once the pending test backfill lands.
     "src/lib/game-state/trigger-system.ts": 44,
     "src/lib/game-state/state-based-actions.ts": 50,
-    // Issue #1988: re-added to fix suiteFor mismatch. Measured 45.00%
-    // (839 mutants, 45% static) — conservative floor since performance
-    // limits it to nightly-only runs.
-    "src/lib/game-state/combat.ts": 44,
+    // Issue #1989/#2055: combat.ts excluded from Stryker mutate allowlist
+    // (40+ min runtime makes it nightly-only; suite is pin/neutered so
+    // mutation score is meaningless). Removed from floors config.
+    //
     // Issue #1717: 7th Stryker module. Conservative pending-measurement
     // floor — ratchet to floor(measured − 1) once the first successful
     // nightly run (#1785) records its score.
