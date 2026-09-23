@@ -118,7 +118,7 @@ jobs:
           ${{ fromJSON(github.event_name == 'workflow_dispatch' &&
             github.event.inputs.module != 'all' &&
             format('["{0}"]', github.event.inputs.module) ||
-            '["layer-system","replacement-effects","spell-casting","trigger-system","state-based-actions","mana"]') }}
+            '["layer-system","replacement-effects","spell-casting","trigger-system","state-based-actions","combat","mana"]') }}
 
     steps:
       - name: Checkout code

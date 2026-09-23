@@ -294,6 +294,7 @@ describe("floor config sanity", () => {
       "src/lib/game-state/trigger-system.ts": "trigger-system.mutation.test.ts",
       "src/lib/game-state/state-based-actions.ts":
         "state-based-actions.mutation.test.ts",
+      "src/lib/game-state/combat.ts": "combat.mutation.test.ts",
       "src/lib/game-state/mana.ts": "mana.mutation.test.ts",
     };
     expect(Object.keys(suiteFor)).toEqual(strykerConfig.mutate);
