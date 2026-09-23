@@ -235,13 +235,20 @@ export function collectSpecsFromReport(
       // A spec row has `title` + `tests[]` (each test has `results[]`);
       // a suite row has `specs` or `suites`.
       // The `tests[0].results[0].status` gives the actual test outcome.
-      if (node.title && node.tests && node.file && node.tests.length > 0) {
+      // Also handles the legacy format where `results` is directly on the spec node.
+      // A node is a spec (not a suite) if it has tests (new) or results (legacy).
+      const isSpec =
+        (node.tests?.length ?? 0) > 0 || (node.results?.length ?? 0) > 0;
+      if (node.title && node.file && isSpec) {
         const file = node.file;
         const project = node.project ?? "chromium";
         const title = node.title;
         const key = specKey({ file, title, project });
-        const testRun = node.tests[0];
-        const finalResult = testRun.results?.[testRun.results.length - 1];
+        // New format: results nested in tests[0]
+        // Legacy format: results directly on node
+        const testRun = node.tests?.[0];
+        const results = testRun?.results ?? node.results;
+        const finalResult = results?.[results.length - 1];
         // Use `ok` boolean as fallback when results array is empty/absent;
         // prefer the explicit status string from results when available.
         const rawStatus =
