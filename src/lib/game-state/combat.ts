@@ -7,7 +7,12 @@
 
 import type { GameState, CardInstanceId, PlayerId } from "./types";
 import { Phase, isOnBattlefield } from "./types";
-import { isCreature, getPower, getToughness, addCounters } from "./card-instance";
+import {
+  isCreature,
+  getPower,
+  getToughness,
+  addCounters,
+} from "./card-instance";
 import { dealDamageToCard } from "./keyword-actions";
 import { checkStateBasedActions } from "./state-based-actions";
 import { dealCommanderDamage, isCommander } from "./commander-damage";
@@ -175,14 +180,15 @@ export function canBlock(
       const landwalkTypes = getLandwalkTypes(attacker);
       if (landwalkTypes.length > 0) {
         const defenderId = blocker.controllerId;
-        const defenderBattlefield = state.zones.get(`${defenderId}-battlefield`);
+        const defenderBattlefield = state.zones.get(
+          `${defenderId}-battlefield`,
+        );
         const defenderCardIds = defenderBattlefield?.cardIds || [];
         for (const landType of landwalkTypes) {
           const controlsMatchingLand = defenderCardIds.some((id) => {
             const landCard = state.cards.get(id);
             if (!landCard) return false;
-            const typeLine =
-              landCard.cardData.type_line?.toLowerCase() || "";
+            const typeLine = landCard.cardData.type_line?.toLowerCase() || "";
             // Must be a land, and either have the basic land subtype in its
             // type line or be designated as that basic land type via a
             // continuous effect (chosenBasicLandType).
@@ -525,9 +531,7 @@ export function setDamageAssignmentOrder(
       success: false,
       state,
       description: "",
-      errors: [
-        `Attacker is not blocked; no damage assignment order to set`,
-      ],
+      errors: [`Attacker is not blocked; no damage assignment order to set`],
     };
   }
 
@@ -561,7 +565,9 @@ export function setDamageAssignmentOrder(
         success: false,
         state,
         description: "",
-        errors: [`Creature appears more than once in the damage assignment order`],
+        errors: [
+          `Creature appears more than once in the damage assignment order`,
+        ],
       };
     }
     seen.add(id);
@@ -883,7 +889,10 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
           }
           updatedState = {
             ...updatedState,
-            cards: new Map(updatedState.cards).set(blocker.cardId, finalBlocker),
+            cards: new Map(updatedState.cards).set(
+              blocker.cardId,
+              finalBlocker,
+            ),
             lastModifiedAt: Date.now(),
           };
           damageEvents.push(
@@ -928,56 +937,70 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
 
       // Handle trample excess damage
       if (remainingDamage > 0 && attackerHasTrample) {
-        const defender = updatedState.players.get(
-          attacker.defenderId as PlayerId,
-        );
-        if (defender) {
-          // Check for infect on the attacker for trample excess
-          const attackerHasInfect = hasInfect(attackerCard);
+        if (attacker.isAttackingPlaneswalker) {
+          // CR 306.7 + CR 702.19b: Trample excess to planeswalker reduces loyalty
+          const damageResult = dealDamageToCard(
+            updatedState,
+            attacker.defenderId as CardInstanceId,
+            remainingDamage,
+            true,
+            attacker.cardId,
+          );
+          updatedState = damageResult.state;
+          damageEvents.push(
+            `${attackerCard.cardData.name} tramples ${remainingDamage} to planeswalker`,
+          );
+        } else {
+          const defender = updatedState.players.get(
+            attacker.defenderId as PlayerId,
+          );
+          if (defender) {
+            // Check for infect on the attacker for trample excess
+            const attackerHasInfect = hasInfect(attackerCard);
 
-          if (attackerHasInfect) {
-            // Excess trample damage with infect also applies as poison
-            const updatedDefender = {
-              ...defender,
-              poisonCounters: defender.poisonCounters + remainingDamage,
-            };
-            updatedState = {
-              ...updatedState,
-              players: new Map(updatedState.players).set(
-                attacker.defenderId as PlayerId,
-                updatedDefender,
-              ),
-            };
-            damageEvents.push(
-              `${attackerCard.cardData.name} tramples ${remainingDamage} poison to ${defender.name}`,
-            );
-          } else {
-            let updatedDefender = {
-              ...defender,
-              life: Math.max(0, defender.life - remainingDamage),
-            };
-            // CR 702.94 (Toxic): any combat damage to a player from a toxic
-            // source adds toxic-level poison counters in addition to life loss.
-            const toxicLevel = getToxicLevel(attackerCard);
-            if (toxicLevel > 0) {
-              updatedDefender = {
-                ...updatedDefender,
-                poisonCounters:
-                  updatedDefender.poisonCounters + toxicLevel,
+            if (attackerHasInfect) {
+              // Excess trample damage with infect also applies as poison
+              const updatedDefender = {
+                ...defender,
+                poisonCounters: defender.poisonCounters + remainingDamage,
               };
+              updatedState = {
+                ...updatedState,
+                players: new Map(updatedState.players).set(
+                  attacker.defenderId as PlayerId,
+                  updatedDefender,
+                ),
+              };
+              damageEvents.push(
+                `${attackerCard.cardData.name} tramples ${remainingDamage} poison to ${defender.name}`,
+              );
+            } else {
+              let updatedDefender = {
+                ...defender,
+                life: Math.max(0, defender.life - remainingDamage),
+              };
+              // CR 702.94 (Toxic): any combat damage to a player from a toxic
+              // source adds toxic-level poison counters in addition to life loss.
+              const toxicLevel = getToxicLevel(attackerCard);
+              if (toxicLevel > 0) {
+                updatedDefender = {
+                  ...updatedDefender,
+                  poisonCounters: updatedDefender.poisonCounters + toxicLevel,
+                };
+              }
+              updatedState = {
+                ...updatedState,
+                players: new Map(updatedState.players).set(
+                  attacker.defenderId as PlayerId,
+                  updatedDefender,
+                ),
+              };
+              damageEvents.push(
+                toxicLevel > 0
+                  ? `${attackerCard.cardData.name} tramples ${remainingDamage} to ${defender.name} and ${toxicLevel} toxic poison`
+                  : `${attackerCard.cardData.name} tramples ${remainingDamage} to ${defender.name}`,
+              );
             }
-            updatedState = {
-              ...updatedState,
-              players: new Map(updatedState.players).set(
-                attacker.defenderId as PlayerId,
-                updatedDefender,
-              ),
-            };
-            damageEvents.push(
-              toxicLevel > 0
-                ? `${attackerCard.cardData.name} tramples ${remainingDamage} to ${defender.name} and ${toxicLevel} toxic poison`
-                : `${attackerCard.cardData.name} tramples ${remainingDamage} to ${defender.name}`,
-            );
           }
         }
       }

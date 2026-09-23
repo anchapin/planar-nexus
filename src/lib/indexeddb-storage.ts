@@ -26,11 +26,7 @@ import {
   isQuotaExceededError,
   MigrationQuotaError,
 } from "./storage-quota";
-import {
-  encrypt,
-  decrypt,
-  isEncryptionOptedOut,
-} from "./indexeddb-encryption";
+import { encrypt, decrypt, isEncryptionOptedOut } from "./indexeddb-encryption";
 import {
   calculateChecksumAsync,
   type CalculateChecksumOptions,
@@ -431,6 +427,9 @@ export class IndexedDBStorage {
   private db: IDBDatabase | null = null;
   private _migrationQuotaError: Error | null = null;
 
+  /** Issue #2090 — persisted retry flag written to `preferences` when a quota error blocked v4 consolidation. */
+  private static readonly MIGRATION_RETRY_KEY = "_migrationRetryPending";
+
   constructor(config: StorageConfig) {
     this.config = config;
   }
@@ -488,15 +487,62 @@ export class IndexedDBStorage {
     // swallowed and logged (a corrupt legacy store cannot take the
     // rest of the app down).
     //
-    // The migration module is dynamically imported so its code lives in
-    // a separate webpack chunk and does not bloat the shared client
-    // bundle. Re-runs of `initialize()` pay this cost only when the
-    // marker row is absent (i.e. the user is mid-upgrade).
+    // Issue #2090 — when the consolidation was previously blocked by a
+    // quota error, `_migrationRetryPending` is set in `preferences`. On
+    // the next open, if sufficient quota headroom is now available, the
+    // migration is automatically re-run before the app mounts. The flag
+    // is cleared on success so re-opens are no-ops again.
+    const retryPending = await this._isMigrationRetryPending();
+    if (retryPending) {
+      //Quota may now be available — attempt the consolidation. Any error
+      //(including a fresh quota error) is swallowed and logged; the app
+      //proceeds so the user is not permanently blocked. On success the
+      //retry flag is cleared below.
+      try {
+        const { ensureLegacyV4Consolidation } =
+          await import("./migrations/indexeddb-v4-consolidation");
+        await ensureLegacyV4Consolidation(this);
+        // Success — clear the retry flag.
+        await this._clearMigrationRetryFlag();
+      } catch (error) {
+        console.warn(
+          "[indexeddb-storage] v4 consolidation retry failed:",
+          error,
+        );
+        if (isQuotaExceededError(error)) {
+          // Re-store the error so callers can surface a guidance dialog
+          // (issue #2090) and keep the retry flag so the next open
+          // retries again (user may free more space).
+          this._migrationQuotaError =
+            error instanceof Error
+              ? error
+              : new MigrationQuotaError(String(error));
+          // Flag is kept — next open will retry.
+        } else {
+          // Non-quota error: clear the flag so we don't retry forever.
+          // Proceed to the normal path below which will also fail, but
+          // without an actionable error stored.
+          await this._clearMigrationRetryFlag();
+        }
+      }
+    }
+
+    // Normal first-run path: marker absent, no retry pending.
     try {
       const { ensureLegacyV4Consolidation } =
         await import("./migrations/indexeddb-v4-consolidation");
       await ensureLegacyV4Consolidation(this);
     } catch (error) {
+      // Issue #2090 — on a quota error, store the error and set the retry
+      // flag so the next open can attempt the migration again once the user
+      // has freed space.
+      if (isQuotaExceededError(error)) {
+        this._migrationQuotaError =
+          error instanceof Error
+            ? error
+            : new MigrationQuotaError(String(error));
+        await this._setMigrationRetryFlag();
+      }
       console.warn(
         "[indexeddb-storage] v4 consolidation migration failed:",
         error,
@@ -791,7 +837,6 @@ export class IndexedDBStorage {
         }
       };
     });
-
   }
 
   /**
@@ -802,6 +847,79 @@ export class IndexedDBStorage {
    */
   getMigrationError(): Error | null {
     return this._migrationQuotaError;
+  }
+
+  /**
+   * Issue #2090 — clear any stored migration error and immediately re-run
+   * the v4 consolidation migration. Call this after the user has freed
+   * space (e.g. exported a backup, cleared old game logs) and clicked
+   * "Retry" in the quota-error dialog. Re-throws the same error if the
+   * retry also fails due to quota, updating the stored error.
+   *
+   * Exported for use by `use-storage-backup.ts`.
+   */
+  async retryMigration(): Promise<void> {
+    this._migrationQuotaError = null;
+    try {
+      const { ensureLegacyV4Consolidation } =
+        await import("./migrations/indexeddb-v4-consolidation");
+      await ensureLegacyV4Consolidation(this);
+      await this._clearMigrationRetryFlag();
+    } catch (error) {
+      if (isQuotaExceededError(error)) {
+        this._migrationQuotaError =
+          error instanceof Error
+            ? error
+            : new MigrationQuotaError(String(error));
+        await this._setMigrationRetryFlag();
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Issue #2090 — check whether a previously-failed v4 consolidation left
+   * a retry flag in `preferences`. When true, the next `initialize()` will
+   * attempt the consolidation again before completing.
+   */
+  private async _isMigrationRetryPending(): Promise<boolean> {
+    try {
+      const record = await this.get<{ id: string }>(
+        "preferences",
+        IndexedDBStorage.MIGRATION_RETRY_KEY,
+      );
+      return record !== null;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Issue #2090 — write the retry flag to `preferences` after a quota
+   * error blocked v4 consolidation. The next `initialize()` will see this
+   * and re-run the consolidation once the user has freed space.
+   */
+  private async _setMigrationRetryFlag(): Promise<void> {
+    try {
+      await this.set("preferences", {
+        id: IndexedDBStorage.MIGRATION_RETRY_KEY,
+      });
+    } catch {
+      // Swallow: a failure to write the flag does not block the app.
+    }
+  }
+
+  /**
+   * Issue #2090 — clear the retry flag after a successful consolidation
+   * so subsequent opens short-circuit normally.
+   */
+  private async _clearMigrationRetryFlag(): Promise<void> {
+    try {
+      await this.delete("preferences", IndexedDBStorage.MIGRATION_RETRY_KEY);
+    } catch {
+      // Swallow: the flag is best-effort; a failed clear does not brick
+      // the next open (it will be a no-op if the marker row does not exist).
+    }
   }
 
   /**
@@ -905,10 +1023,13 @@ export class IndexedDBStorage {
    * Issue #1984 — encrypt a record for storage.
    * Returns the original record if encryption is opted out.
    */
-  private async _encryptRecord<T>(value: T & { id: string }): Promise<T & Record<string, unknown>> {
+  private async _encryptRecord<T>(
+    value: T & { id: string },
+  ): Promise<T & Record<string, unknown>> {
     const json = JSON.stringify(value);
     const ciphertext = await encrypt(json);
-    return { ...value, _encrypted: true, _data: ciphertext } as T & Record<string, unknown>;
+    return { ...value, _encrypted: true, _data: ciphertext } as T &
+      Record<string, unknown>;
   }
 
   /**
@@ -971,9 +1092,7 @@ export class IndexedDBStorage {
 
     const toStore = isEncryptionOptedOut()
       ? values
-      : await Promise.all(
-          values.map((v) => this._encryptRecord(v)),
-        );
+      : await Promise.all(values.map((v) => this._encryptRecord(v)));
 
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction(storeName, "readwrite");
@@ -1054,9 +1173,7 @@ export class IndexedDBStorage {
 
     const toStore = isEncryptionOptedOut()
       ? values
-      : await Promise.all(
-          values.map((v) => this._encryptRecord(v)),
-        );
+      : await Promise.all(values.map((v) => this._encryptRecord(v)));
 
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction(storeName, "readwrite");
