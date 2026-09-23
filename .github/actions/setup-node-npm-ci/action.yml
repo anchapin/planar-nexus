@@ -43,13 +43,43 @@ runs:
       shell: bash
       run: echo "value=${{ runner.os }}-node-${{ inputs.node-version }}-npm-${{ hashFiles('package-lock.json') }}" >> "$GITHUB_OUTPUT"
 
+    - name: Verify package-lock.json exists
+      # Issue #2067: GitHub-hosted runners can hit disk-space exhaustion that
+      # causes `actions/checkout` to silently fail to extract some files, so
+      # `package-lock.json` is absent when `npm ci` runs and npm reports
+      # "EUSAGE: package-lock.json not found".  This check gives a clear error
+      # before npm ci rather than a cryptic usage error, and also handles the
+      # recovery path where we re-checkout just the lock file.
+      shell: bash
+      run: |
+        if [ ! -f package-lock.json ]; then
+          echo "::warning::package-lock.json not found after checkout. Attempting to recover..."
+          git checkout HEAD -- package-lock.json
+          if [ ! -f package-lock.json ]; then
+            echo "::error::Failed to recover package-lock.json. Disk space may be exhausted."
+            echo "--- disk space ---"
+            df -h .
+            echo "--- listing project root ---"
+            ls -la
+            exit 1
+          fi
+          echo "::notice::package-lock.json recovered successfully."
+        fi
+
+    - name: Clear npm cache
+      # Defensive: ensure a clean cache state.  A corrupted npm cache can cause
+      # intermittent "package-lock.json not found" errors when the cache
+      # metadata points to stale/missing lock-file entries.
+      shell: bash
+      run: npm cache clean --force
+
     - name: Install dependencies
       # Issue #1837: GitHub-hosted runners intermittently hit npm-registry
       # network errors (ETIMEDOUT/ENETUNREACH/ECONNRESET) during npm ci.
       # Retry those transient failures (2 retries, 10s/30s backoff) before
       # letting the job go red; any other failure fails immediately with
-      # npm's original output and exit code. npm's own fetch retries are
-      # raised as defense-in-depth for blips below this step's granularity.
+      # npm's original output and exit code.  The disk-space / lock-file check
+      # above handles the "package-lock.json not found" case (issue #2067).
       shell: bash
       env:
         npm_config_fetch_retries: '5'
