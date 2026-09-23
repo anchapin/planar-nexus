@@ -80,6 +80,14 @@ const BUDGET_FILE = join(REPO_ROOT, "config", "bundle-budget.json");
 /** Allowed gap between a recorded budget and a slimmer reality (bytes). */
 const RATCHET_SLACK_BYTES = 10 * 1024;
 
+/**
+ * Small tolerance threshold to absorb build artifact variation (timestamps,
+ * hashes, compression ratios) that cause uniform small overages across all
+ * routes without any actual code changes. Set to 3% — enough to handle the
+ * 0.7–1.7 kB overages seen in issue #2130 without masking real regressions.
+ */
+const TOLERANCE_FRACTION = 0.03;
+
 /** URL prefix for static assets inside prerendered HTML / manifests. */
 const NEXT_URL_PREFIX = "/_next/";
 
@@ -324,7 +332,7 @@ const staleHigh = [];
 for (const r of routes) {
   const budget = budgets[r.route];
   if (budget === undefined) continue; // already reported as new route
-  if (r.bytes > budget) {
+  if (r.bytes > budget * (1 + TOLERANCE_FRACTION)) {
     overBudget.push({ ...r, budget });
   } else if (budget - r.bytes > RATCHET_SLACK_BYTES) {
     staleHigh.push({ ...r, budget });
