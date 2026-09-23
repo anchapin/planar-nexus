@@ -139,27 +139,23 @@ export async function getAllGameRecordsAsync(): Promise<GameRecord[]> {
  * Writes to both IndexedDB and localStorage for backward compatibility
  */
 export async function saveGameRecord(record: GameRecord): Promise<void> {
+  // First save to localStorage (for backward compatibility)
+  const records = getAllGameRecords();
+  records.unshift(record); // Add to beginning
+
+  // Keep last 1000 games
+  if (records.length > 1000) {
+    records.splice(1000);
+  }
+
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+
+  // Also save to IndexedDB (non-fatal — localStorage is the primary store)
   try {
-    // First save to localStorage (for backward compatibility)
-    const records = getAllGameRecords();
-    records.unshift(record); // Add to beginning
-
-    // Keep last 1000 games
-    if (records.length > 1000) {
-      records.splice(1000);
-    }
-
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
-
-    // Also save to IndexedDB
-    try {
-      const storage = await getStorage();
-      await storage.set("game-history", record);
-    } catch (idbError) {
-      console.warn("Failed to save to IndexedDB:", idbError);
-    }
-  } catch (error) {
-    console.error("Failed to save game record:", error);
+    const storage = await getStorage();
+    await storage.set("game-history", record);
+  } catch (idbError) {
+    console.warn("Failed to save to IndexedDB:", idbError);
   }
 }
 

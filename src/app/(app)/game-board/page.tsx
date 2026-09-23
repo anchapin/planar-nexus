@@ -547,7 +547,13 @@ export default function GameBoardPage() {
       summary,
     });
 
-    saveGameRecord(record).catch(console.error);
+    saveGameRecord(record).catch(() => {
+      toast({
+        title: "Failed to save game",
+        description: "Game history could not be saved. Your game is still in progress.",
+        variant: "destructive",
+      });
+    });
 
     // Track achievements for this game
     onGameEnd({ gameState: engineState!, won: result === "win" });
