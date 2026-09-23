@@ -505,10 +505,45 @@ export function createServerRateLimiter(
 }
 
 /**
+ * Detect if running in a serverless / multi-instance environment.
+ *
+ * Issue #2114: InMemoryRateLimiterBackend is per-process — in a multi-instance
+ * serverless deploy each warm instance enforces its own window and the aggregate
+ * abuse ceiling is maxRequests × instance-count. This is "failing open": the rate
+ * limiter appears to work but provides no meaningful abuse control.
+ *
+ * We detect serverless via known deployment platform env vars. If the platform
+ * is detected and no Redis backend is configured, we throw at construction time
+ * rather than silently weakening the rate-limit guarantee.
+ *
+ * @internal
+ */
+function isServerlessEnvironment(): boolean {
+  return (
+    // Vercel (also sets VERTIGON_URL for serverless functions)
+    !!process.env.VERCEL ||
+    // AWS Lambda / ECS / Fargate
+    !!process.env.AWS_LAMBDA_FUNCTION_NAME ||
+    // Google Cloud Functions / Cloud Run
+    !!process.env.FUNCTION_NAME ||
+    // Azure Functions
+    !!process.env.WEBSITE_FUNCTIONS ||
+    // Cloudflare Workers
+    !!process.env.CF_ID ||
+    // Railway / Render / Fly.io (detect via general indicators)
+    (!!process.env.RAILWAY_ENVIRONMENT && !!process.env.RAILWAY_STATIC_URL) ||
+    !!process.env.RENDER ||
+    !!process.env.FLY_APP_NAME
+  );
+}
+
+/**
  * Pick a {@link RateLimiterBackend} based on `process.env.RATE_LIMIT_BACKEND`.
  *
  * Recognized values:
  *   - unset / `"memory"` / `""` → {@link InMemoryRateLimiterBackend}.
+ *     THROWS in serverless environments (issue #2114) because InMemory
+ *     fails open in multi-instance deployments.
  *   - `"redis"` → {@link RedisRateLimiterBackend} from `REDIS_URL` +
  *     `REDIS_TOKEN`. Throws if either is missing.
  *   - anything else → throws with the unrecognized value in the message.
@@ -524,6 +559,15 @@ export function selectBackendFromEnv(): RateLimiterBackend {
   const raw = process.env.RATE_LIMIT_BACKEND;
   const backend = (raw ?? "memory").trim().toLowerCase();
   if (backend === "" || backend === "memory") {
+    if (isServerlessEnvironment()) {
+      throw new Error(
+        "RATE_LIMIT_BACKEND=memory cannot be used in a serverless " +
+          "multi-instance deployment (rate limiter would fail open). " +
+          "Set RATE_LIMIT_BACKEND=redis with REDIS_URL and REDIS_TOKEN, " +
+          "or deploy to a single-instance environment. " +
+          "See docs/SECURITY.md for the deployment matrix.",
+      );
+    }
     return new InMemoryRateLimiterBackend();
   }
   if (backend === "redis") {
