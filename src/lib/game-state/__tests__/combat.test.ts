@@ -2422,6 +2422,72 @@ describe("Combat System - Deathtouch and Indestructible (#669)", () => {
       const attacker = resolveResult.state.cards.get(attackerId);
       expect(attacker?.damage).toBe(0);
     });
+
+    // Issue #2087: Trample excess damage to planeswalker
+    it("should route trample excess damage to planeswalker loyalty (CR 306.7, CR 702.19b)", () => {
+      // 5/5 trampler blocked by 2/2: 2 goes to blocker, 3 tramples to planeswalker
+      const { state, aliceId, bobId, planeswalkerId } =
+        setupGameWithPlaneswalker(
+          [{ name: "Trampler", power: 5, toughness: 5, keywords: ["Trample"] }],
+          { name: "Gideon", loyalty: 5 },
+        );
+
+      // Add a blocker creature to Bob's battlefield
+      const blockerData = createMockCreature("Blocker", 2, 2);
+      const blockerInstance = createCardInstance(blockerData, bobId, bobId);
+      blockerInstance.hasSummoningSickness = false;
+      state.cards.set(blockerInstance.id, blockerInstance);
+      const bobBattlefield = state.zones.get(`${bobId}-battlefield`)!;
+      state.zones.set(`${bobId}-battlefield`, {
+        ...bobBattlefield,
+        cardIds: [...bobBattlefield.cardIds, blockerInstance.id],
+      });
+
+      const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      const attackerId = aliceBattlefield.cardIds[0];
+      const blockerId = blockerInstance.id;
+
+      // Declare attacker targeting the planeswalker
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: attackerId, defenderId: planeswalkerId! },
+      ]);
+      expect(attackResult.success).toBe(true);
+
+      // Verify attacker is targeting planeswalker
+      const attacker = attackResult.state.combat.attackers.find(
+        (a) => a.cardId === attackerId,
+      );
+      expect(attacker?.isAttackingPlaneswalker).toBe(true);
+
+      // Declare blocker
+      state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+      const blockerAssignments = new Map();
+      blockerAssignments.set(attackerId, [blockerId]);
+      const blockResult = declareBlockers(
+        attackResult.state,
+        blockerAssignments,
+      );
+      expect(blockResult.success).toBe(true);
+
+      // Resolve combat damage
+      const resolveResult = resolveCombatDamage(blockResult.state);
+      expect(resolveResult.success).toBe(true);
+
+      // Verify blocker took 2 lethal damage and died
+      const blockerGraveyard = resolveResult.state.zones.get(
+        `${bobId}-graveyard`,
+      );
+      expect(blockerGraveyard?.cardIds).toContain(blockerId);
+
+      // Trample excess: 5 power - 2 lethal = 3 damage to planeswalker loyalty
+      // Gideon loyalty: 5 - 3 = 2
+      const planeswalker = resolveResult.state.cards.get(planeswalkerId!);
+      const loyaltyCounter = planeswalker?.counters?.find(
+        (c) => c.type === "loyalty",
+      );
+      expect(loyaltyCounter?.count).toBe(2); // 5 - 3 = 2
+    });
   });
 
   // Issue #969: First Strike / Double Strike combat damage step gating (CR 702.7, CR 702.4)
