@@ -53,6 +53,7 @@
  */
 
 import { NextResponse, type NextRequest } from "next/server";
+import { requireApiSession } from "@/lib/api-session";
 import {
   TURN_CREDENTIAL_DEFAULT_TTL_SECONDS,
   mintTurnCredential,
@@ -180,6 +181,10 @@ interface TurnIceServerView {
  * an oracle for any of those signals.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  // Auth check — deny unauthenticated requests before any other logic.
+  const authResult = await requireApiSession(request);
+  if (authResult instanceof NextResponse) return authResult;
+
   // #1798 — gate the endpoint BEFORE any provider/secret lookup.
   // Server-verified client identifier only; never read from the
   // request body or query string (a client-supplied key would let
