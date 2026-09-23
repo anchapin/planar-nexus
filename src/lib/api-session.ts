@@ -9,16 +9,42 @@
  * 2. Server: API routes call `requireApiSession()` to verify the session
  * 3. If no valid session: return 401
  *
- * The cookie value is the userId from localStorage. No HMAC is needed because
- * the cookie is httpOnly and SameSite=Strict — XSS cannot read it and CSRF
- * cannot send it cross-origin. This is sufficient for a single-user desktop app.
+ * Cookie format: `${userId}:${hmac_hex}` — HMAC-SHA256 of userId signed with SESSION_SECRET.
+ * This prevents cookie forgery: even if an attacker can set the cookie (XSS with document.cookie
+ * write, or MITM), they cannot produce a valid HMAC without the secret.
  */
 
 import { cookies } from "next/headers";
+import { createHmac, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 
 const SESSION_COOKIE = "pn_session";
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60; // 7 days in seconds
+const SEPARATOR = ":";
+
+function getSecret(): string {
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) {
+    throw new Error("SESSION_SECRET environment variable is not set");
+  }
+  return secret;
+}
+
+function signUserId(userId: string): string {
+  return createHmac("sha256", getSecret()).update(userId).digest("hex");
+}
+
+function timingSafeVerify(userId: string, expectedHmac: string): boolean {
+  try {
+    const hmac = signUserId(userId);
+    const a = Buffer.from(hmac, "hex");
+    const b = Buffer.from(expectedHmac, "hex");
+    if (a.length !== b.length) return false;
+    return timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
+}
 
 export interface ApiSession {
   userId: string;
@@ -26,7 +52,7 @@ export interface ApiSession {
 
 /**
  * Attempt to read the current API session from cookies.
- * Returns null if no valid session cookie is present.
+ * Returns null if no valid session cookie is present or HMAC verification fails.
  */
 export async function getApiSession(): Promise<ApiSession | null> {
   try {
@@ -39,7 +65,14 @@ export async function getApiSession(): Promise<ApiSession | null> {
     ) {
       return null;
     }
-    return { userId: sessionCookie.value.trim() };
+    const value = sessionCookie.value.trim();
+    const lastColon = value.lastIndexOf(SEPARATOR);
+    if (lastColon === -1) return null;
+    const userId = value.slice(0, lastColon);
+    const hmacHex = value.slice(lastColon + 1);
+    if (!userId || !hmacHex) return null;
+    if (!timingSafeVerify(userId, hmacHex)) return null;
+    return { userId };
   } catch {
     return null;
   }
@@ -71,9 +104,14 @@ export async function requireApiSession(
 export function createSessionCookie(
   userId: string,
 ): Record<"Set-Cookie", string> {
+  if (userId.includes(SEPARATOR)) {
+    throw new Error("userId must not contain ':'");
+  }
+  const hmacHex = signUserId(userId);
+  const cookieValue = `${userId}${SEPARATOR}${hmacHex}`;
   const maxAge = SESSION_MAX_AGE;
   return {
-    "Set-Cookie": `${SESSION_COOKIE}=${encodeURIComponent(userId)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}`,
+    "Set-Cookie": `${SESSION_COOKIE}=${encodeURIComponent(cookieValue)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAge}`,
   };
 }
 
