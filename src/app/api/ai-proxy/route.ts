@@ -24,6 +24,7 @@ import {
   redactErrorMessage,
   toSafeClientError,
 } from "@/lib/security/redact-error";
+import { z } from "zod";
 
 /**
  * AI Proxy API Route
@@ -36,13 +37,23 @@ export const dynamic = "force-dynamic";
 /**
  * Request body for AI proxy
  */
-interface AIProxyRequest {
-  provider: AIProvider;
-  endpoint: string;
-  model?: string;
-  body: Record<string, unknown>;
-  userId?: string;
-}
+
+// Issue #2108: Zod schema replaces manual type casts on providerBody fields
+const AIProxyRequestBodySchema = z.object({
+  messages: z.array(z.unknown()).default([]),
+  stream: z.boolean().default(false),
+  temperature: z.number().min(0).max(2).optional(),
+  max_tokens: z.number().int().positive().optional(),
+  maxTokens: z.number().int().positive().optional(),
+});
+
+const AIProxyRequestSchema = z.object({
+  provider: z.string(),
+  endpoint: z.string(),
+  model: z.string().optional(),
+  body: AIProxyRequestBodySchema,
+  userId: z.string().optional(),
+});
 
 /**
  * Response from AI proxy
@@ -125,10 +136,10 @@ export async function POST(
   try {
     assertSameOrigin(request);
     // Parse request body
-    let body: AIProxyRequest;
+    let rawBody: unknown;
     try {
-      body = await request.json();
-    } catch (error) {
+      rawBody = await request.json();
+    } catch {
       return NextResponse.json(
         {
           success: false,
@@ -139,12 +150,26 @@ export async function POST(
       );
     }
 
+    const parseResult = AIProxyRequestSchema.safeParse(rawBody);
+    if (!parseResult.success) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Invalid request body: ${parseResult.error.issues.map((i) => i.message).join("; ")}`,
+          errorCode: "INVALID_JSON",
+        },
+        { status: 400 },
+      );
+    }
+    const body = parseResult.data;
+
     // Issue #1393: derive identity server-side ONLY. A client-supplied userId
     // must never seed the rate-limit key (rotating it bypasses the limit) nor
     // usage attribution. This app has no auth layer yet, so the honest value
     // is 'anonymous'; the rate-limit key uses a verified IP / UA fingerprint
     // computed by getClientIdentifier() from request metadata, never the body.
     const { provider, model: modelId, body: providerBody } = body;
+    const currentUserId = "anonymous";
     const currentUserId = "anonymous";
 
     // Validate provider
@@ -284,7 +309,7 @@ export async function POST(
     const model = await getAIModel(provider, modelId);
 
     // Extract messages (standard for most chat completions)
-    const messages = (providerBody.messages as any[]) || [];
+    const messages = providerBody.messages as Array<unknown>;
 
     if (isStreaming) {
       const result = streamText({
@@ -293,10 +318,10 @@ export async function POST(
         tools: {
           searchCards: searchCardsTool,
         },
-        temperature: (providerBody.temperature as number) ?? 0.7,
+        temperature: providerBody.temperature ?? 0.7,
         maxOutputTokens:
-          (providerBody.max_tokens as number) ||
-          (providerBody.maxTokens as number),
+          providerBody.max_tokens ??
+          providerBody.maxTokens,
         onFinish: async (finishResult) => {
           // Log usage on completion - usage is now a Promise in AI SDK v6
           const usage = await finishResult.usage;
@@ -318,10 +343,10 @@ export async function POST(
         tools: {
           searchCards: searchCardsTool,
         },
-        temperature: (providerBody.temperature as number) ?? 0.7,
+        temperature: providerBody.temperature ?? 0.7,
         maxOutputTokens:
-          (providerBody.max_tokens as number) ||
-          (providerBody.maxTokens as number),
+          providerBody.max_tokens ??
+          providerBody.maxTokens,
       });
 
       // AI SDK v6: usage is now a Promise with inputTokens/outputTokens
