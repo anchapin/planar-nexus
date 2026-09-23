@@ -103,7 +103,7 @@ const EXPECTED_MUTATE_ENTRIES = [
   "src/lib/game-state/spell-casting/*.ts",
   "src/lib/game-state/trigger-system.ts",
   "src/lib/game-state/state-based-actions.ts",
-  "src/lib/game-state/combat.ts",
+  // combat.ts excluded: issue #1989 + #2055 (40+ min Stryker runtime)
   "src/lib/game-state/mana.ts",
 ];
 
@@ -167,7 +167,7 @@ const MUTATE_MODULE_NAMES = [
   "spell-casting",
   "trigger-system",
   "state-based-actions",
-  "combat",
+  // combat excluded: issue #1989 + #2055 (40+ min Stryker runtime)
   "mana",
 ];
 for (const name of MUTATE_MODULE_NAMES) {
