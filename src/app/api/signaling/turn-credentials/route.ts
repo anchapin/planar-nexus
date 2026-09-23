@@ -65,6 +65,12 @@ import {
   type RateLimitConfig,
 } from "@/lib/server-rate-limiter";
 import { getClientIdentifier } from "@/lib/server-request-identity";
+import {
+  HTTP_STATUS_BY_CLASS,
+  newCorrelationId,
+  redactErrorMessage,
+  toSafeClientError,
+} from "@/lib/security/redact-error";
 
 /**
  * Mark this route as runtime-dynamic. Next.js must NOT pre-render it
@@ -284,14 +290,24 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       clientId,
       ttlSeconds: resolveTtlSeconds(),
     });
-  } catch (err) {
+  } catch (error) {
+    // Issue #2081: never echo raw minting error details (key material, HMAC
+    // state, internal library messages) into the client response. Log a
+    // redacted summary tied to a correlation id the client also receives and
+    // respond with a generic message plus a stable errorCode.
+    const correlationId = newCorrelationId();
+    const safe = toSafeClientError(error);
+    console.error(
+      `TURN credentials mint error [${safe.errorClass}] [corr ${correlationId}]:`,
+      redactErrorMessage(error),
+    );
     return NextResponse.json(
       {
-        error:
-          err instanceof Error ? err.message : "Failed to mint TURN credential",
-        code: "TURN_HMAC_MINT_FAILED",
+        error: safe.error,
+        code: safe.errorCode,
+        correlationId,
       },
-      { status: 500 },
+      { status: HTTP_STATUS_BY_CLASS[safe.errorClass] },
     );
   }
 
