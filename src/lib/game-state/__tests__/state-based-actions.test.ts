@@ -28,6 +28,7 @@ import {
   initializePlaneswalkerLoyalty,
 } from "../card-instance";
 import { dealDamageToCard } from "../keyword-actions";
+import { createToughnessSetEffect } from "../layer-system";
 import type { ScryfallCard } from "../types";
 
 // Helper function to create a mock creature card
@@ -359,6 +360,45 @@ describe("State-Based Actions", () => {
 
       // Apply toughness modifier to make toughness negative
       creature.toughnessModifier = -5;
+
+      const battlefield = state.zones.get(`${playerIds[0]}-battlefield`)!;
+      state.cards.set(creature.id, creature);
+      state.zones.set(`${playerIds[0]}-battlefield`, {
+        ...battlefield,
+        cardIds: [...battlefield.cardIds, creature.id],
+      });
+
+      const result = checkStateBasedActions(state);
+
+      expect(result.actionsPerformed).toBe(true);
+      const graveyard = result.state.zones.get(`${playerIds[0]}-graveyard`)!;
+      expect(graveyard.cardIds).toContain(creature.id);
+    });
+
+    it("should destroy a creature whose toughness is set to 0 by a layer effect (SBA 704.5g)", () => {
+      // Regression test for issue #2083: SBA 704.5g toughness-0 check bypasses layer system
+      // A creature whose toughness is set to 0 by a layer-7b P/T setting effect
+      // must be destroyed by this SBA.
+      let state = createInitialGameState(["Alice"], 20, false);
+      state = startGame(state);
+
+      const playerIds = Array.from(state.players.keys());
+      const creatureData = createMockCreature("Test Creature", 3, 3);
+      const creature = createCardInstance(
+        creatureData,
+        playerIds[0],
+        playerIds[0],
+      );
+
+      // Register a Layer 7b effect that sets toughness to 0
+      const setToughnessToZero = createToughnessSetEffect(
+        "source",
+        playerIds[0],
+        0,
+        "Set toughness to 0",
+        state.layerSystem,
+      );
+      state.layerSystem.registerEffect(setToughnessToZero);
 
       const battlefield = state.zones.get(`${playerIds[0]}-battlefield`)!;
       state.cards.set(creature.id, creature);
