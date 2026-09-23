@@ -182,7 +182,19 @@ export async function POST(
     usageLogger.setModel(modelId || "unknown");
 
     // Check if provider is configured on server
-    const providerConfig = getProviderConfig(provider as AIProvider);
+    let providerConfig;
+    try {
+      providerConfig = getProviderConfig(provider as AIProvider);
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Provider ${provider} is not configured`,
+          errorCode: "PROVIDER_NOT_CONFIGURED",
+        },
+        { status: 503 },
+      );
+    }
     if (!providerConfig || !providerConfig.enabled) {
       await usageLogger
         .markFailure(
