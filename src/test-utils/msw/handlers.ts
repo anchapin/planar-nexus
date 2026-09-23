@@ -5,6 +5,7 @@
  * - Scryfall API (card search, card lookup)
  * - Custom server endpoints
  * - AI proxy endpoints (issue #2070)
+ * - External AI provider streaming endpoints (issue #2070)
  */
 
 import { http, HttpResponse, delay } from "msw";
@@ -24,6 +25,13 @@ const AI_PROXY_URL = "/api/ai-proxy";
  * Chat API endpoint URL
  */
 const CHAT_API_URL = "/api/chat";
+
+/**
+ * External AI provider base URLs (issue #2070)
+ */
+const OPENAI_BASE = "https://api.openai.com/v1";
+const ANTHROPIC_BASE = "https://api.anthropic.com/v1";
+const GOOGLE_BASE = "https://generativelanguage.googleapis.com/v1beta2";
 
 /**
  * Mock deck review response for AI proxy
@@ -201,9 +209,127 @@ const chatApiHandlers = [
 ];
 
 /**
+ * Handlers for OpenAI API streaming (issue #2070)
+ * POST /v1/chat/completions
+ */
+const openAIHandlers = [
+  http.post(`${OPENAI_BASE}/chat/completions`, async () => {
+    await delay(50);
+
+    const chunks = [
+      'data: {"choices":[{"index":0,"delta":{"role":"assistant","content":""}}],"finish_reason":null}\n\n',
+      'data: {"choices":[{"index":0,"delta":{"content":"This card synergizes well with your deck."}}],"finish_reason":null}\n\n',
+      'data: {"choices":[{"index":0,"delta":{"content":" It provides efficient mana acceleration."}}],"finish_reason":null}\n\n',
+      'data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":50,"completion_tokens":30,"total_tokens":80},"finish_reason":"stop"}\n\n',
+      "data: [DONE]\n\n",
+    ];
+
+    const stream = new ReadableStream({
+      start(controller) {
+        for (const chunk of chunks) {
+          controller.enqueue(new TextEncoder().encode(chunk));
+        }
+        controller.close();
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    });
+  }),
+];
+
+/**
+ * Handlers for Anthropic API streaming (issue #2070)
+ * POST /v1/messages
+ */
+const anthropicHandlers = [
+  http.post(`${ANTHROPIC_BASE}/messages`, async () => {
+    await delay(50);
+
+    const chunks = [
+      'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_123","type":"message","role":"assistant","content":[],"model":"claude-3-5-sonnet-20241022","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":50,"output_tokens":1}}}\n\n',
+      'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}\n\n',
+      'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"This card synergizes well with your deck."}}\n\n',
+      'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" It provides efficient mana acceleration."}}\n\n',
+      'event: content_block_stop\ndata: {"type":"content_block_stop","index":0}\n\n',
+      'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":30}}\n\n',
+      'event: message_stop\ndata: {"type":"message_stop"}\n\n',
+    ];
+
+    const stream = new ReadableStream({
+      start(controller) {
+        for (const chunk of chunks) {
+          controller.enqueue(new TextEncoder().encode(chunk));
+        }
+        controller.close();
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    });
+  }),
+];
+
+/**
+ * Handlers for Google AI (Gemini) API streaming (issue #2070)
+ * POST /v1beta/models/*:generateContent
+ */
+const googleAIHandlers = [
+  http.post(`${GOOGLE_BASE}/models/:model/generateContent`, async () => {
+    await delay(50);
+
+    const chunks = [
+      'data: {"candidates":[{"content":{"parts":[{"text":""}]},"finishReason":"STOP","avgLogProbs":0}],"usageMetadata":{"promptTokenCount":50,"candidatesTokenCount":1,"totalTokenCount":51}}\n\n',
+      'data: {"candidates":[{"content":{"parts":[{"text":"This card synergizes well with your deck."}]},"finishReason":"STOP","avgLogProbs":0}],"usageMetadata":{"promptTokenCount":50,"candidatesTokenCount":15,"totalTokenCount":65}}\n\n',
+      'data: {"candidates":[{"content":{"parts":[{"text":" It provides efficient mana acceleration."}]},"finishReason":"STOP","avgLogProbs":0}],"usageMetadata":{"promptTokenCount":50,"candidatesTokenCount":30,"totalTokenCount":80}}\n\n',
+    ];
+
+    const stream = new ReadableStream({
+      start(controller) {
+        for (const chunk of chunks) {
+          controller.enqueue(new TextEncoder().encode(chunk));
+        }
+        controller.close();
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    });
+  }),
+];
+
+/**
+ * External AI provider handlers (issue #2070)
+ */
+export const externalAIHandlers = [
+  ...openAIHandlers,
+  ...anthropicHandlers,
+  ...googleAIHandlers,
+];
+
+/**
  * Combined AI handlers
  */
-export const aiHandlers = [...aiProxyHandlers, ...chatApiHandlers];
+export const aiHandlers = [
+  ...aiProxyHandlers,
+  ...chatApiHandlers,
+  ...externalAIHandlers,
+];
 
 /**
  * Create mock Scryfall card data
