@@ -595,3 +595,160 @@ describe("v4 consolidation + torn schema (issue #1937)", () => {
     await reopened.close();
   });
 });
+
+describe("v4 consolidation retry on quota error (issue #2090)", () => {
+  it("stores MigrationQuotaError and sets retry flag when quota blocks consolidation", async () => {
+    // Spy on the pre-flight to force a quota error.
+    const idb: IDBFactory = (globalThis as unknown as { indexedDB: IDBFactory })
+      .indexedDB;
+
+    // Seed legacy data so the migration has something to do.
+    await seedLegacyDatabases();
+
+    // Monkey-patch predictQuotaHeadroom to always fail with quota.
+    const { predictQuotaHeadroom } = await import("../storage-quota");
+    const spy = jest
+      .spyOn(await import("../storage-quota"), "predictQuotaHeadroom")
+      .mockResolvedValue({
+        ok: false,
+        available: -1,
+        projectedRatio: 1,
+        level: "critical",
+        usage: 0,
+        quota: 0,
+        requiredBytes: 0,
+        reason: "mock quota exceeded",
+      });
+
+    const storage = new IndexedDBStorage(V4_CONFIG);
+    await storage.initialize();
+
+    // The error should be stored so callers can surface a guidance dialog.
+    const error = storage.getMigrationError();
+    expect(error).not.toBeNull();
+    expect(error?.name).toBe("MigrationQuotaError");
+
+    // The retry flag should be set in preferences so the next open retries.
+    const retryFlag = await storage.get<{ id: string }>(
+      "preferences",
+      "_migrationRetryPending",
+    );
+    expect(retryFlag).not.toBeNull();
+
+    await storage.close();
+    spy.mockRestore();
+  });
+
+  it("auto-retries on next open when quota is now available", async () => {
+    await seedLegacyDatabases();
+
+    // First open: patch predictQuotaHeadroom to fail.
+    const { predictQuotaHeadroom } = await import("../storage-quota");
+    const blockSpy = jest
+      .spyOn(await import("../storage-quota"), "predictQuotaHeadroom")
+      .mockResolvedValue({
+        ok: false,
+        available: -1,
+        projectedRatio: 1,
+        level: "critical",
+        usage: 0,
+        quota: 0,
+        requiredBytes: 0,
+        reason: "mock quota exceeded",
+      });
+
+    const firstStorage = new IndexedDBStorage(V4_CONFIG);
+    await firstStorage.initialize();
+    expect(firstStorage.getMigrationError()).not.toBeNull();
+    await firstStorage.close();
+
+    // Second open: unblock quota — the retry flag should trigger auto-retry.
+    blockSpy.mockRestore();
+    const allowSpy = jest
+      .spyOn(await import("../storage-quota"), "predictQuotaHeadroom")
+      .mockResolvedValue({
+        ok: true,
+        available: 100 * 1024 * 1024,
+        projectedRatio: 0.1,
+        level: "ok",
+        usage: 0,
+        quota: 100 * 1024 * 1024,
+        requiredBytes: 0,
+      });
+
+    const secondStorage = new IndexedDBStorage(V4_CONFIG);
+    await secondStorage.initialize();
+
+    // Migration should have succeeded this time.
+    const marker = await secondStorage.get<Record<string, unknown>>(
+      "preferences",
+      "v4-consolidation-done",
+    );
+    expect(marker).not.toBeNull();
+
+    // Error should be cleared.
+    expect(secondStorage.getMigrationError()).toBeNull();
+
+    // Retry flag should be cleared.
+    const retryFlag = await secondStorage.get<{ id: string }>(
+      "preferences",
+      "_migrationRetryPending",
+    );
+    expect(retryFlag).toBeNull();
+
+    await secondStorage.close();
+    allowSpy.mockRestore();
+  });
+
+  it("retryMigration() re-runs consolidation and clears the error", async () => {
+    await seedLegacyDatabases();
+
+    // Block quota on first open.
+    const blockSpy = jest
+      .spyOn(await import("../storage-quota"), "predictQuotaHeadroom")
+      .mockResolvedValue({
+        ok: false,
+        available: -1,
+        projectedRatio: 1,
+        level: "critical",
+        usage: 0,
+        quota: 0,
+        requiredBytes: 0,
+        reason: "mock quota exceeded",
+      });
+
+    const storage = new IndexedDBStorage(V4_CONFIG);
+    await storage.initialize();
+    expect(storage.getMigrationError()).not.toBeNull();
+    // Keep storage open — retryMigration() requires an open connection.
+
+    blockSpy.mockRestore();
+
+    // Unblock and call retryMigration().
+    const allowSpy = jest
+      .spyOn(await import("../storage-quota"), "predictQuotaHeadroom")
+      .mockResolvedValue({
+        ok: true,
+        available: 100 * 1024 * 1024,
+        projectedRatio: 0.1,
+        level: "ok",
+        usage: 0,
+        quota: 100 * 1024 * 1024,
+        requiredBytes: 0,
+      });
+
+    await storage.retryMigration();
+
+    // Error should be cleared.
+    expect(storage.getMigrationError()).toBeNull();
+
+    // Marker should be set.
+    const marker = await storage.get<Record<string, unknown>>(
+      "preferences",
+      "v4-consolidation-done",
+    );
+    expect(marker).not.toBeNull();
+
+    allowSpy.mockRestore();
+  });
+});
