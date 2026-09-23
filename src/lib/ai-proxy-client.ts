@@ -12,8 +12,8 @@
  * - Streaming support for real-time AI responses
  */
 
-import { AIProvider } from '@/ai/providers/types';
-import { safeFetch, ApiError } from './fetch-utils';
+import { AIProvider } from "@/ai/providers/types";
+import { safeFetch, ApiError } from "./fetch-utils";
 
 /**
  * AI Proxy request body
@@ -34,6 +34,7 @@ export interface AIProxyResponse<T = unknown> {
   data?: T;
   error?: string;
   errorCode?: string;
+  retryAfter?: number;
   usage?: {
     inputTokens: number;
     outputTokens: number;
@@ -71,52 +72,137 @@ export interface ValidationResponse {
  * Get the proxy API endpoint
  */
 function getProxyEndpoint(): string {
-  return '/api/ai-proxy';
+  return "/api/ai-proxy";
 }
 
 /**
  * Get the validation endpoint
  */
 function getValidationEndpoint(): string {
-  return '/api/ai-proxy/validate';
+  return "/api/ai-proxy/validate";
 }
 
 /**
- * Make a proxied AI API call
+ * Options for callAIProxy
+ */
+export interface CallAIProxyOptions {
+  /** Maximum number of retries on 429 errors (default: 3) */
+  maxRetries?: number;
+  /** Base delay for exponential backoff in ms (default: 1000) */
+  baseDelayMs?: number;
+  /** Maximum delay between retries in ms (default: 30000) */
+  maxDelayMs?: number;
+}
+
+/**
+ * Sleep for a given number of milliseconds
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Make a proxied AI API call with retry logic for rate limits
+ *
+ * Issue #2118: AI routes set Retry-After headers on 429 responses, but no
+ * client-side call site implemented retry logic. This function adds exponential
+ * backoff retry on 429, respecting Retry-After headers when available.
  *
  * @param request - The proxy request with provider, endpoint, and body
+ * @param options - Retry options
  * @returns The proxy response with data from the AI provider
  */
 export async function callAIProxy<T = unknown>(
-  request: AIProxyRequest
+  request: AIProxyRequest,
+  options: CallAIProxyOptions = {},
 ): Promise<AIProxyResponse<T>> {
-  try {
-    const response = await safeFetch<AIProxyResponse<T>>(
-      getProxyEndpoint(),
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+  const { maxRetries = 3, baseDelayMs = 1000, maxDelayMs = 30000 } = options;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+    try {
+      const response = await fetch(getProxyEndpoint(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
-        timeoutMs: 60000, // 60 second timeout for AI calls
-        errorMessage: 'AI Proxy request failed',
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      // Parse response regardless of status
+      let proxyResponse: AIProxyResponse<T>;
+      try {
+        proxyResponse = (await response.json()) as AIProxyResponse<T>;
+      } catch {
+        proxyResponse = {
+          success: false,
+          error: response.statusText || `HTTP ${response.status}`,
+          errorCode: response.status.toString(),
+        };
       }
-    );
 
-    return response as AIProxyResponse<T>;
-  } catch (error) {
-    if (error instanceof ApiError) {
-      // Parse error response if available
-      return {
-        success: false,
-        error: error.message,
-        errorCode: error.status?.toString(),
-      };
+      // Issue #2118: retry on 429 with exponential backoff
+      if (response.status === 429) {
+        if (attempt < maxRetries) {
+          const retryAfter = proxyResponse.retryAfter ?? 1;
+          const delayMs = Math.min(
+            retryAfter > 0
+              ? retryAfter * 1000
+              : baseDelayMs * Math.pow(2, attempt),
+            maxDelayMs,
+          );
+          console.warn(
+            `Rate limit hit on attempt ${attempt + 1}/${maxRetries + 1}, retrying in ${delayMs}ms...`,
+          );
+          await sleep(delayMs);
+          continue;
+        }
+        // Max retries exceeded
+        return {
+          ...proxyResponse,
+          success: false,
+          errorCode: "MAX_RETRIES_EXCEEDED",
+        };
+      }
+
+      // Success or other error - return as-is
+      return proxyResponse;
+    } catch (error) {
+      clearTimeout(timeoutId);
+
+      if (error instanceof Error && error.name === "AbortError") {
+        return {
+          success: false,
+          error: "AI Proxy request timed out after 60s",
+          errorCode: "TIMEOUT",
+        };
+      }
+
+      if (error instanceof ApiError) {
+        return {
+          success: false,
+          error: error.message,
+          errorCode: error.status?.toString(),
+        };
+      }
+
+      // Re-throw unexpected errors
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error("Unknown error in callAIProxy");
     }
-
-    throw error;
   }
+
+  // Should not reach here, but just in case
+  return {
+    success: false,
+    error: "Max retries exceeded",
+    errorCode: "MAX_RETRIES_EXCEEDED",
+  };
 }
 
 /**
@@ -127,15 +213,15 @@ export async function getProxyStatus(): Promise<ProxyStatusResponse> {
     const response = await safeFetch<ProxyStatusResponse>(
       `${getProxyEndpoint()}?action=status`,
       {
-        method: 'GET',
+        method: "GET",
         timeoutMs: 10000,
-        errorMessage: 'Failed to get proxy status',
-      }
+        errorMessage: "Failed to get proxy status",
+      },
     );
 
     return response as ProxyStatusResponse;
   } catch (error) {
-    console.error('Failed to get proxy status:', error);
+    console.error("Failed to get proxy status:", error);
     throw error;
   }
 }
@@ -144,16 +230,16 @@ export async function getProxyStatus(): Promise<ProxyStatusResponse> {
  * Validate server-side API key for a provider
  */
 export async function validateProviderKey(
-  provider: AIProvider
+  provider: AIProvider,
 ): Promise<ValidationResponse> {
   try {
     const response = await safeFetch<ValidationResponse>(
       `${getValidationEndpoint()}?provider=${provider}`,
       {
-        method: 'GET',
+        method: "GET",
         timeoutMs: 15000,
-        errorMessage: 'API key validation failed',
-      }
+        errorMessage: "API key validation failed",
+      },
     );
 
     return response as ValidationResponse;
@@ -176,7 +262,7 @@ export async function validateProviderKey(
  * Check if proxy is enabled and a provider is configured
  */
 export async function isProviderAvailable(
-  provider: AIProvider
+  provider: AIProvider,
 ): Promise<boolean> {
   try {
     const status = await getProxyStatus();
@@ -204,42 +290,42 @@ export async function getAvailableProviders(): Promise<AIProvider[]> {
  */
 export function extractContentFromResponse<T extends Record<string, unknown>>(
   response: AIProxyResponse<T>,
-  provider: AIProvider
+  provider: AIProvider,
 ): string {
   if (!response.success || !response.data) {
-    return '';
+    return "";
   }
 
   const data = response.data as Record<string, unknown>;
 
   // OpenAI/Z.ai format
-  if ('choices' in data && Array.isArray(data.choices)) {
+  if ("choices" in data && Array.isArray(data.choices)) {
     const choice = data.choices[0] as Record<string, unknown>;
     const message = choice.message as Record<string, unknown>;
-    return (message?.content as string) || '';
+    return (message?.content as string) || "";
   }
 
   // Google AI format
-  if ('candidates' in data && Array.isArray(data.candidates)) {
+  if ("candidates" in data && Array.isArray(data.candidates)) {
     const candidate = data.candidates[0] as Record<string, unknown>;
     const content = candidate.content as Record<string, unknown>;
     const parts = content.parts as Array<{ text?: string }>;
-    return parts?.[0]?.text || '';
+    return parts?.[0]?.text || "";
   }
 
   // Direct content
-  if ('content' in data) {
+  if ("content" in data) {
     return data.content as string;
   }
 
-  return '';
+  return "";
 }
 
 /**
  * Extract token usage from a proxy response
  */
 export function extractUsageFromResponse<T extends Record<string, unknown>>(
-  response: AIProxyResponse<T>
+  response: AIProxyResponse<T>,
 ): { inputTokens: number; outputTokens: number; totalTokens: number } | null {
   // Check response-level usage
   if (response.usage) {
@@ -249,7 +335,7 @@ export function extractUsageFromResponse<T extends Record<string, unknown>>(
   // Check data-level usage
   if (response.data) {
     const data = response.data as Record<string, unknown>;
-    if ('usage' in data) {
+    if ("usage" in data) {
       const usage = data.usage as Record<string, unknown>;
       return {
         inputTokens: (usage?.prompt_tokens as number) || 0,
@@ -268,34 +354,34 @@ export function extractUsageFromResponse<T extends Record<string, unknown>>(
  */
 export function getProxyErrorMessage(
   response: AIProxyResponse,
-  provider: AIProvider
+  provider: AIProvider,
 ): string {
   if (!response.error) {
-    return 'Unknown error occurred';
+    return "Unknown error occurred";
   }
 
   const errorCode = response.errorCode;
 
   // Provider-specific error messages
   switch (errorCode) {
-    case 'PROVIDER_NOT_CONFIGURED':
+    case "PROVIDER_NOT_CONFIGURED":
       return `${provider} is not configured on the server. Please contact the administrator.`;
-    case 'RATE_LIMIT_EXCEEDED':
-      return 'Rate limit exceeded. Please wait a moment and try again.';
-    case 'INVALID_API_KEY':
-    case 'PROVIDER_ERROR_401':
+    case "RATE_LIMIT_EXCEEDED":
+      return "Rate limit exceeded. Please wait a moment and try again.";
+    case "INVALID_API_KEY":
+    case "PROVIDER_ERROR_401":
       return `Invalid ${provider} API key. Please check the server configuration.`;
-    case 'PROVIDER_ERROR_429':
+    case "PROVIDER_ERROR_429":
       return `${provider} rate limit exceeded. Please try again later.`;
-    case 'PROVIDER_ERROR_500':
-    case 'PROVIDER_ERROR_503':
+    case "PROVIDER_ERROR_500":
+    case "PROVIDER_ERROR_503":
       return `${provider} service temporarily unavailable. Please try again later.`;
-    case 'NETWORK_ERROR':
-      return 'Network error. Please check your connection and try again.';
-    case 'INVALID_JSON':
-      return 'Invalid request format.';
-    case 'INVALID_PROVIDER':
-      return 'Invalid AI provider specified.';
+    case "NETWORK_ERROR":
+      return "Network error. Please check your connection and try again.";
+    case "INVALID_JSON":
+      return "Invalid request format.";
+    case "INVALID_PROVIDER":
+      return "Invalid AI provider specified.";
     default:
       return response.error;
   }
@@ -303,20 +389,20 @@ export function getProxyErrorMessage(
 
 /**
  * Call AI proxy with streaming support
- * 
+ *
  * @param request - The proxy request with provider, endpoint, and body
  * @returns A ReadableStream for consuming the streaming response
- * 
+ *
  * This function establishes a streaming connection to the AI provider
  * through the server-side proxy, keeping API keys secure.
  */
 export async function callAIProxyStream(
-  request: AIProxyRequest
+  request: AIProxyRequest,
 ): Promise<ReadableStream<Uint8Array>> {
   const response = await fetch(getProxyEndpoint(), {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
     },
     body: JSON.stringify({
       ...request,
@@ -334,7 +420,7 @@ export async function callAIProxyStream(
   }
 
   if (!response.body) {
-    throw new Error('Streaming proxy returned no body');
+    throw new Error("Streaming proxy returned no body");
   }
 
   return response.body;
@@ -342,20 +428,20 @@ export async function callAIProxyStream(
 
 /**
  * Create an async generator from a streaming response
- * 
+ *
  * This helper function converts a ReadableStream into an async generator
  * that yields text chunks from the stream.
- * 
+ *
  * Supports both:
  * 1. Standard SSE format (data: { ... }\n\n)
  * 2. Vercel AI SDK Data Stream format (0:"chunk"\n)
  */
 export async function* streamToAsyncGenerator(
-  stream: ReadableStream<Uint8Array>
+  stream: ReadableStream<Uint8Array>,
 ): AsyncGenerator<string> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
-  let buffer = '';
+  let buffer = "";
 
   try {
     while (true) {
@@ -365,8 +451,8 @@ export async function* streamToAsyncGenerator(
         // Yield any remaining data in buffer
         if (buffer.trim()) {
           // Check if it's a remaining legacy SSE line
-          if (buffer.startsWith('data: ')) {
-            yield buffer.slice(6) + '\n';
+          if (buffer.startsWith("data: ")) {
+            yield buffer.slice(6) + "\n";
           } else {
             yield buffer;
           }
@@ -377,27 +463,27 @@ export async function* streamToAsyncGenerator(
       buffer += decoder.decode(value, { stream: true });
 
       // Process complete lines
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
 
       for (const line of lines) {
-        if (line.trim() === '') continue;
+        if (line.trim() === "") continue;
 
         // Handle standard SSE format
-        if (line.startsWith('data: ')) {
+        if (line.startsWith("data: ")) {
           const data = line.slice(6);
           // Skip [DONE] marker
-          if (data.trim() === '[DONE]') {
+          if (data.trim() === "[DONE]") {
             return;
           }
-          yield data + '\n';
-        } 
+          yield data + "\n";
+        }
         // Handle Vercel AI SDK Data Stream format
         // Format is usually <type>:<value> where type '0' is text
-        else if (line.startsWith('0:')) {
+        else if (line.startsWith("0:")) {
           try {
             const textChunk = JSON.parse(line.slice(2));
-            if (typeof textChunk === 'string') {
+            if (typeof textChunk === "string") {
               yield textChunk;
             }
           } catch (e) {
@@ -406,7 +492,7 @@ export async function* streamToAsyncGenerator(
           }
         }
         // Other types (d: metadata, e: error, etc.) can be handled or ignored
-        else if (line.startsWith('e:')) {
+        else if (line.startsWith("e:")) {
           try {
             const errorData = JSON.parse(line.slice(2));
             yield `{"error": ${JSON.stringify(errorData)}}\n`;
