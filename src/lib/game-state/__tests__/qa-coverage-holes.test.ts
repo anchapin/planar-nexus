@@ -661,9 +661,7 @@ describe("GS-RT-7: planeswalker uniqueness across controllers (CR 306.5i)", () =
 // ---------------------------------------------------------------------------
 
 describe("GS-RT-8: passPriority with dead player (CR 117.3)", () => {
-  // TODO(#1394): fix — in 3+ player games, passPriority should skip dead
-  // players when determining the next priority holder.
-  it("regression: CR 117.3 — passPriority does not throw when a player has lost in 3-player game", () => {
+  it("regression: CR 117.3 — dead player is skipped, next alive player receives priority", () => {
     let state = createInitialGameState(["Alice", "Bob", "Carol"], 20, false);
     state = startGame(state);
     const [aliceId, bobId, carolId] = Array.from(state.players.keys());
@@ -678,20 +676,24 @@ describe("GS-RT-8: passPriority with dead player (CR 117.3)", () => {
     const alice = state.players.get(aliceId)!;
     state.players.set(aliceId, { ...alice, hasPassedPriority: false });
 
-    // Should not throw even with a dead player
-    expect(() => passPriority(state, aliceId)).not.toThrow();
+    const result = passPriority(state, aliceId);
+
+    // Dead player (Bob) is skipped — Carol receives priority next (APNAP order: Alice, Carol)
+    expect(result.priorityPlayerId).toBe(carolId);
+    // Dead player does not count toward consecutive passes
+    expect(result.consecutivePasses).toBe(1);
   });
 
-  it("regression: CR 117.3 — passPriority counts only active players for all-passed check", () => {
+  it("regression: CR 117.3 — consecutivePasses only counts alive players, phase advances when all alive have passed", () => {
     let state = createInitialGameState(["Alice", "Bob", "Carol"], 20, false);
     state = startGame(state);
     const [aliceId, bobId, carolId] = Array.from(state.players.keys());
 
-    // Mark Carol as lost
+    // Mark Carol as lost — only Alice and Bob are alive
     const carol = state.players.get(carolId)!;
     state.players.set(carolId, { ...carol, hasLost: true });
 
-    // Alice and Bob both pass
+    // Alice has priority
     state.priorityPlayerId = aliceId;
     state.consecutivePasses = 0;
     const a = state.players.get(aliceId)!;
@@ -699,10 +701,17 @@ describe("GS-RT-8: passPriority with dead player (CR 117.3)", () => {
     const b = state.players.get(bobId)!;
     state.players.set(bobId, { ...b, hasPassedPriority: false });
 
-    const result = passPriority(state, aliceId);
+    // Alice passes — Bob (alive) receives priority next
+    const afterAlice = passPriority(state, aliceId);
+    expect(afterAlice.priorityPlayerId).toBe(bobId);
+    expect(afterAlice.consecutivePasses).toBe(1); // Alice counts, Carol (dead) does not
 
-    // After Alice passes, Bob still needs to pass — not all-passed yet.
-    expect(result.consecutivePasses).toBe(1);
+    // Bob passes — both alive players have now passed consecutively, phase advances
+    const afterBob = passPriority(afterAlice, bobId);
+    // Phase advances because all alive players (Alice + Bob) passed consecutively
+    expect(afterBob.turn.currentPhase).not.toBe(state.turn.currentPhase);
+    // consecutivePasses is reset to 0 after phase advance
+    expect(afterBob.consecutivePasses).toBe(0);
   });
 });
 
