@@ -21,8 +21,8 @@
  * @module layer-system
  */
 
-import type { ScryfallCard } from "./types";
-import { CardInstance, CardInstanceId, PlayerId } from "./types";
+import type { ScryfallCard } from "../types";
+import { CardInstance, CardInstanceId, PlayerId } from "../types";
 
 /**
  * Layer types in order of application (CR 613.1)
