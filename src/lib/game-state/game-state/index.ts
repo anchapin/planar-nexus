@@ -9,40 +9,40 @@ import type {
   PlayerId,
   Zone,
   Player,
-} from "./types";
-import { Phase } from "./types";
-import type { ScryfallCard } from "./types";
+} from "../types";
+import { Phase } from "../types";
+import type { ScryfallCard } from "../types";
 import {
   createCardInstance,
   isCreature,
   hasLethalDamage,
   untapCard,
-} from "./card-instance";
-import { createPlayerZones, createSharedZones } from "./zones";
-import { isPriorityPlayer } from "./priority-guard";
+} from "../card-instance";
+import { createPlayerZones, createSharedZones } from "../zones";
+import { isPriorityPlayer } from "../priority-guard";
 import {
   createTurn,
   advancePhase,
   startNextTurn,
   playerDrawsCard,
   shouldHaveFirstStrikeStep,
-} from "./turn-phases";
-import { emptyAllManaPools } from "./mana";
+} from "../turn-phases";
+import { emptyAllManaPools } from "../mana";
 import {
   resolveTopOfStack as resolveSpellStack,
   castSpell,
   resolveTopOfStack,
-} from "./spell-casting";
-import { ReplacementEffectManager } from "./replacement-effects";
-import { LayerSystem } from "./layer-system";
+} from "../spell-casting";
+import { ReplacementEffectManager } from "../replacement-effects";
+import { LayerSystem } from "../layer-system";
 import {
   checkStateBasedActions as checkSBAs,
   drawWithSBAChecking,
   type StateBasedActionResult,
-} from "./state-based-actions";
-import { hasLifelink, clearProwessBoosts } from "./evergreen-keywords";
-import { detectUntapStepTriggers, putTriggersOnStack } from "./trigger-system";
-import type { TriggeredAbilityInstance } from "./abilities";
+} from "../state-based-actions";
+import { hasLifelink, clearProwessBoosts } from "../evergreen-keywords";
+import { detectUntapStepTriggers, putTriggersOnStack } from "../trigger-system";
+import type { TriggeredAbilityInstance } from "../abilities";
 
 export { castSpell, resolveTopOfStack };
 
@@ -129,7 +129,7 @@ export function createInitialGameState(
   const zones = new Map<string, Zone>();
   const cards = new Map<CardInstanceId, CardInstance>();
 
-    // Create players
+  // Create players
   const playerIds: PlayerId[] = [];
   playerNames.forEach((name) => {
     const player = createPlayer(name, startingLife, isCommander);
