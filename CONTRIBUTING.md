@@ -642,7 +642,7 @@ toward 70% as coverage improves (tracked in issue #922).
 | Metric     | Target | CI floor |
 | ---------- | ------ | -------- |
 | Lines      | 70%    | 63%      |
-| Functions  | 70%    | 55%      |
+| Functions  | 70%    | 56%      |
 | Statements | 70%    | 62%      |
 | Branches   | 60%    | 54%      |
 
