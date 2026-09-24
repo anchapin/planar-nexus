@@ -107,8 +107,12 @@ beforeEach(async () => {
   lastRequestBody = {};
   // The hook persists conversations to IndexedDB (issue #1074); clear the store
   // so each test starts isolated and a prior test's conversation is never
-  // auto-resumed into the next one.
-  await clearAllCoachConversations();
+  // auto-resumed into the next one. Wrap in act() so any React state updates
+  // triggered by PlanarNexusStorage.clear() v4 consolidation settle before
+  // the test body runs (issue #1241 regression guard).
+  await act(async () => {
+    await clearAllCoachConversations();
+  });
   localStorage.clear();
   (globalThis as unknown as { fetch: unknown }).fetch = jest.fn(
     async (_url: string, init?: RequestInit) => {
@@ -131,6 +135,13 @@ beforeEach(async () => {
       return { ok: true, body };
     },
   ) as unknown as typeof fetch;
+});
+
+afterEach(async () => {
+  // Clean up after each test so no conversation leaks into the next test.
+  await act(async () => {
+    await clearAllCoachConversations();
+  });
 });
 
 describe("useDeckCoachChat — progressive streaming render", () => {
