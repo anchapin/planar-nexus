@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
+import type { DragEvent } from "react";
 import {
   Card,
   CardContent,
@@ -29,9 +30,11 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useLocalStorage } from "@/hooks/use-local-storage";
 import { type SavedDeck } from "@/lib/card-database";
+import { parseDecklist } from "@/lib/decklist-utils";
 import { getAvailableArchetypeNames } from "@/ai/archetype-signatures";
 import {
   compareDecksAsync,
@@ -73,6 +76,15 @@ export function MultiDeckComparison() {
   const [report, setReport] = useState<DeckComparisonReport | null>(null);
   const [isPending, startTransition] = useTransition();
   const { toast } = useToast();
+  const [manualDeckText, setManualDeckText] = useState<string>("");
+  const [isDragOver, setIsDragOver] = useState<boolean>(false);
+  const [manualDecks, setManualDecks] = useState<
+    Array<{
+      id: string;
+      name: string;
+      cards: Array<{ name: string; quantity: number }>;
+    }>
+  >([]);
 
   const archetypeNames = useMemo(() => getAvailableArchetypeNames(), []);
 
@@ -86,18 +98,94 @@ export function MultiDeckComparison() {
     });
   };
 
+  const addManualDeck = () => {
+    const trimmed = manualDeckText.trim();
+    if (!trimmed) return;
+    const parsed = parseDecklist(trimmed);
+    if (parsed.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "Could not parse deck",
+        description:
+          "No cards were recognised. Use '2x Lightning Bolt' format, one card per line.",
+      });
+      return;
+    }
+    const id = `manual-${Date.now()}`;
+    setManualDecks((prev) => [...prev, { id, name: `Deck ${prev.length + 1}`, cards: parsed }]);
+    setManualDeckText("");
+    toast({ title: "Deck added", description: `Added "${parsed[0].name}" and ${parsed.length - 1} more cards.` });
+  };
+
+  const handleFileDrop = async (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const files = Array.from(e.dataTransfer.files);
+    const textFile = files.find(
+      (f) => f.type === "text/plain" || f.name.endsWith(".txt") || f.name.endsWith(".dek")
+    );
+    if (!textFile) {
+      toast({
+        variant: "destructive",
+        title: "Invalid file",
+        description: "Please drop a .txt or .dek file containing a deck list.",
+      });
+      return;
+    }
+    try {
+      const text = await textFile.text();
+      const parsed = parseDecklist(text);
+      if (parsed.length === 0) {
+        toast({
+          variant: "destructive",
+          title: "Could not parse deck",
+          description: "The file didn't contain a recognisable deck list format.",
+        });
+        return;
+      }
+      const id = `manual-${Date.now()}`;
+      setManualDecks((prev) => [...prev, { id, name: `Deck ${prev.length + 1}`, cards: parsed }]);
+      toast({ title: "Deck imported", description: `Imported ${parsed[0].name} and ${parsed.length - 1} more cards.` });
+    } catch {
+      toast({
+        variant: "destructive",
+        title: "Error reading file",
+        description: "Could not read the dropped file.",
+      });
+    }
+  };
+
+  const removeManualDeck = (id: string) => {
+    setManualDecks((prev) => prev.filter((d) => d.id !== id));
+    setSelectedIds((prev) => prev.filter((x) => x !== id));
+  };
+
   const canCompare =
     !isPending &&
     selectedIds.length + (metaArchetype ? 1 : 0) >= MIN_DECKS &&
     selectedIds.length + (metaArchetype ? 1 : 0) <= MAX_DECKS;
 
   const handleCompare = () => {
-    const chosen = savedDecks.filter((d) => selectedIds.includes(d.id));
-    const entries: DeckComparisonEntry[] = chosen.map((d) => ({
-      id: d.id,
-      name: d.name,
-      cards: d.cards,
-    }));
+    const chosenSaved = savedDecks.filter((d) =>
+      selectedIds.includes(d.id)
+    );
+    const chosenManual = manualDecks.filter((d) =>
+      selectedIds.includes(d.id)
+    );
+    // @ts-expect-error — manually-entered cards have minimal data (name + count)
+    // but comparison UI only requires those fields; AI analysis degrades gracefully
+    const entries: DeckComparisonEntry[] = [
+      ...chosenSaved.map((d) => ({
+        id: d.id,
+        name: d.name,
+        cards: d.cards,
+      })),
+      ...chosenManual.map((d) => ({
+        id: d.id,
+        name: d.name,
+        cards: d.cards,
+      })),
+    ];
     if (metaArchetype) {
       entries.push({
         name: `${metaArchetype} (meta)`,
@@ -150,14 +238,92 @@ export function MultiDeckComparison() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div
+            className={`relative rounded-md border-2 border-dashed p-4 transition-colors ${
+              isDragOver
+                ? "border-primary bg-primary/10"
+                : "border-muted-foreground/30 hover:border-muted-foreground/60"
+            }`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDragOver(true);
+            }}
+            onDragLeave={() => setIsDragOver(false)}
+            onDrop={handleFileDrop}
+          >
+            <p className="mb-2 text-xs font-medium text-muted-foreground">
+              Paste a deck list or drop a .txt / .dek file to add it to the comparison
+            </p>
+            <Textarea
+              placeholder={"2x Lightning Bolt\n2x Counterspell\n1x Shivan Dragon\n..."}
+              value={manualDeckText}
+              onChange={(e) => setManualDeckText(e.target.value)}
+              className="mb-2 min-h-[80px] resize-none font-mono text-xs"
+            />
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={addManualDeck}
+                disabled={!manualDeckText.trim()}
+              >
+                Add Deck
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Paste cards (one per line, e.g.&nbsp;"2x Lightning Bolt")
+              </p>
+            </div>
+          </div>
+
+          {manualDecks.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {manualDecks.map((deck) => {
+                const checked = selectedIds.includes(deck.id);
+                const disabled = !checked && selectedIds.length >= MAX_DECKS;
+                return (
+                  <label
+                    key={deck.id}
+                    className={`flex items-center gap-3 rounded-md border p-3 text-sm transition-colors ${
+                      checked
+                        ? "border-primary bg-primary/5"
+                        : disabled
+                          ? "opacity-50"
+                          : "hover:bg-accent/50"
+                    }`}
+                  >
+                    <Checkbox
+                      checked={checked}
+                      disabled={disabled}
+                      onCheckedChange={(v) => toggleDeck(deck.id, v === true)}
+                    />
+                    <span className="flex-1 truncate font-medium">
+                      {deck.name}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-5 w-5 text-muted-foreground hover:text-destructive"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        removeManualDeck(deck.id);
+                      }}
+                    >
+                      ×
+                    </Button>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+
           {decksLoading ? (
             <Skeleton className="h-24 w-full rounded-md" />
-          ) : savedDecks.length === 0 ? (
+          ) : savedDecks.length === 0 && manualDecks.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No saved decks yet. Build and save a deck first, then come back to
-              compare builds.
+              No saved decks and no decks pasted yet. Paste a deck list above or
+              save a deck in the deck builder.
             </p>
-          ) : (
+          ) : savedDecks.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {savedDecks.map((deck) => {
                 const checked = selectedIds.includes(deck.id);
@@ -188,7 +354,8 @@ export function MultiDeckComparison() {
                 );
               })}
             </div>
-          )}
+          ) : null}
+        
 
           <Separator />
 
