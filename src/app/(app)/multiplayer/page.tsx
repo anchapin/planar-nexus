@@ -18,7 +18,7 @@ import {
   MessageSquare,
 } from "lucide-react";
 import Link from "next/link";
-import { P2PDiagnosticsPanel } from "@/components/p2p-diagnostics-panel";
+
 import { P2PConnectionIndicatorSection } from "@/components/p2p-connection-indicator-section";
 import { ReconnectTokenList } from "@/components/multiplayer/reconnect-token-list";
 import { LobbySpectatorCount } from "@/components/multiplayer/lobby-spectator-count";
@@ -255,13 +255,6 @@ export default function MultiplayerPage() {
         device.
       */}
       <ReconnectTokenList />
-
-      <section
-        className="mt-6"
-        aria-label="Peer-to-peer connection diagnostics"
-      >
-        <P2PDiagnosticsPanel />
-      </section>
     </div>
   );
 }
