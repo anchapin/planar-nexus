@@ -866,7 +866,9 @@ export class WebRTCConnection {
       if (data.startsWith(P2P_COMPRESSED_PREFIX)) {
         try {
           const encoded = data.slice(P2P_COMPRESSED_PREFIX.length);
-          const compressed = Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0));
+          const compressed = Uint8Array.from(atob(encoded), (c) =>
+            c.charCodeAt(0),
+          );
           const decompressed = await gzipDecompress(compressed);
           parseData = new TextDecoder().decode(decompressed);
         } catch (decompressError) {
@@ -1223,11 +1225,19 @@ export class WebRTCConnection {
     const pc = this.peerConnection;
     if (!pc) return;
 
-    pc.setConfiguration(this.rtcConfig);
-    const offer = await pc.createOffer({ iceRestart: true });
-    await pc.setLocalDescription(offer);
+    try {
+      pc.setConfiguration(this.rtcConfig);
+      const offer = await pc.createOffer({ iceRestart: true });
+      await pc.setLocalDescription(offer);
 
-    this.events.onReconnectOffer?.(offer, "");
+      this.events.onReconnectOffer?.(offer, "");
+    } catch (err) {
+      p2pLogger.warn("ICE restart failed", { error: err });
+      this.events.onError(
+        err instanceof Error ? err : new Error("ICE restart failed"),
+        "",
+      );
+    }
   }
 
   /**
@@ -1415,7 +1425,8 @@ export class WebRTCConnection {
     if (uncompressedLen > P2P_COMPRESSION_THRESHOLD_BYTES) {
       try {
         const compressed = await gzipCompress(payload);
-        payload = P2P_COMPRESSED_PREFIX + btoa(String.fromCharCode(...compressed));
+        payload =
+          P2P_COMPRESSED_PREFIX + btoa(String.fromCharCode(...compressed));
       } catch (compressError) {
         p2pLogger.warn(
           "[WebRTC] Compression failed, sending uncompressed:",
@@ -1447,12 +1458,7 @@ export class WebRTCConnection {
     } else if (inFlight <= this.sendQueue.getStats().lowWatermarkBytes) {
       this.sendQueue.notifyBufferLow(inFlight);
     }
-    const accepted = this.sendQueue.enqueue(
-      payload,
-      type,
-      priority,
-      inFlight,
-    );
+    const accepted = this.sendQueue.enqueue(payload, type, priority, inFlight);
     if (!accepted) {
       // Queue rejected (closed, or even-after-eviction cap exceeded for
       // critical/normal). Surface via the standard onError path so callers
