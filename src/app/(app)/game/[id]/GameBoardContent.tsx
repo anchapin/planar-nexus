@@ -224,7 +224,11 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [playerName, setPlayerName] = useState<string>("Player");
+  const [playerName, setPlayerName] = useState<string>(() =>
+    typeof window !== "undefined"
+      ? localStorage.getItem("planar_nexus_player_name") || "Player"
+      : "Player",
+  );
   const [isAIThinking, setIsAIThinking] = useState(false);
   const [autoSaveEnabled, setAutoSaveEnabled] = useState(true);
 
@@ -2207,6 +2211,16 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
         newState = passPriority(newState, otherPlayer.id);
       }
     }
+
+    // Ensure the human player is the active player after mulligan resolution
+    // The loop above alternates players, so we explicitly set it here
+    newState = {
+      ...newState,
+      turn: {
+        ...newState.turn,
+        activePlayerId: player.id,
+      },
+    };
 
     setGameState(newState);
     setIsGameStarted(true);
