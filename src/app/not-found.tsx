@@ -1,6 +1,11 @@
-import { Button } from '@/components/ui/button';
-import { Compass } from 'lucide-react';
-import Link from 'next/link';
+import type { Metadata } from "next";
+import { Button } from "@/components/ui/button";
+import { Compass } from "lucide-react";
+import Link from "next/link";
+
+export const metadata: Metadata = {
+  title: "404 Not Found | Planar Nexus",
+};
 
 export default function NotFound() {
   return (
@@ -12,11 +17,15 @@ export default function NotFound() {
           </div>
         </div>
         <div className="space-y-2">
+          <p className="font-headline text-sm font-medium uppercase tracking-widest text-muted-foreground">
+            404 — Not Found
+          </p>
           <h1 className="font-headline text-2xl font-bold text-foreground">
             Planeswalker Lost
           </h1>
           <p className="text-muted-foreground">
-            The path you seek does not exist in this plane. Return to familiar territory.
+            The path you seek does not exist in this plane. Return to familiar
+            territory.
           </p>
         </div>
         <div className="flex justify-center">
