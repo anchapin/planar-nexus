@@ -260,6 +260,9 @@ export function useTournamentEvents(
       modern: 0,
       legacy: 0,
       pauper: 0,
+      "single-elimination": 0,
+      "double-elimination": 0,
+      swiss: 0,
     };
 
     eventHistory.forEach((e) => {
