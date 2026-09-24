@@ -3,6 +3,9 @@
 import * as React from "react";
 import { memo, useMemo, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
+import { useAccessibilitySettings } from "@/hooks/use-accessibility-settings";
+import { AccessibilityToggle } from "@/components/accessibility-toggle";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -617,6 +620,7 @@ export function GameBoard({
   localPlayerId = null,
 }: GameBoardProps) {
   const isMobile = useIsMobile();
+  const { mode } = useAccessibilitySettings();
   const currentPlayer = players[currentTurnIndex];
 
   // Dialog states
@@ -789,7 +793,11 @@ export function GameBoard({
 
   return (
     <div
-      className="w-full h-full p-1 bg-background overflow-visible"
+      className={cn(
+        "w-full h-full p-1 bg-background overflow-visible",
+        mode === "high-contrast" || mode === "both" ? "game-board-high-contrast" : undefined,
+        mode === "color-blind" || mode === "both" ? "game-board-colorblind" : undefined
+      )}
       role="application"
       aria-label="Game Board"
     >
@@ -815,6 +823,11 @@ export function GameBoard({
       >
         Skip to game board
       </a>
+
+      {/* Accessibility Settings */}
+      <div className="absolute top-4 left-4 z-20">
+        <AccessibilityToggle />
+      </div>
 
       {/* Game Controls - Concede and Draw options */}
       {!isGameOver && (
