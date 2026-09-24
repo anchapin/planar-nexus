@@ -183,6 +183,20 @@ describe("Authoritative-state reconciliation (issue #1086)", () => {
       expect(heardB).toHaveLength(2); // still subscribed
     });
 
+    it("console.warns with [ReconciliationCoordinator] prefix when dropping actions", () => {
+      const c = new ReconciliationCoordinator();
+      const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+      c.recordPendingAction("tap", null);
+      c.recordPendingAction("draw", null);
+      const dropped = c.adoptAuthoritativeState();
+      expect(dropped).toHaveLength(2);
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy).toHaveBeenCalledWith(
+        "[ReconciliationCoordinator] Dropped 2 pending action(s) after state adoption",
+      );
+      warnSpy.mockRestore();
+    });
+
     it("a throwing onActionsDropped listener does not break reconciliation", () => {
       const c = new ReconciliationCoordinator();
       c.onActionsDropped(() => {

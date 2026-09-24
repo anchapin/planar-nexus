@@ -79,9 +79,7 @@ export interface PendingAction {
  *   phase, or single-player).
  */
 export type ReconcileAction =
-  | "send-authoritative-state"
-  | "adopt-host-state"
-  | "none";
+  "send-authoritative-state" | "adopt-host-state" | "none";
 
 /**
  * Verdict returned to the connection layer on a reconnect event. The caller
@@ -201,6 +199,9 @@ export class ReconciliationCoordinator {
     if (this.pending.length === 0) return [];
     const dropped = [...this.pending];
     this.pending.length = 0;
+    console.warn(
+      `[ReconciliationCoordinator] Dropped ${dropped.length} pending action(s) after state adoption`,
+    );
     for (const listener of this.droppedListeners) {
       try {
         listener(dropped);
