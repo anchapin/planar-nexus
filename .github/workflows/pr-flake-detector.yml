@@ -1,0 +1,156 @@
+name: PR Flake Detector
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'src/lib/game-state/**'
+      - 'src/ai/**'
+      - 'src/test-utils/**'
+      - 'jest.config.js'
+      - 'e2e/flake-detector.ts'
+      - 'scripts/jest-flake-detector.ts'
+      - 'playwright.config.ts'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  jest-flake-detector:
+    name: Flake Detector (Jest)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    # Issue #2153: non-blocking flake detection on every PR touching
+    # game-state/ or ai/. Run 3× instead of the nightly 5× to keep
+    # per-commit cost low; threshold 3 means a test must pass all 3 runs.
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 1
+
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
+
+      - name: Detect changed paths
+        id: changed
+        run: |
+          echo "Checking changed files..."
+          echo "changed=${{ contains(github.event.pull_request.changed_files, 'src/lib/game-state/') }}" >> "$GITHUB_OUTPUT"
+          echo "game_state_changed=${{ contains(github.event.pull_request.changed_files, 'src/lib/game-state/') }}" >> "$GITHUB_OUTPUT"
+          echo "ai_changed=${{ contains(github.event.pull_request.changed_files, 'src/ai/') }}" >> "$GITHUB_OUTPUT"
+          echo "all_changed_files=${{ github.event.pull_request.changed_files }}" >> "$GITHUB_OUTPUT"
+
+      - name: Run Jest flake detector
+        if: steps.changed.outputs.game_state_changed == 'true'
+        id: jestflake
+        run: |
+          set +e
+          npm run test:flake
+          FLAKE_EXIT=$?
+          echo "flake-exit=$FLAKE_EXIT" >> "$GITHUB_OUTPUT"
+          exit $FLAKE_EXIT
+        env:
+          CI: 'true'
+
+      - name: Upload Jest flake report
+        if: always() && steps.changed.outputs.game_state_changed == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: pr-jest-flake-detector-report
+          path: reports/jest-flake-detector/
+          retention-days: 7
+
+      - name: Post PR comment (Jest flakes)
+        if: always() && steps.jestflake.outputs.flake-exit == '1' && steps.changed.outputs.game_state_changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -e
+          if [ -f reports/jest-flake-detector/report.md ]; then
+            gh pr comment "$PR_NUMBER" --body-file reports/jest-flake-detector/report.md || true
+          fi
+
+  e2e-flake-detector:
+    name: Flake Detector (Playwright)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      NEXT_PUBLIC_TAURI_FALLBACK: '1'
+
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 1
+
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
+
+      - name: Detect changed paths
+        id: changed
+        run: |
+          echo "ai_changed=${{ contains(github.event.pull_request.changed_files, 'src/ai/') }}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        if: steps.changed.outputs.ai_changed == 'true'
+        uses: actions/cache@v6
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright browsers
+        if: steps.changed.outputs.ai_changed == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright OS dependencies
+        if: steps.changed.outputs.ai_changed == 'true'
+        run: npx playwright install-deps chromium
+
+      - name: Run Playwright flake detector
+        if: steps.changed.outputs.ai_changed == 'true'
+        id: e2eflake
+        run: |
+          set +e
+          npm run test:e2e:flake
+          FLAKE_EXIT=$?
+          echo "flake-exit=$FLAKE_EXIT" >> "$GITHUB_OUTPUT"
+          exit $FLAKE_EXIT
+        env:
+          CI: 'true'
+
+      - name: Upload Playwright flake report
+        if: always() && steps.changed.outputs.ai_changed == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: pr-e2e-flake-detector-report
+          path: reports/flake-detector/
+          retention-days: 7
+
+      - name: Post PR comment (Playwright flakes)
+        if: always() && steps.e2eflake.outputs.flake-exit == '1' && steps.changed.outputs.ai_changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -e
+          if [ -f reports/flake-detector/report.md ]; then
+            gh pr comment "$PR_NUMBER" --body-file reports/flake-detector/report.md || true
+          fi
