@@ -328,4 +328,28 @@ mod tests {
              tauri_plugin_window_state (issue #1441)"
         );
     }
+
+    #[test]
+    fn log_level_for_debug_returns_info() {
+        let level = log_level_for(false);
+        assert_eq!(level, log::LevelFilter::Info, "debug builds should log at Info level (issue #1727)");
+    }
+
+    #[test]
+    fn log_level_for_release_returns_warn() {
+        let level = log_level_for(true);
+        assert_eq!(level, log::LevelFilter::Warn, "release builds should log at Warn level (issue #1727)");
+    }
+
+    #[test]
+    fn log_level_for_returns_info_for_debug() {
+        let level = log_level_for(false);
+        assert_eq!(level, log::LevelFilter::Info);
+    }
+
+    #[test]
+    fn log_level_for_returns_warn_for_release() {
+        let level = log_level_for(true);
+        assert_eq!(level, log::LevelFilter::Warn);
+    }
 }
