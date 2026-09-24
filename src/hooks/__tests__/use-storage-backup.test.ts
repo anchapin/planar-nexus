@@ -16,7 +16,11 @@
 import { renderHook, act, waitFor } from "@testing-library/react";
 import { useStorageBackup } from "../use-storage-backup";
 import { indexedDBStorage } from "@/lib/indexeddb-storage";
-import { compressData, decompressData } from "@/lib/backup-compression";
+import {
+  compressData,
+  decompressData,
+  hasIntegrityChecksum,
+} from "@/lib/backup-compression";
 
 // ---------------------------------------------------------------------------
 // Mocks — jest.mock is hoisted above the imports by babel-jest, so the named
@@ -44,6 +48,7 @@ jest.mock("@/lib/backup-compression", () => ({
   // Issue #1423: compressData/decompressData are now async (native streams).
   compressData: jest.fn().mockResolvedValue(new Uint8Array([0x1f, 0x8b])),
   decompressData: jest.fn(),
+  hasIntegrityChecksum: jest.fn().mockReturnValue(true),
   BACKUP_COMPRESSED_MIME: "application/gzip",
   BACKUP_COMPRESSED_EXTENSION: ".json.gz",
 }));
@@ -62,6 +67,7 @@ const mocked = {
   clearAll: indexedDBStorage.clearAll as unknown as jest.Mock,
   compressData: compressData as unknown as jest.Mock,
   decompressData: decompressData as unknown as jest.Mock,
+  hasIntegrityChecksum: hasIntegrityChecksum as unknown as jest.Mock,
 };
 
 // ---------------------------------------------------------------------------
@@ -437,6 +443,51 @@ describe("useStorageBackup hook", () => {
 
       expect(mocked.importIncrementalBackup).toHaveBeenCalledTimes(1);
       expect(mocked.importBackup).not.toHaveBeenCalled();
+    });
+
+    it("logs a warning when restoring a backup without integrity checksum", async () => {
+      const fullPayload = {
+        version: "1.0.0",
+        exportedAt: "2026-01-01T00:00:00.000Z",
+        decks: [{ id: "deck-1", name: "Test Deck", cards: [] }],
+        savedGames: [],
+        settings: {},
+        checksum: "cs1",
+      };
+      mocked.decompressData.mockResolvedValueOnce(fullPayload);
+      // Simulate a legacy backup without integrity checksum in gzip comment.
+      mocked.hasIntegrityChecksum.mockReturnValueOnce(false);
+
+      const raw = JSON.stringify(fullPayload);
+      const encoder = new TextEncoder();
+      const encoded = encoder.encode(raw);
+      const arrayBuffer = encoded.buffer.slice(
+        encoded.byteOffset,
+        encoded.byteOffset + encoded.byteLength,
+      );
+
+      const blob = new Blob([encoded], { type: "application/gzip" });
+      const file = new File([blob], "backup.json.gz", {
+        type: "application/gzip",
+      });
+      Object.defineProperty(file, "arrayBuffer", {
+        value: () => Promise.resolve(arrayBuffer),
+        writable: true,
+      });
+
+      const warnSpy = jest.spyOn(console, "warn").mockImplementation(() => {});
+
+      const { result } = renderHook(() => useStorageBackup());
+      await waitFor(() => expect(result.current.isInitialized).toBe(true));
+
+      await act(async () => {
+        await result.current.importData(file);
+      });
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining("does not have an integrity checksum"),
+      );
+      warnSpy.mockRestore();
     });
   });
 

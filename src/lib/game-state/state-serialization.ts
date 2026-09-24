@@ -57,7 +57,20 @@ export function prettyPrintGameState(state: GameState): string {
 }
 
 /**
- * Deserialize GameState from a JSON string with error handling
+ * Thrown when a serialized GameState fails structural validation during deserialization.
+ *
+ * Caught by the engine at the session boundary and surfaced to the UI as a
+ * recoverable error rather than a crash. Callers receiving this error should
+ * treat the deserialization as failed and report the issue to the user.
+ *
+ * @example
+ * try {
+ *   const state = deserializeGameState(jsonString);
+ * } catch (err) {
+ *   if (err instanceof GameStateValidationError) {
+ *     console.error("Invalid game state:", err.message);
+ *   }
+ * }
  */
 export class GameStateValidationError extends Error {
   constructor(message: string) {
@@ -77,7 +90,9 @@ function validateGameStateStructure(obj: unknown): asserts obj is GameState {
   const state = obj as Record<string, unknown>;
 
   if (typeof state.gameId !== "string" || !state.gameId) {
-    throw new GameStateValidationError("GameState.gameId must be a non-empty string");
+    throw new GameStateValidationError(
+      "GameState.gameId must be a non-empty string",
+    );
   }
   if (typeof state.format !== "string") {
     throw new GameStateValidationError("GameState.format must be a string");
@@ -108,7 +123,9 @@ function validateGameStateStructure(obj: unknown): asserts obj is GameState {
     throw new GameStateValidationError("GameState.winners must be an array");
   }
   if (typeof state.lastModifiedAt !== "number") {
-    throw new GameStateValidationError("GameState.lastModifiedAt must be a number");
+    throw new GameStateValidationError(
+      "GameState.lastModifiedAt must be a number",
+    );
   }
 }
 
@@ -122,7 +139,9 @@ export function deserializeGameState(json: string): GameState {
       throw err;
     }
     if (err instanceof SyntaxError) {
-      throw new GameStateValidationError(`Failed to parse GameState JSON: ${err.message}`);
+      throw new GameStateValidationError(
+        `Failed to parse GameState JSON: ${err.message}`,
+      );
     }
     throw err;
   }
