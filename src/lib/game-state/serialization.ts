@@ -366,11 +366,65 @@ function convertAIPlayerToEngine(
  * This is primarily used for validation - the engine state is the source of truth
  * AI actions are applied to the engine state, not converted back
  */
+export class AIGameStateValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AIGameStateValidationError";
+  }
+}
+
+function validateAIGameStateStructure(
+  aiState: unknown,
+  baseEngineState: unknown,
+): asserts aiState is AIGameState {
+  if (aiState === null || aiState === undefined) {
+    throw new AIGameStateValidationError("AIGameState cannot be null or undefined");
+  }
+  if (typeof aiState !== "object") {
+    throw new AIGameStateValidationError("AIGameState must be an object");
+  }
+
+  const state = aiState as Record<string, unknown>;
+
+  if (!state.players || typeof state.players !== "object") {
+    throw new AIGameStateValidationError("AIGameState.players must be an object");
+  }
+  if (!state.turnInfo || typeof state.turnInfo !== "object") {
+    throw new AIGameStateValidationError("AIGameState.turnInfo must be an object");
+  }
+  if (!Array.isArray(state.stack)) {
+    throw new AIGameStateValidationError("AIGameState.stack must be an array");
+  }
+
+  const turnInfo = state.turnInfo as Record<string, unknown>;
+  if (typeof turnInfo.currentTurn !== "number") {
+    throw new AIGameStateValidationError("AIGameState.turnInfo.currentTurn must be a number");
+  }
+  if (typeof turnInfo.phase !== "string") {
+    throw new AIGameStateValidationError("AIGameState.turnInfo.phase must be a string");
+  }
+  if (typeof turnInfo.priority !== "string") {
+    throw new AIGameStateValidationError("AIGameState.turnInfo.priority must be a string");
+  }
+
+  if (baseEngineState === null || baseEngineState === undefined) {
+    throw new AIGameStateValidationError("baseEngineState cannot be null or undefined");
+  }
+  if (typeof baseEngineState !== "object") {
+    throw new AIGameStateValidationError("baseEngineState must be an object");
+  }
+  const base = baseEngineState as Record<string, unknown>;
+  if (!(base.players instanceof Map)) {
+    throw new AIGameStateValidationError("baseEngineState.players must be a Map");
+  }
+}
+
 export function aiToEngineState(
   aiState: AIGameState,
   baseEngineState: EngineGameState
 ): EngineGameState {
-  // Update players with AI state data
+  validateAIGameStateStructure(aiState, baseEngineState);
+
   const updatedPlayers = new Map(baseEngineState.players);
   for (const [playerId, aiPlayer] of Object.entries(aiState.players)) {
     const basePlayer = baseEngineState.players.get(playerId);

@@ -12,6 +12,7 @@ import {
   unifiedToEngine,
   getAIPlayerView,
   compareAIStates,
+  AIGameStateValidationError,
 } from "../serialization";
 import {
   createInitialGameState,
@@ -388,6 +389,119 @@ describe("serialization", () => {
       expect(convertedPlayer?.life).toBe(15);
       expect(convertedPlayer?.poisonCounters).toBe(2);
       expect(convertedPlayer?.manaPool.red).toBe(3);
+    });
+  });
+
+  describe("aiToEngineState structural validation (issue #2198)", () => {
+    it("throws AIGameStateValidationError when aiState is null", () => {
+      const engineState = createInitialGameState(["Player 1", "Player 2"]);
+      expect(() =>
+        aiToEngineState(null as unknown as ReturnType<typeof engineToAIState>, engineState),
+      ).toThrow(AIGameStateValidationError);
+      expect(() =>
+        aiToEngineState(null as unknown as ReturnType<typeof engineToAIState>, engineState),
+      ).toThrow("AIGameState cannot be null or undefined");
+    });
+
+    it("throws AIGameStateValidationError when aiState is undefined", () => {
+      const engineState = createInitialGameState(["Player 1", "Player 2"]);
+      expect(() =>
+        aiToEngineState(undefined as unknown as ReturnType<typeof engineToAIState>, engineState),
+      ).toThrow(AIGameStateValidationError);
+    });
+
+    it("throws AIGameStateValidationError when aiState is not an object", () => {
+      const engineState = createInitialGameState(["Player 1", "Player 2"]);
+      expect(() =>
+        aiToEngineState("not an object" as unknown as ReturnType<typeof engineToAIState>, engineState),
+      ).toThrow(AIGameStateValidationError);
+      expect(() =>
+        aiToEngineState(123 as unknown as ReturnType<typeof engineToAIState>, engineState),
+      ).toThrow(AIGameStateValidationError);
+    });
+
+    it("throws AIGameStateValidationError when aiState.players is missing", () => {
+      const engineState = createInitialGameState(["Player 1", "Player 2"]);
+      const aiState = engineToAIState(engineState);
+      const malformedState = { ...aiState } as Record<string, unknown>;
+      delete malformedState.players;
+
+      expect(() => aiToEngineState(malformedState as unknown as typeof aiState, engineState)).toThrow(
+        AIGameStateValidationError,
+      );
+      expect(() =>
+        aiToEngineState(malformedState as unknown as typeof aiState, engineState),
+      ).toThrow("players");
+    });
+
+    it("throws AIGameStateValidationError when aiState.turnInfo is missing", () => {
+      const engineState = createInitialGameState(["Player 1", "Player 2"]);
+      const aiState = engineToAIState(engineState);
+      const malformedState = { ...aiState } as Record<string, unknown>;
+      delete malformedState.turnInfo;
+
+      expect(() => aiToEngineState(malformedState as unknown as typeof aiState, engineState)).toThrow(
+        AIGameStateValidationError,
+      );
+      expect(() =>
+        aiToEngineState(malformedState as unknown as typeof aiState, engineState),
+      ).toThrow("turnInfo");
+    });
+
+    it("throws AIGameStateValidationError when aiState.stack is not an array", () => {
+      const engineState = createInitialGameState(["Player 1", "Player 2"]);
+      const aiState = engineToAIState(engineState);
+      const malformedState = { ...aiState, stack: "not an array" } as unknown as typeof aiState;
+
+      expect(() => aiToEngineState(malformedState, engineState)).toThrow(
+        AIGameStateValidationError,
+      );
+      expect(() =>
+        aiToEngineState(malformedState, engineState),
+      ).toThrow("stack must be an array");
+    });
+
+    it("throws AIGameStateValidationError when aiState.turnInfo.currentTurn is not a number", () => {
+      const engineState = createInitialGameState(["Player 1", "Player 2"]);
+      const aiState = engineToAIState(engineState);
+      const malformedState = {
+        ...aiState,
+        turnInfo: { ...aiState.turnInfo, currentTurn: "not a number" },
+      } as unknown as typeof aiState;
+
+      expect(() => aiToEngineState(malformedState, engineState)).toThrow(
+        AIGameStateValidationError,
+      );
+      expect(() =>
+        aiToEngineState(malformedState, engineState),
+      ).toThrow("currentTurn");
+    });
+
+    it("throws AIGameStateValidationError when baseEngineState is null", () => {
+      const engineState = createInitialGameState(["Player 1", "Player 2"]);
+      const aiState = engineToAIState(engineState);
+      expect(() =>
+        aiToEngineState(aiState, null as unknown as typeof engineState),
+      ).toThrow(AIGameStateValidationError);
+      expect(() =>
+        aiToEngineState(aiState, null as unknown as typeof engineState),
+      ).toThrow("baseEngineState cannot be null or undefined");
+    });
+
+    it("throws AIGameStateValidationError when baseEngineState.players is not a Map", () => {
+      const engineState = createInitialGameState(["Player 1", "Player 2"]);
+      const aiState = engineToAIState(engineState);
+      const malformedBase = {
+        ...engineState,
+        players: {},
+      } as unknown as typeof engineState;
+
+      expect(() => aiToEngineState(aiState, malformedBase)).toThrow(
+        AIGameStateValidationError,
+      );
+      expect(() =>
+        aiToEngineState(aiState, malformedBase),
+      ).toThrow("players must be a Map");
     });
   });
 });
