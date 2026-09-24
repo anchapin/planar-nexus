@@ -811,6 +811,8 @@ describe("P2PGameConnection sequence-number anti-replay (#1091)", () => {
         connection,
         JSON.stringify(
           msg("peer", 21, "game-state-sync", {
+            // Minimal valid serialized state — handleGameStateSync tolerates
+            // an empty players map; onGameStateSync here is a no-op stub.
             gameState: {
               players: {},
               turnInfo: {
@@ -845,7 +847,15 @@ describe("P2PGameConnection sequence-number anti-replay (#1091)", () => {
         connection,
         JSON.stringify(
           msg("peer", 3, "game-state-sync", {
-            gameState: { players: {} },
+            gameState: {
+              players: {},
+              turnInfo: {
+                currentTurn: 1,
+                phase: "beginning",
+                priority: "player1",
+              },
+              stack: [],
+            },
             isFullSync: false,
             lastSeq: 99,
           }),
