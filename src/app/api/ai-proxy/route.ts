@@ -25,6 +25,7 @@ import {
   toSafeClientError,
 } from "@/lib/security/redact-error";
 import { z } from "zod";
+import { containsInjectionAttempt } from "@/ai/prompt-security";
 
 /**
  * AI Proxy API Route
@@ -53,6 +54,11 @@ const AIProxyRequestSchema = z.object({
   model: z.string().optional(),
   body: AIProxyRequestBodySchema,
   userId: z.string().optional(),
+});
+
+const AIMessageContentSchema = z.object({
+  role: z.enum(["user", "assistant", "system", "tool"]),
+  content: z.string(),
 });
 
 /**
@@ -311,6 +317,26 @@ export async function POST(
     // Zod validates structure at parse time; the cast through `unknown` tells
     // TypeScript that the validated array conforms to the AI SDK's ModelMessage shape.
     const messages = providerBody.messages as unknown as ModelMessage[];
+
+    // Validate message structure and check for prompt injection in user/assistant messages
+    for (const msg of messages) {
+      const parsed = AIMessageContentSchema.safeParse(msg);
+      if (!parsed.success) {
+        return new Response(
+          JSON.stringify({ error: "Invalid message structure" }),
+          { status: 400, headers: { "Content-Type": "application/json" } },
+        );
+      }
+      if (
+        (parsed.data.role === "user" || parsed.data.role === "assistant") &&
+        containsInjectionAttempt(parsed.data.content)
+      ) {
+        return new Response(
+          JSON.stringify({ error: "Message content rejected due to injection pattern" }),
+          { status: 400, headers: { "Content-Type": "application/json" } },
+        );
+      }
+    }
 
     if (isStreaming) {
       const result = streamText({
