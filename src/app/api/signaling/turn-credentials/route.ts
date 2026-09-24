@@ -54,6 +54,7 @@
 
 import { NextResponse, type NextRequest } from "next/server";
 import { requireApiSession } from "@/lib/api-session";
+import { verifyRoomParticipant } from "@/lib/security/room-participant";
 import {
   TURN_CREDENTIAL_DEFAULT_TTL_SECONDS,
   mintTurnCredential,
@@ -285,6 +286,56 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         code: "CLIENT_ID_UNSAFE",
       },
       { status: 400 },
+    );
+  }
+
+  // #2199 — Verify the requesting client is a participant in the game room
+  // before minting relay credentials.  Without this check, any authenticated
+  // user could obtain TURN credentials for any room by simply specifying its
+  // roomId in the query string.
+  const rawRoomId = searchParams.get("roomId");
+  if (typeof rawRoomId !== "string" || rawRoomId.length === 0) {
+    return NextResponse.json(
+      {
+        error: "roomId query parameter is required",
+        code: "ROOM_ID_REQUIRED",
+      },
+      { status: 400 },
+    );
+  }
+  if (rawRoomId.length > MAX_CLIENT_ID_QUERY_LENGTH) {
+    return NextResponse.json(
+      {
+        error: `roomId exceeds maximum length of ${MAX_CLIENT_ID_QUERY_LENGTH}`,
+        code: "ROOM_ID_TOO_LONG",
+      },
+      { status: 400 },
+    );
+  }
+  // Enforce a safe room-id format matching the game's alphanumeric code.
+  if (!/^[a-zA-Z0-9_-]+$/.test(rawRoomId)) {
+    return NextResponse.json(
+      {
+        error: "roomId contains unsafe characters",
+        code: "ROOM_ID_UNSAFE",
+      },
+      { status: 400 },
+    );
+  }
+  const roomId = rawRoomId;
+
+  // Peer-authentication: ensure the (roomId, clientId) pair is registered.
+  const participantResult = verifyRoomParticipant({
+    roomId,
+    peerId: clientId,
+  });
+  if (!participantResult.valid) {
+    return NextResponse.json(
+      {
+        error: "Peer is not a participant in the specified room",
+        code: "ROOM_PARTICIPANT_REQUIRED",
+      },
+      { status: 403 },
     );
   }
 

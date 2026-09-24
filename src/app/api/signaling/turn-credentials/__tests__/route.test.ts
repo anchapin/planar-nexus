@@ -92,12 +92,25 @@ jest.mock("@/lib/server-request-identity", () => ({
 }));
 
 jest.mock("@/lib/api-session", () => ({
-  getApiSession: jest.fn<
-    () => Promise<{ userId: string }>
-  >().mockResolvedValue({ userId: "test-user-1" }),
+  getApiSession: jest
+    .fn<() => Promise<{ userId: string }>>()
+    .mockResolvedValue({ userId: "test-user-1" }),
   requireApiSession: jest
     .fn<() => Promise<{ userId: string }>>()
     .mockResolvedValue({ userId: "test-user-1" }),
+}));
+
+// #2199 — Mock room-participant registry; default to participant verified.
+const verifyRoomParticipantMock: jest.Mock = jest.fn();
+const registerRoomParticipantMock: jest.Mock = jest.fn();
+const unregisterRoomParticipantMock: jest.Mock = jest.fn();
+jest.mock("@/lib/security/room-participant", () => ({
+  verifyRoomParticipant: (...args: unknown[]) =>
+    verifyRoomParticipantMock(...args),
+  registerRoomParticipant: (...args: unknown[]) =>
+    registerRoomParticipantMock(...args),
+  unregisterRoomParticipant: (...args: unknown[]) =>
+    unregisterRoomParticipantMock(...args),
 }));
 
 // ---- Minimal NextResponse / Request polyfill (parity with the
@@ -192,6 +205,11 @@ beforeEach(() => {
   });
   // Deterministic client identifier for tests that need to assert on it.
   getClientIdentifierMock.mockReturnValue("ip:127.0.0.1");
+  // #2199 — Default: the peer is a verified room participant.
+  verifyRoomParticipantMock.mockReturnValue({
+    valid: true,
+    userId: "test-user-1",
+  });
 });
 
 afterEach(() => {
@@ -211,7 +229,7 @@ describe("GET /api/signaling/turn-credentials — failure modes", () => {
     const { GET } = await loadRoute();
     const res = await GET(
       makeGet(
-        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room-ABC-123",
       ),
     );
     expect(res.status).toBe(503);
@@ -242,7 +260,9 @@ describe("GET /api/signaling/turn-credentials — failure modes", () => {
     process.env.TURN_HMAC_SECRET = "test-secret-1234567890";
     const { GET } = await loadRoute();
     const res = await GET(
-      makeGet("http://localhost/api/signaling/turn-credentials?clientId="),
+      makeGet(
+        "http://localhost/api/signaling/turn-credentials?clientId=&roomId=room-ABC-123",
+      ),
     );
     expect(res.status).toBe(400);
     const data = (await (res as unknown as TestResponse).json()) as Record<
@@ -257,7 +277,7 @@ describe("GET /api/signaling/turn-credentials — failure modes", () => {
     const { GET } = await loadRoute();
     const res = await GET(
       makeGet(
-        "http://localhost/api/signaling/turn-credentials?clientId=%21%21%21",
+        "http://localhost/api/signaling/turn-credentials?clientId=%21%21%21&roomId=room-ABC-123",
       ),
     );
     expect(res.status).toBe(400);
@@ -274,7 +294,7 @@ describe("GET /api/signaling/turn-credentials — failure modes", () => {
     const long = "a".repeat(300);
     const res = await GET(
       makeGet(
-        `http://localhost/api/signaling/turn-credentials?clientId=${long}`,
+        `http://localhost/api/signaling/turn-credentials?clientId=${long}&roomId=room-ABC-123`,
       ),
     );
     expect(res.status).toBe(400);
@@ -303,7 +323,7 @@ describe("GET /api/signaling/turn-credentials — rate limiting (issue #1798)", 
     const { GET } = await loadRoute();
     const res = await GET(
       makeGet(
-        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room-ABC-123",
       ),
     );
     expect(res.status).toBe(429);
@@ -347,7 +367,7 @@ describe("GET /api/signaling/turn-credentials — rate limiting (issue #1798)", 
     const { GET } = await loadRoute();
     const res = await GET(
       makeGet(
-        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room-ABC-123",
       ),
     );
     expect(res.status).toBe(429);
@@ -367,7 +387,7 @@ describe("GET /api/signaling/turn-credentials — rate limiting (issue #1798)", 
     const { GET } = await loadRoute();
     const res = await GET(
       makeGet(
-        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room-ABC-123",
       ),
     );
     expect(res.status).toBe(200);
@@ -411,14 +431,14 @@ describe("GET /api/signaling/turn-credentials — rate limiting (issue #1798)", 
     const { GET } = await loadRoute();
     const resA = await GET(
       makeGet(
-        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room-ABC-123",
       ),
     );
     expect(resA.status).toBe(200);
 
     const resB = await GET(
       makeGet(
-        "http://localhost/api/signaling/turn-credentials?clientId=peer-2",
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-2&roomId=room-ABC-123",
       ),
     );
     expect(resB.status).toBe(429);
@@ -443,7 +463,7 @@ describe("GET /api/signaling/turn-credentials — rate limiting (issue #1798)", 
     const { GET } = await loadRoute();
     const res = await GET(
       makeGet(
-        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room-ABC-123",
       ),
     );
     expect(res.status).toBe(200);
@@ -467,7 +487,7 @@ describe("GET /api/signaling/turn-credentials — rate limiting (issue #1798)", 
     const { GET } = await loadRoute();
     const res = await GET(
       makeGet(
-        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room-ABC-123",
       ),
     );
     expect(res.status).toBe(429);
@@ -491,7 +511,7 @@ describe("GET /api/signaling/turn-credentials — happy path", () => {
     const { GET } = await loadRoute();
     const res = await GET(
       makeGet(
-        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room-ABC-123",
       ),
     );
     expect(res.status).toBe(200);
@@ -509,7 +529,7 @@ describe("GET /api/signaling/turn-credentials — happy path", () => {
     const { GET } = await loadRoute();
     const res = await GET(
       makeGet(
-        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room-ABC-123",
       ),
     );
     const data = (await (res as unknown as TestResponse).json()) as Record<
@@ -528,7 +548,7 @@ describe("GET /api/signaling/turn-credentials — happy path", () => {
     const { GET } = await loadRoute();
     const res = await GET(
       makeGet(
-        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room-ABC-123",
       ),
     );
     const data = (await (res as unknown as TestResponse).json()) as Record<
@@ -548,7 +568,7 @@ describe("GET /api/signaling/turn-credentials — happy path", () => {
     const beforeMs = Date.now();
     const res = await GET(
       makeGet(
-        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room-ABC-123",
       ),
     );
     const afterMs = Date.now();
@@ -566,7 +586,7 @@ describe("GET /api/signaling/turn-credentials — happy path", () => {
     const { GET } = await loadRoute();
     const res = await GET(
       makeGet(
-        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room-ABC-123",
       ),
     );
     const data = (await (res as unknown as TestResponse).json()) as Record<
@@ -583,7 +603,7 @@ describe("GET /api/signaling/turn-credentials — happy path", () => {
     const { GET } = await loadRoute();
     const res = await GET(
       makeGet(
-        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room-ABC-123",
       ),
     );
     const text = await (res as unknown as TestResponse).text();
@@ -594,14 +614,14 @@ describe("GET /api/signaling/turn-credentials — happy path", () => {
     const { GET } = await loadRoute();
     const resA = await GET(
       makeGet(
-        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room-ABC-123",
       ),
     );
     // Sleep 1100ms to guarantee a different `now` floor.
     await new Promise((resolve) => setTimeout(resolve, 1100));
     const resB = await GET(
       makeGet(
-        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room-ABC-123",
       ),
     );
     const a = (await (resA as unknown as TestResponse).json()) as Record<
@@ -620,12 +640,12 @@ describe("GET /api/signaling/turn-credentials — happy path", () => {
     const { GET } = await loadRoute();
     const resA = await GET(
       makeGet(
-        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room-ABC-123",
       ),
     );
     const resB = await GET(
       makeGet(
-        "http://localhost/api/signaling/turn-credentials?clientId=peer-2",
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-2&roomId=room-ABC-123",
       ),
     );
     const a = (await (resA as unknown as TestResponse).json()) as Record<
@@ -644,14 +664,14 @@ describe("GET /api/signaling/turn-credentials — happy path", () => {
     const { GET: GET_A } = await loadRoute();
     const resA = await GET_A(
       makeGet(
-        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room-ABC-123",
       ),
     );
     process.env.TURN_HMAC_SECRET = "completely-different-secret";
     const { GET: GET_B } = await loadRoute();
     const resB = await GET_B(
       makeGet(
-        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room-ABC-123",
       ),
     );
     const a = (await (resA as unknown as TestResponse).json()) as Record<
@@ -672,7 +692,7 @@ describe("GET /api/signaling/turn-credentials — happy path", () => {
     const { GET } = await loadRoute();
     const res = await GET(
       makeGet(
-        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room-ABC-123",
       ),
     );
     const data = (await (res as unknown as TestResponse).json()) as Record<
@@ -692,7 +712,7 @@ describe("GET /api/signaling/turn-credentials — happy path", () => {
     const { GET } = await loadRoute();
     const res = await GET(
       makeGet(
-        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room-ABC-123",
       ),
     );
     const data = (await (res as unknown as TestResponse).json()) as Record<
@@ -707,7 +727,7 @@ describe("GET /api/signaling/turn-credentials — happy path", () => {
     const { GET } = await loadRoute();
     const res = await GET(
       makeGet(
-        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room-ABC-123",
       ),
     );
     const data = (await (res as unknown as TestResponse).json()) as Record<
@@ -724,7 +744,7 @@ describe("GET /api/signaling/turn-credentials — happy path", () => {
     const { GET } = await loadRoute();
     const res = await GET(
       makeGet(
-        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room-ABC-123",
       ),
     );
     const data = (await (res as unknown as TestResponse).json()) as Record<
@@ -738,7 +758,7 @@ describe("GET /api/signaling/turn-credentials — happy path", () => {
     const { GET } = await loadRoute();
     const res = await GET(
       makeGet(
-        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room-ABC-123",
       ),
     );
     const data = (await (res as unknown as TestResponse).json()) as Record<
@@ -754,7 +774,7 @@ describe("GET /api/signaling/turn-credentials — happy path", () => {
     const beforeMs = Date.now();
     const res = await GET(
       makeGet(
-        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room-ABC-123",
       ),
     );
     const data = (await (res as unknown as TestResponse).json()) as Record<
@@ -772,7 +792,7 @@ describe("GET /api/signaling/turn-credentials — happy path", () => {
     const beforeMs = Date.now();
     const res = await GET(
       makeGet(
-        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room-ABC-123",
       ),
     );
     const data = (await (res as unknown as TestResponse).json()) as Record<
@@ -798,7 +818,7 @@ describe("GET /api/signaling/turn-credentials — HMAC verification", () => {
     const { GET } = await loadRoute();
     const res = await GET(
       makeGet(
-        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room-ABC-123",
       ),
     );
     const data = (await (res as unknown as TestResponse).json()) as Record<
@@ -820,3 +840,147 @@ describe("GET /api/signaling/turn-credentials — HMAC verification", () => {
 function computeBase64HmacSha1(secret: string, message: string): string {
   return createHmac("sha1", secret).update(message).digest("base64");
 }
+
+// ---------------------------------------------------------------------------
+// #2199 — Room-participant authentication
+// ---------------------------------------------------------------------------
+
+describe("GET /api/signaling/turn-credentials — #2199 peer authentication", () => {
+  it("returns 400 when roomId query parameter is missing", async () => {
+    process.env.TURN_HMAC_SECRET = "test-secret-1234567890";
+    const { GET } = await loadRoute();
+    const res = await GET(
+      makeGet(
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1",
+      ),
+    );
+    expect(res.status).toBe(400);
+    const data = (await (res as unknown as TestResponse).json()) as Record<
+      string,
+      unknown
+    >;
+    expect(data.code).toBe("ROOM_ID_REQUIRED");
+  });
+
+  it("returns 400 when roomId is empty string", async () => {
+    process.env.TURN_HMAC_SECRET = "test-secret-1234567890";
+    const { GET } = await loadRoute();
+    const res = await GET(
+      makeGet(
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=",
+      ),
+    );
+    expect(res.status).toBe(400);
+    const data = (await (res as unknown as TestResponse).json()) as Record<
+      string,
+      unknown
+    >;
+    expect(data.code).toBe("ROOM_ID_REQUIRED");
+  });
+
+  it("returns 400 when roomId exceeds maximum length", async () => {
+    process.env.TURN_HMAC_SECRET = "test-secret-1234567890";
+    const { GET } = await loadRoute();
+    const long = "r".repeat(300);
+    const res = await GET(
+      makeGet(
+        `http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=${long}`,
+      ),
+    );
+    expect(res.status).toBe(400);
+    const data = (await (res as unknown as TestResponse).json()) as Record<
+      string,
+      unknown
+    >;
+    expect(data.code).toBe("ROOM_ID_TOO_LONG");
+  });
+
+  it("returns 400 when roomId contains unsafe characters", async () => {
+    process.env.TURN_HMAC_SECRET = "test-secret-1234567890";
+    const { GET } = await loadRoute();
+    const res = await GET(
+      makeGet(
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room<script>",
+      ),
+    );
+    expect(res.status).toBe(400);
+    const data = (await (res as unknown as TestResponse).json()) as Record<
+      string,
+      unknown
+    >;
+    expect(data.code).toBe("ROOM_ID_UNSAFE");
+  });
+
+  it("returns 403 when the peer is not a participant in the room", async () => {
+    process.env.TURN_HMAC_SECRET = "test-secret-1234567890";
+    verifyRoomParticipantMock.mockReturnValue({
+      valid: false,
+      error: "PEER_NOT_IN_ROOM",
+    });
+    const { GET } = await loadRoute();
+    const res = await GET(
+      makeGet(
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room-ABC-123",
+      ),
+    );
+    expect(res.status).toBe(403);
+    const data = (await (res as unknown as TestResponse).json()) as Record<
+      string,
+      unknown
+    >;
+    expect(data.code).toBe("ROOM_PARTICIPANT_REQUIRED");
+  });
+
+  it("returns 403 when the room does not exist", async () => {
+    process.env.TURN_HMAC_SECRET = "test-secret-1234567890";
+    verifyRoomParticipantMock.mockReturnValue({
+      valid: false,
+      error: "ROOM_NOT_FOUND",
+    });
+    const { GET } = await loadRoute();
+    const res = await GET(
+      makeGet(
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room-ABC-123",
+      ),
+    );
+    expect(res.status).toBe(403);
+    const data = (await (res as unknown as TestResponse).json()) as Record<
+      string,
+      unknown
+    >;
+    expect(data.code).toBe("ROOM_PARTICIPANT_REQUIRED");
+  });
+
+  it("returns 200 with valid credential when peer is a verified room participant", async () => {
+    process.env.TURN_HMAC_SECRET = "test-secret-1234567890";
+    const { GET } = await loadRoute();
+    const res = await GET(
+      makeGet(
+        "http://localhost/api/signaling/turn-credentials?clientId=peer-1&roomId=room-ABC-123",
+      ),
+    );
+    expect(res.status).toBe(200);
+    const data = (await (res as unknown as TestResponse).json()) as Record<
+      string,
+      unknown
+    >;
+    expect(data.credential).toBeDefined();
+    expect(data.username).toContain("peer-1");
+    expect(data.credential).not.toContain("TURN_HMAC_SECRET");
+  });
+
+  it("calls verifyRoomParticipant with the correct roomId and peerId", async () => {
+    process.env.TURN_HMAC_SECRET = "test-secret-1234567890";
+    const { GET } = await loadRoute();
+    await GET(
+      makeGet(
+        "http://localhost/api/signaling/turn-credentials?clientId=my-peer&roomId=my-room-42",
+      ),
+    );
+    expect(verifyRoomParticipantMock).toHaveBeenCalledTimes(1);
+    expect(verifyRoomParticipantMock).toHaveBeenCalledWith({
+      roomId: "my-room-42",
+      peerId: "my-peer",
+    });
+  });
+});
