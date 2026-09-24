@@ -31,6 +31,7 @@ import {
 import {
   compressData,
   decompressData,
+  hasIntegrityChecksum,
   BACKUP_COMPRESSED_MIME,
   BACKUP_COMPRESSED_EXTENSION,
 } from "@/lib/backup-compression";
@@ -420,6 +421,20 @@ export function useStorageBackup() {
         // gzip-compressed format and legacy uncompressed JSON.
         const buffer = await file.arrayBuffer();
         setProgress(40);
+
+        // Check if backup has integrity protection before decompressing.
+        // This gives users feedback about whether their backup is protected
+        // against silent corruption. hasIntegrityChecksum verifies the gzip
+        // comment contains a pn1:sha256=<hex> checksum.
+        const backupHasIntegrity = hasIntegrityChecksum(buffer);
+        if (!backupHasIntegrity) {
+          console.warn(
+            "[use-storage-backup] Backup file does not have an integrity checksum. " +
+              "This backup was created before integrity verification was added " +
+              "or the checksum was corrupted. The restore will proceed but the " +
+              "backup data cannot be verified for corruption.",
+          );
+        }
 
         // Parse and validate (auto-detects compressed vs legacy JSON).
         // Generic decompress so we can then branch on full vs incremental.

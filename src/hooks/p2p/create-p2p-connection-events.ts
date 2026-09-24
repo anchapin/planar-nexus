@@ -16,6 +16,7 @@
  */
 
 import type { RefObject } from "react";
+import { toast } from "@/hooks/use-toast";
 import type { GameState } from "@/lib/game-state";
 import type {
   P2PConnectionState,
@@ -144,6 +145,11 @@ export function createP2PConnectionEvents(
     },
     onError: (err) => {
       deps.setError(err.message);
+      toast({
+        variant: "destructive",
+        title: "Connection error",
+        description: err.message,
+      });
     },
     onPlayerJoined: (playerId, playerName) => {
       p2pLogger.debug("Player joined:", playerName);
