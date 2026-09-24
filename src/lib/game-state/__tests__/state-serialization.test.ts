@@ -13,6 +13,7 @@ import {
   deserializeGameState,
   prettyPrintGameState,
   cloneGameState,
+  GameStateValidationError,
 } from "../state-serialization";
 import { createInitialGameState } from "../game-state";
 import { Phase } from "../types";
@@ -79,6 +80,135 @@ describe("state-serialization (issue #1020)", () => {
       expect(clone.gameId).toBe(state.gameId);
       expect(clone.players).not.toBe(state.players);
       expect(clone.players.size).toBe(state.players.size);
+    });
+  });
+
+  describe("deserializeGameState structural validation (issue #2198)", () => {
+    it("throws GameStateValidationError for null input", () => {
+      expect(() => deserializeGameState("null")).toThrow(GameStateValidationError);
+      expect(() => deserializeGameState("null")).toThrow(
+        "GameState cannot be null or undefined",
+      );
+    });
+
+    it("throws GameStateValidationError for non-object JSON", () => {
+      expect(() => deserializeGameState("123")).toThrow(GameStateValidationError);
+      expect(() => deserializeGameState("hello")).toThrow(GameStateValidationError);
+    });
+
+    it("throws GameStateValidationError when gameId is missing", () => {
+      const state = createInitialGameState(["Alice", "Bob"]);
+      const json = serializeGameState(state);
+      const parsed = JSON.parse(json);
+      delete parsed.gameId;
+
+      expect(() => deserializeGameState(JSON.stringify(parsed))).toThrow(
+        GameStateValidationError,
+      );
+      expect(() => deserializeGameState(JSON.stringify(parsed))).toThrow(
+        "gameId",
+      );
+    });
+
+    it("throws GameStateValidationError when gameId is empty string", () => {
+      const state = createInitialGameState(["Alice", "Bob"]);
+      const json = serializeGameState(state);
+      const parsed = JSON.parse(json);
+      parsed.gameId = "";
+
+      expect(() => deserializeGameState(JSON.stringify(parsed))).toThrow(
+        GameStateValidationError,
+      );
+    });
+
+    it("throws GameStateValidationError when players is not a Map", () => {
+      const state = createInitialGameState(["Alice", "Bob"]);
+      const json = serializeGameState(state);
+      const parsed = JSON.parse(json);
+      parsed.players = {};
+
+      expect(() => deserializeGameState(JSON.stringify(parsed))).toThrow(
+        GameStateValidationError,
+      );
+      expect(() => deserializeGameState(JSON.stringify(parsed))).toThrow(
+        "players must be a Map",
+      );
+    });
+
+    it("throws GameStateValidationError when stack is not an array", () => {
+      const state = createInitialGameState(["Alice", "Bob"]);
+      const json = serializeGameState(state);
+      const parsed = JSON.parse(json);
+      parsed.stack = {};
+
+      expect(() => deserializeGameState(JSON.stringify(parsed))).toThrow(
+        GameStateValidationError,
+      );
+      expect(() => deserializeGameState(JSON.stringify(parsed))).toThrow(
+        "stack must be an array",
+      );
+    });
+
+    it("throws GameStateValidationError when status is invalid", () => {
+      const state = createInitialGameState(["Alice", "Bob"]);
+      const json = serializeGameState(state);
+      const parsed = JSON.parse(json);
+      parsed.status = "invalid_status";
+
+      expect(() => deserializeGameState(JSON.stringify(parsed))).toThrow(
+        GameStateValidationError,
+      );
+      expect(() => deserializeGameState(JSON.stringify(parsed))).toThrow("status");
+    });
+
+    it("throws GameStateValidationError when turn is missing", () => {
+      const state = createInitialGameState(["Alice", "Bob"]);
+      const json = serializeGameState(state);
+      const parsed = JSON.parse(json);
+      delete parsed.turn;
+
+      expect(() => deserializeGameState(JSON.stringify(parsed))).toThrow(
+        GameStateValidationError,
+      );
+      expect(() => deserializeGameState(JSON.stringify(parsed))).toThrow("turn");
+    });
+
+    it("throws GameStateValidationError when combat is missing", () => {
+      const state = createInitialGameState(["Alice", "Bob"]);
+      const json = serializeGameState(state);
+      const parsed = JSON.parse(json);
+      delete parsed.combat;
+
+      expect(() => deserializeGameState(JSON.stringify(parsed))).toThrow(
+        GameStateValidationError,
+      );
+      expect(() => deserializeGameState(JSON.stringify(parsed))).toThrow("combat");
+    });
+
+    it("throws GameStateValidationError when winners is not an array", () => {
+      const state = createInitialGameState(["Alice", "Bob"]);
+      const json = serializeGameState(state);
+      const parsed = JSON.parse(json);
+      parsed.winners = {};
+
+      expect(() => deserializeGameState(JSON.stringify(parsed))).toThrow(
+        GameStateValidationError,
+      );
+      expect(() => deserializeGameState(JSON.stringify(parsed))).toThrow("winners");
+    });
+
+    it("throws GameStateValidationError when lastModifiedAt is not a number", () => {
+      const state = createInitialGameState(["Alice", "Bob"]);
+      const json = serializeGameState(state);
+      const parsed = JSON.parse(json);
+      parsed.lastModifiedAt = "not a number";
+
+      expect(() => deserializeGameState(JSON.stringify(parsed))).toThrow(
+        GameStateValidationError,
+      );
+      expect(() =>
+        deserializeGameState(JSON.stringify(parsed)),
+      ).toThrow("lastModifiedAt");
     });
   });
 });

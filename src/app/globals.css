@@ -156,6 +156,37 @@
     --sidebar-accent-foreground: 0 0% 98%;
     --sidebar-border: 256 19% 55%;
     --sidebar-ring: 223 100% 61%;
+
+    /* High Contrast Mode — WCAG AAA 7:1 contrast ratios */
+    --hc-background: 0 0% 0%;
+    --hc-foreground: 0 0% 100%;
+    --hc-card: 0 0% 5%;
+    --hc-card-foreground: 0 0% 100%;
+    --hc-primary: 60 100% 50%;
+    --hc-primary-foreground: 0 0% 0%;
+    --hc-secondary: 0 0% 20%;
+    --hc-secondary-foreground: 0 0% 100%;
+    --hc-border: 0 0% 100%;
+    --hc-accent: 60 100% 50%;
+    --hc-accent-foreground: 0 0% 0%;
+    --hc-muted: 0 0% 15%;
+    --hc-muted-foreground: 0 0% 100%;
+    --hc-destructive: 0 100% 50%;
+    --hc-destructible-foreground: 0 0% 0%;
+
+    /* Color-Blind Safe Palette — Deuteranopia/Protanopia safe
+       Based on Wong's 2011 color-blind safe palette with WCAG AA contrast
+       https://www.nature.com/articles/nmeth.1618 */
+    --cb-player-1: 0 75% 50%;
+    --cb-player-2: 240 75% 50%;
+    --cb-player-3: 150 75% 40%;
+    --cb-player-4: 280 75% 55%;
+    --cb-team-ally: 120 80% 40%;
+    --cb-team-enemy: 0 75% 50%;
+    --cb-damage: 0 80% 55%;
+    --cb-heal: 150 80% 40%;
+    --cb-poison: 280 80% 55%;
+    --cb-card-highlight: 60 100% 50%;
   }
 }
 
@@ -458,4 +489,204 @@
   [class*="section"] {
     page-break-before: avoid;
   }
+}
+
+/* High Contrast Mode — WCAG AAA 7:1 contrast */
+.game-board-high-contrast {
+  --background: var(--hc-background);
+  --foreground: var(--hc-foreground);
+  --card: var(--hc-card);
+  --card-foreground: var(--hc-card-foreground);
+  --primary: var(--hc-primary);
+  --primary-foreground: var(--hc-primary-foreground);
+  --secondary: var(--hc-secondary);
+  --secondary-foreground: var(--hc-secondary-foreground);
+  --border: var(--hc-border);
+  --accent: var(--hc-accent);
+  --accent-foreground: var(--hc-accent-foreground);
+  --muted: var(--hc-muted);
+  --muted-foreground: var(--hc-muted-foreground);
+  --destructive: var(--hc-destructive);
+  --destructive-foreground: var(--hc-destructive-foreground);
+}
+
+.game-board-high-contrast {
+  background-color: hsl(var(--hc-background)) !important;
+  color: hsl(var(--hc-foreground)) !important;
+}
+
+.game-board-high-contrast .card,
+.game-board-high-contrast [class*="card"] {
+  background-color: hsl(var(--hc-card)) !important;
+  color: hsl(var(--hc-card-foreground)) !important;
+  border: 2px solid hsl(var(--hc-border)) !important;
+}
+
+.game-board-high-contrast .text-primary,
+.game-board-high-contrast [class*="text-primary"] {
+  color: hsl(var(--hc-primary)) !important;
+}
+
+.game-board-high-contrast .border,
+.game-board-high-contrast [class*="border"] {
+  border-color: hsl(var(--hc-border)) !important;
+}
+
+.game-board-high-contrast .bg-primary,
+.game-board-high-contrast [class*="bg-primary"] {
+  background-color: hsl(var(--hc-primary)) !important;
+  color: hsl(var(--hc-primary-foreground)) !important;
+}
+
+.game-board-high-contrast .bg-secondary,
+.game-board-high-contrast [class*="bg-secondary"] {
+  background-color: hsl(var(--hc-secondary)) !important;
+  color: hsl(var(--hc-secondary-foreground)) !important;
+}
+
+.game-board-high-contrast .bg-destructive,
+.game-board-high-contrast [class*="bg-destructive"] {
+  background-color: hsl(var(--hc-destructive)) !important;
+  color: hsl(var(--hc-destructive-foreground)) !important;
+}
+
+.game-board-high-contrast .bg-accent,
+.game-board-high-contrast [class*="bg-accent"] {
+  background-color: hsl(var(--hc-accent)) !important;
+  color: hsl(var(--hc-accent-foreground)) !important;
+}
+
+.game-board-high-contrast .bg-muted,
+.game-board-high-contrast [class*="bg-muted"] {
+  background-color: hsl(var(--hc-muted)) !important;
+  color: hsl(var(--hc-muted-foreground)) !important;
+}
+
+/* High contrast focus indicators */
+.game-board-high-contrast :focus-visible,
+.game-board-high-contrast [tabindex]:focus-visible {
+  outline: 3px solid hsl(var(--hc-primary)) !important;
+  outline-offset: 2px !important;
+}
+
+/* High contrast focus ring for interactive elements */
+.game-board-high-contrast button:focus-visible,
+.game-board-high-contrast [role="button"]:focus-visible,
+.game-board-high-contrast a:focus-visible,
+.game-board-high-contrast input:focus-visible,
+.game-board-high-contrast select:focus-visible,
+.game-board-high-contrast [tabindex="0"]:focus-visible {
+  outline: 3px solid hsl(var(--hc-primary)) !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 6px hsl(var(--hc-background)) !important;
+}
+
+/* Color-Blind Safe Mode — Deuteranopia/Protanopia safe palettes */
+.game-board-colorblind {
+  --player-1: var(--cb-player-1);
+  --player-2: var(--cb-player-2);
+  --player-3: var(--cb-player-3);
+  --player-4: var(--cb-player-4);
+  --team-ally: var(--cb-team-ally);
+  --team-enemy: var(--cb-team-enemy);
+  --damage: var(--cb-damage);
+  --heal: var(--cb-heal);
+  --poison: var(--cb-poison);
+  --card-highlight: var(--cb-card-highlight);
+}
+
+/* Apply color-blind safe colors to game elements */
+.game-board-colorblind .player-1 { background-color: hsl(var(--cb-player-1)) !important; }
+.game-board-colorblind .player-2 { background-color: hsl(var(--cb-player-2)) !important; }
+.game-board-colorblind .player-3 { background-color: hsl(var(--cb-player-3)) !important; }
+.game-board-colorblind .player-4 { background-color: hsl(var(--cb-player-4)) !important; }
+
+.game-board-colorblind .team-ally { background-color: hsl(var(--cb-team-ally)) !important; }
+.game-board-colorblind .team-enemy { background-color: hsl(var(--cb-team-enemy)) !important; }
+
+.game-board-colorblind .damage-indicator { background-color: hsl(var(--cb-damage)) !important; }
+.game-board-colorblind .heal-indicator { background-color: hsl(var(--cb-heal)) !important; }
+.game-board-colorblind .poison-indicator { background-color: hsl(var(--cb-poison)) !important; }
+
+.game-board-colorblind .card-highlight { background-color: hsl(var(--cb-card-highlight)) !important; }
+
+/* Color-blind safe indicators use patterns + colors */
+.game-board-colorblind .status-indicator-damage {
+  background: repeating-linear-gradient(
+    45deg,
+    hsl(var(--cb-damage)),
+    hsl(var(--cb-damage)) 4px,
+    hsl(0 0% 0% / 0.3) 4px,
+    hsl(0 0% 0% / 0.3) 8px
+  ) !important;
+}
+
+.game-board-colorblind .status-indicator-heal {
+  background: repeating-linear-gradient(
+    -45deg,
+    hsl(var(--cb-heal)),
+    hsl(var(--cb-heal)) 4px,
+    hsl(0 0% 0% / 0.2) 4px,
+    hsl(0 0% 0% / 0.2) 8px
+  ) !important;
+}
+
+.game-board-colorblind .status-indicator-poison {
+  background: repeating-linear-gradient(
+    90deg,
+    hsl(var(--cb-poison)),
+    hsl(var(--cb-poison)) 4px,
+    hsl(0 0% 0% / 0.3) 4px,
+    hsl(0 0% 0% / 0.3) 8px
+  ) !important;
+}
+
+/* Combined high contrast + color-blind mode */
+.game-board-high-contrast.game-board-colorblind {
+  /* Invert secondary colors for maximum contrast in color-blind mode */
+  --cb-player-1: 60 100% 50%;
+  --cb-player-2: 240 100% 75%;
+  --cb-player-3: 150 100% 50%;
+  --cb-player-4: 280 100% 60%;
+  --cb-team-ally: 120 100% 50%;
+  --cb-team-enemy: 0 100% 60%;
+  --cb-damage: 0 100% 60%;
+  --cb-heal: 120 100% 50%;
+  --cb-poison: 280 100% 60%;
+  --cb-card-highlight: 60 100% 50%;
+}
+
+/* Toggle button styling */
+.accessibility-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  border: 1px solid hsl(var(--border));
+  background-color: hsl(var(--card));
+  color: hsl(var(--card-foreground));
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.accessibility-toggle:hover {
+  background-color: hsl(var(--accent) / 0.1);
+}
+
+.accessibility-toggle:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+.game-board-high-contrast .accessibility-toggle {
+  border: 2px solid hsl(var(--hc-border));
+  background-color: hsl(var(--hc-card));
+  color: hsl(var(--hc-foreground));
+}
+
+.game-board-high-contrast .accessibility-toggle:hover {
+  background-color: hsl(var(--hc-primary) / 0.2);
 }

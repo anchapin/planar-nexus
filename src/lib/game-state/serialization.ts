@@ -26,20 +26,20 @@ import {
   AITurnInfo,
   AIStackObject,
   AICombatState,
-} from './types';
-import { PHASE_MAPPING } from './types';
+} from "./types";
+import { PHASE_MAPPING } from "./types";
 
 /**
  * Helper: Get card color identity from card data
  */
-function getCardColors(cardData: CardInstance['cardData']): string[] {
+function getCardColors(cardData: CardInstance["cardData"]): string[] {
   const colors: string[] = [];
   const colorMap: Record<string, string> = {
-    W: 'white',
-    U: 'blue',
-    B: 'black',
-    R: 'red',
-    G: 'green',
+    W: "white",
+    U: "blue",
+    B: "black",
+    R: "red",
+    G: "green",
   };
 
   if (cardData.mana_cost) {
@@ -66,15 +66,15 @@ function getCardColors(cardData: CardInstance['cardData']): string[] {
 /**
  * Helper: Determine permanent type from card type line
  */
-function getPermanentType(typeLine: string): AIPermanent['type'] {
+function getPermanentType(typeLine: string): AIPermanent["type"] {
   const lowerType = typeLine.toLowerCase();
 
-  if (lowerType.includes('creature')) return 'creature';
-  if (lowerType.includes('land')) return 'land';
-  if (lowerType.includes('planeswalker')) return 'planeswalker';
-  if (lowerType.includes('artifact')) return 'artifact';
-  if (lowerType.includes('enchantment')) return 'enchantment';
-  return 'other';
+  if (lowerType.includes("creature")) return "creature";
+  if (lowerType.includes("land")) return "land";
+  if (lowerType.includes("planeswalker")) return "planeswalker";
+  if (lowerType.includes("artifact")) return "artifact";
+  if (lowerType.includes("enchantment")) return "enchantment";
+  return "other";
 }
 
 /**
@@ -82,19 +82,19 @@ function getPermanentType(typeLine: string): AIPermanent['type'] {
  */
 function getStepFromPhase(phase: Phase): string {
   const stepMap: Record<Phase, string> = {
-    [Phase.UNTAP]: 'untap',
-    [Phase.UPKEEP]: 'upkeep',
-    [Phase.DRAW]: 'draw',
-    [Phase.PRECOMBAT_MAIN]: 'main',
-    [Phase.BEGIN_COMBAT]: 'begin_combat',
-    [Phase.DECLARE_ATTACKERS]: 'declare_attackers',
-    [Phase.DECLARE_BLOCKERS]: 'declare_blockers',
-    [Phase.COMBAT_DAMAGE_FIRST_STRIKE]: 'first_strike_damage',
-    [Phase.COMBAT_DAMAGE]: 'combat_damage',
-    [Phase.END_COMBAT]: 'end_combat',
-    [Phase.POSTCOMBAT_MAIN]: 'main',
-    [Phase.END]: 'end',
-    [Phase.CLEANUP]: 'cleanup',
+    [Phase.UNTAP]: "untap",
+    [Phase.UPKEEP]: "upkeep",
+    [Phase.DRAW]: "draw",
+    [Phase.PRECOMBAT_MAIN]: "main",
+    [Phase.BEGIN_COMBAT]: "begin_combat",
+    [Phase.DECLARE_ATTACKERS]: "declare_attackers",
+    [Phase.DECLARE_BLOCKERS]: "declare_blockers",
+    [Phase.COMBAT_DAMAGE_FIRST_STRIKE]: "first_strike_damage",
+    [Phase.COMBAT_DAMAGE]: "combat_damage",
+    [Phase.END_COMBAT]: "end_combat",
+    [Phase.POSTCOMBAT_MAIN]: "main",
+    [Phase.END]: "end",
+    [Phase.CLEANUP]: "cleanup",
   };
   return stepMap[phase];
 }
@@ -104,11 +104,13 @@ function getStepFromPhase(phase: Phase): string {
  */
 function convertPlayerToAI(
   enginePlayer: Player,
-  engineState: EngineGameState
+  engineState: EngineGameState,
 ): AIPlayerState {
   // Get player's zones
   const handZone = engineState.zones.get(`${enginePlayer.id}-hand`);
-  const battlefieldZone = engineState.zones.get(`${enginePlayer.id}-battlefield`);
+  const battlefieldZone = engineState.zones.get(
+    `${enginePlayer.id}-battlefield`,
+  );
   const graveyardZone = engineState.zones.get(`${enginePlayer.id}-graveyard`);
   const exileZone = engineState.zones.get(`${enginePlayer.id}-exile`);
   const libraryZone = engineState.zones.get(`${enginePlayer.id}-library`);
@@ -145,13 +147,22 @@ function convertPlayerToAI(
           type: getPermanentType(card.cardData.type_line),
           controller: card.controllerId,
           tapped: card.isTapped,
-          power: card.cardData.power ? parseInt(card.cardData.power) : undefined,
-          toughness: card.cardData.toughness ? parseInt(card.cardData.toughness) : undefined,
-          loyalty: card.cardData.loyalty ? parseInt(card.cardData.loyalty) : undefined,
-          counters: card.counters?.reduce((acc, counter) => {
-            acc[counter.type] = counter.count;
-            return acc;
-          }, {} as { [key: string]: number }),
+          power: card.cardData.power
+            ? parseInt(card.cardData.power)
+            : undefined,
+          toughness: card.cardData.toughness
+            ? parseInt(card.cardData.toughness)
+            : undefined,
+          loyalty: card.cardData.loyalty
+            ? parseInt(card.cardData.loyalty)
+            : undefined,
+          counters: card.counters?.reduce(
+            (acc, counter) => {
+              acc[counter.type] = counter.count;
+              return acc;
+            },
+            {} as { [key: string]: number },
+          ),
           keywords: card.cardData.keywords,
           manaValue: card.cardData.cmc,
           summoningSickness: card.hasSummoningSickness,
@@ -215,10 +226,10 @@ function convertPlayerToAI(
  */
 function convertStackObjectToAI(
   engineStack: StackObject[],
-  engineState: EngineGameState
+  engineState: EngineGameState,
 ): AIStackObject[] {
   return engineStack.map((stackObj) => {
-    let cardInstanceId = '';
+    let cardInstanceId = "";
     let manaValue = 0;
     let colors: string[] | undefined;
     let name = stackObj.name;
@@ -254,7 +265,7 @@ function convertStackObjectToAI(
  * Convert Engine Combat to AICombatState
  */
 function convertCombatToAI(
-  engineCombat: EngineGameState['combat']
+  engineCombat: EngineGameState["combat"],
 ): AICombatState {
   // Convert attackers
   const attackers = engineCombat.attackers.map((attacker) => ({
@@ -267,14 +278,16 @@ function convertCombatToAI(
   }));
 
   // Convert blockers from Map to object
-  const blockers: { [attackerId: string]: {
-    cardInstanceId: string;
-    attackerId: string;
-    damageToDeal: number;
-    blockerOrder: number;
-    hasFirstStrike: boolean;
-    hasDoubleStrike: boolean;
-  }[] } = {};
+  const blockers: {
+    [attackerId: string]: {
+      cardInstanceId: string;
+      attackerId: string;
+      damageToDeal: number;
+      blockerOrder: number;
+      hasFirstStrike: boolean;
+      hasDoubleStrike: boolean;
+    }[];
+  } = {};
   engineCombat.blockers.forEach((blockerList, attackerId) => {
     blockers[attackerId] = blockerList.map((blocker) => ({
       cardInstanceId: blocker.cardId,
@@ -341,7 +354,7 @@ export function engineToUnified(engineState: EngineGameState): AIGameState {
  */
 function convertAIPlayerToEngine(
   aiPlayer: AIPlayerState,
-  _baseEnginePlayer: Player
+  _baseEnginePlayer: Player,
 ): Partial<Player> {
   return {
     life: aiPlayer.life,
@@ -362,15 +375,101 @@ function convertAIPlayerToEngine(
 }
 
 /**
- * Convert AI GameState back to Engine GameState
- * This is primarily used for validation - the engine state is the source of truth
- * AI actions are applied to the engine state, not converted back
+ * Thrown when an AI GameState fails structural validation after round-trip conversion.
+ *
+ * The AI module receives a transformed view of the engine state. When the AI
+ * returns an action result that fails validation (e.g. the stack does not match
+ * expectations), this error is thrown. It signals a mismatch between the AI's
+ * understanding of the game state and the actual engine state.
+ *
+ * This is distinct from {@link GameStateValidationError} which covers raw
+ * deserialization failures.
+ *
+ * @example
+ * try {
+ *   const result = aiToEngineState(aiState, engineState);
+ * } catch (err) {
+ *   if (err instanceof AIGameStateValidationError) {
+ *     // AI state desynchronized from engine state
+ *     console.error("AI state validation failed:", err.message);
+ *   }
+ * }
  */
+export class AIGameStateValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AIGameStateValidationError";
+  }
+}
+
+function validateAIGameStateStructure(
+  aiState: unknown,
+  baseEngineState: unknown,
+): asserts aiState is AIGameState {
+  if (aiState === null || aiState === undefined) {
+    throw new AIGameStateValidationError(
+      "AIGameState cannot be null or undefined",
+    );
+  }
+  if (typeof aiState !== "object") {
+    throw new AIGameStateValidationError("AIGameState must be an object");
+  }
+
+  const state = aiState as Record<string, unknown>;
+
+  if (!state.players || typeof state.players !== "object") {
+    throw new AIGameStateValidationError(
+      "AIGameState.players must be an object",
+    );
+  }
+  if (!state.turnInfo || typeof state.turnInfo !== "object") {
+    throw new AIGameStateValidationError(
+      "AIGameState.turnInfo must be an object",
+    );
+  }
+  if (!Array.isArray(state.stack)) {
+    throw new AIGameStateValidationError("AIGameState.stack must be an array");
+  }
+
+  const turnInfo = state.turnInfo as Record<string, unknown>;
+  if (typeof turnInfo.currentTurn !== "number") {
+    throw new AIGameStateValidationError(
+      "AIGameState.turnInfo.currentTurn must be a number",
+    );
+  }
+  if (typeof turnInfo.phase !== "string") {
+    throw new AIGameStateValidationError(
+      "AIGameState.turnInfo.phase must be a string",
+    );
+  }
+  if (typeof turnInfo.priority !== "string") {
+    throw new AIGameStateValidationError(
+      "AIGameState.turnInfo.priority must be a string",
+    );
+  }
+
+  if (baseEngineState === null || baseEngineState === undefined) {
+    throw new AIGameStateValidationError(
+      "baseEngineState cannot be null or undefined",
+    );
+  }
+  if (typeof baseEngineState !== "object") {
+    throw new AIGameStateValidationError("baseEngineState must be an object");
+  }
+  const base = baseEngineState as Record<string, unknown>;
+  if (!(base.players instanceof Map)) {
+    throw new AIGameStateValidationError(
+      "baseEngineState.players must be a Map",
+    );
+  }
+}
+
 export function aiToEngineState(
   aiState: AIGameState,
-  baseEngineState: EngineGameState
+  baseEngineState: EngineGameState,
 ): EngineGameState {
-  // Update players with AI state data
+  validateAIGameStateStructure(aiState, baseEngineState);
+
   const updatedPlayers = new Map(baseEngineState.players);
   for (const [playerId, aiPlayer] of Object.entries(aiState.players)) {
     const basePlayer = baseEngineState.players.get(playerId);
@@ -392,7 +491,7 @@ export function aiToEngineState(
  */
 export function unifiedToEngine(
   aiState: AIGameState,
-  baseEngineState: EngineGameState
+  baseEngineState: EngineGameState,
 ): EngineGameState {
   return aiToEngineState(aiState, baseEngineState);
 }
@@ -403,7 +502,7 @@ export function unifiedToEngine(
  */
 export function getAIPlayerView(
   engineState: EngineGameState,
-  playerId: PlayerId
+  playerId: PlayerId,
 ): {
   playerState: AIPlayerState;
   turnInfo: AITurnInfo;
@@ -423,17 +522,36 @@ export function getAIPlayerView(
  * Compare two AI GameState objects and return differences
  * Useful for debugging and testing
  */
-export function compareAIStates(state1: AIGameState, state2: AIGameState): {
+export function compareAIStates(
+  state1: AIGameState,
+  state2: AIGameState,
+): {
   lifeDifferences: { playerId: string; state1: number; state2: number }[];
-  battlefieldDifferences: { playerId: string; state1: number; state2: number }[];
+  battlefieldDifferences: {
+    playerId: string;
+    state1: number;
+    state2: number;
+  }[];
   handDifferences: { playerId: string; state1: number; state2: number }[];
   phaseChanged: boolean;
   stackChanged: boolean;
   combatChanged: boolean;
 } {
-  const lifeDifferences: { playerId: string; state1: number; state2: number }[] = [];
-  const battlefieldDifferences: { playerId: string; state1: number; state2: number }[] = [];
-  const handDifferences: { playerId: string; state1: number; state2: number }[] = [];
+  const lifeDifferences: {
+    playerId: string;
+    state1: number;
+    state2: number;
+  }[] = [];
+  const battlefieldDifferences: {
+    playerId: string;
+    state1: number;
+    state2: number;
+  }[] = [];
+  const handDifferences: {
+    playerId: string;
+    state1: number;
+    state2: number;
+  }[] = [];
 
   for (const playerId of Object.keys(state1.players)) {
     const p1 = state1.players[playerId];
@@ -466,7 +584,8 @@ export function compareAIStates(state1: AIGameState, state2: AIGameState): {
     handDifferences,
     phaseChanged: state1.turnInfo.phase !== state2.turnInfo.phase,
     stackChanged: state1.stack.length !== state2.stack.length,
-    combatChanged: JSON.stringify(state1.combat) !== JSON.stringify(state2.combat),
+    combatChanged:
+      JSON.stringify(state1.combat) !== JSON.stringify(state2.combat),
   };
 }
 
@@ -487,7 +606,9 @@ export type SerializedGameState = AIGameState;
  * Serialize game state for storage/transmission
  * @deprecated Use engineToAIState instead
  */
-export function serializeGameState(engineState: EngineGameState): SerializedGameState {
+export function serializeGameState(
+  engineState: EngineGameState,
+): SerializedGameState {
   return engineToAIState(engineState);
 }
 
@@ -497,7 +618,7 @@ export function serializeGameState(engineState: EngineGameState): SerializedGame
  */
 export function deserializeGameState(
   serializedState: SerializedGameState,
-  baseEngineState: EngineGameState
+  baseEngineState: EngineGameState,
 ): EngineGameState {
   return aiToEngineState(serializedState, baseEngineState);
 }

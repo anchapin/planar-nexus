@@ -1,18 +1,6 @@
-/**
- * Tournament Event System
- *
- * Comprehensive tournament event management for organized play.
- * Builds on existing Swiss pairing and bracket components.
- *
- * Issue #256: Implement tournament event system
- */
-
-import type { PlayerId } from "@/lib/game-state";
-
-// ============================================================
-// Types
-// ============================================================
-
+export type TournamentFormat =
+  "single-elimination" | "double-elimination" | "swiss";
+export type TournamentStatus = "registration" | "active" | "completed";
 export type EventFormat =
   | "standard"
   | "draft"
@@ -20,506 +8,677 @@ export type EventFormat =
   | "commander"
   | "modern"
   | "legacy"
-  | "pauper";
+  | "pauper"
+  | "single-elimination"
+  | "double-elimination"
+  | "swiss";
+export type EventType = "regular" | "championship" | "qualifier";
+export type EventStatus = TournamentStatus;
 
-export type EventStatus =
-  "setup" | "registration" | "in_progress" | "completed" | "cancelled";
+export interface Player {
+  id: string;
+  name: string;
+  seed?: number;
+}
 
-export type EventType = "swiss" | "bracket" | "round_robin" | "league";
+export interface MatchResult {
+  winnerId: string;
+  loserId: string;
+  score?: [number, number];
+}
 
-export type PodStatus = "waiting" | "in_progress" | "completed";
+export interface Match {
+  id: string;
+  round: number;
+  player1Id: string | null;
+  player2Id: string | null;
+  result?: MatchResult;
+  bye: boolean;
+  nextMatchId?: string;
+}
+
+export interface Standing {
+  playerId: string;
+  name: string;
+  wins: number;
+  losses: number;
+  draws: number;
+  matchPoints: number;
+  opponentMatchWinPercentages: number;
+  gameWinPercentages?: number;
+  tiebreakers: number[];
+}
+
+export interface EventStandings extends Standing {
+  placement: number;
+  deckName?: string;
+}
+
+export interface PrizeBreakdown {
+  position: number;
+  percentage: number;
+}
 
 export interface TournamentEvent {
   id: string;
   name: string;
-  description?: string;
-  format: EventFormat;
-  eventType: EventType;
-  status: EventStatus;
-
-  // Registration
-  registrationOpen: boolean;
-  maxPlayers: number;
-  minPlayers: number;
-  registeredPlayers: Registration[];
-
-  // Structure
-  rounds: number;
-  topCut?: number;
-
-  // Timing
-  startTime?: number;
-  endTime?: number;
-  registrationDeadline?: number;
-  roundDuration?: number; // minutes
-
-  // Pods/Tables
-  pods: Pod[];
-
-  // Prize Structure
-  prizeStructure: PrizeStructure;
-
-  // Results
-  standings: EventStandings[];
-  champion?: Registration;
-
-  // Metadata
+  format: EventFormat | TournamentFormat;
+  status: TournamentStatus;
+  players: Player[];
+  matches: Match[];
+  currentRound: number;
+  totalRounds: number;
+  standings: Standing[];
+  prizes: PrizeBreakdown[];
+  eventType?: EventType;
   createdAt: number;
-  createdBy: PlayerId;
-}
-
-export interface Registration {
-  playerId: PlayerId;
-  displayName: string;
-  deckName?: string;
-  seed?: number;
-  registeredAt: number;
-  checkedIn: boolean;
-  dropRound?: number;
-}
-
-export interface Pod {
-  id: string;
-  podNumber: number;
-  tableIds: string[];
-  status: PodStatus;
-  round: number;
-}
-
-export interface PrizeStructure {
-  name: string;
-  description?: string;
-  prizes: Prize[];
-}
-
-export interface Prize {
-  place: number; // 1 = 1st, 2 = 2nd, etc.
-  minPlacement: number;
-  maxPlacement: number;
-  reward: string; // e.g., "3 Playtester Crates", "1000 Gold"
-  points?: number;
-}
-
-export interface EventStandings {
-  playerId: PlayerId;
-  displayName: string;
-  points: number;
-  wins: number;
-  losses: number;
-  draws: number;
-  placement: number;
-  prizeClaimed?: boolean;
+  completedAt?: number;
 }
 
 export interface EventHistory {
   id: string;
-  eventName: string;
-  format: EventFormat;
+  name: string;
+  format: EventFormat | TournamentFormat;
   eventType: EventType;
-  playerCount: number;
-  date: number;
   result: "1st" | "2nd" | "3rd-8th" | "9th+" | "dnf";
-  prize?: string;
+  date: number;
+  placement?: number;
+  prizesWon?: number;
 }
 
-// ============================================================
-// Storage Keys
-// ============================================================
-
 export const TOURNAMENT_STORAGE_KEYS = {
-  ACTIVE_EVENTS: "planar-nexus-active-events",
-  EVENT_HISTORY: "planar-nexus-event-history",
-  MY_REGISTRATIONS: "planar-nexus-my-registrations",
+  ACTIVE_EVENTS: "pn:tournament:active",
+  EVENT_HISTORY: "pn:tournament:history",
+  MY_REGISTRATIONS: "pn:tournament:my-registrations",
 } as const;
 
-// ============================================================
-// Event Creation
-// ============================================================
+export const DEFAULT_PRIZES: PrizeBreakdown[] = [
+  { position: 1, percentage: 30 },
+  { position: 2, percentage: 20 },
+  { position: 3, percentage: 12 },
+  { position: 4, percentage: 8 },
+  { position: 5, percentage: 5 },
+  { position: 6, percentage: 5 },
+  { position: 7, percentage: 5 },
+  { position: 8, percentage: 5 },
+];
 
-/**
- * Create a new tournament event
- */
+function generateId(): string {
+  return Math.random().toString(36).substring(2, 11);
+}
+
+function swissPairing(
+  standings: Standing[],
+  players: Player[],
+): [string, string][] {
+  const paired: Set<string> = new Set();
+  const pairings: [string, string][] = [];
+
+  const available = [...standings.filter((s) => !paired.has(s.playerId))];
+
+  for (let i = 0; i < available.length; i++) {
+    const p1 = available[i];
+    if (paired.has(p1.playerId)) continue;
+
+    for (let j = i + 1; j < available.length; j++) {
+      const p2 = available[j];
+      if (paired.has(p2.playerId)) continue;
+
+      pairings.push([p1.playerId, p2.playerId]);
+      paired.add(p1.playerId);
+      paired.add(p2.playerId);
+      break;
+    }
+  }
+
+  const unpairedPlayers = players.filter((p) => !paired.has(p.id));
+  for (let i = 0; i < unpairedPlayers.length; i += 2) {
+    if (i + 1 < unpairedPlayers.length) {
+      pairings.push([unpairedPlayers[i].id, unpairedPlayers[i + 1].id]);
+    } else {
+      pairings.push([unpairedPlayers[i].id, unpairedPlayers[i].id]);
+    }
+  }
+
+  return pairings;
+}
+
+function calculateTiebreakers(
+  standing: Standing,
+  allStandings: Standing[],
+): number[] {
+  const omwp = calculateOpponentMatchWinPercentage(standing, allStandings);
+  const gwp =
+    standing.gameWinPercentages ??
+    (standing.wins + standing.losses > 0
+      ? (standing.wins * 3 + standing.draws) /
+        ((standing.wins + standing.losses) * 3)
+      : 0);
+
+  return [standing.matchPoints, omwp, gwp];
+}
+
+function calculateOpponentMatchWinPercentage(
+  standing: Standing,
+  allStandings: Standing[],
+): number {
+  const opponents = allStandings.filter(
+    (s) => s.playerId !== standing.playerId && (s.wins > 0 || s.losses > 0),
+  );
+  if (opponents.length === 0) return 0;
+
+  const totalOppWins = opponents.reduce((sum, o) => sum + o.wins, 0);
+  const totalOppMatches = opponents.reduce(
+    (sum, o) => sum + o.wins + o.losses,
+    0,
+  );
+
+  return totalOppMatches > 0 ? totalOppWins / totalOppMatches : 0;
+}
+
+export function createTournament(
+  name: string,
+  format: TournamentFormat,
+  playerNames: string[],
+  prizes: PrizeBreakdown[] = DEFAULT_PRIZES,
+  totalRounds?: number,
+): TournamentEvent {
+  const players: Player[] = playerNames.map((name, idx) => ({
+    id: generateId(),
+    name,
+    seed: idx + 1,
+  }));
+
+  const sortedPlayers = [...players].sort(
+    (a, b) => (a.seed ?? 0) - (b.seed ?? 0),
+  );
+
+  let initialMatches: Match[] = [];
+  let rounds = totalRounds ?? Math.ceil(Math.log2(players.length)) + 1;
+
+  if (format === "single-elimination") {
+    const bracketSize = Math.pow(2, Math.ceil(Math.log2(players.length)));
+    const seededPlayers = [...sortedPlayers];
+    while (seededPlayers.length < bracketSize) {
+      seededPlayers.push({ id: generateId(), name: "BYE" });
+    }
+
+    initialMatches = createBracketMatches(seededPlayers, 1, bracketSize);
+  } else if (format === "swiss") {
+    initialMatches = createSwissRoundMatches(sortedPlayers, 1);
+    rounds = Math.ceil(Math.log2(players.length));
+  }
+
+  const standings: Standing[] = players.map((p) => ({
+    playerId: p.id,
+    name: p.name,
+    wins: 0,
+    losses: 0,
+    draws: 0,
+    matchPoints: 0,
+    opponentMatchWinPercentages: 0,
+    tiebreakers: [0, 0, 0],
+  }));
+
+  return {
+    id: generateId(),
+    name,
+    format,
+    status: "registration",
+    players,
+    matches: initialMatches,
+    currentRound: 0,
+    totalRounds: rounds,
+    standings,
+    prizes,
+    createdAt: Date.now(),
+  };
+}
+
 export function createTournamentEvent(
   name: string,
   format: EventFormat,
   eventType: EventType,
-  createdBy: PlayerId,
+  _organizerId: string,
   options?: Partial<TournamentEvent>,
 ): TournamentEvent {
-  return {
-    id: `event-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+  const event: TournamentEvent = {
+    id: generateId(),
     name,
     format,
-    eventType,
-    status: "setup",
-    registrationOpen: false,
-    maxPlayers: 32,
-    minPlayers: 4,
-    registeredPlayers: [],
-    rounds: calculateRounds(32),
-    pods: [],
-    prizeStructure: getDefaultPrizeStructure(eventType, format),
+    status: "registration",
+    players: [],
+    matches: [],
+    currentRound: 0,
+    totalRounds: Math.ceil(Math.log2(options?.players?.length ?? 2)) + 1,
     standings: [],
+    prizes: options?.prizes ?? DEFAULT_PRIZES,
+    eventType,
     createdAt: Date.now(),
-    createdBy,
     ...options,
   };
+  return event;
 }
 
-/**
- * Calculate recommended rounds based on player count
- */
-export function calculateRounds(playerCount: number): number {
-  if (playerCount <= 4) return 2;
-  if (playerCount <= 8) return 3;
-  if (playerCount <= 16) return 4;
-  if (playerCount <= 32) return 5;
-  if (playerCount <= 64) return 6;
-  return 7;
-}
+function createBracketMatches(
+  players: Player[],
+  startRound: number,
+  bracketSize: number,
+): Match[] {
+  const matches: Match[] = [];
+  const roundCount = Math.log2(bracketSize);
 
-/**
- * Get default prize structure based on event type and format
- */
-export function getDefaultPrizeStructure(
-  eventType: EventType,
-  format: EventFormat,
-): PrizeStructure {
-  const basePrizes: Prize[] = [
-    {
-      place: 1,
-      minPlacement: 1,
-      maxPlacement: 1,
-      reward: "Champion",
-      points: 100,
-    },
-    {
-      place: 2,
-      minPlacement: 2,
-      maxPlacement: 2,
-      reward: "Finalist",
-      points: 80,
-    },
-    { place: 3, minPlacement: 3, maxPlacement: 4, reward: "Top 4", points: 60 },
-    { place: 5, minPlacement: 5, maxPlacement: 8, reward: "Top 8", points: 40 },
-    {
-      place: 9,
-      minPlacement: 9,
-      maxPlacement: 16,
-      reward: "Participation",
-      points: 20,
-    },
-  ];
+  for (let r = 0; r < roundCount; r++) {
+    const round = startRound + r;
+    const matchesInRound = bracketSize / Math.pow(2, r + 1);
 
-  // Adjust based on player count
-  if (format === "commander") {
-    return {
-      name: "Commander Pod Play",
-      description: "Friendly Commander pods with optional prize support",
-      prizes: basePrizes.map((p) => ({
-        ...p,
-        points: Math.floor(p.points! * 0.5),
-      })),
-    };
+    for (let i = 0; i < matchesInRound; i++) {
+      const match: Match = {
+        id: generateId(),
+        round,
+        player1Id: null,
+        player2Id: null,
+        bye: false,
+      };
+      matches.push(match);
+    }
   }
 
-  if (eventType === "league") {
-    return {
-      name: "League Season",
-      description: "Long-running league with weekly matches",
-      prizes: [
-        {
-          place: 1,
-          minPlacement: 1,
-          maxPlacement: 1,
-          reward: "League Champion",
-          points: 200,
-        },
-        {
-          place: 2,
-          minPlacement: 2,
-          maxPlacement: 3,
-          reward: "Top 3",
-          points: 150,
-        },
-        {
-          place: 4,
-          minPlacement: 4,
-          maxPlacement: 8,
-          reward: "Top 8",
-          points: 100,
-        },
-      ],
-    };
+  const seeded = [...players].sort(() => Math.random() - 0.5);
+  const firstRoundMatches = matches.filter((m) => m.round === startRound);
+
+  for (let i = 0; i < seeded.length; i += 2) {
+    const matchIdx = Math.floor(i / 2);
+    if (matchIdx < firstRoundMatches.length) {
+      firstRoundMatches[matchIdx].player1Id = seeded[i].id;
+      firstRoundMatches[matchIdx].player2Id = seeded[i + 1]?.id ?? null;
+    }
   }
 
-  return {
-    name: "Standard Prize Table",
-    prizes: basePrizes,
-  };
+  return matches;
 }
 
-// ============================================================
-// Registration
-// ============================================================
-
-/**
- * Register a player for an event
- */
-export function registerPlayer(
-  event: TournamentEvent,
-  playerId: PlayerId,
-  displayName: string,
-  deckName?: string,
-): TournamentEvent {
-  if (event.registeredPlayers.length >= event.maxPlayers) {
-    throw new Error("Event is full");
-  }
-
-  if (event.registeredPlayers.some((r) => r.playerId === playerId)) {
-    throw new Error("Already registered");
-  }
-
-  const registration: Registration = {
-    playerId,
-    displayName,
-    deckName,
-    seed: event.registeredPlayers.length + 1,
-    registeredAt: Date.now(),
-    checkedIn: false,
-  };
-
-  return {
-    ...event,
-    registeredPlayers: [...event.registeredPlayers, registration],
-  };
-}
-
-/**
- * Unregister a player from an event
- */
-export function unregisterPlayer(
-  event: TournamentEvent,
-  playerId: PlayerId,
-): TournamentEvent {
-  return {
-    ...event,
-    registeredPlayers: event.registeredPlayers.filter(
-      (r) => r.playerId !== playerId,
-    ),
-  };
-}
-
-/**
- * Check in a player
- */
-export function checkInPlayer(
-  event: TournamentEvent,
-  playerId: PlayerId,
-): TournamentEvent {
-  return {
-    ...event,
-    registeredPlayers: event.registeredPlayers.map((r) =>
-      r.playerId === playerId ? { ...r, checkedIn: true } : r,
-    ),
-  };
-}
-
-/**
- * Drop a player from the event
- */
-export function dropPlayer(
-  event: TournamentEvent,
-  playerId: PlayerId,
-  currentRound: number,
-): TournamentEvent {
-  return {
-    ...event,
-    registeredPlayers: event.registeredPlayers.map((r) =>
-      r.playerId === playerId ? { ...r, dropRound: currentRound } : r,
-    ),
-  };
-}
-
-// ============================================================
-// Event Management
-// ============================================================
-
-/**
- * Open registration for an event
- */
-export function openRegistration(event: TournamentEvent): TournamentEvent {
-  return {
-    ...event,
-    status: "registration",
-    registrationOpen: true,
-    registrationDeadline: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
-  };
-}
-
-/**
- * Close registration and start the event
- */
-export function startEvent(event: TournamentEvent): TournamentEvent {
-  if (event.registeredPlayers.length < event.minPlayers) {
-    throw new Error("Not enough players registered");
-  }
-
-  // Create pods if needed
-  const pods = createPods(event);
-
-  return {
-    ...event,
-    status: "in_progress",
-    registrationOpen: false,
-    startTime: Date.now(),
-    pods,
-  };
-}
-
-/**
- * Create pods for the event
- */
-function createPods(event: TournamentEvent): Pod[] {
-  const playersPerPod = 4;
-  const numPods = Math.ceil(event.registeredPlayers.length / playersPerPod);
-
-  return Array.from({ length: numPods }, (_, i) => ({
-    id: `pod-${i + 1}`,
-    podNumber: i + 1,
-    tableIds: [],
-    status: "waiting" as PodStatus,
-    round: 0,
+function createSwissRoundMatches(players: Player[], round: number): Match[] {
+  const pairings = swissPairing([], players);
+  return pairings.map(([p1, p2]) => ({
+    id: generateId(),
+    round,
+    player1Id: p1,
+    player2Id: p2,
+    bye: p1 === p2,
   }));
 }
 
-/**
- * Complete the event
- */
+export function startTournament(event: TournamentEvent): TournamentEvent {
+  if (event.status !== "registration") {
+    throw new Error("Tournament can only be started from registration status");
+  }
+
+  const updatedEvent = { ...event, status: "active" as TournamentStatus };
+
+  if (updatedEvent.format === "swiss") {
+    const pairings = swissPairing(updatedEvent.standings, updatedEvent.players);
+    const newMatches = pairings.map(([p1, p2]) => ({
+      id: generateId(),
+      round: 1,
+      player1Id: p1,
+      player2Id: p2,
+      bye: p1 === p2,
+    }));
+
+    return { ...updatedEvent, matches: newMatches, currentRound: 1 };
+  }
+
+  return { ...updatedEvent, currentRound: 1 };
+}
+
+export function startEvent(event: TournamentEvent): TournamentEvent {
+  return startTournament(event);
+}
+
+export function recordMatchResult(
+  event: TournamentEvent,
+  matchId: string,
+  winnerId: string,
+  score?: [number, number],
+): TournamentEvent {
+  const match = event.matches.find((m) => m.id === matchId);
+  if (!match) throw new Error("Match not found");
+
+  if (match.player1Id !== winnerId && match.player2Id !== winnerId) {
+    throw new Error("Winner must be a participant in the match");
+  }
+
+  const loserId =
+    match.player1Id === winnerId ? match.player2Id : match.player1Id;
+
+  let updatedMatch: Match;
+  if (match.bye) {
+    updatedMatch = { ...match, result: { winnerId, loserId: winnerId, score } };
+  } else {
+    if (!loserId) throw new Error("Match must have a loser");
+    updatedMatch = { ...match, result: { winnerId, loserId, score } };
+  }
+
+  const updatedMatches = event.matches.map((m) =>
+    m.id === matchId ? updatedMatch : m,
+  );
+
+  let updatedStandings = event.standings.map((s) => ({ ...s }));
+
+  if (match.bye) {
+    const byePlayer = updatedStandings.find((s) => s.playerId === winnerId);
+    if (byePlayer) {
+      byePlayer.wins += 1;
+      byePlayer.matchPoints += 3;
+    }
+  } else {
+    const winner = updatedStandings.find((s) => s.playerId === winnerId);
+    const loser = loserId
+      ? updatedStandings.find((s) => s.playerId === loserId)
+      : null;
+
+    if (winner) {
+      winner.wins += 1;
+      winner.matchPoints += 3;
+    }
+    if (loser) {
+      loser.losses += 1;
+    }
+  }
+
+  updatedStandings = updatedStandings.map((s) => ({
+    ...s,
+    opponentMatchWinPercentages: calculateOpponentMatchWinPercentage(
+      s,
+      updatedStandings,
+    ),
+    tiebreakers: calculateTiebreakers(s, updatedStandings),
+  }));
+
+  updatedStandings.sort((a, b) => {
+    if (b.matchPoints !== a.matchPoints) return b.matchPoints - a.matchPoints;
+    for (let i = 0; i < a.tiebreakers.length; i++) {
+      if (b.tiebreakers[i] !== a.tiebreakers[i]) {
+        return (b.tiebreakers[i] ?? 0) - (a.tiebreakers[i] ?? 0);
+      }
+    }
+    return 0;
+  });
+
+  return {
+    ...event,
+    matches: updatedMatches,
+    standings: updatedStandings,
+  };
+}
+
+export function advanceRound(event: TournamentEvent): TournamentEvent {
+  if (event.status !== "active") {
+    throw new Error("Tournament must be active to advance round");
+  }
+
+  const nextRound = event.currentRound + 1;
+
+  if (event.format === "single-elimination") {
+    const currentRoundMatches = event.matches.filter(
+      (m) => m.round === event.currentRound,
+    );
+    const allDecided = currentRoundMatches.every((m) => m.result !== undefined);
+
+    if (!allDecided) {
+      throw new Error("All matches in current round must be completed");
+    }
+
+    const nextRoundMatches = event.matches.filter((m) => m.round === nextRound);
+    const currentWinners = currentRoundMatches.map((m) => m.result!.winnerId);
+
+    for (let i = 0; i < nextRoundMatches.length; i++) {
+      const nextMatch = nextRoundMatches[i];
+      const winner1Idx = i * 2;
+      const winner2Idx = i * 2 + 1;
+
+      if (nextMatch) {
+        nextMatch.player1Id = currentWinners[winner1Idx] ?? null;
+        nextMatch.player2Id = currentWinners[winner2Idx] ?? null;
+      }
+    }
+
+    const finalMatch = event.matches.find(
+      (m) => m.round === Math.max(...event.matches.map((mm) => mm.round)),
+    );
+    const hasChampion = finalMatch && finalMatch.result;
+
+    if (hasChampion || nextRound > event.totalRounds) {
+      return {
+        ...event,
+        currentRound: nextRound,
+        status: "completed",
+        completedAt: Date.now(),
+      };
+    }
+
+    return { ...event, currentRound: nextRound };
+  }
+
+  if (event.format === "swiss") {
+    if (nextRound > event.totalRounds) {
+      return {
+        ...event,
+        currentRound: nextRound,
+        status: "completed",
+        completedAt: Date.now(),
+      };
+    }
+
+    const pairings = swissPairing(event.standings, event.players);
+    const newMatches = pairings.map(([p1, p2]) => ({
+      id: generateId(),
+      round: nextRound,
+      player1Id: p1,
+      player2Id: p2,
+      bye: p1 === p2,
+    }));
+
+    return {
+      ...event,
+      matches: [...event.matches, ...newMatches],
+      currentRound: nextRound,
+    };
+  }
+
+  return { ...event, currentRound: nextRound };
+}
+
+export function calculateStandings(event: TournamentEvent): Standing[] {
+  return [...event.standings].sort((a, b) => {
+    if (b.matchPoints !== a.matchPoints) return b.matchPoints - a.matchPoints;
+    for (let i = 0; i < a.tiebreakers.length; i++) {
+      if (b.tiebreakers[i] !== a.tiebreakers[i]) {
+        return (b.tiebreakers[i] ?? 0) - (a.tiebreakers[i] ?? 0);
+      }
+    }
+    return 0;
+  });
+}
+
+export function distributePrizes(
+  event: TournamentEvent,
+  prizePool: number,
+): Map<string, number> {
+  if (event.status !== "completed") {
+    throw new Error(
+      "Prizes can only be distributed after tournament is completed",
+    );
+  }
+
+  const payouts = new Map<string, number>();
+  const sortedStandings = calculateStandings(event);
+
+  let distributedPercentage = 0;
+
+  for (let i = 0; i < sortedStandings.length && i < event.prizes.length; i++) {
+    const prize = event.prizes[i];
+    const playerId = sortedStandings[i].playerId;
+    const amount = (prize.percentage / 100) * prizePool;
+
+    payouts.set(playerId, amount);
+    distributedPercentage += prize.percentage;
+  }
+
+  const remainingPercentage = 100 - distributedPercentage;
+  const remainingPlayers = sortedStandings.slice(event.prizes.length);
+
+  const remainingAmount = (remainingPercentage / 100) * prizePool;
+  const perPlayerAmount =
+    remainingPlayers.length > 0 ? remainingAmount / remainingPlayers.length : 0;
+
+  for (const standing of remainingPlayers) {
+    payouts.set(standing.playerId, perPlayerAmount);
+  }
+
+  return payouts;
+}
+
+export function getMatchForPlayer(
+  event: TournamentEvent,
+  playerId: string,
+): Match | null {
+  return (
+    event.matches.find(
+      (m) =>
+        m.round === event.currentRound &&
+        (m.player1Id === playerId || m.player2Id === playerId),
+    ) ?? null
+  );
+}
+
+export function getTournamentChampion(event: TournamentEvent): Player | null {
+  if (event.status !== "completed") return null;
+
+  if (event.format === "single-elimination") {
+    const finalRound = Math.max(...event.matches.map((m) => m.round));
+    const finalMatch = event.matches.find((m) => m.round === finalRound);
+    if (finalMatch?.result) {
+      return (
+        event.players.find((p) => p.id === finalMatch.result!.winnerId) ?? null
+      );
+    }
+  }
+
+  const finalStandings = calculateStandings(event);
+  return (
+    event.players.find((p) => p.id === finalStandings[0]?.playerId) ?? null
+  );
+}
+
+export function registerPlayer(
+  event: TournamentEvent,
+  playerId: string,
+  displayName: string,
+  _deckName?: string,
+): TournamentEvent {
+  if (event.players.some((p) => p.id === playerId)) {
+    throw new Error("Player already registered");
+  }
+
+  return {
+    ...event,
+    players: [...event.players, { id: playerId, name: displayName }],
+    standings: [
+      ...event.standings,
+      {
+        playerId,
+        name: displayName,
+        wins: 0,
+        losses: 0,
+        draws: 0,
+        matchPoints: 0,
+        opponentMatchWinPercentages: 0,
+        tiebreakers: [0, 0, 0],
+      },
+    ],
+  };
+}
+
+export function unregisterPlayer(
+  event: TournamentEvent,
+  playerId: string,
+): TournamentEvent {
+  return {
+    ...event,
+    players: event.players.filter((p) => p.id !== playerId),
+    standings: event.standings.filter((s) => s.playerId !== playerId),
+  };
+}
+
+export function openRegistration(event: TournamentEvent): TournamentEvent {
+  if (event.status !== "registration") {
+    throw new Error(
+      "Can only open registration for events in registration status",
+    );
+  }
+  return { ...event, status: "registration" };
+}
+
 export function completeEvent(
   event: TournamentEvent,
   standings: EventStandings[],
 ): TournamentEvent {
-  const champion = event.registeredPlayers.find(
-    (r) => r.playerId === standings[0]?.playerId,
-  );
-
   return {
     ...event,
     status: "completed",
-    standings,
-    champion,
-    endTime: Date.now(),
+    completedAt: Date.now(),
+    standings: standings.map((s) => ({
+      playerId: s.playerId,
+      name: s.name,
+      wins: s.wins,
+      losses: s.losses,
+      draws: s.draws,
+      matchPoints: s.matchPoints,
+      opponentMatchWinPercentages: s.opponentMatchWinPercentages,
+      gameWinPercentages: s.gameWinPercentages,
+      tiebreakers: s.tiebreakers,
+    })),
   };
 }
 
-/**
- * Cancel an event
- */
 export function cancelEvent(event: TournamentEvent): TournamentEvent {
   return {
     ...event,
-    status: "cancelled",
-    registrationOpen: false,
+    status: "completed",
+    completedAt: Date.now(),
   };
 }
 
-// ============================================================
-// Event History
-// ============================================================
-
-/**
- * Add completed event to history
- */
 export function addToEventHistory(
   history: EventHistory[],
   event: TournamentEvent,
   result: EventHistory["result"],
-  prize?: string,
 ): EventHistory[] {
-  const entry: EventHistory = {
-    id: `history-${Date.now()}`,
-    eventName: event.name,
+  const myStanding = event.standings[0];
+  const newEntry: EventHistory = {
+    id: event.id,
+    name: event.name,
     format: event.format,
-    eventType: event.eventType,
-    playerCount: event.registeredPlayers.length,
-    date: event.endTime || Date.now(),
+    eventType: event.eventType ?? "regular",
     result,
-    prize,
+    date: Date.now(),
+    placement: myStanding ? event.standings.indexOf(myStanding) + 1 : undefined,
   };
-
-  return [entry, ...history].slice(0, 100); // Keep last 100
+  return [newEntry, ...history].slice(0, 100);
 }
 
-/**
- * Get total prizes won from history
- */
 export function getTotalPrizes(history: EventHistory[]): {
   points: number;
   events: number;
 } {
-  return history.reduce(
-    (acc, entry) => ({
-      points:
-        acc.points +
-        (entry.result === "1st"
-          ? 50
-          : entry.result === "2nd"
-            ? 30
-            : entry.result === "3rd-8th"
-              ? 10
-              : 0),
-      events: acc.events + 1,
-    }),
-    { points: 0, events: 0 },
-  );
-}
-
-// ============================================================
-// Format Helpers
-// ============================================================
-
-/**
- * Get display name for format
- */
-export function getFormatDisplayName(format: EventFormat): string {
-  const names: Record<EventFormat, string> = {
-    standard: "Standard",
-    draft: "Draft",
-    sealed: "Sealed",
-    commander: "Commander",
-    modern: "Modern",
-    legacy: "Legacy",
-    pauper: "Pauper",
-  };
-  return names[format];
-}
-
-/**
- * Get color for format
- */
-export function getFormatColor(format: EventFormat): string {
-  const colors: Record<EventFormat, string> = {
-    standard: "#f59e0b",
-    draft: "#8b5cf6",
-    sealed: "#a855f7",
-    commander: "#ef4444",
-    modern: "#3b82f6",
-    legacy: "#6366f1",
-    pauper: "#22c55e",
-  };
-  return colors[format];
-}
-
-/**
- * Get description for event type
- */
-export function getEventTypeDescription(eventType: EventType): string {
-  const descriptions: Record<EventType, string> = {
-    swiss: "Swiss rounds - everyone plays all rounds, ranked by points",
-    bracket: "Single or double elimination bracket",
-    round_robin: "Everyone plays everyone once",
-    league: "Long-running event with flexible scheduling",
-  };
-  return descriptions[eventType];
+  const points = history.reduce((sum, e) => {
+    if (e.result === "1st") return sum + 30;
+    if (e.result === "2nd") return sum + 20;
+    if (e.result === "3rd-8th") return sum + 8;
+    if (e.result === "9th+") return sum + 2;
+    return sum;
+  }, 0);
+  return { points, events: history.length };
 }

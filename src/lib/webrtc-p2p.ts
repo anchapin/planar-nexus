@@ -274,6 +274,13 @@ export interface P2PConnectionOptions {
   /** Time (ms) to wait for recovery after each ICE restart attempt. */
   reconnectAttemptTimeoutMs?: number;
   /**
+   * Timeout (ms) for the ICE restart offer/answer exchange. If
+   * `createOffer` or `setLocalDescription` hangs (ICE failure), the
+   * reconnection loop is unblocked rather than blocking indefinitely.
+   * @default 10000
+   */
+  iceRestartTimeoutMs?: number;
+  /**
    * Per-connection rate limit for incoming data-channel messages. Defaults to
    * 100 msgs / 1s. Messages exceeding the limit are dropped before parsing
    * to prevent CPU/memory exhaustion from a flooding peer. Issue #1111.
@@ -346,6 +353,7 @@ export class WebRTCConnection {
   private reconnectBaseDelayMs = 1000;
   private reconnectMaxDelayMs = 16000;
   private reconnectAttemptTimeoutMs = 15000;
+  private iceRestartTimeoutMs = 10000;
   /** Guards against overlapping reconnection cycles. */
   private isReconnecting = false;
   /**
@@ -403,6 +411,7 @@ export class WebRTCConnection {
     this.reconnectBaseDelayMs = options.reconnectBaseDelayMs ?? 1000;
     this.reconnectMaxDelayMs = options.reconnectMaxDelayMs ?? 16000;
     this.reconnectAttemptTimeoutMs = options.reconnectAttemptTimeoutMs ?? 15000;
+    this.iceRestartTimeoutMs = options.iceRestartTimeoutMs ?? 10000;
     this.externalPing = options.externalPing ?? false;
     // Per-connection rate limiter guards the parse path against flooding
     // peers. Issue #1111.
@@ -866,7 +875,9 @@ export class WebRTCConnection {
       if (data.startsWith(P2P_COMPRESSED_PREFIX)) {
         try {
           const encoded = data.slice(P2P_COMPRESSED_PREFIX.length);
-          const compressed = Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0));
+          const compressed = Uint8Array.from(atob(encoded), (c) =>
+            c.charCodeAt(0),
+          );
           const decompressed = await gzipDecompress(compressed);
           parseData = new TextDecoder().decode(decompressed);
         } catch (decompressError) {
@@ -1176,6 +1187,7 @@ export class WebRTCConnection {
               : new Error("Reconnection attempt failed"),
             "",
           );
+          throw error;
         }
       }
 
@@ -1219,15 +1231,40 @@ export class WebRTCConnection {
    * with the iceRestart flag, apply it locally, and emit the offer so the
    * signaling layer can forward it to the remote peer for renegotiation.
    */
-  private async performIceRestart(): Promise<void> {
+  public async performIceRestart(): Promise<void> {
     const pc = this.peerConnection;
     if (!pc) return;
 
+    const timeout = this.iceRestartTimeoutMs;
     pc.setConfiguration(this.rtcConfig);
-    const offer = await pc.createOffer({ iceRestart: true });
-    await pc.setLocalDescription(offer);
 
-    this.events.onReconnectOffer?.(offer, "");
+    // WebRTC offer/answer exchange can hang indefinitely on ICE failure.
+    // Race it against a timeout so the reconnection loop stays productive.
+    let offer: RTCSessionDescriptionInit | undefined;
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(
+        () =>
+          reject(
+            new Error("performIceRestart timed out waiting for ICE offer"),
+          ),
+        timeout,
+      );
+      pc.createOffer({ iceRestart: true })
+        .then((o) => {
+          offer = o;
+          clearTimeout(timer);
+          return pc.setLocalDescription(o);
+        })
+        .then(() => resolve())
+        .catch((err) => {
+          clearTimeout(timer);
+          reject(err);
+        });
+    });
+
+    if (offer) {
+      this.events.onReconnectOffer?.(offer, "");
+    }
   }
 
   /**
@@ -1415,7 +1452,8 @@ export class WebRTCConnection {
     if (uncompressedLen > P2P_COMPRESSION_THRESHOLD_BYTES) {
       try {
         const compressed = await gzipCompress(payload);
-        payload = P2P_COMPRESSED_PREFIX + btoa(String.fromCharCode(...compressed));
+        payload =
+          P2P_COMPRESSED_PREFIX + btoa(String.fromCharCode(...compressed));
       } catch (compressError) {
         p2pLogger.warn(
           "[WebRTC] Compression failed, sending uncompressed:",
@@ -1447,12 +1485,7 @@ export class WebRTCConnection {
     } else if (inFlight <= this.sendQueue.getStats().lowWatermarkBytes) {
       this.sendQueue.notifyBufferLow(inFlight);
     }
-    const accepted = this.sendQueue.enqueue(
-      payload,
-      type,
-      priority,
-      inFlight,
-    );
+    const accepted = this.sendQueue.enqueue(payload, type, priority, inFlight);
     if (!accepted) {
       // Queue rejected (closed, or even-after-eviction cap exceeded for
       // critical/normal). Surface via the standard onError path so callers

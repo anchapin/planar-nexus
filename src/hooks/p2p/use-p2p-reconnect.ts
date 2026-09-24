@@ -175,8 +175,9 @@ export function useP2PReconnect(options: {
     const dropped = reconcileRef.current.adoptAuthoritativeState();
     if (dropped.length > 0) {
       p2pLogger.warn(
-        "Reconciled to host authoritative state; dropped pending actions",
-        dropped.length,
+        `Reconciled to host authoritative state; dropped ${dropped.length} pending action(s): ${dropped
+          .map((a) => `"${a.action}"`)
+          .join(", ")}`,
       );
       setDroppedPendingActions(dropped);
     }
