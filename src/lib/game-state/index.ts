@@ -4,6 +4,39 @@
  * This module provides comprehensive data structures and utilities for managing
  * the complete state of a tabletop card game.
  *
+ * ## Barrel Re-export Conventions (`@/lib/game-state`)
+ *
+ * This file is the **public API surface** for the rules engine. All engine
+ * consumers (app code, AI flows, tests) MUST import from this barrel only —
+ * deep imports into sub-modules (`@/lib/game-state/layer-system`, etc.) are
+ * forbidden and will cause ESLint errors (#1710).
+ *
+ * **What you can import:**
+ * - Any type, class, function, or constant listed in this file.
+ * - Prefer named imports over default imports where available.
+ *
+ * **Star-exports (`export *`) convention:**
+ * - Each `export * from "./<module>"` re-exports everything that module
+ *   publishes. This keeps the barrel synchronized with sub-modules without
+ *   requiring hand-maintained export lists.
+ * - When two star-exported modules declare the same name, TypeScript/ES
+ *   module semantics SILENTLY drop the duplicate from the barrel. The
+ *   disambiguation block at the bottom of this file restores those names
+ *   via explicit re-exports with canonical names.
+ *
+ * **Collision disambiguation:**
+ * - The `#1710` disambiguation block (bottom of file) handles name clashes
+ *   between modules (e.g., `drawCards` exists in both `zones` and
+ *   `keyword-actions`). Explicit re-exports win over `*`, so the canonical
+ *   name remains stable while aliased variants (`…From<Module>`) give
+ *   consumers access to both implementations.
+ *
+ * **Adding a new sub-module to the barrel:**
+ * 1. Add `export * from "./new-module";` in the appropriate sorted position.
+ * 2. If the new module introduces a name collision, add an explicit re-export
+ *    in the disambiguation block.
+ * 3. Update this comment block to reflect the new surface area.
+ *
  * @module game-state
  */
 
