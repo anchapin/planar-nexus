@@ -112,9 +112,15 @@ export function MultiDeckComparison() {
       return;
     }
     const id = `manual-${Date.now()}`;
-    setManualDecks((prev) => [...prev, { id, name: `Deck ${prev.length + 1}`, cards: parsed }]);
+    setManualDecks((prev) => [
+      ...prev,
+      { id, name: `Deck ${prev.length + 1}`, cards: parsed },
+    ]);
     setManualDeckText("");
-    toast({ title: "Deck added", description: `Added "${parsed[0].name}" and ${parsed.length - 1} more cards.` });
+    toast({
+      title: "Deck added",
+      description: `Added "${parsed[0].name}" and ${parsed.length - 1} more cards.`,
+    });
   };
 
   const handleFileDrop = async (e: DragEvent<HTMLDivElement>) => {
@@ -122,7 +128,10 @@ export function MultiDeckComparison() {
     setIsDragOver(false);
     const files = Array.from(e.dataTransfer.files);
     const textFile = files.find(
-      (f) => f.type === "text/plain" || f.name.endsWith(".txt") || f.name.endsWith(".dek")
+      (f) =>
+        f.type === "text/plain" ||
+        f.name.endsWith(".txt") ||
+        f.name.endsWith(".dek"),
     );
     if (!textFile) {
       toast({
@@ -139,13 +148,20 @@ export function MultiDeckComparison() {
         toast({
           variant: "destructive",
           title: "Could not parse deck",
-          description: "The file didn't contain a recognisable deck list format.",
+          description:
+            "The file didn't contain a recognisable deck list format.",
         });
         return;
       }
       const id = `manual-${Date.now()}`;
-      setManualDecks((prev) => [...prev, { id, name: `Deck ${prev.length + 1}`, cards: parsed }]);
-      toast({ title: "Deck imported", description: `Imported ${parsed[0].name} and ${parsed.length - 1} more cards.` });
+      setManualDecks((prev) => [
+        ...prev,
+        { id, name: `Deck ${prev.length + 1}`, cards: parsed },
+      ]);
+      toast({
+        title: "Deck imported",
+        description: `Imported ${parsed[0].name} and ${parsed.length - 1} more cards.`,
+      });
     } catch {
       toast({
         variant: "destructive",
@@ -166,12 +182,8 @@ export function MultiDeckComparison() {
     selectedIds.length + (metaArchetype ? 1 : 0) <= MAX_DECKS;
 
   const handleCompare = () => {
-    const chosenSaved = savedDecks.filter((d) =>
-      selectedIds.includes(d.id)
-    );
-    const chosenManual = manualDecks.filter((d) =>
-      selectedIds.includes(d.id)
-    );
+    const chosenSaved = savedDecks.filter((d) => selectedIds.includes(d.id));
+    const chosenManual = manualDecks.filter((d) => selectedIds.includes(d.id));
     // @ts-expect-error — manually-entered cards have minimal data (name + count)
     // but comparison UI only requires those fields; AI analysis degrades gracefully
     const entries: DeckComparisonEntry[] = [
@@ -242,7 +254,7 @@ export function MultiDeckComparison() {
             className={`relative rounded-md border-2 border-dashed p-4 transition-colors ${
               isDragOver
                 ? "border-primary bg-primary/10"
-                : "border-muted-foreground/30 hover:border-muted-foreground/60"
+                : "border-muted-foreground/60 hover:border-muted-foreground"
             }`}
             onDragOver={(e) => {
               e.preventDefault();
@@ -252,10 +264,13 @@ export function MultiDeckComparison() {
             onDrop={handleFileDrop}
           >
             <p className="mb-2 text-xs font-medium text-muted-foreground">
-              Paste a deck list or drop a .txt / .dek file to add it to the comparison
+              Paste a deck list or drop a .txt / .dek file to add it to the
+              comparison
             </p>
             <Textarea
-              placeholder={"2x Lightning Bolt\n2x Counterspell\n1x Shivan Dragon\n..."}
+              placeholder={
+                "2x Lightning Bolt\n2x Counterspell\n1x Shivan Dragon\n..."
+              }
               value={manualDeckText}
               onChange={(e) => setManualDeckText(e.target.value)}
               className="mb-2 min-h-[80px] resize-none font-mono text-xs"
@@ -355,7 +370,6 @@ export function MultiDeckComparison() {
               })}
             </div>
           ) : null}
-        
 
           <Separator />
 
