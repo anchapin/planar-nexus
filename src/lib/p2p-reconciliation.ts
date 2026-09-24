@@ -68,6 +68,8 @@ export interface PendingAction {
   queuedAt: number;
 }
 
+import { p2pLogger } from "@/lib/p2p-logger";
+
 /**
  * What the connection layer must do when the transport recovers.
  *
@@ -79,9 +81,7 @@ export interface PendingAction {
  *   phase, or single-player).
  */
 export type ReconcileAction =
-  | "send-authoritative-state"
-  | "adopt-host-state"
-  | "none";
+  "send-authoritative-state" | "adopt-host-state" | "none";
 
 /**
  * Verdict returned to the connection layer on a reconnect event. The caller
@@ -201,6 +201,11 @@ export class ReconciliationCoordinator {
     if (this.pending.length === 0) return [];
     const dropped = [...this.pending];
     this.pending.length = 0;
+    p2pLogger.warn(
+      `ReconciliationCoordinator: dropped ${dropped.length} peer action(s) after adopting authoritative state: ${dropped
+        .map((a) => `"${a.action}"`)
+        .join(", ")}`,
+    );
     for (const listener of this.droppedListeners) {
       try {
         listener(dropped);
