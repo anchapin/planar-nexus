@@ -96,6 +96,9 @@ export interface TriggerCondition {
     | "endOfTurn"
     | "cleanupStep"
     | "creatureDies"
+    | "exploit"
+    | "disturb"
+    | "transform"
     | "unknown";
   condition?: string;
   target?: ParsedTarget;
@@ -632,6 +635,21 @@ function parseTriggerText(triggerText: string): TriggerCondition | null {
     text.includes("is put into a graveyard")
   ) {
     return { event: "dies" };
+  }
+
+  // Exploit - when a creature exploits another creature (modern MTG mechanic)
+  if (text.includes("exploits a creature")) {
+    return { event: "exploit" };
+  }
+
+  // Disturb - cast from graveyard transformed (modern MTG MDFC mechanic)
+  if (text.includes("you may cast this card from your graveyard")) {
+    return { event: "disturb" };
+  }
+
+  // Daybound/Nightbound - transform during day/night (modern MTG transform mechanic)
+  if (text.includes("daybound") || text.includes("nightbound")) {
+    return { event: "transform" };
   }
 
   // If we can't classify the trigger condition, return an "unknown" event.
