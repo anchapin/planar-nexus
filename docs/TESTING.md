@@ -620,7 +620,7 @@ npm test -- --testPathPattern=video-derived --coverage
 | Metric     | Project target | CI-enforced floor (`jest.config.js`) |
 | ---------- | -------------- | ------------------------------------ |
 | Lines      | **70%**        | 63%                                  |
-| Functions  | **70%**        | 55%                                  |
+| Functions  | **70%**        | 56%                                  |
 | Statements | **70%**        | 62%                                  |
 | Branches   | **60%**        | 54%                                  |
 
