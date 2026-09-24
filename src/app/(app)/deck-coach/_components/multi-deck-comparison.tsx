@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
 import type { DragEvent } from "react";
 import {
   Card,
@@ -33,7 +33,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useLocalStorage } from "@/hooks/use-local-storage";
-import { type SavedDeck } from "@/lib/card-database";
+import { type DeckCard, type SavedDeck } from "@/lib/card-database";
 import { parseDecklist } from "@/lib/decklist-utils";
 import { getAvailableArchetypeNames } from "@/ai/archetype-signatures";
 import {
@@ -41,7 +41,9 @@ import {
   type DeckComparisonEntry,
   type DeckComparisonReport,
 } from "@/ai/flows/compare-decks";
-import { GitCompareArrows, Loader2, Trophy } from "lucide-react";
+import { GitCompareArrows, Loader2, Trophy, X } from "lucide-react";
+import { parseDecklistWithErrors } from "@/lib/decklist-utils";
+import { cn } from "@/lib/utils";
 
 /** Minimum/maximum decks a user may compare at once. */
 const MIN_DECKS = 2;
@@ -75,6 +77,8 @@ export function MultiDeckComparison() {
   const [metaArchetype, setMetaArchetype] = useState<string>("");
   const [report, setReport] = useState<DeckComparisonReport | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [importedDecks, setImportedDecks] = useState<DeckComparisonEntry[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
   const { toast } = useToast();
   const [manualDeckText, setManualDeckText] = useState<string>("");
   const [isDragOver, setIsDragOver] = useState<boolean>(false);
@@ -85,6 +89,29 @@ export function MultiDeckComparison() {
       cards: Array<{ name: string; quantity: number }>;
     }>
   >([]);
+
+  const handleFileImport = useCallback(async (file: File) => {
+    const text = await file.text();
+    const { cards } = parseDecklistWithErrors(text);
+    const deckCards = cards.map((c) => ({
+      id: "",
+      name: c.name,
+      quantity: c.quantity,
+    })) as unknown as DeckCard[];
+    const name = file.name.replace(/\.(txt|dec)$/i, "");
+    setImportedDecks((prev) => {
+      if (prev.length >= MAX_DECKS) return prev;
+      return [
+        ...prev,
+        { id: `imported-${Date.now()}`, name, cards: deckCards },
+      ];
+    });
+  }, []);
+
+  const removeImportedDeck = useCallback((id: string) => {
+    setImportedDecks((prev) => prev.filter((d) => d.id !== id));
+    setSelectedIds((prev) => prev.filter((sid) => sid !== id));
+  }, []);
 
   const archetypeNames = useMemo(() => getAvailableArchetypeNames(), []);
 
@@ -182,21 +209,13 @@ export function MultiDeckComparison() {
     selectedIds.length + (metaArchetype ? 1 : 0) <= MAX_DECKS;
 
   const handleCompare = () => {
-    const chosenSaved = savedDecks.filter((d) => selectedIds.includes(d.id));
-    const chosenManual = manualDecks.filter((d) => selectedIds.includes(d.id));
-    // @ts-expect-error — manually-entered cards have minimal data (name + count)
-    // but comparison UI only requires those fields; AI analysis degrades gracefully
+    const chosen = savedDecks.filter((d) => selectedIds.includes(d.id));
+    const imported = importedDecks.filter(
+      (d) => d.id && selectedIds.includes(d.id),
+    );
     const entries: DeckComparisonEntry[] = [
-      ...chosenSaved.map((d) => ({
-        id: d.id,
-        name: d.name,
-        cards: d.cards,
-      })),
-      ...chosenManual.map((d) => ({
-        id: d.id,
-        name: d.name,
-        cards: d.cards,
-      })),
+      ...chosen.map((d) => ({ id: d.id, name: d.name, cards: d.cards })),
+      ...imported,
     ];
     if (metaArchetype) {
       entries.push({
@@ -333,10 +352,10 @@ export function MultiDeckComparison() {
 
           {decksLoading ? (
             <Skeleton className="h-24 w-full rounded-md" />
-          ) : savedDecks.length === 0 && manualDecks.length === 0 ? (
+          ) : savedDecks.length === 0 && importedDecks.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No saved decks and no decks pasted yet. Paste a deck list above or
-              save a deck in the deck builder.
+              No saved decks yet. Build and save a deck first, or import a deck
+              file below.
             </p>
           ) : savedDecks.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -346,13 +365,14 @@ export function MultiDeckComparison() {
                 return (
                   <label
                     key={deck.id}
-                    className={`flex items-center gap-3 rounded-md border p-3 text-sm transition-colors ${
+                    className={cn(
+                      "flex items-center gap-3 rounded-md border p-3 text-sm transition-colors cursor-pointer",
                       checked
                         ? "border-primary bg-primary/5"
                         : disabled
-                          ? "opacity-50"
-                          : "hover:bg-accent/50"
-                    }`}
+                          ? "opacity-50 cursor-not-allowed"
+                          : "hover:bg-accent/50",
+                    )}
                   >
                     <Checkbox
                       checked={checked}
@@ -368,8 +388,87 @@ export function MultiDeckComparison() {
                   </label>
                 );
               })}
+              {importedDecks.map((deck) => {
+                const deckId = deck.id ?? "";
+                const checked = selectedIds.includes(deckId);
+                const disabled = !checked && selectedIds.length >= MAX_DECKS;
+                return (
+                  <label
+                    key={deckId}
+                    className={cn(
+                      "flex items-center gap-3 rounded-md border p-3 text-sm transition-colors cursor-pointer",
+                      checked
+                        ? "border-primary bg-primary/5"
+                        : disabled
+                          ? "opacity-50 cursor-not-allowed"
+                          : "hover:bg-accent/50",
+                    )}
+                  >
+                    <Checkbox
+                      checked={checked}
+                      disabled={disabled}
+                      onCheckedChange={(v) => toggleDeck(deckId, v === true)}
+                    />
+                    <span className="flex-1 truncate font-medium">
+                      {deck.name}
+                    </span>
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        removeImportedDeck(deckId);
+                      }}
+                      className="text-muted-foreground hover:text-destructive ml-1"
+                      aria-label={`Remove ${deck.name}`}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </label>
+                );
+              })}
             </div>
           ) : null}
+
+          <div
+            className={cn(
+              "flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 transition-colors",
+              isDragging
+                ? "border-primary bg-primary/5"
+                : "border-muted-foreground/25 hover:border-muted-foreground/50",
+            )}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDragging(true);
+            }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setIsDragging(false);
+              const file = e.dataTransfer.files[0];
+              if (file) handleFileImport(file);
+            }}
+          >
+            <p className="text-sm text-muted-foreground mb-3">
+              Drag and drop a deck file here, or
+            </p>
+            <label className="cursor-pointer">
+              <input
+                type="file"
+                accept=".txt,.dec"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleFileImport(file);
+                  e.target.value = "";
+                }}
+              />
+              <Button variant="outline" size="sm" asChild>
+                <span>Upload deck file</span>
+              </Button>
+            </label>
+            <p className="text-xs text-muted-foreground mt-2">
+              Supports .txt and .dec files
+            </p>
+          </div>
 
           <Separator />
 
