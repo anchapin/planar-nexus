@@ -12,7 +12,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ArrowLeft, RotateCcw, Play, SkipForward, Hourglass } from "lucide-react";
+import {
+  ArrowLeft,
+  RotateCcw,
+  Play,
+  SkipForward,
+  Hourglass,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import {
   AiTelegraphDisplay,
@@ -155,11 +161,13 @@ export function GameBoardClient({ gameId }: GameBoardClientProps) {
           ]),
           turn: {
             turnNumber: 1,
-            activePlayer: playerName,
-            currentPhase: "main1" as any,
-            priorityPlayer: playerName,
-            step: "begin",
+            activePlayerId: playerName,
+            currentPhase: "untap" as string,
+            extraTurns: 0,
+            isFirstTurn: true,
+            startedAt: Date.now(),
           },
+          priorityPlayerId: playerName,
         };
 
         setGameState(newState);
@@ -197,7 +205,8 @@ export function GameBoardClient({ gameId }: GameBoardClientProps) {
 
     const unsubscribe = subscribeLongTask((entry) => {
       const now =
-        typeof performance !== "undefined" && typeof performance.now === "function"
+        typeof performance !== "undefined" &&
+        typeof performance.now === "function"
           ? performance.now()
           : Date.now();
       const timestamps = longTaskTimestampsRef.current;
@@ -349,11 +358,13 @@ export function GameBoardClient({ gameId }: GameBoardClientProps) {
       ]),
       turn: {
         turnNumber: 1,
-        activePlayer: playerName,
-        currentPhase: "main1" as any,
-        priorityPlayer: playerName,
-        step: "begin",
+        activePlayerId: playerName,
+        currentPhase: "untap" as string,
+        extraTurns: 0,
+        isFirstTurn: true,
+        startedAt: Date.now(),
       },
+      priorityPlayerId: playerName,
     };
 
     setGameState(newState);
@@ -445,7 +456,7 @@ export function GameBoardClient({ gameId }: GameBoardClientProps) {
           <span className="text-muted-foreground">|</span>
           <span>
             Active:{" "}
-            <span className="font-medium">{gameState.turn.activePlayer}</span>
+            <span className="font-medium">{gameState.turn.activePlayerId}</span>
           </span>
         </div>
 
@@ -481,7 +492,9 @@ export function GameBoardClient({ gameId }: GameBoardClientProps) {
               aria-live="polite"
             >
               <span className="animate-pulse">
-                {slowThinking ? "AI is thinking slowly..." : "AI is thinking..."}
+                {slowThinking
+                  ? "AI is thinking slowly..."
+                  : "AI is thinking..."}
               </span>
               {slowThinking && (
                 <Badge
