@@ -1,0 +1,70 @@
+name: Flake Detector (PR)
+
+# Issue #2153: the jest-flake-detector in ci.yml only runs on schedule
+# (nightly), workflow_dispatch (manual), or push-to-main — never on PRs.
+# Engineers have no flake signal at PR time.
+#
+# This workflow runs the Jest flake detector (5 runs, threshold 4) on every
+# PR and posts the report as a PR comment. It is NON-BLOCKING:
+# continue-on-error:true so flakes do not gate the merge. Engineers see the
+# signal in the PR comment; the nightly/weekly detector (ci.yml) remains the
+# authoritative gate.
+#
+# Full nightly flake coverage (all modules, 5 runs) remains in ci.yml's
+# jest-flake-detector job (schedule + workflow_dispatch + push-to-main).
+
+on:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-jest-flake-detector-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  jest-flake-detector-pr:
+    name: Flake Detector (Jest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
+
+      - name: Run Jest flake detector (5 runs, threshold 4)
+        id: jestflake
+        continue-on-error: true
+        run: npm run test:flake
+        env:
+          CI: 'true'
+
+      - name: Upload Jest flake report (always)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: jest-flake-detector-report-pr-${{ github.event.pull_request.number }}
+          path: reports/jest-flake-detector/
+          retention-days: 7
+
+      - name: Post PR comment with Jest flake report
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -e
+          if [ ! -f reports/jest-flake-detector/report.md ]; then
+            echo "No flake report present; skipping PR comment."
+            exit 0
+          fi
+          echo "=== Flake Report ==="
+          cat reports/jest-flake-detector/report.md
+          echo "===================="
+          gh pr comment "$PR_NUMBER" --body-file reports/jest-flake-detector/report.md || true
