@@ -40,21 +40,58 @@ export type {
   Format,
 } from "@/lib/game-state";
 
+let _formatRules: Record<Format, DeckConstructionRules> | undefined;
+let _banLists: Record<Format, string[]> | undefined;
 
-/**
- * Legacy format rules for backward compatibility
- */
-export const formatRules: Record<Format, DeckConstructionRules> =
-  Object.fromEntries(
-    Object.entries(gameModes).map(([id, config]) => [id, config.deckRules]),
-  ) as Record<Format, DeckConstructionRules>;
+function computeFormatRules(): Record<Format, DeckConstructionRules> {
+  if (_formatRules === undefined) {
+    _formatRules = Object.fromEntries(
+      Object.entries(gameModes).map(([id, config]) => [id, config.deckRules]),
+    ) as Record<Format, DeckConstructionRules>;
+  }
+  return _formatRules;
+}
 
-/**
- * Legacy ban lists for backward compatibility
- */
-export const banLists: Record<Format, string[]> = Object.fromEntries(
-  Object.entries(gameModes).map(([id, config]) => [id, config.banList || []]),
-) as Record<Format, string[]>;
+function computeBanLists(): Record<Format, string[]> {
+  if (_banLists === undefined) {
+    _banLists = Object.fromEntries(
+      Object.entries(gameModes).map(([id, config]) => [
+        id,
+        config.banList || [],
+      ]),
+    ) as Record<Format, string[]>;
+  }
+  return _banLists;
+}
+
+export const formatRules: Record<Format, DeckConstructionRules> = new Proxy(
+  {} as Record<Format, DeckConstructionRules>,
+  {
+    get(_target, prop) {
+      if (prop === "toJSON") return undefined;
+      const value = computeFormatRules() as Record<
+        Format,
+        DeckConstructionRules
+      >;
+      return typeof prop === "string" || typeof prop === "number"
+        ? value[prop]
+        : undefined;
+    },
+  },
+);
+
+export const banLists: Record<Format, string[]> = new Proxy(
+  {} as Record<Format, string[]>,
+  {
+    get(_target, prop) {
+      if (prop === "toJSON") return undefined;
+      const value = computeBanLists() as Record<Format, string[]>;
+      return typeof prop === "string" || typeof prop === "number"
+        ? value[prop]
+        : undefined;
+    },
+  },
+);
 
 /**
  * A legal substitute for a banned card.
@@ -83,147 +120,542 @@ export interface CardAlternative {
 export const BANNED_CARD_ALTERNATIVES: Record<string, CardAlternative[]> = {
   // --- PowerNine / fast mana (artifacts) ---
   "black lotus": [
-    { name: "Lotus Petal", type: "Artifact", manaValue: 0, reason: "Free one-shot mana acceleration" },
-    { name: "Dark Ritual", type: "Instant", manaValue: 1, reason: "Burst black mana ramp" },
-    { name: "Elvish Spirit Guide", type: "Creature", manaValue: 2, reason: "Free green mana from hand" },
+    {
+      name: "Lotus Petal",
+      type: "Artifact",
+      manaValue: 0,
+      reason: "Free one-shot mana acceleration",
+    },
+    {
+      name: "Dark Ritual",
+      type: "Instant",
+      manaValue: 1,
+      reason: "Burst black mana ramp",
+    },
+    {
+      name: "Elvish Spirit Guide",
+      type: "Creature",
+      manaValue: 2,
+      reason: "Free green mana from hand",
+    },
   ],
   "mox emerald": [
-    { name: "Arcane Signet", type: "Artifact", manaValue: 2, reason: "Two-color mana rock" },
-    { name: "Fellwar Stone", type: "Artifact", manaValue: 2, reason: "Reusable mana ramp" },
+    {
+      name: "Arcane Signet",
+      type: "Artifact",
+      manaValue: 2,
+      reason: "Two-color mana rock",
+    },
+    {
+      name: "Fellwar Stone",
+      type: "Artifact",
+      manaValue: 2,
+      reason: "Reusable mana ramp",
+    },
   ],
   "mox jet": [
-    { name: "Arcane Signet", type: "Artifact", manaValue: 2, reason: "Two-color mana rock" },
-    { name: "Charcoal Diamond", type: "Artifact", manaValue: 2, reason: "Black mana ramp" },
+    {
+      name: "Arcane Signet",
+      type: "Artifact",
+      manaValue: 2,
+      reason: "Two-color mana rock",
+    },
+    {
+      name: "Charcoal Diamond",
+      type: "Artifact",
+      manaValue: 2,
+      reason: "Black mana ramp",
+    },
   ],
   "mox pearl": [
-    { name: "Arcane Signet", type: "Artifact", manaValue: 2, reason: "Two-color mana rock" },
-    { name: "Marble Diamond", type: "Artifact", manaValue: 2, reason: "White mana ramp" },
+    {
+      name: "Arcane Signet",
+      type: "Artifact",
+      manaValue: 2,
+      reason: "Two-color mana rock",
+    },
+    {
+      name: "Marble Diamond",
+      type: "Artifact",
+      manaValue: 2,
+      reason: "White mana ramp",
+    },
   ],
   "mox ruby": [
-    { name: "Arcane Signet", type: "Artifact", manaValue: 2, reason: "Two-color mana rock" },
-    { name: "Fire Diamond", type: "Artifact", manaValue: 2, reason: "Red mana ramp" },
+    {
+      name: "Arcane Signet",
+      type: "Artifact",
+      manaValue: 2,
+      reason: "Two-color mana rock",
+    },
+    {
+      name: "Fire Diamond",
+      type: "Artifact",
+      manaValue: 2,
+      reason: "Red mana ramp",
+    },
   ],
   "mox sapphire": [
-    { name: "Arcane Signet", type: "Artifact", manaValue: 2, reason: "Two-color mana rock" },
-    { name: "Sky Diamond", type: "Artifact", manaValue: 2, reason: "Blue mana ramp" },
+    {
+      name: "Arcane Signet",
+      type: "Artifact",
+      manaValue: 2,
+      reason: "Two-color mana rock",
+    },
+    {
+      name: "Sky Diamond",
+      type: "Artifact",
+      manaValue: 2,
+      reason: "Blue mana ramp",
+    },
   ],
   "mana crypt": [
-    { name: "Thran Dynamo", type: "Artifact", manaValue: 4, reason: "Big mana ramp artifact" },
-    { name: "Gilded Lotus", type: "Artifact", manaValue: 5, reason: "Three-color ramp rock" },
-    { name: "Worn Powerstone", type: "Artifact", manaValue: 3, reason: "Repeatable colorless ramp" },
+    {
+      name: "Thran Dynamo",
+      type: "Artifact",
+      manaValue: 4,
+      reason: "Big mana ramp artifact",
+    },
+    {
+      name: "Gilded Lotus",
+      type: "Artifact",
+      manaValue: 5,
+      reason: "Three-color ramp rock",
+    },
+    {
+      name: "Worn Powerstone",
+      type: "Artifact",
+      manaValue: 3,
+      reason: "Repeatable colorless ramp",
+    },
   ],
   "mana vault": [
-    { name: "Thran Dynamo", type: "Artifact", manaValue: 4, reason: "Big mana ramp artifact" },
-    { name: "Worn Powerstone", type: "Artifact", manaValue: 3, reason: "Repeatable colorless ramp" },
-    { name: "Voltaic Key", type: "Artifact", manaValue: 1, reason: "Untaps mana rocks for value" },
+    {
+      name: "Thran Dynamo",
+      type: "Artifact",
+      manaValue: 4,
+      reason: "Big mana ramp artifact",
+    },
+    {
+      name: "Worn Powerstone",
+      type: "Artifact",
+      manaValue: 3,
+      reason: "Repeatable colorless ramp",
+    },
+    {
+      name: "Voltaic Key",
+      type: "Artifact",
+      manaValue: 1,
+      reason: "Untaps mana rocks for value",
+    },
   ],
   "sol ring": [
-    { name: "Thran Dynamo", type: "Artifact", manaValue: 4, reason: "Big mana ramp artifact" },
-    { name: "Worn Powerstone", type: "Artifact", manaValue: 3, reason: "Repeatable colorless ramp" },
-    { name: "Hedron Archive", type: "Artifact", manaValue: 4, reason: "Ramp with card draw option" },
+    {
+      name: "Thran Dynamo",
+      type: "Artifact",
+      manaValue: 4,
+      reason: "Big mana ramp artifact",
+    },
+    {
+      name: "Worn Powerstone",
+      type: "Artifact",
+      manaValue: 3,
+      reason: "Repeatable colorless ramp",
+    },
+    {
+      name: "Hedron Archive",
+      type: "Artifact",
+      manaValue: 4,
+      reason: "Ramp with card draw option",
+    },
   ],
 
   // --- Card draw / tutors ---
   "ancestral recall": [
-    { name: "Brainstorm", type: "Instant", manaValue: 1, reason: "Cheap blue card selection" },
-    { name: "Careful Study", type: "Sorcery", manaValue: 1, reason: "Low-cost loot effect" },
-    { name: "Chart a Course", type: "Sorcery", manaValue: 2, reason: "Two-card draw" },
+    {
+      name: "Brainstorm",
+      type: "Instant",
+      manaValue: 1,
+      reason: "Cheap blue card selection",
+    },
+    {
+      name: "Careful Study",
+      type: "Sorcery",
+      manaValue: 1,
+      reason: "Low-cost loot effect",
+    },
+    {
+      name: "Chart a Course",
+      type: "Sorcery",
+      manaValue: 2,
+      reason: "Two-card draw",
+    },
   ],
-  "timetwister": [
-    { name: "Time Spiral", type: "Sorcery", manaValue: 6, reason: "Wheel that refunds mana" },
-    { name: "Day's Undoing", type: "Sorcery", manaValue: 3, reason: "Symmetric wheel" },
-    { name: "Echo of Eons", type: "Sorcery", manaValue: 4, reason: "Repeatable wheel" },
+  timetwister: [
+    {
+      name: "Time Spiral",
+      type: "Sorcery",
+      manaValue: 6,
+      reason: "Wheel that refunds mana",
+    },
+    {
+      name: "Day's Undoing",
+      type: "Sorcery",
+      manaValue: 3,
+      reason: "Symmetric wheel",
+    },
+    {
+      name: "Echo of Eons",
+      type: "Sorcery",
+      manaValue: 4,
+      reason: "Repeatable wheel",
+    },
   ],
   "time walk": [
-    { name: "Time Warp", type: "Sorcery", manaValue: 5, reason: "Extra turn at fair cost" },
-    { name: "Temporal Manipulation", type: "Sorcery", manaValue: 5, reason: "Extra turn" },
-    { name: "Capture of Jingzhou", type: "Sorcery", manaValue: 5, reason: "Extra turn" },
+    {
+      name: "Time Warp",
+      type: "Sorcery",
+      manaValue: 5,
+      reason: "Extra turn at fair cost",
+    },
+    {
+      name: "Temporal Manipulation",
+      type: "Sorcery",
+      manaValue: 5,
+      reason: "Extra turn",
+    },
+    {
+      name: "Capture of Jingzhou",
+      type: "Sorcery",
+      manaValue: 5,
+      reason: "Extra turn",
+    },
   ],
   "yawgmoth's bargain": [
-    { name: "Phyrexian Arena", type: "Enchantment", manaValue: 3, reason: "Repeatable life-for-cards" },
-    { name: "Greed", type: "Enchantment", manaValue: 3, reason: "Pay life to draw cards" },
-    { name: "Ambition's Cost", type: "Sorcery", manaValue: 4, reason: "Life-for-cards in one shot" },
+    {
+      name: "Phyrexian Arena",
+      type: "Enchantment",
+      manaValue: 3,
+      reason: "Repeatable life-for-cards",
+    },
+    {
+      name: "Greed",
+      type: "Enchantment",
+      manaValue: 3,
+      reason: "Pay life to draw cards",
+    },
+    {
+      name: "Ambition's Cost",
+      type: "Sorcery",
+      manaValue: 4,
+      reason: "Life-for-cards in one shot",
+    },
   ],
-  "necropotence": [
-    { name: "Phyrexian Arena", type: "Enchantment", manaValue: 3, reason: "Repeatable life-for-cards" },
-    { name: "Dark Confidant", type: "Creature", manaValue: 2, reason: "Life-for-cards on a body" },
-    { name: "Greed", type: "Enchantment", manaValue: 3, reason: "Pay life to draw cards" },
+  necropotence: [
+    {
+      name: "Phyrexian Arena",
+      type: "Enchantment",
+      manaValue: 3,
+      reason: "Repeatable life-for-cards",
+    },
+    {
+      name: "Dark Confidant",
+      type: "Creature",
+      manaValue: 2,
+      reason: "Life-for-cards on a body",
+    },
+    {
+      name: "Greed",
+      type: "Enchantment",
+      manaValue: 3,
+      reason: "Pay life to draw cards",
+    },
   ],
   "demonic tutor": [
-    { name: "Diabolic Tutor", type: "Sorcery", manaValue: 4, reason: "Fair-cost universal tutor" },
-    { name: "Increasing Ambition", type: "Sorcery", manaValue: 5, reason: "Multiple-tutor option" },
-    { name: "Beseech the Queen", type: "Sorcery", manaValue: 3, reason: "Scaled-cost tutor" },
+    {
+      name: "Diabolic Tutor",
+      type: "Sorcery",
+      manaValue: 4,
+      reason: "Fair-cost universal tutor",
+    },
+    {
+      name: "Increasing Ambition",
+      type: "Sorcery",
+      manaValue: 5,
+      reason: "Multiple-tutor option",
+    },
+    {
+      name: "Beseech the Queen",
+      type: "Sorcery",
+      manaValue: 3,
+      reason: "Scaled-cost tutor",
+    },
   ],
   "jace, the mind sculptor": [
-    { name: "Jace Beleren", type: "Planeswalker", manaValue: 3, reason: "Cheaper draw planeswalker" },
-    { name: "Consecrated Sphinx", type: "Creature", manaValue: 6, reason: "Powerful repeatable card draw" },
-    { name: "Fact or Fiction", type: "Instant", manaValue: 4, reason: "Blue card-selection instant" },
+    {
+      name: "Jace Beleren",
+      type: "Planeswalker",
+      manaValue: 3,
+      reason: "Cheaper draw planeswalker",
+    },
+    {
+      name: "Consecrated Sphinx",
+      type: "Creature",
+      manaValue: 6,
+      reason: "Powerful repeatable card draw",
+    },
+    {
+      name: "Fact or Fiction",
+      type: "Instant",
+      manaValue: 4,
+      reason: "Blue card-selection instant",
+    },
   ],
 
   // --- Big finishers ---
-  "griselbrand": [
-    { name: "Razaketh, the Foul-Blooded", type: "Creature", manaValue: 8, reason: "Life-for-tutors demon" },
-    { name: "Vilis, Broker of Blood", type: "Creature", manaValue: 8, reason: "Life loss converts to cards" },
-    { name: "Kothophed, Soul Hoarder", type: "Creature", manaValue: 6, reason: "Card draw on opponent loss" },
+  griselbrand: [
+    {
+      name: "Razaketh, the Foul-Blooded",
+      type: "Creature",
+      manaValue: 8,
+      reason: "Life-for-tutors demon",
+    },
+    {
+      name: "Vilis, Broker of Blood",
+      type: "Creature",
+      manaValue: 8,
+      reason: "Life loss converts to cards",
+    },
+    {
+      name: "Kothophed, Soul Hoarder",
+      type: "Creature",
+      manaValue: 6,
+      reason: "Card draw on opponent loss",
+    },
   ],
   "primeval titan": [
-    { name: "Avenger of Zendikar", type: "Creature", manaValue: 7, reason: "Green land-matters finisher" },
-    { name: "Terastodon", type: "Creature", manaValue: 8, reason: "Big green utility creature" },
-    { name: "Woodfall Primus", type: "Creature", manaValue: 6, reason: "Persistent removal on a body" },
+    {
+      name: "Avenger of Zendikar",
+      type: "Creature",
+      manaValue: 7,
+      reason: "Green land-matters finisher",
+    },
+    {
+      name: "Terastodon",
+      type: "Creature",
+      manaValue: 8,
+      reason: "Big green utility creature",
+    },
+    {
+      name: "Woodfall Primus",
+      type: "Creature",
+      manaValue: 6,
+      reason: "Persistent removal on a body",
+    },
   ],
   "emrakul, the aeons torn": [
-    { name: "Ulamog, the Ceaseless Hunger", type: "Creature", manaValue: 10, reason: "Cast-trigger removal eldrazi" },
-    { name: "Kozilek, Butcher of Truth", type: "Creature", manaValue: 10, reason: "Card-draw eldrazi" },
-    { name: "It That Betrays", type: "Creature", manaValue: 10, reason: "Annihilator payoff" },
+    {
+      name: "Ulamog, the Ceaseless Hunger",
+      type: "Creature",
+      manaValue: 10,
+      reason: "Cast-trigger removal eldrazi",
+    },
+    {
+      name: "Kozilek, Butcher of Truth",
+      type: "Creature",
+      manaValue: 10,
+      reason: "Card-draw eldrazi",
+    },
+    {
+      name: "It That Betrays",
+      type: "Creature",
+      manaValue: 10,
+      reason: "Annihilator payoff",
+    },
   ],
   "sylvan primordial": [
-    { name: "Woodfall Primus", type: "Creature", manaValue: 6, reason: "Persistent removal on a body" },
-    { name: "Terastodon", type: "Creature", manaValue: 8, reason: "Multi-target removal" },
-    { name: "Bane of Progress", type: "Creature", manaValue: 6, reason: "Mass artifact/enchantment removal" },
+    {
+      name: "Woodfall Primus",
+      type: "Creature",
+      manaValue: 6,
+      reason: "Persistent removal on a body",
+    },
+    {
+      name: "Terastodon",
+      type: "Creature",
+      manaValue: 8,
+      reason: "Multi-target removal",
+    },
+    {
+      name: "Bane of Progress",
+      type: "Creature",
+      manaValue: 6,
+      reason: "Mass artifact/enchantment removal",
+    },
   ],
 
   // --- Lands ---
   "tolarian academy": [
-    { name: "Nykthos, Shrine to Nyx", type: "Land", manaValue: 0, reason: "Scaling mana land" },
-    { name: "Gaea's Cradle", type: "Land", manaValue: 0, reason: "Creature-based mana land" },
-    { name: "Heartless Summoning", type: "Enchantment", manaValue: 2, reason: "Creature cost reduction" },
+    {
+      name: "Nykthos, Shrine to Nyx",
+      type: "Land",
+      manaValue: 0,
+      reason: "Scaling mana land",
+    },
+    {
+      name: "Gaea's Cradle",
+      type: "Land",
+      manaValue: 0,
+      reason: "Creature-based mana land",
+    },
+    {
+      name: "Heartless Summoning",
+      type: "Enchantment",
+      manaValue: 2,
+      reason: "Creature cost reduction",
+    },
   ],
-  "karakas": [
-    { name: "Command Beacon", type: "Land", manaValue: 0, reason: "Commander-protection land" },
-    { name: "High Market", type: "Land", manaValue: 0, reason: "Sac outlet land" },
-    { name: "Crystal Shard", type: "Artifact", manaValue: 3, reason: "Bounces your legendary for reuse" },
+  karakas: [
+    {
+      name: "Command Beacon",
+      type: "Land",
+      manaValue: 0,
+      reason: "Commander-protection land",
+    },
+    {
+      name: "High Market",
+      type: "Land",
+      manaValue: 0,
+      reason: "Sac outlet land",
+    },
+    {
+      name: "Crystal Shard",
+      type: "Artifact",
+      manaValue: 3,
+      reason: "Bounces your legendary for reuse",
+    },
   ],
   "strip mine": [
-    { name: "Ghost Quarter", type: "Land", manaValue: 0, reason: "Land replacement with downside" },
-    { name: "Tectonic Edge", type: "Land", manaValue: 0, reason: "Conditional land removal" },
-    { name: "Field of Ruin", type: "Land", manaValue: 0, reason: "Symmetric land removal" },
+    {
+      name: "Ghost Quarter",
+      type: "Land",
+      manaValue: 0,
+      reason: "Land replacement with downside",
+    },
+    {
+      name: "Tectonic Edge",
+      type: "Land",
+      manaValue: 0,
+      reason: "Conditional land removal",
+    },
+    {
+      name: "Field of Ruin",
+      type: "Land",
+      manaValue: 0,
+      reason: "Symmetric land removal",
+    },
   ],
 
   // --- Enchantments / combo enablers ---
-  "panharmonicon": [
-    { name: "Conjurer's Closet", type: "Artifact", manaValue: 5, reason: "Repeatable ETB abuse" },
-    { name: "Deadeye Navigator", type: "Creature", manaValue: 6, reason: "Repeatable ETB trigger soulbond" },
-    { name: "Teleportation Circle", type: "Enchantment", manaValue: 4, reason: "Repeatable blink" },
+  panharmonicon: [
+    {
+      name: "Conjurer's Closet",
+      type: "Artifact",
+      manaValue: 5,
+      reason: "Repeatable ETB abuse",
+    },
+    {
+      name: "Deadeye Navigator",
+      type: "Creature",
+      manaValue: 6,
+      reason: "Repeatable ETB trigger soulbond",
+    },
+    {
+      name: "Teleportation Circle",
+      type: "Enchantment",
+      manaValue: 4,
+      reason: "Repeatable blink",
+    },
   ],
-  "humility": [
-    { name: "Winds of Rath", type: "Sorcery", manaValue: 5, reason: "Board reset leaving aura creatures" },
-    { name: "Single Combat", type: "Sorcery", manaValue: 3, reason: "Forces symmetrical creature sacrifice" },
-    { name: "Peacekeeper", type: "Creature", manaValue: 1, reason: "Stops combat damage" },
+  humility: [
+    {
+      name: "Winds of Rath",
+      type: "Sorcery",
+      manaValue: 5,
+      reason: "Board reset leaving aura creatures",
+    },
+    {
+      name: "Single Combat",
+      type: "Sorcery",
+      manaValue: 3,
+      reason: "Forces symmetrical creature sacrifice",
+    },
+    {
+      name: "Peacekeeper",
+      type: "Creature",
+      manaValue: 1,
+      reason: "Stops combat damage",
+    },
   ],
   "recurring nightmare": [
-    { name: "Phyrexian Reclamation", type: "Enchantment", manaValue: 1, reason: "Pay life to recur creatures" },
-    { name: "Sheoldred, Whispering One", type: "Creature", manaValue: 7, reason: "Repeatable reanimation" },
-    { name: "Whisper, Blood Liturgist", type: "Creature", manaValue: 3, reason: "Tap-to-reanimate" },
+    {
+      name: "Phyrexian Reclamation",
+      type: "Enchantment",
+      manaValue: 1,
+      reason: "Pay life to recur creatures",
+    },
+    {
+      name: "Sheoldred, Whispering One",
+      type: "Creature",
+      manaValue: 7,
+      reason: "Repeatable reanimation",
+    },
+    {
+      name: "Whisper, Blood Liturgist",
+      type: "Creature",
+      manaValue: 3,
+      reason: "Tap-to-reanimate",
+    },
   ],
-  "sunder": [
-    { name: "Cyclonic Rift", type: "Instant", manaValue: 2, reason: "Mass bounce (overload)" },
-    { name: "Evacuation", type: "Instant", manaValue: 5, reason: "Symmetric creature bounce" },
-    { name: "Devastation Tide", type: "Sorcery", manaValue: 5, reason: "Miracle mass bounce" },
+  sunder: [
+    {
+      name: "Cyclonic Rift",
+      type: "Instant",
+      manaValue: 2,
+      reason: "Mass bounce (overload)",
+    },
+    {
+      name: "Evacuation",
+      type: "Instant",
+      manaValue: 5,
+      reason: "Symmetric creature bounce",
+    },
+    {
+      name: "Devastation Tide",
+      type: "Sorcery",
+      manaValue: 5,
+      reason: "Miracle mass bounce",
+    },
   ],
-  "upheaval": [
-    { name: "Cyclonic Rift", type: "Instant", manaValue: 2, reason: "Mass bounce (overload)" },
-    { name: "Devastation Tide", type: "Sorcery", manaValue: 5, reason: "Miracle mass bounce" },
-    { name: "Oblivion Stone", type: "Artifact", manaValue: 3, reason: "Reset board state" },
+  upheaval: [
+    {
+      name: "Cyclonic Rift",
+      type: "Instant",
+      manaValue: 2,
+      reason: "Mass bounce (overload)",
+    },
+    {
+      name: "Devastation Tide",
+      type: "Sorcery",
+      manaValue: 5,
+      reason: "Miracle mass bounce",
+    },
+    {
+      name: "Oblivion Stone",
+      type: "Artifact",
+      manaValue: 3,
+      reason: "Reset board state",
+    },
   ],
 };
 
@@ -250,7 +682,9 @@ export function getBannedCardAlternatives(
     (gameModes[gameModeId]?.banList || []).map((c) => c.toLowerCase()),
   );
 
-  return alternatives.filter((alt) => !bannedInFormat.has(alt.name.toLowerCase()));
+  return alternatives.filter(
+    (alt) => !bannedInFormat.has(alt.name.toLowerCase()),
+  );
 }
 
 /**
@@ -421,7 +855,10 @@ export function validateStandardRotation(
 
   const warnings: string[] = [];
   if (rotatedCards.length > 0) {
-    const sample = rotatedCards.slice(0, 5).map((c) => c.name).join(", ");
+    const sample = rotatedCards
+      .slice(0, 5)
+      .map((c) => c.name)
+      .join(", ");
     warnings.push(
       `${rotatedCards.length} card${rotatedCards.length > 1 ? "s" : ""} from rotated set${rotatedCards.length > 1 ? "s" : ""} are no longer legal in Standard: ${sample}${rotatedCards.length > 5 ? "..." : ""}`,
     );
@@ -759,7 +1196,8 @@ export function validateDeckFormat(
 
       if (colorIdentityViolations.length > 0) {
         // Detailed message including the specific colors each card violates.
-        const details = colorIdentityViolations.slice(0, 5)
+        const details = colorIdentityViolations
+          .slice(0, 5)
           .map((v) => {
             const violatedNames = v.violatedColors
               .map((c) => MANA_COLOR_NAMES[c] || c)
@@ -1171,7 +1609,6 @@ export function getFormatDisplayName(format: Format): string {
   const gameMode = gameModes[gameModeId];
   return gameMode ? gameMode.name : format;
 }
-
 
 /**
  * Get game mode description
