@@ -189,6 +189,7 @@ describe("WebRTCConnection reconnection (issue #915)", () => {
     maxReconnectAttempts?: number;
     reconnectBaseDelayMs?: number;
     reconnectAttemptTimeoutMs?: number;
+    iceRestartTimeoutMs?: number;
     onReconnectOffer?: P2PEvents["onReconnectOffer"];
     onReconnect?: P2PEvents["onReconnect"];
     onError?: P2PEvents["onError"];
@@ -216,6 +217,7 @@ describe("WebRTCConnection reconnection (issue #915)", () => {
       maxReconnectAttempts: opts.maxReconnectAttempts ?? 3,
       reconnectBaseDelayMs: opts.reconnectBaseDelayMs ?? 2,
       reconnectAttemptTimeoutMs: opts.reconnectAttemptTimeoutMs ?? 30,
+      iceRestartTimeoutMs: opts.iceRestartTimeoutMs ?? 10_000,
       events: {
         onReconnectOffer: opts.onReconnectOffer ?? offerSpy,
         onReconnect: opts.onReconnect ?? reconnectSpy,
@@ -398,6 +400,56 @@ describe("WebRTCConnection reconnection (issue #915)", () => {
     expect(conn.getConnectionState()).toBe("disconnected");
     // It must not have transitioned into a perpetual reconnecting loop.
     expect(conn.isConnected()).toBe(false);
+  });
+
+  it("performIceRestart emits error when createOffer hangs (timeout unblocks game loop) (issue #2200)", async () => {
+    // This test lives inside describe("WebRTCConnection reconnection") so makeConnection,
+    // fireICEState, MockRTCPeerConnection, lastCreatedPC are all in scope.
+    jest.useFakeTimers();
+
+    const errorSpy = jest.fn();
+    const { conn, pc } = await makeConnection({
+      isHost: true,
+      maxReconnectAttempts: 1,
+      reconnectBaseDelayMs: 2,
+      reconnectAttemptTimeoutMs: 50,
+      iceRestartTimeoutMs: 50,
+      onError: errorSpy,
+    });
+
+    // Establish the connection first.
+    pc.connectionState = "connected";
+    pc.onconnectionstatechange?.();
+
+    // Capture original before spying, then override createOffer to hang.
+    const origPerformIceRestart = conn.performIceRestart.bind(conn);
+    pc.createOffer = jest.fn().mockReturnValue(new Promise(() => {})) as any;
+
+    const performIceRestartSpy = jest
+      .spyOn(conn, "performIceRestart")
+      .mockImplementation(async () => {
+        return origPerformIceRestart();
+      });
+
+    // Simulate ICE disconnect → triggers attemptReconnection → performIceRestart.
+    fireICEState(pc, "disconnected");
+
+    // Run timers: debounce (100ms) + performIceRestart setTimeout (50ms).
+    jest.runAllTimers();
+    await Promise.resolve(); // flush microtask queue (Promise.race rejection)
+
+    // Verify performIceRestart was called (confirms the reconnection path reached it).
+    expect(performIceRestartSpy).toHaveBeenCalled();
+    // Verify the timeout error was emitted via onError.
+    expect(errorSpy).toHaveBeenCalled();
+    const [err] = errorSpy.mock.calls[0] as [Error];
+    expect(err).toBeInstanceOf(Error);
+    expect(err.message).toMatch(/timed out/i);
+
+    // Restore and clean up.
+    performIceRestartSpy.mockRestore();
+    jest.useRealTimers();
+    conn.close();
   });
 });
 
