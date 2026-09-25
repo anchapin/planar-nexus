@@ -129,6 +129,8 @@ export * from "./dungeon-data";
 export * from "./native-gzip";
 // #1900: engine error containment types
 export * from "./errors";
+// AI Contract - stable interface for engine-AI communication
+export * from "./ai-contract";
 
 // Local exports for common functions with consistent naming
 export { tapCard, untapCard, checkStateBasedActions };
