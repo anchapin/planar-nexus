@@ -66,6 +66,7 @@ export function StorageBackupManager() {
     setBackupMode,
     lastIncrementalResult,
     exportData,
+    exportIncrementalData,
     importData,
     clearAllData,
     loadStorageQuota,
@@ -85,7 +86,11 @@ export function StorageBackupManager() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleExport = async () => {
-    await exportData();
+    if (backupMode === "incremental") {
+      await exportIncrementalData();
+    } else {
+      await exportData();
+    }
     setTimeout(() => reset(), 3000);
   };
 
@@ -161,12 +166,8 @@ export function StorageBackupManager() {
         <Tabs defaultValue="overview" className="w-full">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="backup" data-testid="tab-trigger-backup">
-              Backup
-            </TabsTrigger>
-            <TabsTrigger value="restore" data-testid="tab-trigger-restore">
-              Restore
-            </TabsTrigger>
+            <TabsTrigger value="backup">Backup</TabsTrigger>
+            <TabsTrigger value="restore">Restore</TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
