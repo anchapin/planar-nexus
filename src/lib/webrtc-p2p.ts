@@ -965,7 +965,7 @@ export class WebRTCConnection {
           ...peerState,
           lastState: updatedAIState,
           lastVersion: delta.version,
-          lastChecksum: delta.checksum,
+          lastChecksum: delta.checksum ?? "",
         });
         this.events.onGameStateSync(gameState, "");
       } else {
@@ -1626,7 +1626,7 @@ export class WebRTCConnection {
     const aiState = engineToAIState(gameState);
     const syncState: DeltaPeerSyncState = {
       lastVersion: delta.version,
-      lastChecksum: delta.checksum,
+      lastChecksum: delta.checksum ?? "",
       lastState: aiState,
       lastSerializedState: JSON.stringify(delta),
     };

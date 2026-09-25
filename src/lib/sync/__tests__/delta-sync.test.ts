@@ -169,7 +169,7 @@ describe("Delta Sync", () => {
         turnDelta: null,
         combatDelta: null,
         isFullSync: false,
-        checksum: "",
+        checksum: null,
       };
 
       const result = applyDelta(baseState, delta);
@@ -207,7 +207,7 @@ describe("Delta Sync", () => {
         turnDelta: null,
         combatDelta: null,
         isFullSync: false,
-        checksum: "",
+        checksum: null,
       };
 
       const result = applyDelta(baseState, delta);
@@ -228,7 +228,7 @@ describe("Delta Sync", () => {
         turnDelta: null,
         combatDelta: null,
         isFullSync: false,
-        checksum: "",
+        checksum: null,
       };
 
       const result = applyDelta(baseState, delta);
@@ -248,7 +248,7 @@ describe("Delta Sync", () => {
       stackDeltas: [],
       turnDelta: null,
       combatDelta: null,
-      checksum: "",
+      checksum: null,
     });
 
     it("should reject delta with __proto__ in player data", () => {
@@ -265,7 +265,7 @@ describe("Delta Sync", () => {
             } as unknown as Record<string, unknown>,
           },
         ],
-        checksum: "",
+        checksum: null,
       };
 
       const result = applyDelta(baseState, pollutedDelta);
@@ -289,7 +289,7 @@ describe("Delta Sync", () => {
             } as unknown as Record<string, unknown>,
           },
         ],
-        checksum: "",
+        checksum: null,
       };
 
       const result = applyDelta(baseState, pollutedDelta);
@@ -313,7 +313,7 @@ describe("Delta Sync", () => {
             } as unknown as Record<string, unknown>,
           },
         ],
-        checksum: "",
+        checksum: null,
       };
 
       const result = applyDelta(baseState, pollutedDelta);
@@ -337,7 +337,7 @@ describe("Delta Sync", () => {
             } as unknown as Record<string, unknown>,
           },
         ],
-        checksum: "",
+        checksum: null,
       };
 
       const result = applyDelta(baseState, pollutedDelta);
@@ -365,6 +365,51 @@ describe("Delta Sync", () => {
       const result = applyDelta(baseState, validDelta);
 
       expect(result).toBe(baseState);
+    });
+
+    // Regression for security finding (delta-sync MEDIUM): an empty-string
+    // checksum is NOT a skip sentinel — it must be validated like any other
+    // non-null value and reject the delta because the computed hash is
+    // never empty.
+    it("should reject delta with empty-string checksum", () => {
+      const baseState = createMinimalAIGameState();
+      const delta: GameStateDelta = {
+        ...makeValidDeltaBase(),
+        playerDeltas: [
+          {
+            id: "player1",
+            action: "update",
+            data: { life: 30 } as unknown as Record<string, unknown>,
+          },
+        ],
+        checksum: "",
+      };
+
+      const result = applyDelta(baseState, delta);
+
+      expect(result).toBe(baseState);
+    });
+
+    // Counterpart to the empty-string regression: an explicit `null`
+    // sentinel IS the documented way for a sender to opt out of validation.
+    it("should skip checksum validation when checksum is null", () => {
+      const baseState = createMinimalAIGameState();
+      const delta: GameStateDelta = {
+        ...makeValidDeltaBase(),
+        playerDeltas: [
+          {
+            id: "player1",
+            action: "update",
+            data: { life: 30 } as unknown as Record<string, unknown>,
+          },
+        ],
+        checksum: null,
+      };
+
+      const result = applyDelta(baseState, delta);
+
+      // Result is the newly applied state (not the base state).
+      expect(result).not.toBe(baseState);
     });
   });
 
@@ -544,7 +589,7 @@ describe("Delta Sync", () => {
         turnDelta: null,
         combatDelta: null,
         isFullSync: false,
-        checksum: "",
+        checksum: null,
       };
 
       const size = estimateDeltaSize(delta);
@@ -566,7 +611,7 @@ describe("Delta Sync", () => {
         turnDelta: null,
         combatDelta: null,
         isFullSync: false,
-        checksum: "",
+        checksum: null,
       };
 
       expect(isDeltaSmallEnough(delta)).toBe(true);
@@ -586,7 +631,7 @@ describe("Delta Sync", () => {
         turnDelta: null,
         combatDelta: null,
         isFullSync: false,
-        checksum: "",
+        checksum: null,
       };
 
       expect(isDeltaSmallEnough(delta)).toBe(false);

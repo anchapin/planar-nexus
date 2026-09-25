@@ -87,7 +87,13 @@ export interface GameStateDelta {
   turnDelta: ObjectDiff<Turn> | null;
   combatDelta: ObjectDiff<Combat> | null;
   isFullSync: boolean;
-  checksum: string;
+  /**
+   * Sender-side checksum for integrity validation.
+   * Set to `null` to explicitly skip validation (e.g., test fixtures).
+   * Empty-string checksums are NOT a skip sentinel — they are treated as a
+   * real (mismatched) checksum and will cause `applyDelta` to reject the delta.
+   */
+  checksum: string | null;
 }
 
 /**
@@ -425,7 +431,10 @@ export function applyDelta(
     }
   }
 
-  if (delta.checksum !== undefined && delta.checksum !== "") {
+  // Skip validation only when sender explicitly opts out (`null`) or omits
+  // the field (`undefined`). An empty-string checksum is treated as a real
+  // (mismatched) checksum and will reject the delta.
+  if (delta.checksum != null) {
     const computed = computeChecksum(newState);
     if (computed !== delta.checksum) {
       console.warn(
