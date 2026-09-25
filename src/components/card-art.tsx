@@ -357,8 +357,14 @@ export const CardArt = memo(function CardArt({
     );
   }
 
-  // Show error state
-  if (hasError || !imageUrl) {
+  // Show card back when no imageUrl is available (custom images disabled or not yet loaded)
+  // Only show CardError when there is an actual error (hasError=true)
+  if (!imageUrl && !hasError) {
+    return <CardBack size={size} className={className} />;
+  }
+
+  // Only show error state for actual errors (network failure, etc.), not missing custom images
+  if (hasError) {
     return (
       <CardError
         cardName={cardName}
@@ -382,6 +388,11 @@ export const CardArt = memo(function CardArt({
         <CardSkeleton size={size} fill={fill} />
       </div>
     );
+  }
+
+  // imageUrl is guaranteed to be non-null and hasError false at this point
+  if (!imageUrl) {
+    return <CardBack size={size} className={className} />;
   }
 
   return (
