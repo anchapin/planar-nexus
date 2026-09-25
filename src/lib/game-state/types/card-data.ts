@@ -64,9 +64,11 @@ export interface MinimalCard {
   // ISO-8601 release date of the card's set (e.g., "2024-02-09").
   // Used by Standard rotation validation (see src/lib/game-rules.ts).
   release_date?: string;
+  // Whether this is a double-faced card (issue #2157)
+  faces?: number;
 }
 
 export interface ScryfallCard extends MinimalCard {
-  // Whether this is a double-faced card
+  // Whether this is a double-faced card (issue #2157)
   faces?: number;
 }
