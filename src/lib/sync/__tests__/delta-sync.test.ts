@@ -169,7 +169,7 @@ describe("Delta Sync", () => {
         turnDelta: null,
         combatDelta: null,
         isFullSync: false,
-        checksum: "abc123",
+        checksum: "",
       };
 
       const result = applyDelta(baseState, delta);
@@ -207,7 +207,7 @@ describe("Delta Sync", () => {
         turnDelta: null,
         combatDelta: null,
         isFullSync: false,
-        checksum: "def456",
+        checksum: "",
       };
 
       const result = applyDelta(baseState, delta);
@@ -228,7 +228,7 @@ describe("Delta Sync", () => {
         turnDelta: null,
         combatDelta: null,
         isFullSync: false,
-        checksum: "ghi789",
+        checksum: "",
       };
 
       const result = applyDelta(baseState, delta);
@@ -265,7 +265,7 @@ describe("Delta Sync", () => {
             } as unknown as Record<string, unknown>,
           },
         ],
-        checksum: "abc123",
+        checksum: "",
       };
 
       const result = applyDelta(baseState, pollutedDelta);
@@ -289,7 +289,7 @@ describe("Delta Sync", () => {
             } as unknown as Record<string, unknown>,
           },
         ],
-        checksum: "abc123",
+        checksum: "",
       };
 
       const result = applyDelta(baseState, pollutedDelta);
@@ -313,7 +313,7 @@ describe("Delta Sync", () => {
             } as unknown as Record<string, unknown>,
           },
         ],
-        checksum: "abc123",
+        checksum: "",
       };
 
       const result = applyDelta(baseState, pollutedDelta);
@@ -337,7 +337,7 @@ describe("Delta Sync", () => {
             } as unknown as Record<string, unknown>,
           },
         ],
-        checksum: "abc123",
+        checksum: "",
       };
 
       const result = applyDelta(baseState, pollutedDelta);
@@ -544,7 +544,7 @@ describe("Delta Sync", () => {
         turnDelta: null,
         combatDelta: null,
         isFullSync: false,
-        checksum: "abc123",
+        checksum: "",
       };
 
       const size = estimateDeltaSize(delta);
@@ -566,7 +566,7 @@ describe("Delta Sync", () => {
         turnDelta: null,
         combatDelta: null,
         isFullSync: false,
-        checksum: "abc123",
+        checksum: "",
       };
 
       expect(isDeltaSmallEnough(delta)).toBe(true);
@@ -586,7 +586,7 @@ describe("Delta Sync", () => {
         turnDelta: null,
         combatDelta: null,
         isFullSync: false,
-        checksum: "abc123",
+        checksum: "",
       };
 
       expect(isDeltaSmallEnough(delta)).toBe(false);

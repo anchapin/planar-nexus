@@ -425,7 +425,7 @@ export function applyDelta(
     }
   }
 
-  if (delta.checksum !== undefined) {
+  if (delta.checksum !== undefined && delta.checksum !== "") {
     const computed = computeChecksum(newState);
     if (computed !== delta.checksum) {
       console.warn(
