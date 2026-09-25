@@ -313,6 +313,27 @@ describe("Authoritative-state reconciliation (issue #1086)", () => {
       expect(peerAdopted).toEqual(authoritative);
     });
 
+    it("pending actions are always dropped on adoptAuthoritativeState call (#2182)", () => {
+      // Regression test for issue #2182: if the peer's reconnect state is reset
+      // (e.g. connection dropped after handleReconnect but before state sync
+      // arrived), adoptAuthoritativeState() must still be called to clear pending
+      // actions so they are not silently orphaned.
+      const peer = new ReconciliationCoordinator();
+      peer.recordPendingAction("tap", { card: "a" });
+      peer.recordPendingAction("draw", null);
+      expect(peer.pendingCount).toBe(2);
+
+      // adoptAuthoritativeState drops all pending actions regardless of whether
+      // awaitingReconciliationRef.current was true or false in the hook.
+      const dropped = peer.adoptAuthoritativeState();
+      expect(dropped).toHaveLength(2);
+      expect(dropped.map((a) => a.action)).toEqual(["tap", "draw"]);
+      expect(peer.pendingCount).toBe(0);
+
+      // Subsequent adopt is a no-op
+      expect(peer.adoptAuthoritativeState()).toHaveLength(0);
+    });
+
     it("no desync after reconciliation: a second full sync is a no-op on pending", () => {
       const peer = new ReconciliationCoordinator();
       peer.recordPendingAction("tap", null);
