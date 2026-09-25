@@ -98,6 +98,12 @@ module.exports = {
     // suite is pin/neutered so mutation score is meaningless; removed from
     // strykerConfig.mutate and matched in mutation-floor.test.ts suiteFor.
     "src/lib/game-state/mana.ts",
+    // Issue #2186: keyword-actions/ and abilities/ added to Stryker mutation
+    // coverage. keyword-actions/ handles MTG keyword abilities and actions
+    // (destroy, exile, sacrifice, etc.). abilities/ handles ability word
+    // parsing in oracle-text-parser.
+    "src/lib/game-state/keyword-actions/*.ts",
+    "src/lib/game-state/oracle-text-parser/abilities.ts",
   ],
 
   reporters: ["html", "clear-text", "progress", "json"],

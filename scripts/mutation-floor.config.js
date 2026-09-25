@@ -95,5 +95,12 @@ module.exports = {
     // floor — ratchet to floor(measured − 1) once the first successful
     // nightly run (#1785) records its score.
     "src/lib/game-state/mana.ts": 50,
+    // Issue #2186: 8th and 9th Stryker modules. Conservative pending-
+    // measurement floors for keyword-actions/*.ts (MTG keyword abilities and
+    // actions) and abilities.ts (ability word parsing in oracle-text-parser).
+    // Ratchet to floor(measured − 1) once the first successful nightly run
+    // records its score.
+    "src/lib/game-state/keyword-actions/*.ts": 50,
+    "src/lib/game-state/oracle-text-parser/abilities.ts": 50,
   },
 };
