@@ -7,7 +7,7 @@ name: Mutation Score (PR info)
 #
 # This workflow runs Stryker on ALL rules-engine modules (layer-system,
 # combat, mana, trigger-system, replacement-effects, spell-casting,
-# state-based-actions) for PRs that touch src/lib/game-state/**. It is
+# state-based-actions, keyword-actions, abilities) for PRs that touch src/lib/game-state/**. It is
 # NON-BLOCKING: the score is posted as a PR comment for engineer awareness,
 # but the job exit code does not gate the PR merge.
 #
@@ -42,6 +42,8 @@ jobs:
           - replacement-effects
           - spell-casting
           - state-based-actions
+          - keyword-actions
+          - abilities
 
     steps:
       - name: Checkout code
