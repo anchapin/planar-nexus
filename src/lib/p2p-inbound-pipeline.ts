@@ -63,7 +63,9 @@ import {
 import {
   safeParseJson,
   isMessageEnvelope,
+  isMessageEnvelopeShape,
   verifyMessageEnvelope,
+  verifyMessageEnvelopeHmac,
 } from "./p2p-json-validation";
 import type { AntiReplayTracker } from "./anti-replay-tracker";
 import { isMessageAllowedForRole, type PeerRole } from "./peer-role";
@@ -452,7 +454,12 @@ const shapeStep: InboundPipelineStep = {
     }
 
     // Keyed link — envelope mode, fail closed at every sub-check.
-    if (!parsed || !isMessageEnvelope(parsed)) {
+    if (
+      !parsed ||
+      !(state.wireMode.revalidatePayloadShape
+        ? isMessageEnvelope(parsed)
+        : isMessageEnvelopeShape(parsed))
+    ) {
       state.config.onEnvelopeRejected?.();
       logRejection(
         state.config,
@@ -468,20 +475,24 @@ const shapeStep: InboundPipelineStep = {
     // other pair key — or bearing a swapped senderId — fails here even if
     // the attacker holds their own link's key (issue #1708).
     const senderKey = state.wireMode.resolveVerificationKey(
-      envelope.payload.senderId,
+      (envelope.payload as { senderId?: string }).senderId ?? "",
     );
     if (
-      !verifyMessageEnvelope(
-        envelope,
-        senderKey,
-        state.wireMode.expectedSenderId,
-      )
+      state.wireMode.revalidatePayloadShape
+        ? !verifyMessageEnvelope(
+            envelope,
+            senderKey,
+            state.wireMode.expectedSenderId,
+          )
+        : !verifyMessageEnvelopeHmac(envelope, senderKey)
     ) {
       state.config.onEnvelopeRejected?.();
+      const ep = envelope.payload as
+        { senderId?: string; seq?: number } | undefined;
       logRejection(state.config, "warn", state.config.messages.envelopeForged, {
         ...logContextFor(state),
-        declaredSender: envelope.payload?.senderId,
-        seq: envelope.payload?.seq,
+        declaredSender: ep?.senderId,
+        seq: ep?.seq,
       });
       return { pass: false };
     }

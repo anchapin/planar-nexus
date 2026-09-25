@@ -460,6 +460,34 @@ export function verifyMessageEnvelope(
   return diff === 0;
 }
 
+export function verifyMessageEnvelopeHmac(
+  envelope: unknown,
+  sessionKeyHex: string,
+): boolean {
+  if (
+    typeof envelope !== "object" ||
+    envelope === null ||
+    typeof (envelope as { hmac?: unknown }).hmac !== "string"
+  ) {
+    return false;
+  }
+  const payload = (envelope as { payload?: unknown }).payload;
+  if (typeof sessionKeyHex !== "string" || sessionKeyHex.length === 0) {
+    return false;
+  }
+  const expected = hmacSha256Hex(
+    sessionKeyHex,
+    canonicalMessageForHmac(payload as GameMessageLike),
+  );
+  const actual = (envelope as { hmac: string }).hmac;
+  if (expected.length !== actual.length) return false;
+  let diff = 0;
+  for (let i = 0; i < expected.length; i++) {
+    diff |= expected.charCodeAt(i) ^ actual.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
 /**
  * Type guard: is `value` structurally a {@link GameMessageLike} (the subset
  * of `GameMessage` fields that participate in the HMAC)? Exposed so
@@ -495,4 +523,17 @@ export function isMessageEnvelope(value: unknown): value is MessageEnvelope {
     v.hmac.length > 0 &&
     isGameMessageLike(v.payload)
   );
+}
+
+export interface MessageEnvelopeShape {
+  hmac: string;
+  payload: unknown;
+}
+
+export function isMessageEnvelopeShape(
+  value: unknown,
+): value is MessageEnvelopeShape {
+  if (typeof value !== "object" || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return typeof v.hmac === "string" && v.hmac.length > 0;
 }
