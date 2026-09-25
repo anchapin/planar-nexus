@@ -17,8 +17,15 @@
  * Usage:
  *   node scripts/extract-mutation-score.mjs
  *
+ * Optional env vars:
+ *   MODULE_NAME — module name (e.g. "layer-system", "combat") used to look up
+ *                 the per-module floor from mutation-floor.config.js. When unset,
+ *                 defaults to the layer-system floor (backward-compatible for
+ *                 mutation.yml which runs only layer-system).
+ *
  * Consumed by:
- *   .github/workflows/mutation-pr.yml  (mutation-score job)
+ *   .github/workflows/mutation-pr.yml  (mutation-score job, per-matrix-module)
+ *   .github/workflows/mutation.yml     (per-module matrix jobs)
  */
 
 import { readFileSync } from "node:fs";
@@ -42,11 +49,28 @@ const COUNTED_STATUSES = new Set([
 const REPORT_PATH = join(REPO_ROOT, "reports/mutation/mutation.json");
 const FLOOR_CONFIG = require(join(REPO_ROOT, "scripts", "mutation-floor.config.js"));
 
-/** Per-module floor, matching the nightly mutation.yml logic. */
-const LAYER_SYSTEM_FLOOR =
-  FLOOR_CONFIG.floors?.["src/lib/game-state/layer-system.ts"] ??
-  FLOOR_CONFIG.defaultFloor ??
-  55;
+/**
+ * Map a module name (e.g. "layer-system", "combat") to its floor from
+ * mutation-floor.config.js. Returns defaultFloor if no module-specific entry.
+ */
+function moduleFloor(moduleName) {
+  if (!moduleName) return FLOOR_CONFIG.defaultFloor ?? 55;
+  const floorMap = {
+    "layer-system": "src/lib/game-state/layer-system.ts",
+    combat: "src/lib/game-state/combat.ts",
+    mana: "src/lib/game-state/mana.ts",
+    "trigger-system": "src/lib/game-state/trigger-system.ts",
+    "replacement-effects": "src/lib/game-state/replacement-effects.ts",
+    "spell-casting": "src/lib/game-state/spell-casting",
+    "state-based-actions": "src/lib/game-state/state-based-actions.ts",
+  };
+  const key = floorMap[moduleName];
+  if (key) return FLOOR_CONFIG.floors?.[key] ?? FLOOR_CONFIG.defaultFloor ?? 55;
+  return FLOOR_CONFIG.defaultFloor ?? 55;
+}
+
+const MODULE_NAME = process.env.MODULE_NAME;
+const MODULE_FLOOR = moduleFloor(MODULE_NAME);
 
 const outputs = {
   score: "",
@@ -133,11 +157,10 @@ function main() {
     outputs.considered = String(result.considered);
     outputs.score = result.score.toFixed(1);
 
-    // status: compare against the layer-system floor (same floor used by
-    // the nightly per-module gate in mutation.yml)
-    outputs.status = result.score >= LAYER_SYSTEM_FLOOR ? "pass" : "fail";
+    // status: compare against the module-specific floor from mutation-floor.config.js
+    outputs.status = result.score >= MODULE_FLOOR ? "pass" : "fail";
     outputs["below-floor"] =
-      result.score < LAYER_SYSTEM_FLOOR ? "true" : "false";
+      result.score < MODULE_FLOOR ? "true" : "false";
   } catch (err) {
     if (err.code === "ENOENT" || err.message?.includes("Unexpected end")) {
       outputs.status = "timeout";
