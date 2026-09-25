@@ -12,7 +12,7 @@
 
 "use client";
 
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -127,6 +127,15 @@ export function StorageBackupManager() {
     }
   };
 
+  // Eagerly load the quota on mount when the hook has not yet been initialized
+  // (#storage-backup-manager-mount-quota) so the very first paint has data
+  // instead of the loading spinner.
+  useEffect(() => {
+    if (!isInitialized) {
+      void loadStorageQuota();
+    }
+  }, [isInitialized, loadStorageQuota]);
+
   if (!isInitialized) {
     return (
       <Card>
@@ -138,7 +147,7 @@ export function StorageBackupManager() {
   }
 
   return (
-    <Card>
+    <Card data-testid="card">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <HardDrive className="h-5 w-5" />
@@ -152,12 +161,20 @@ export function StorageBackupManager() {
         <Tabs defaultValue="overview" className="w-full">
           <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="backup">Backup</TabsTrigger>
-            <TabsTrigger value="restore">Restore</TabsTrigger>
+            <TabsTrigger value="backup" data-testid="tab-trigger-backup">
+              Backup
+            </TabsTrigger>
+            <TabsTrigger value="restore" data-testid="tab-trigger-restore">
+              Restore
+            </TabsTrigger>
           </TabsList>
 
           {/* Overview Tab */}
-          <TabsContent value="overview" className="space-y-4">
+          <TabsContent
+            value="overview"
+            data-testid="tab-content-overview"
+            className="space-y-4"
+          >
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted-foreground">Storage Usage</span>
@@ -165,11 +182,19 @@ export function StorageBackupManager() {
                   {storageUsage} / {storageQuota}
                 </span>
               </div>
-              <Progress value={parseFloat(storagePercentage)} className="h-2" />
+              <Progress
+                data-testid="progress"
+                value={parseFloat(storagePercentage)}
+                className="h-2"
+              />
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span>{storagePercentage}% used</span>
                 {isApproachingLimit && (
-                  <Badge variant="destructive" className="text-xs">
+                  <Badge
+                    data-testid="badge"
+                    variant="destructive"
+                    className="text-xs"
+                  >
                     <AlertTriangle className="h-3 w-3 mr-1" />
                     Approaching limit
                   </Badge>
@@ -177,7 +202,7 @@ export function StorageBackupManager() {
               </div>
             </div>
 
-            <Alert>
+            <Alert data-testid="alert">
               <HardDrive className="h-4 w-4" />
               <AlertTitle>Storage Information</AlertTitle>
               <AlertDescription>
@@ -190,7 +215,11 @@ export function StorageBackupManager() {
           </TabsContent>
 
           {/* Backup Tab */}
-          <TabsContent value="backup" className="space-y-4">
+          <TabsContent
+            value="backup"
+            data-testid="tab-content-backup"
+            className="space-y-4"
+          >
             <div className="space-y-4">
               {/* Backup mode selector */}
               <div>
@@ -337,7 +366,11 @@ export function StorageBackupManager() {
           </TabsContent>
 
           {/* Restore Tab */}
-          <TabsContent value="restore" className="space-y-4">
+          <TabsContent
+            value="restore"
+            data-testid="tab-content-restore"
+            className="space-y-4"
+          >
             <div className="space-y-4">
               <div>
                 <h3 className="text-sm font-medium mb-2">Import Backup</h3>
@@ -435,6 +468,7 @@ export function StorageBackupManager() {
                 </p>
 
                 <Dialog
+                  data-testid="dialog"
                   open={showConfirmClear}
                   onOpenChange={setShowConfirmClear}
                 >
