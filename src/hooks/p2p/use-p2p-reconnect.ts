@@ -169,8 +169,11 @@ export function useP2PReconnect(options: {
   // the host's authoritative state (source of truth) and drop the pending
   // actions that never reached the host. Idempotent: a duplicate full sync
   // with no pending queued between syncs drops nothing.
+  // Also handles the case where the state sync arrived after a disconnect
+  // (awaitingReconciliationRef was reset) — pending actions are still cleared
+  // so they are not silently orphaned (#2182).
   const adoptHostStateIfAwaiting = useCallback(() => {
-    if (!awaitingReconciliationRef.current) return;
+    const wasAwaiting = awaitingReconciliationRef.current;
     awaitingReconciliationRef.current = false;
     const dropped = reconcileRef.current.adoptAuthoritativeState();
     if (dropped.length > 0) {
@@ -180,6 +183,10 @@ export function useP2PReconnect(options: {
           .join(", ")}`,
       );
       setDroppedPendingActions(dropped);
+    } else if (wasAwaiting) {
+      p2pLogger.info(
+        "Reconciled to host authoritative state; no pending actions to drop",
+      );
     }
   }, []);
 
