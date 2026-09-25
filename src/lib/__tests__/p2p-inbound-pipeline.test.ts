@@ -544,10 +544,11 @@ describe("runInboundPipeline — keyed-link envelope gate (#1708)", () => {
     expect(onEnvelopeRejected).toHaveBeenCalledTimes(1);
   });
 
-  it("the 1:1 surface preserves its historical no-payload-revalidation envelope behavior", () => {
+  it("the 1:1 surface still enforces type validation at HMAC step", () => {
     // The 1:1 transport historically does NOT re-run isGameMessage on the
     // verified payload (the envelope guard checks the HMAC-participating
-    // subset only). Byte-compatible with pre-#1791 behavior.
+    // subset only), but type validation happens in verifyMessageEnvelope
+    // which is always enforced. Post-#2231 type validation is always on.
     const bogusType = {
       type: "not-a-game-message-type",
       senderId: "peer",
@@ -565,7 +566,10 @@ describe("runInboundPipeline — keyed-link envelope gate (#1708)", () => {
       }),
     });
     const result = runInboundPipeline(JSON.stringify(envelope), config);
-    expect(result.outcome).toBe("accepted");
+    expect(result).toEqual({
+      outcome: "rejected",
+      step: "shape",
+    });
   });
 });
 
