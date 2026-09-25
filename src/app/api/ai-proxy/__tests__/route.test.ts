@@ -263,6 +263,13 @@ beforeEach(() => {
   );
   getConfiguredProviders.mockReturnValue(["openai"]);
   saveMock.mockResolvedValue(undefined);
+
+  (generateText as any).mockResolvedValue({
+    text: "",
+    finishReason: undefined,
+    usage: undefined,
+    warnings: undefined,
+  });
 });
 
 // ----------------------------------------------------------------------------
@@ -635,6 +642,10 @@ describe("POST /api/ai-proxy — error redaction (Issue #1585)", () => {
 
   afterEach(() => {
     consoleErrorSpy.mockRestore();
+  });
+
+  afterEach(() => {
+    jest.resetModules();
   });
 
   /** Join everything the spy captured into one searchable string. */
