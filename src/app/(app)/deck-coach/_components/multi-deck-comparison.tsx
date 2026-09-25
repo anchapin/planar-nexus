@@ -352,81 +352,97 @@ export function MultiDeckComparison() {
 
           {decksLoading ? (
             <Skeleton className="h-24 w-full rounded-md" />
-          ) : savedDecks.length === 0 && importedDecks.length === 0 ? (
+          ) : savedDecks.length === 0 &&
+            importedDecks.length === 0 &&
+            manualDecks.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               No saved decks yet. Build and save a deck first, or import a deck
               file below.
             </p>
-          ) : savedDecks.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {savedDecks.map((deck) => {
-                const checked = selectedIds.includes(deck.id);
-                const disabled = !checked && selectedIds.length >= MAX_DECKS;
-                return (
-                  <label
-                    key={deck.id}
-                    className={cn(
-                      "flex items-center gap-3 rounded-md border p-3 text-sm transition-colors cursor-pointer",
-                      checked
-                        ? "border-primary bg-primary/5"
-                        : disabled
-                          ? "opacity-50 cursor-not-allowed"
-                          : "hover:bg-accent/50",
-                    )}
-                  >
-                    <Checkbox
-                      checked={checked}
-                      disabled={disabled}
-                      onCheckedChange={(v) => toggleDeck(deck.id, v === true)}
-                    />
-                    <span className="flex-1 truncate font-medium">
-                      {deck.name}
-                    </span>
-                    <Badge variant="outline" className="capitalize">
-                      {deck.format}
-                    </Badge>
-                  </label>
-                );
-              })}
-              {importedDecks.map((deck) => {
-                const deckId = deck.id ?? "";
-                const checked = selectedIds.includes(deckId);
-                const disabled = !checked && selectedIds.length >= MAX_DECKS;
-                return (
-                  <label
-                    key={deckId}
-                    className={cn(
-                      "flex items-center gap-3 rounded-md border p-3 text-sm transition-colors cursor-pointer",
-                      checked
-                        ? "border-primary bg-primary/5"
-                        : disabled
-                          ? "opacity-50 cursor-not-allowed"
-                          : "hover:bg-accent/50",
-                    )}
-                  >
-                    <Checkbox
-                      checked={checked}
-                      disabled={disabled}
-                      onCheckedChange={(v) => toggleDeck(deckId, v === true)}
-                    />
-                    <span className="flex-1 truncate font-medium">
-                      {deck.name}
-                    </span>
-                    <button
-                      onClick={(e) => {
-                        e.preventDefault();
-                        removeImportedDeck(deckId);
-                      }}
-                      className="text-muted-foreground hover:text-destructive ml-1"
-                      aria-label={`Remove ${deck.name}`}
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </label>
-                );
-              })}
-            </div>
-          ) : null}
+          ) : (
+            <>
+              {savedDecks.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {savedDecks.map((deck) => {
+                    const checked = selectedIds.includes(deck.id);
+                    const disabled =
+                      !checked && selectedIds.length >= MAX_DECKS;
+                    return (
+                      <label
+                        key={deck.id}
+                        className={cn(
+                          "flex items-center gap-3 rounded-md border p-3 text-sm transition-colors cursor-pointer",
+                          checked
+                            ? "border-primary bg-primary/5"
+                            : disabled
+                              ? "opacity-50 cursor-not-allowed"
+                              : "hover:bg-accent/50",
+                        )}
+                      >
+                        <Checkbox
+                          checked={checked}
+                          disabled={disabled}
+                          onCheckedChange={(v) =>
+                            toggleDeck(deck.id, v === true)
+                          }
+                        />
+                        <span className="flex-1 truncate font-medium">
+                          {deck.name}
+                        </span>
+                        <Badge variant="outline" className="capitalize">
+                          {deck.format}
+                        </Badge>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+              {importedDecks.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {importedDecks.map((deck) => {
+                    const deckId = deck.id ?? "";
+                    const checked = selectedIds.includes(deckId);
+                    const disabled =
+                      !checked && selectedIds.length >= MAX_DECKS;
+                    return (
+                      <label
+                        key={deckId}
+                        className={cn(
+                          "flex items-center gap-3 rounded-md border p-3 text-sm transition-colors cursor-pointer",
+                          checked
+                            ? "border-primary bg-primary/5"
+                            : disabled
+                              ? "opacity-50 cursor-not-allowed"
+                              : "hover:bg-accent/50",
+                        )}
+                      >
+                        <Checkbox
+                          checked={checked}
+                          disabled={disabled}
+                          onCheckedChange={(v) =>
+                            toggleDeck(deckId, v === true)
+                          }
+                        />
+                        <span className="flex-1 truncate font-medium">
+                          {deck.name}
+                        </span>
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault();
+                            removeImportedDeck(deckId);
+                          }}
+                          className="text-muted-foreground hover:text-destructive ml-1"
+                          aria-label={`Remove ${deck.name}`}
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </>
+          )}
 
           <div
             className={cn(
