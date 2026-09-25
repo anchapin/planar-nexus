@@ -1602,6 +1602,173 @@ describe("P2PGameConnection reconnect reconciliation (issue #1086)", () => {
 });
 
 /**
+ * Issue #2182 — sequence-number gap detection and seq-gap-replay on reconnect.
+ *
+ * When a WebRTC ICE-restart disconnect drops actions, the connection must detect
+ * the sequence-number gap after reconnecting and automatically send a
+ * `seq-gap-replay` request to the peer.  The peer must fulfil the replay by
+ * iterating its outbound action queue and re-sending matching actions.
+ */
+describe("P2PGameConnection seq-gap-replay on reconnect (issue #2182)", () => {
+  const setState = (conn: P2PGameConnection, state: string): void => {
+    (
+      conn as unknown as { updateConnectionState: (s: string) => void }
+    ).updateConnectionState(state);
+  };
+
+  const handleMessage = (conn: P2PGameConnection, raw: string): void => {
+    (conn as unknown as { handleMessage: (d: string) => void }).handleMessage(
+      raw,
+    );
+  };
+
+  const wireMsg = (
+    senderId: string,
+    seq: number,
+    type: GameMessageType,
+    data: unknown,
+  ): string =>
+    JSON.stringify({ type, senderId, timestamp: Date.now(), seq, data });
+
+  it("captures last-seen seq per sender when transitioning to disconnected/reconnecting", () => {
+    const conn = createP2PGameConnection({
+      playerId: "host",
+      playerName: "Host",
+      role: "host",
+      events: {
+        onConnectionStateChange: () => {},
+        onSignalingStateChange: () => {},
+        onMessage: () => {},
+        onGameStateSync: () => {},
+        onChat: () => {},
+        onError: () => {},
+        onPlayerJoined: () => {},
+        onPlayerLeft: () => {},
+      },
+    });
+
+    setState(conn, "connected");
+    handleMessage(
+      conn,
+      wireMsg("peer-A", 1, "game-action", { action: "draw" }),
+    );
+    handleMessage(
+      conn,
+      wireMsg("peer-A", 2, "game-action", { action: "play" }),
+    );
+    setState(conn, "disconnected");
+
+    const snapshot = (
+      conn as unknown as { lastSeqBeforeDisconnect: Map<string, number> }
+    ).lastSeqBeforeDisconnect;
+    expect(snapshot.get("peer-A")).toBe(2);
+  });
+
+  it("sends seq-gap-replay after reconnecting when a seq gap is detected", () => {
+    const onReconnect = jest.fn();
+    const conn = createP2PGameConnection({
+      playerId: "host",
+      playerName: "Host",
+      role: "host",
+      events: {
+        onConnectionStateChange: () => {},
+        onSignalingStateChange: () => {},
+        onMessage: () => {},
+        onGameStateSync: () => {},
+        onChat: () => {},
+        onError: () => {},
+        onPlayerJoined: () => {},
+        onPlayerLeft: () => {},
+        onReconnect,
+      },
+    });
+    const sendSpy = jest.spyOn(conn, "send").mockReturnValue(true);
+
+    setState(conn, "connected");
+    handleMessage(
+      conn,
+      wireMsg("peer-A", 1, "game-action", { action: "draw" }),
+    );
+    handleMessage(
+      conn,
+      wireMsg("peer-A", 2, "game-action", { action: "play" }),
+    );
+    setState(conn, "disconnected");
+
+    // After reconnecting, detectAndRequestSeqGaps is called. Since we have a
+    // lastSeqBeforeDisconnect of 2 for peer-A, we request replay for seq > 2.
+    setState(conn, "connected");
+
+    expect(onReconnect).toHaveBeenCalled();
+
+    const replayRequests = sendSpy.mock.calls
+      .map(([msg]) => msg as GameMessage)
+      .filter((m) => m.type === "seq-gap-replay");
+
+    expect(replayRequests.length).toBe(1);
+    const replay = replayRequests[0];
+    expect(replay.senderId).toBe("host");
+    const payload = replay.data as { fromSeq: number; toSeq: number };
+    expect(payload.fromSeq).toBe(3); // next seq after last seen (2)
+
+    sendSpy.mockRestore();
+  });
+
+  it("fulfils a seq-gap-replay request by replaying matching outbound actions", () => {
+    const conn = createP2PGameConnection({
+      playerId: "peer-A",
+      playerName: "Peer A",
+      role: "joiner",
+      events: {
+        onConnectionStateChange: () => {},
+        onSignalingStateChange: () => {},
+        onMessage: () => {},
+        onGameStateSync: () => {},
+        onChat: () => {},
+        onError: () => {},
+        onPlayerJoined: () => {},
+        onPlayerLeft: () => {},
+      },
+    });
+    const sendSpy = jest.spyOn(conn, "send").mockReturnValue(true);
+
+    // Directly push to the outbound queue with controlled seqs to simulate a peer
+    // that has already sent 3 actions with seq 1, 2, 3.
+    const outboundQueue = (
+      conn as unknown as {
+        outboundActionQueue: Array<{
+          seq: number;
+          action: string;
+          data: unknown;
+        }>;
+      }
+    ).outboundActionQueue;
+    outboundQueue.push({ seq: 1, action: "draw", data: { card: "Island" } });
+    outboundQueue.push({ seq: 2, action: "play", data: { card: "Island" } });
+    outboundQueue.push({
+      seq: 3,
+      action: "attack",
+      data: { creature: "Token" },
+    });
+
+    handleMessage(
+      conn,
+      wireMsg("host", 99, "seq-gap-replay", { fromSeq: 1, toSeq: 2 }),
+    );
+
+    const gameActions = sendSpy.mock.calls
+      .map(([msg]) => msg as GameMessage)
+      .filter((m) => m.type === "game-action");
+
+    expect(gameActions.length).toBe(2);
+    expect((gameActions[0].data as { action: string }).action).toBe("draw");
+    expect((gameActions[1].data as { action: string }).action).toBe("play");
+
+    sendSpy.mockRestore();
+  });
+});
+
+/**
  * Issue #1257 — host moderation wire-format tests.
  *
  * The lobby manager owns the policy + ban list. The transport only ships a

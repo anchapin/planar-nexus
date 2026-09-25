@@ -92,4 +92,13 @@ export class AntiReplayTracker {
   clear(): void {
     this.highWaterMarks.clear();
   }
+
+  /**
+   * Returns an iterator over all `[senderId, lastSeq]` pairs currently tracked.
+   * Used by `P2PGameConnection` to snapshot high-water marks before a reconnect
+   * and detect sequence-number gaps after ICE-restart recovery (issue #2182).
+   */
+  entries(): IterableIterator<[string, number]> {
+    return this.highWaterMarks.entries();
+  }
 }

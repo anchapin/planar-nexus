@@ -185,6 +185,7 @@ export type GameMessageType =
   | "pong"
   | "error"
   | "request-state-sync"
+  | "seq-gap-replay"
   | "lobby-control"
   | "game-ended"
   | "state-hash";
@@ -227,6 +228,7 @@ export const GAME_MESSAGE_TYPES: ReadonlySet<GameMessageType> = new Set([
   "pong",
   "error",
   "request-state-sync",
+  "seq-gap-replay",
   "lobby-control",
   "game-ended",
   "state-hash",
@@ -285,6 +287,17 @@ export interface PeerActionValidationResult {
 export interface PeerGameActionPayload {
   action: string;
   data: unknown;
+}
+
+/**
+ * Wire payload of a `seq-gap-replay` message — requests that the peer replay
+ * game actions in a given sequence-number range (issue #2182). `fromSeq` is
+ * inclusive; `toSeq` is inclusive and optional (if omitted, the peer replays
+ * everything from `fromSeq` up to its current outgoing seq).
+ */
+export interface SeqGapReplayPayload {
+  fromSeq: number;
+  toSeq?: number;
 }
 
 /**
@@ -550,6 +563,27 @@ export class P2PGameConnection {
    * `p2p-host-migration.ts`.
    */
   private readonly antiReplay: AntiReplayTracker = new AntiReplayTracker();
+  /**
+   * Captures the highest received seq per peer at the moment we enter the
+   * disconnected/reconnecting state (issue #2182). Used after ICE-restart
+   * recovery to detect sequence-number gaps and trigger a `seq-gap-replay`
+   * request to the relevant peers.
+   */
+  private lastSeqBeforeDisconnect: Map<string, number> = new Map();
+
+  /**
+   * Sliding window of the last N outbound game-actions sent by the local peer.
+   * Used as the source of truth when fulfilling `seq-gap-replay` requests from
+   * other peers (issue #2182).  The window is capped at MAX_OUTBOUND_QUEUE_SIZE
+   * to bound memory usage.
+   */
+  private readonly outboundActionQueue: Array<{
+    seq: number;
+    action: string;
+    data: unknown;
+  }> = [];
+
+  private static readonly MAX_OUTBOUND_QUEUE_SIZE = 200;
   /**
    * Configuration delegating the ordered inbound trust pipeline (rate limit
    * → parse → shape → anti-replay → role allowlist → host legality) to the
@@ -1181,11 +1215,24 @@ export class P2PGameConnection {
       this.events.onError(new Error(reason));
       return false;
     }
+    const seq = this.nextOutgoingSeq();
+    // Track outbound actions for seq-gap-replay replay support (issue #2182).
+    this.outboundActionQueue.push({ seq, action, data });
+    if (
+      this.outboundActionQueue.length >
+      P2PGameConnection.MAX_OUTBOUND_QUEUE_SIZE
+    ) {
+      this.outboundActionQueue.splice(
+        0,
+        this.outboundActionQueue.length -
+          P2PGameConnection.MAX_OUTBOUND_QUEUE_SIZE,
+      );
+    }
     return this.send({
       type: "game-action",
       senderId: this.playerId,
       timestamp: Date.now(),
-      seq: this.nextOutgoingSeq(),
+      seq,
       data: {
         action,
         data,
@@ -1544,6 +1591,11 @@ export class P2PGameConnection {
           // reconnect, #1086) wants a fresh authoritative snapshot. Only the
           // host can answer; non-hosts ignore the request.
           this.handleRequestStateSync(message);
+          break;
+        case "seq-gap-replay":
+          // A peer that missed actions during a disconnect is requesting replay
+          // of a specific seq range (issue #2182).
+          this.handleSeqGapReplay(message);
           break;
         case "lobby-control":
           // Host-moderator channel (issue #1257). Forward to the optional
@@ -2064,6 +2116,9 @@ export class P2PGameConnection {
         // Reconnect after a drop — signal authoritative-state reconciliation.
         this.wasDisconnected = false;
         this.events.onReconnect?.();
+        // Detect sequence-number gaps introduced by the disconnect and request
+        // replay of any dropped peer actions (issue #2182).
+        this.detectAndRequestSeqGaps();
       }
     } else if (
       state === "disconnected" ||
@@ -2072,8 +2127,99 @@ export class P2PGameConnection {
     ) {
       if (this.hadConnectedOnce) {
         this.wasDisconnected = true;
+        // Capture the current high-water marks before the connection drops so we
+        // can detect sequence-number gaps after ICE-restart recovery (issue #2182).
+        this.lastSeqBeforeDisconnect.clear();
+        for (const [senderId, lastSeq] of this.antiReplay.entries()) {
+          this.lastSeqBeforeDisconnect.set(senderId, lastSeq);
+        }
       }
     }
+  }
+
+  /**
+   * Detect sequence-number gaps introduced by the last disconnect and request
+   * replay of any dropped peer actions (issue #2182).
+   *
+   * Called immediately after `onReconnect` fires so that any reconciliation
+   * the integration layer triggers on that callback can observe the gap state.
+   */
+  private detectAndRequestSeqGaps(): void {
+    for (const [senderId, seqBeforeDisconnect] of this
+      .lastSeqBeforeDisconnect) {
+      const currentSeq = this.antiReplay.getLastApplied(senderId);
+      if (currentSeq !== null) {
+        if (currentSeq > seqBeforeDisconnect) {
+          // Gap confirmed: the peer has sent messages beyond what we last knew, so
+          // we definitely missed some. Request replay of the missing range.
+          void this.requestSeqGapReplay(seqBeforeDisconnect + 1, currentSeq);
+        } else if (currentSeq === seqBeforeDisconnect) {
+          // The seq hasn't advanced since the disconnect — this is ambiguous: either
+          // the peer sent nothing during the gap, or it sent messages we never
+          // received.  Request replay to be safe (issue #2182); the antiReplay
+          // tracker on the responding side will deduplicate any already-received
+          // actions.
+          void this.requestSeqGapReplay(seqBeforeDisconnect + 1, undefined);
+        }
+      }
+    }
+    this.lastSeqBeforeDisconnect.clear();
+  }
+
+  /**
+   * Send a `seq-gap-replay` request to the peer asking it to replay actions
+   * in the inclusive range `[fromSeq, toSeq]` (issue #2182).
+   */
+  private requestSeqGapReplay(fromSeq: number, toSeq?: number): void {
+    const msg: GameMessage = {
+      type: "seq-gap-replay",
+      senderId: this.playerId,
+      seq: ++this.outgoingSeq,
+      timestamp: Date.now(),
+      data: { fromSeq, toSeq } as SeqGapReplayPayload,
+    };
+    this.send(msg);
+  }
+
+  /**
+   * Handle an incoming `seq-gap-replay` request from a peer — replay the
+   * requested actions back to the requester (issue #2182).
+   *
+   * The peer's own outbound queue is used as the source of truth since those
+   * are the actions this peer originally sent.  Replayed items are removed from
+   * the queue so they are not sent again on the next flush.
+   */
+  private handleSeqGapReplay(msg: GameMessage): void {
+    const { fromSeq, toSeq } = msg.data as SeqGapReplayPayload;
+    const requesterId = msg.senderId;
+    let matched = 0;
+    for (let i = 0; i < this.outboundActionQueue.length;) {
+      const queued = this.outboundActionQueue[i];
+      if (
+        queued.seq >= fromSeq &&
+        (toSeq === undefined || queued.seq <= toSeq)
+      ) {
+        this.send({
+          type: "game-action",
+          senderId: this.playerId,
+          seq: ++this.outgoingSeq,
+          timestamp: Date.now(),
+          data: { action: queued.action, data: queued.data },
+        });
+        matched++;
+        // Remove the replayed item so it won't be sent again on the next flush.
+        this.outboundActionQueue.splice(i, 1);
+      } else {
+        i++;
+      }
+    }
+    p2pLogger.debug(
+      "seq-gap-replay replayed %d actions to %s for seq %d-%d",
+      matched,
+      requesterId,
+      fromSeq,
+      toSeq ?? "latest",
+    );
   }
 
   /**
