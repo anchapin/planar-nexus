@@ -10,7 +10,6 @@ export function assertSameOrigin(request: NextRequest | Request): void {
 
   if (!expected) return;
 
-  if (!origin && !referer) return;
   if (origin && new URL(origin).origin === expected) return;
   if (referer && new URL(referer).origin === expected) return;
 

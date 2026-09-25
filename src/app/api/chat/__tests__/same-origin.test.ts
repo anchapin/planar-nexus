@@ -43,12 +43,21 @@ describe("assertSameOrigin", () => {
     expect(() => assertSameOrigin(req)).not.toThrow();
   });
 
-  it("allows same-origin POST with no Origin or Referer header", () => {
+  it("rejects same-origin POST with no Origin or Referer header", () => {
     const req = makeMockNextRequest({
       method: "POST",
       url: "http://localhost:9002/api/chat",
     });
-    expect(() => assertSameOrigin(req)).not.toThrow();
+    let thrown: unknown;
+    try {
+      assertSameOrigin(req);
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBeDefined();
+    expect((thrown as { status: number }).status).toBe(403);
+    const body = JSON.parse(getThrownResponseBody(thrown));
+    expect(body).toEqual({ error: "CROSS_ORIGIN_FORBIDDEN" });
   });
 
   it("rejects cross-origin POST with mismatched Origin header", () => {
