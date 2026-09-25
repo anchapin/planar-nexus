@@ -3,13 +3,16 @@ module.exports = {
   preset: "ts-jest",
   testEnvironment: "jsdom",
   setupFilesAfterEnv: ["<rootDir>/jest.setup.js"],
-  roots: ["<rootDir>/src", "<rootDir>/tests"],
+  roots: ["<rootDir>/src", "<rootDir>/tests", "<rootDir>/e2e"],
   testMatch: [
     "**/__tests__/**/*.test.ts",
     "**/__tests__/**/*.test.tsx",
     // Integration tests live in the repo-root <rootDir>/tests directory and
     // exercise real cross-module workflows. See issue #931.
     "<rootDir>/tests/**/*.test.ts",
+    // E2E fixture unit tests
+    "<rootDir>/e2e/**/*.test.ts",
+    "<rootDir>/e2e/**/*.test.tsx",
   ],
   // The six game-state suites that were previously skipped here have been
   // repaired and re-enabled (issue #1093):

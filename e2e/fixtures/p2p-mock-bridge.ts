@@ -62,6 +62,130 @@ export function isGameMessage(value: unknown): value is GameMessage {
 }
 
 /**
+ * Exported mock data channel class used by the test suite.
+ * Instances are created by MockRTCPeerConnection.createDataChannel().
+ */
+export class MockDataChannel {
+  readonly label: string;
+  readyState: "connecting" | "open" | "closing" | "closed" = "connecting";
+  onmessage: ((event: { data: string }) => void) | null = null;
+  onopen: (() => void) | null = null;
+  onclose: (() => void) | null = null;
+  onerror: ((event: unknown) => void) | null = null;
+
+  private _queue: string[] = [];
+  private _p2pOutgoing: ((peerId: string, chLabel: string, data: string) => void) | null = null;
+  private _peerId: string = "peer";
+
+  constructor(label: string) {
+    this.label = label;
+  }
+
+  /** @internal — set by MockRTCPeerConnection when creating the channel */
+  _setOutgoing(
+    fn: ((peerId: string, chLabel: string, data: string) => void) | null,
+    peerId: string,
+  ): void {
+    this._p2pOutgoing = fn;
+    this._peerId = peerId;
+  }
+
+  send(raw: unknown): void {
+    if (this.readyState !== "open") return;
+    const data = typeof raw === "object" && raw !== null ? JSON.stringify(raw) : String(raw);
+    if (this._p2pOutgoing) {
+      this._p2pOutgoing(this._peerId, this.label, data);
+    }
+    if (this.onmessage) {
+      this.onmessage({ data });
+    } else {
+      this._queue.push(data);
+    }
+  }
+
+  close(): void {
+    this.readyState = "closed";
+    if (this.onclose) this.onclose();
+  }
+
+  /** @internal — used by test helpers to replay queued messages */
+  _flushQueue(): void {
+    while (this._queue.length > 0) {
+      const data = this._queue.shift()!;
+      if (this.onmessage) this.onmessage({ data });
+    }
+  }
+}
+
+/**
+ * Exported mock RTCPeerConnection class used by the test suite.
+ * createOffer/createAnswer return a minimal SDP-like object so the signaling
+ * flow can proceed without real network negotiation.
+ */
+export class MockRTCPeerConnection {
+  private _channels: MockDataChannel[] = [];
+  private _state: "new" | "connecting" | "connected" | "closed" = "new";
+
+  get connectionState(): string {
+    return this._state;
+  }
+
+  createDataChannel(label: string): MockDataChannel {
+    const ch = new MockDataChannel(label);
+    ch.readyState = "open";
+    ch._setOutgoing(
+      typeof globalThis.__p2pOutgoing === "function" ? globalThis.__p2pOutgoing : null,
+      "peer",
+    );
+    this._channels.push(ch);
+    if (this._state === "new") {
+      this._state = "connecting";
+    }
+    queueMicrotask(() => {
+      if (this._state === "connecting") {
+        this._state = "connected";
+        if (this.onopen) this.onopen();
+      }
+    });
+    return ch;
+  }
+
+  createOffer(): Promise<RTCSessionDescriptionInit> {
+    return Promise.resolve({
+      type: "offer",
+      sdp: "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n",
+    });
+  }
+
+  createAnswer(): Promise<RTCSessionDescriptionInit> {
+    return Promise.resolve({
+      type: "answer",
+      sdp: "v=0\r\no=- 0 0 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\n",
+    });
+  }
+
+  setLocalDescription(_desc: RTCSessionDescriptionInit): Promise<void> {
+    return Promise.resolve();
+  }
+
+  setRemoteDescription(_desc: RTCSessionDescriptionInit): Promise<void> {
+    return Promise.resolve();
+  }
+
+  close(): void {
+    this._state = "closed";
+    this._channels.forEach((ch) => {
+      ch.readyState = "closed";
+      if (ch.onclose) ch.onclose();
+    });
+  }
+
+  isConnected(): boolean {
+    return this._state === "connected";
+  }
+}
+
+/**
  * In-page source that installs the mock WebRTC transport.
  *
  * Replaces `window.RTCPeerConnection` with a mock that:
@@ -140,6 +264,8 @@ export const MOCK_TRANSPORT_INIT = `
   window.RTCPeerConnection = MockRTCPeerConnection;
   window.webkitRTCPeerConnection = MockRTCPeerConnection;
   window.__MockDataChannel = MockDataChannel;
+  window.MockDataChannel = MockDataChannel;
+  window.MockRTCPeerConnection = MockRTCPeerConnection;
 
   // Peer context calls this to deliver a raw inbound message.
   window.__p2pDeliver = function (raw) {
