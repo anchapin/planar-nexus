@@ -12,7 +12,7 @@
 
 "use client";
 
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -131,6 +131,15 @@ export function StorageBackupManager() {
       fileInputRef.current.value = "";
     }
   };
+
+  // Eagerly load the quota on mount when the hook has not yet been initialized
+  // (#storage-backup-manager-mount-quota) so the very first paint has data
+  // instead of the loading spinner.
+  useEffect(() => {
+    if (!isInitialized) {
+      void loadStorageQuota();
+    }
+  }, [isInitialized, loadStorageQuota]);
 
   if (!isInitialized) {
     return (
