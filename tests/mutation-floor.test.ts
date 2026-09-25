@@ -295,6 +295,10 @@ describe("floor config sanity", () => {
       "src/lib/game-state/state-based-actions.ts":
         "state-based-actions.mutation.test.ts",
       "src/lib/game-state/mana.ts": "mana.mutation.test.ts",
+      "src/lib/game-state/keyword-actions/*.ts":
+        "keyword-actions.mutation.test.ts",
+      "src/lib/game-state/oracle-text-parser/abilities.ts":
+        "oracle-text-parser-abilities.mutation.test.ts",
     };
     expect(Object.keys(suiteFor)).toEqual(strykerConfig.mutate);
     for (const file of Object.values(suiteFor)) {

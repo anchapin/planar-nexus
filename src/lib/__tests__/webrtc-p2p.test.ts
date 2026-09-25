@@ -435,7 +435,10 @@ describe("WebRTCConnection reconnection (issue #915)", () => {
     fireICEState(pc, "disconnected");
 
     // Run timers: debounce (100ms) + performIceRestart setTimeout (50ms).
-    jest.runAllTimers();
+    // Async variant flushes timers recursively AND drains microtasks so the
+    // deeply-nested performIceRestart -> attemptReconnection -> events.onError
+    // chain settles before we assert (issue #2200).
+    await jest.runAllTimersAsync();
     await Promise.resolve(); // flush microtask queue (Promise.race rejection)
 
     // Verify performIceRestart was called (confirms the reconnection path reached it).

@@ -1187,7 +1187,11 @@ export class WebRTCConnection {
               : new Error("Reconnection attempt failed"),
             "",
           );
-          throw error;
+          // Do NOT rethrow here — `attemptReconnection` is invoked via `void`
+          // at every call site, so a rethrow becomes an uncaught promise
+          // rejection that jest (and Node) treat as a fatal test failure
+          // (#2200). The onError emission above is the canonical signal.
+          return;
         }
       }
 
@@ -1260,6 +1264,12 @@ export class WebRTCConnection {
           clearTimeout(timer);
           reject(err);
         });
+    }).catch((err: Error) => {
+      // Surface failures through the events.onError channel (#2200) so callers
+      // observing `connection.onError` learn about ICE-restart failures rather
+      // than only receiving a rejected promise.
+      this.events.onError(err, "");
+      throw err;
     });
 
     if (offer) {

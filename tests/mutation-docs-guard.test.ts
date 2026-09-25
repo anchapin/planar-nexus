@@ -27,6 +27,7 @@ import * as cp from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import * as yaml from "yaml";
 
 const REPO_ROOT = path.resolve(__dirname, "..");
 const SCRIPT = path.join(REPO_ROOT, "scripts", "check-mutation-docs-sync.mjs");
@@ -164,10 +165,12 @@ describe("check-mutation-docs-sync fixtures", () => {
   });
 
   it("fails when the anchored block is missing", () => {
-    writeFixtures(MATCHING.replace("<!-- mutation-floor:start -->\n", "").replace(
-      "<!-- mutation-floor:end -->\n",
-      "",
-    ));
+    writeFixtures(
+      MATCHING.replace("<!-- mutation-floor:start -->\n", "").replace(
+        "<!-- mutation-floor:end -->\n",
+        "",
+      ),
+    );
     const res = runFixtures();
     expect(res.code).toBe(1);
     expect(res.stderr).toContain("missing");
@@ -268,8 +271,6 @@ describe("mutation-docs-guard CI wiring (issue #1785)", () => {
   };
 
   function loadWorkflow(rel: string): Workflow {
-    const fs = require("fs") as typeof import("fs");
-    const yaml = require("yaml") as { parse: (s: string) => unknown };
     const abs = path.join(__dirname, "..", rel);
     return yaml.parse(fs.readFileSync(abs, "utf8")) as Workflow;
   }
@@ -287,12 +288,12 @@ describe("mutation-docs-guard CI wiring (issue #1785)", () => {
     expect(buildNeeds).toContain("mutation-docs-guard");
   });
 
-  it("the nightly mutation workflow exposes every allowlisted module in its matrix (#1785)", () => {
+  it("the nightly mutation workflow exposes every allowlisted module in its matrix (#1785)", async () => {
     const nightly = loadWorkflow(".github/workflows/mutation.yml");
     const moduleExpr = String(
       nightly.jobs["mutation"]?.strategy?.matrix?.module ?? "",
     );
-    const stryker = require("../stryker.config") as {
+    const stryker = (await import("../stryker.config.js")) as {
       mutate: string[];
     };
     // The matrix JSON must include every allowlisted entry's short name
@@ -304,10 +305,11 @@ describe("mutation-docs-guard CI wiring (issue #1785)", () => {
     function shortModuleName(entry: string): string {
       return entry
         .replace(/^src\/lib\/game-state\//, "")
-        .replace(/\*\.ts$/, "")
         .replace(/\.ts$/, "")
+        .replace(/\*\.ts$/, "")
         .replace(/\*+$/, "")
-        .replace(/\/+$/, "");
+        .replace(/\/+$/, "")
+        .replace(/\//g, "-");
     }
     for (const entry of stryker.mutate) {
       const shortName = shortModuleName(entry);
