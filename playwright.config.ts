@@ -14,6 +14,11 @@ export default defineConfig({
   // Directory containing E2E tests
   testDir: "./e2e",
 
+  // Skip fixtures/ — those are Jest unit-test helpers, not Playwright specs.
+  // Without this, Playwright picks up **/*.test.ts files in fixtures/ that use
+  // Jest globals (describe/test/expect), causing "describe is not defined".
+  testIgnore: ["**/fixtures/**"],
+
   // Timeout for individual tests (30 seconds)
   timeout: 30000,
 

@@ -21,8 +21,14 @@ describe("p2p-mock-bridge", () => {
   // isGameMessage
   // -------------------------------------------------------------------------
   describe("isGameMessage", () => {
-    const makeMsg = (overrides: Partial<import("./p2p-mock-bridge").GameMessage> = {}) =>
-      ({ type: "ping", senderId: "alice", timestamp: 1_700_000_000_000, ...overrides });
+    const makeMsg = (
+      overrides: Partial<import("./p2p-mock-bridge").GameMessage> = {},
+    ) => ({
+      type: "ping",
+      senderId: "alice",
+      timestamp: 1_700_000_000_000,
+      ...overrides,
+    });
 
     test.each(GAME_MESSAGE_TYPES)("accepts GameMessage type '%s'", (type) => {
       expect(isGameMessage(makeMsg({ type }))).toBe(true);
@@ -33,22 +39,29 @@ describe("p2p-mock-bridge", () => {
     });
 
     test("rejects null", () => expect(isGameMessage(null)).toBe(false));
-    test("rejects undefined", () => expect(isGameMessage(undefined)).toBe(false));
+    test("rejects undefined", () =>
+      expect(isGameMessage(undefined)).toBe(false));
     test("rejects a string", () => expect(isGameMessage("ping")).toBe(false));
     test("rejects a number", () => expect(isGameMessage(42)).toBe(false));
     test("rejects an array", () => expect(isGameMessage([])).toBe(false));
     test("rejects an object missing type", () =>
       expect(isGameMessage({ senderId: "alice", timestamp: 1 })).toBe(false));
     test("rejects an object with invalid type", () =>
-      expect(isGameMessage({ type: "evil", senderId: "alice", timestamp: 1 })).toBe(false));
+      expect(
+        isGameMessage({ type: "evil", senderId: "alice", timestamp: 1 }),
+      ).toBe(false));
     test("rejects an object missing senderId", () =>
       expect(isGameMessage({ type: "ping", timestamp: 1 })).toBe(false));
     test("rejects an object with non-string senderId", () =>
-      expect(isGameMessage({ type: "ping", senderId: 5, timestamp: 1 })).toBe(false));
+      expect(isGameMessage({ type: "ping", senderId: 5, timestamp: 1 })).toBe(
+        false,
+      ));
     test("rejects an object missing timestamp", () =>
       expect(isGameMessage({ type: "ping", senderId: "alice" })).toBe(false));
     test("rejects an object with non-number timestamp", () =>
-      expect(isGameMessage({ type: "ping", senderId: "alice", timestamp: "now" })).toBe(false));
+      expect(
+        isGameMessage({ type: "ping", senderId: "alice", timestamp: "now" }),
+      ).toBe(false));
   });
 
   // -------------------------------------------------------------------------
@@ -74,7 +87,11 @@ describe("p2p-mock-bridge", () => {
     });
 
     test("JSON-serializes an object payload", () => {
-      const payload = { type: "ping", senderId: "alice", timestamp: 1_700_000_000_000 };
+      const payload = {
+        type: "ping",
+        senderId: "alice",
+        timestamp: 1_700_000_000_000,
+      };
       ch.send(payload);
       expect(delivered!.data).toBe(JSON.stringify(payload));
     });
@@ -115,7 +132,10 @@ describe("p2p-mock-bridge", () => {
       ch.send("first");
       ch.send("second");
       // No onmessage, so messages are queued
-      expect((ch as unknown as { _queue: string[] })._queue).toEqual(["first", "second"]);
+      expect((ch as unknown as { _queue: string[] })._queue).toEqual([
+        "first",
+        "second",
+      ]);
     });
 
     test("delivers queued messages when onmessage is later set", () => {

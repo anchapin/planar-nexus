@@ -1,0 +1,44 @@
+# Session Handoff Checkpoint
+**Timestamp:** 2026-09-25T11:37:56Z
+**Branch:** main
+**Task:** Resume from prior handoff → verify wave-13 (sync-layer checksum fix) flipped Test Count Docs Guard green → QA-review the wave-13 commit and document the 3 pre-existing CI failures tracked in #2234.
+
+## 1. Accomplished So Far
+
+- **CI verification** on `abd56e67` (CI run 36127959763): confirmed **Test Count Docs Guard flipped GREEN** (job 108048348841 = success). Wave-13 MEDIUM finding is closed. Ratcheted values: **557 suites / 11552 tests (11545 passed + 7 skipped)**.
+- **Wave-13 code review** (`a27d37b9 test(sync): reject empty-string checksum in applyDelta`):
+  - Files reviewed: `src/lib/sync/delta-sync.ts` (+11/−2), `src/lib/sync/__tests__/delta-sync.test.ts` (+56/−11), `src/lib/webrtc-p2p.ts` (+2/−2).
+  - Verdict: **PASS** — zero CRITICAL/HIGH/MEDIUM/LOW. The bypass (`checksum: ""` previously skipped validation because the guard used `=== undefined`) is closed by changing to `delta.checksum != null`, tightening the type to `string | null`, and adding an explicit empty-string regression test.
+  - Counterpart `webrtc-p2p.ts:968` `lastChecksum: delta.checksum ?? ""` is safe — empty stored checksum cannot match any computed 8-hex checksum, so it always triggers fail-safe full sync.
+- **CI failure characterization** (3 pre-existing red checks, matches #2234):
+  - **Workflow Lint** (job 108048348841): shellcheck SC2129 at `.github/workflows/pr-flake-detector.yml:48:9` — sequential `>>` redirects should be a single `{ … } >> file` block.
+  - **Flake Detector (Jest)** (job 108048348673): 7 always-broken tests in `src/app/api/ai-proxy/__tests__/route.test.ts`, all 3/5 across `--seed` randomization — hypothesis: shared mutable state (module mocks / env mutation / singleton stub) in the same `describe` block.
+  - **Flake Detector (Playwright)** (job 108048348654): 2 always-broken specs — `e2e/multiplayer-p2p-flow.spec.ts` "card play (spell) syncs to remote peer within 100ms budget" (100 ms too tight for CI runner) and `e2e/standard-mechanics.spec.ts` "Flashback Bolt: can be cast from hand" (overlaps with webkit-side same-card failure in Section 3).
+  - **Cross-Browser E2E (firefox + webkit)** (job 108048348650): 4 always-broken specs — `complex-mechanics` Ghostly Charger, `digital-cards` Scroll of Insight doublescribe, `rules-enforcement` Mana Crypt untaps, `standard-mechanics` Flashback Bolt from graveyard (webkit).
+- **Artifacts written:**
+  - `.agents/results/result-qa.md` — full QA report with Charter Preflight, code verdict (PASS), CI verification table, and CRITICAL/HIGH findings for the 3 pre-existing failures with `file:line` evidence + remediation templates.
+  - `.handoff.md.archived-20260925-114500` — archived the prior handoff per session-end protocol.
+
+## 2. Modified Files
+
+- `.agents/results/result-qa.md`: new — 222-line QA review (charter preflight + code verdict + CI evidence + remediation code).
+- `.handoff.md.archived-20260925-114500`: new — archive of the `.handoff.md` consumed at session start.
+- **No source code modified** (per QA charter rule 9).
+
+## 3. Current Verification State
+
+- **Typecheck / Lint / Build / E2E (chromium) / Security / Mutation Smoke / Cargo Audit / Rust Checks / Tauri Updater Config / Turn Credentials Guard / Engine Size Budget / Coverage Docs Guard / Test Count Docs Guard**: all **PASS** on `abd56e67` (job 36127959763).
+- **Workflow Lint / Flake Detector (Jest) / Flake Detector (Playwright) / Cross-Browser E2E (firefox + webkit)**: **FAIL** — pre-existing, tracked in #2234, not introduced by wave-13. Confirmed by direct diff inspection: the wave-13 commit did not touch any of the failing files except `delta-sync.ts` / `delta-sync.test.ts` / `webrtc-p2p.ts`, none of which are referenced in any failure log.
+- **Wave-13 sync-layer fix**: verified by static analysis (no live test run performed in this session). The 7 regression tests in `delta-sync.test.ts` cover the bypass vector (empty-string), the skip-sentinel path (null), and 3 prototype-pollution vectors (`__proto__`, `constructor`, `prototype`) plus allowlist rejection and mismatch rejection.
+
+## 4. Immediate Next Step
+
+**Open issue #2234 and ship one batched PR that fixes Workflow Lint SC2129 + the Jest Flake Detector root cause in `src/app/api/ai-proxy/__tests__/route.test.ts`** (highest-ROI unblock — eliminates 2 of the 4 red jobs without touching game-engine paths). Steps the next session must execute first, in order:
+
+1. **Read `gh issue view 2234`** to confirm the failure list against current CI state — the Flake Detector list may have shifted since the issue was filed.
+2. **Inspect the file**: read `src/app/api/ai-proxy/__tests__/route.test.ts` and grep for `beforeEach`, `afterEach`, `jest.resetModules`, `process.env`, top-level `jest.mock(...)`. The 7 always-broken tests share a `describe` block, so shared mutable state is the strongest hypothesis.
+3. **Patch Workflow Lint first** (trivial, one-commit fix): rewrite lines ~46–50 of `.github/workflows/pr-flake-detector.yml` to use `{ echo …; echo …; } >> "$GITHUB_OUTPUT"`.
+4. **Patch the Jest file**: add a `beforeEach` that calls `jest.resetModules()` and snapshots/restores `process.env`, plus an `afterEach` that calls `jest.restoreAllMocks()`. Verify locally with `npm test -- --testPathPattern=src/app/api/ai-proxy/__tests__/route.test.ts` and then `npm run test:flake -- --testPathPattern=route.test.ts` for a 5-run randomized check.
+5. **Open the PR** with title `fix(ci): unblock workflow-lint and ai-proxy flake-detector (closes #2234)` and let the build job's `flaky-tests` matrix validate the 5-run reproducibility automatically.
+
+Do **NOT** start by tackling the Cross-Browser E2E or Playwright Flake Detector failures — those require game-engine fixture changes (Flashback Bolt, Ghostly Charger, Scroll of Insight, Mana Crypt) and are a separate, larger wave. The recommended scope of this next PR is intentionally narrow: Workflow Lint + Jest route.test.ts only.
