@@ -1,9 +1,10 @@
 /**
  * Tests for `generateOpponentDeck` offline heuristic (issue #2202).
  *
- * `src/lib/ai-client.ts` exposes two public entry points:
+ * `src/lib/ai-client.ts` exposes three public entry points:
  *   - `generateOpponent(input)` — tries AI first, falls back to heuristic on error
  *   - `generateOpponentDeckFromHeuristics(input)` — pure heuristic path
+ *   - `getDeckReview(input)` — uses AI when configured, heuristic offline fallback otherwise
  *
  * Issue #2202: the fallback branch (source === "heuristic") was never
  * exercised by any test. This suite covers:
@@ -11,6 +12,11 @@
  *   2. `generateOpponent` returns AI result when `generateAIOpponentDeck` succeeds
  *   3. `generateOpponent` throws when both AI and heuristic fail
  *   4. `generateOpponentDeckFromHeuristics` in isolation
+ *
+ * Issue #2180: `getDeckReview` offline fallback (heuristic path when no AI provider
+ * is configured) was never exercised. This suite also covers:
+ *   5. `getDeckReview` uses heuristic when no AI provider is configured (offline fallback)
+ *   6. `getDeckReview` uses AI path when a provider is configured
  *
  * Valid format values are keys of `gameModes` (from `@/lib/game-state/format-rules`):
  *   "legendary-commander" | "constructed-core" | "constructed-legacy" | etc.
@@ -20,15 +26,33 @@ jest.mock("@/ai/flows/ai-opponent-deck-generation", () => ({
   generateAIOpponentDeck: jest.fn(),
 }));
 
+jest.mock("@/ai/flows/ai-deck-coach-review", () => ({
+  reviewDeck: jest.fn(),
+}));
+
+jest.mock("@/ai/providers/factory", () => ({
+  isProviderConfigured: jest.fn(),
+}));
+
 import {
   generateOpponent,
   generateOpponentDeckFromHeuristics,
+  getDeckReview,
 } from "../ai-client";
 import { generateAIOpponentDeck } from "@/ai/flows/ai-opponent-deck-generation";
+import { reviewDeck } from "@/ai/flows/ai-deck-coach-review";
+import { isProviderConfigured } from "@/ai/providers/factory";
 import type { CounterTargetArchetype } from "@/ai/opponent-deck-generator";
+import type { DeckReviewOutput } from "@/ai/flows/ai-deck-coach-review";
 
 const aiOpponentDeckGen = generateAIOpponentDeck as jest.MockedFunction<
   typeof generateAIOpponentDeck
+>;
+
+const mockedReviewDeck = reviewDeck as jest.MockedFunction<typeof reviewDeck>;
+
+const mockedIsProviderConfigured = isProviderConfigured as jest.MockedFunction<
+  typeof isProviderConfigured
 >;
 
 const LEGENDARY_COMMANDER = "legendary-commander" as const;
@@ -183,5 +207,66 @@ describe("generateOpponentDeckFromHeuristics — direct calls", () => {
 
     expect(deck.cards.length).toBeGreaterThan(0);
     expect(deck.sideboard).toEqual(expect.any(Array));
+  });
+});
+
+describe("getDeckReview — offline fallback (issue #2180)", () => {
+  const heuristicOutput: DeckReviewOutput = {
+    reviewSummary: "A solid aggro deck.",
+    deckOptions: [
+      {
+        title: "Add more reach",
+        description: "Consider adding more burn spells.",
+        cardsToAdd: [{ name: "Lightning Bolt", quantity: 4 }],
+      },
+    ],
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("calls reviewDeck with useAI=false when no AI provider is configured", async () => {
+    mockedIsProviderConfigured.mockReturnValue(false);
+    mockedReviewDeck.mockResolvedValue(heuristicOutput);
+
+    const result = await getDeckReview({
+      decklist: "4 Lightning Bolt\n4 Monk of the Order",
+      format: "standard",
+    });
+
+    expect(mockedIsProviderConfigured).toHaveBeenCalled();
+    expect(mockedReviewDeck).toHaveBeenCalledWith(
+      {
+        decklist: "4 Lightning Bolt\n4 Monk of the Order",
+        format: "standard",
+      },
+      false,
+    );
+    expect(result).toEqual(heuristicOutput);
+  });
+
+  it("calls reviewDeck with useAI=true when AI provider is configured", async () => {
+    mockedIsProviderConfigured.mockReturnValue(true);
+    const aiOutput: DeckReviewOutput = {
+      reviewSummary: "AI review: strong aggro deck.",
+      deckOptions: [],
+    };
+    mockedReviewDeck.mockResolvedValue(aiOutput);
+
+    const result = await getDeckReview({
+      decklist: "4 Lightning Bolt\n4 Monk of the Order",
+      format: "standard",
+    });
+
+    expect(mockedIsProviderConfigured).toHaveBeenCalled();
+    expect(mockedReviewDeck).toHaveBeenCalledWith(
+      {
+        decklist: "4 Lightning Bolt\n4 Monk of the Order",
+        format: "standard",
+      },
+      true,
+    );
+    expect(result).toEqual(aiOutput);
   });
 });
