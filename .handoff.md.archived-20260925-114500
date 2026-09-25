@@ -1,0 +1,60 @@
+# Session Handoff Checkpoint
+
+**Timestamp:** 2026-09-25T11:11:58Z
+**Branch:** main
+**Task:** Address the MEDIUM security regression in `src/lib/sync/delta-sync.ts:428` flagged by the wave-13 QA review (`.agents/results/result-qa-wave13-suite.md`), then push the wave to `origin/main` and track remaining pre-existing main CI failures as a follow-up issue.
+
+## 1. Accomplished So Far
+
+- **MEDIUM finding fixed** (Option A remediation: `if (delta.checksum != null)`). Empty-string checksum now correctly rejected by `applyDelta`.
+- **Type contract clarified**: `GameStateDelta.checksum: string | null` with JSDoc — `null` is the documented opt-out sentinel; empty-string is treated as a real (mismatched) checksum.
+- **Consumers updated**: `webrtc-p2p.ts` coalesces the new nullable field to `""` for `PeerSyncState.lastChecksum` (preserves `lastChecksum: string` invariant) at both assignment sites (lines 968, 1629).
+- **Tests migrated**: 11 fixtures in `src/lib/sync/__tests__/delta-sync.test.ts` updated from `checksum: ""` placeholder → `checksum: null` (the explicit sentinel).
+- **Regression coverage added**: two new tests — "should reject delta with empty-string checksum" (the bug) and "should skip checksum validation when checksum is null" (documents the new opt-out semantics).
+- **Test-count drift mitigated**: ran `npm run ratchet:test-count`, regenerated `docs/TEST_VIDEO_FIXTURES.md` to live values (557 suites / 11552 tests).
+- **Tracking issue opened**: [#2234](https://github.com/anchapin/planar-nexus/issues/2234) "fix(ci): 3 pre-existing main CI jobs failing — blocks wave-13 PR merges" with labels `bug,tech-debt,testing,wave-skip`. Documents the 3 remaining failures (Cross-Browser E2E, Workflow Lint, Flake Detector), their pre-existing nature (proven by pre-push commit `e33b1014` CI run `36087641142` also failing), and suggested investigation order.
+- **Pushed to `origin/main`**: all work now on remote. `origin/main` and `local main` are in sync (0 ahead / 0 behind).
+
+## 2. Modified Files (recent commits, not in working tree — clean)
+
+- **`src/lib/sync/delta-sync.ts`** (commit `a27d37b9`): type `checksum: string | null` + JSDoc, runtime guard `if (delta.checksum != null)`, comment explaining the semantic.
+- **`src/lib/webrtc-p2p.ts`** (commit `a27d37b9`): `lastChecksum: delta.checksum ?? "",` at both `PeerSyncState` assignment sites.
+- **`src/lib/sync/__tests__/delta-sync.test.ts`** (commit `a27d37b9`): 11 fixture updates `checksum: ""` → `checksum: null`; 2 new regression tests.
+- **`docs/TEST_VIDEO_FIXTURES.md`** (commit `abd56e67`): test-count block ratcheted to live values via `scripts/ratchet-test-count.mjs`.
+
+Working tree: **clean**. Untracked artifacts (left in place, not committed):
+- `.agents/results/result-qa.md`
+- `.agents/results/result-qa-wave13-suite.md`
+- `.foreman/runs/4d4d84e102de/`
+- `.handoff.md.archived-20260925-010505`
+
+## 3. Current Verification State
+
+- **`npm run typecheck`**: ✓ clean (tsc --noEmit, 0 errors)
+- **`npm run lint`**: ✓ 0 errors (626 pre-existing warnings, all in unrelated lines)
+- **`npm test -- --testPathPatterns="delta-sync"`**: ✓ 18/18 pass (16 pre-existing + 2 new regression)
+- **CI run `36097458556` (commit `a27d37b9`)**: ✗ RED — but for **pre-existing** failures only:
+  - Test Count Docs Guard ✗ → mitigated by `abd56e67` (will be green on next CI run)
+  - Cross-Browser E2E (firefox + webkit) ✗ → pre-existing on `e33b1014`
+  - Workflow Lint ✗ → pre-existing on `e33b1014`
+  - Flake Detector (Playwright) ✗ → "2 always broken" specs, pre-existing on `e33b1014`
+- **Pre-push CI run `36087641142` (commit `e33b1014`)**: ✗ RED (same systemic failures), confirming the CI was already broken before this session.
+- **Coverage Ratchet `36097458582`**: ✗ — also pre-existing on `e33b1014`'s run `36087641130`.
+
+## 4. Immediate Next Step
+
+**Verify the test-count ratchet commit `abd56e67` flipped the Test Count Docs Guard green on a fresh CI run**, then move on to the 3 remaining failures tracked in [#2234](https://github.com/anchapin/planar-nexus/issues/2234). Concretely:
+
+1. Trigger a fresh CI run (push a no-op or wait for scheduled) — or run the failing job directly via `gh workflow run ci.yml --ref abd56e67`.
+2. Inspect run with `rtk gh run view <id> --log-failed`. Confirm only 3 jobs red: Cross-Browser E2E, Workflow Lint, Flake Detector. Test Count Docs should now be green.
+3. **Start with Workflow Lint** (~5 min) — `actionlint` reported a syntax error in a workflow YAML; the failure excerpt lives in the issue body of #2234. Fix the YAML, commit, push.
+4. **Then Flake Detector** — run the 2 "always broken" Playwright specs locally with `npx playwright test <spec-path>` and inspect. Decide: fix the specs, or remove them if obsolete. Likely 30–60 min.
+5. **Then Cross-Browser E2E** — run `npx playwright test --project=firefox --project=webkit` against current `main`. Identify which spec(s) fail in firefox/webkit but pass in chromium. Fix or mark as known-issue.
+6. After all 3 green, the 7 wave-13 PRs (#2220, #2222, #2229–#2233) can be retried by the wave orchestrator. The Foreman's previous abstention on "admin-merge" is now resolvable because main is green.
+
+If running short on time, the **single highest-value action** is just #1 above (verify the ratchet flipped Test Count Docs green) — it confirms the test-count mitigation works and updates #2234 with current run evidence.
+
+## Open Questions / Pending Decisions
+
+- **No new decisions pending** — the MEDIUM fix is shipped, the umbrella tracking issue is open, and the user previously chose Option H (document-and-track, not fix-in-session). Whether to fix the 3 remaining CI jobs is a separate scope decision for the next session.
+- **The archived `.handoff.md.archived-20260925-010505`** represents the prior session's completion state. It can be deleted once confirmed obsolete, but is left in place for reference.
