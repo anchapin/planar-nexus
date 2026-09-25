@@ -12,6 +12,7 @@ import {
   fireEvent,
   waitFor,
   within,
+  cleanup,
 } from "@testing-library/react";
 import { StorageBackupManager } from "../storage-backup-manager";
 
@@ -186,46 +187,115 @@ jest.mock("@/components/ui/alert", () => ({
   ),
 }));
 
-jest.mock("@/components/ui/dialog", () => ({
-  Dialog: ({
+jest.mock("@/components/ui/dialog", () => {
+  // Internal Context so DialogTrigger can invoke the parent Dialog's
+  // onOpenChange when clicked (Radix UI does this via its own context).
+  const DialogContext = React.createContext<{
+    onOpenChange: (open: boolean) => void;
+  }>({ onOpenChange: () => {} });
+
+  const Dialog = ({
     children,
     open,
+    onOpenChange,
   }: {
     children: React.ReactNode;
     open?: boolean;
-  }) => (
-    <div data-testid="dialog" data-open={open ? "true" : "false"}>
-      {open && children}
-    </div>
-  ),
-  DialogContent: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="dialog-content">{children}</div>
-  ),
-  DialogDescription: ({ children }: { children: React.ReactNode }) => (
-    <span data-testid="dialog-description">{children}</span>
-  ),
-  DialogFooter: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="dialog-footer">{children}</div>
-  ),
-  DialogHeader: ({ children }: { children: React.ReactNode }) => (
-    <div data-testid="dialog-header">{children}</div>
-  ),
-  DialogTitle: ({ children }: { children: React.ReactNode }) => (
-    <span data-testid="dialog-title">{children}</span>
-  ),
-  DialogTrigger: ({
-    children,
-    asChild,
-  }: {
-    children: React.ReactNode;
-    asChild?: boolean;
-  }) =>
-    asChild ? (
-      <div data-testid="dialog-trigger">{children}</div>
-    ) : (
-      <div data-testid="dialog-trigger">{children}</div>
+    onOpenChange?: (open: boolean) => void;
+  }) => {
+    // Radix UI Dialog: DialogTrigger renders always (it's the trigger button);
+    // DialogContent (and friends) render only when the dialog is open. We
+    // identify the trigger by its displayName to keep test queries stable.
+    const arr = React.Children.toArray(children);
+    const trigger = arr.find(
+      (c) =>
+        React.isValidElement(c) &&
+        (c.type as { displayName?: string })?.displayName === "DialogTrigger",
+    );
+    const rest = arr.filter((c) => c !== trigger);
+    const handleOpenChange = (next: boolean) => onOpenChange?.(next);
+    return (
+      <DialogContext.Provider value={{ onOpenChange: handleOpenChange }}>
+        <div data-testid="dialog" data-open={open ? "true" : "false"}>
+          {trigger}
+          {open && rest}
+        </div>
+      </DialogContext.Provider>
+    );
+  };
+  Dialog.displayName = "Dialog";
+
+  const DialogTrigger = Object.assign(
+    ({
+      children,
+      asChild,
+    }: {
+      children: React.ReactNode;
+      asChild?: boolean;
+    }) => (
+      <DialogContext.Consumer>
+        {({ onOpenChange }) => {
+          const handleClick = () => onOpenChange(true);
+          if (asChild) {
+            const child = React.Children.only(children) as React.ReactElement<{
+              onClick?: (e: React.MouseEvent) => void;
+            }>;
+            return React.cloneElement(child, {
+              onClick: (e: React.MouseEvent) => {
+                child.props.onClick?.(e);
+                handleClick();
+              },
+            });
+          }
+          return (
+            <button data-testid="dialog-trigger" onClick={handleClick}>
+              {children}
+            </button>
+          );
+        }}
+      </DialogContext.Consumer>
     ),
-}));
+    { displayName: "DialogTrigger" },
+  );
+
+  return {
+    Dialog,
+    DialogTrigger,
+    DialogContent: ({ children }: { children: React.ReactNode }) => (
+      <div data-testid="dialog-content">{children}</div>
+    ),
+    DialogDescription: ({ children }: { children: React.ReactNode }) => (
+      <span data-testid="dialog-description">{children}</span>
+    ),
+    DialogFooter: ({ children }: { children: React.ReactNode }) => (
+      <div data-testid="dialog-footer">{children}</div>
+    ),
+    DialogHeader: ({ children }: { children: React.ReactNode }) => (
+      <div data-testid="dialog-header">{children}</div>
+    ),
+    DialogTitle: ({ children }: { children: React.ReactNode }) => (
+      <h2 data-testid="dialog-title">{children}</h2>
+    ),
+    DialogOverlay: ({ children }: { children: React.ReactNode }) => (
+      <div data-testid="dialog-overlay">{children}</div>
+    ),
+    DialogPortal: ({ children }: { children: React.ReactNode }) => (
+      <div data-testid="dialog-portal">{children}</div>
+    ),
+    DialogClose: ({
+      children,
+      asChild,
+    }: {
+      children: React.ReactNode;
+      asChild?: boolean;
+    }) =>
+      asChild ? (
+        <>{children}</>
+      ) : (
+        <button data-testid="dialog-close">{children}</button>
+      ),
+  };
+});
 
 jest.mock("@/components/ui/tabs", () => ({
   Tabs: ({ children }: { children: React.ReactNode }) => (
@@ -308,11 +378,23 @@ beforeEach(() => {
   setupHookProps();
 });
 
+// Explicit RTL cleanup so DOM does not leak between tests. Without this hook
+// the inner `beforeEach` blocks (which call `render`) leave stale nodes attached
+// when the next test runs, producing "Found multiple elements" failures.
+afterEach(() => {
+  cleanup();
+});
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
 describe("StorageBackupManager", () => {
+  // Captured render results for inner beforeEach blocks; allows `it` bodies to
+  // re-render the same tree with new props (via `rerender`) instead of calling
+  // `render` a second time and producing "Found multiple elements" failures.
+  let backupTabRender: ReturnType<typeof render> | undefined;
+  let restoreTabRender: ReturnType<typeof render> | undefined;
   describe("loading state", () => {
     it("renders card when not initialized (loading placeholder)", () => {
       setupHookProps({ isInitialized: false });
@@ -371,7 +453,7 @@ describe("StorageBackupManager", () => {
   describe("backup tab", () => {
     beforeEach(async () => {
       setupHookProps();
-      render(<StorageBackupManager />);
+      backupTabRender = render(<StorageBackupManager />);
       await waitFor(() => {
         expect(screen.getByTestId("tab-trigger-backup")).toBeInTheDocument();
       });
@@ -401,7 +483,7 @@ describe("StorageBackupManager", () => {
     it("disables Export Backup button when isProcessing is true", async () => {
       // Re-render with isProcessing: true
       setupHookProps({ isProcessing: true });
-      render(<StorageBackupManager />);
+      backupTabRender?.rerender(<StorageBackupManager />);
       await waitFor(() => {
         expect(screen.getByTestId("tab-trigger-backup")).toBeInTheDocument();
       });
@@ -409,7 +491,9 @@ describe("StorageBackupManager", () => {
       await waitFor(() => {
         expect(screen.getByTestId("tab-content-backup")).toBeInTheDocument();
       });
-      const exportBtn = screen.getByText("Export Backup");
+      const exportBtn = within(
+        screen.getByTestId("tab-content-backup"),
+      ).getByRole("button", { name: /Export/i });
       expect(exportBtn).toBeDisabled();
     });
 
@@ -421,7 +505,7 @@ describe("StorageBackupManager", () => {
 
     it("calls exportIncrementalData when in incremental mode", async () => {
       setupHookProps({ backupMode: "incremental" });
-      render(<StorageBackupManager />);
+      backupTabRender?.rerender(<StorageBackupManager />);
       await waitFor(() => {
         expect(screen.getByTestId("tab-trigger-backup")).toBeInTheDocument();
       });
@@ -429,7 +513,9 @@ describe("StorageBackupManager", () => {
       await waitFor(() => {
         expect(screen.getByTestId("tab-content-backup")).toBeInTheDocument();
       });
-      const exportBtn = screen.getByText("Export Incremental Backup");
+      const exportBtn = within(
+        screen.getByTestId("tab-content-backup"),
+      ).getByRole("button", { name: /Export Incremental Backup/i });
       fireEvent.click(exportBtn);
       await waitFor(() => {
         expect(mockExportIncrementalData).toHaveBeenCalledTimes(1);
@@ -440,7 +526,7 @@ describe("StorageBackupManager", () => {
   describe("restore tab", () => {
     beforeEach(async () => {
       setupHookProps();
-      render(<StorageBackupManager />);
+      restoreTabRender = render(<StorageBackupManager />);
       await waitFor(() => {
         expect(screen.getByTestId("tab-trigger-restore")).toBeInTheDocument();
       });
@@ -456,7 +542,7 @@ describe("StorageBackupManager", () => {
 
     it("disables import button when isProcessing is true", async () => {
       setupHookProps({ isProcessing: true });
-      render(<StorageBackupManager />);
+      restoreTabRender?.rerender(<StorageBackupManager />);
       await waitFor(() => {
         expect(screen.getByTestId("tab-trigger-restore")).toBeInTheDocument();
       });
@@ -464,9 +550,21 @@ describe("StorageBackupManager", () => {
       await waitFor(() => {
         expect(screen.getByTestId("tab-content-restore")).toBeInTheDocument();
       });
-      const importBtns = screen.getAllByText("Import Backup");
-      const restoreImportBtn = importBtns[0];
-      expect(restoreImportBtn).toBeDisabled();
+      // The Import button only renders after a file has been selected. Simulate
+      // the file input change so the import button is mounted before we probe it.
+      const file = new File(["{}"], "backup.json", {
+        type: "application/json",
+      });
+      const fileInput = document.querySelector(
+        'input[type="file"]',
+      ) as HTMLInputElement | null;
+      if (fileInput) {
+        fireEvent.change(fileInput, { target: { files: [file] } });
+      }
+      const importBtn = within(
+        screen.getByTestId("tab-content-restore"),
+      ).getByRole("button", { name: /Import/i });
+      expect(importBtn).toBeDisabled();
     });
   });
 
@@ -480,7 +578,8 @@ describe("StorageBackupManager", () => {
       });
       fireEvent.click(screen.getByTestId("tab-trigger-backup"));
       await waitFor(() => {
-        const errorAlert = screen.getByTestId("alert");
+        const backupContent = screen.getByTestId("tab-content-backup");
+        const errorAlert = within(backupContent).getByTestId("alert");
         expect(errorAlert).toHaveAttribute("data-variant", "destructive");
       });
     });
@@ -494,7 +593,8 @@ describe("StorageBackupManager", () => {
       });
       fireEvent.click(screen.getByTestId("tab-trigger-restore"));
       await waitFor(() => {
-        const errorAlert = screen.getByTestId("alert");
+        const restoreContent = screen.getByTestId("tab-content-restore");
+        const errorAlert = within(restoreContent).getByTestId("alert");
         expect(errorAlert).toHaveAttribute("data-variant", "destructive");
       });
     });
@@ -540,7 +640,8 @@ describe("StorageBackupManager", () => {
       });
       fireEvent.click(screen.getByTestId("tab-trigger-backup"));
       await waitFor(() => {
-        const progress = screen.getByTestId("progress");
+        const backupContent = screen.getByTestId("tab-content-backup");
+        const progress = within(backupContent).getByTestId("progress");
         expect(progress).toHaveAttribute("data-value", "50");
       });
     });
@@ -587,9 +688,11 @@ describe("StorageBackupManager", () => {
           "true",
         );
       });
-      // Dialog is open - find confirm button in dialog
-      const dialog = screen.getByTestId("dialog");
-      const confirmBtn = within(dialog).getByText("Clear All Data");
+      // Dialog is open - find confirm button inside the dialog content (the trigger
+      // button lives at the dialog root and would otherwise match the query).
+      const confirmBtn = within(screen.getByTestId("dialog-content")).getByText(
+        "Clear All Data",
+      );
       fireEvent.click(confirmBtn);
       await waitFor(() => {
         expect(mockClearAllData).toHaveBeenCalledTimes(1);
@@ -681,9 +784,12 @@ describe("StorageBackupManager", () => {
         fireEvent.change(fileInput, { target: { files: [file] } });
       }
 
-      // Click import button - use first occurrence
-      const importBtns = screen.getAllByText("Import Backup");
-      fireEvent.click(importBtns[0]);
+      // Click import button - target the button role (the first "Import Backup"
+      // text node is the <h3> heading, which is not clickable as an import action).
+      const importBtn = within(
+        screen.getByTestId("tab-content-restore"),
+      ).getByRole("button", { name: /Import Backup/i });
+      fireEvent.click(importBtn);
 
       await waitFor(() => {
         expect(mockImportData).toHaveBeenCalledWith(file);
@@ -715,8 +821,10 @@ describe("StorageBackupManager", () => {
         fireEvent.change(fileInput, { target: { files: [file] } });
       }
 
-      const importBtns = screen.getAllByText("Import Backup");
-      fireEvent.click(importBtns[0]);
+      const importBtn = within(
+        screen.getByTestId("tab-content-restore"),
+      ).getByRole("button", { name: /Import Backup/i });
+      fireEvent.click(importBtn);
 
       await waitFor(() => {
         expect(getMockToast()).toHaveBeenCalledWith(
