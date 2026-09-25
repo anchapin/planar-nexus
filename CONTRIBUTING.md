@@ -102,9 +102,11 @@ cp .env.example .env
 
 ### 3.4 Start Development Server
 
+> **Note:** The dev server runs on port **9002** instead of Next.js's default 3000. This is set in `package.json`'s `dev` script (`next dev -p 9002`) and in `playwright.config.ts`. Always use port 9002 when developing locally.
+
 ```bash
 # Start the development server
-npm run dev  # (port 9002)
+npm run dev
 
 # Open http://localhost:9002 in your browser
 ```
