@@ -11,8 +11,12 @@ module.exports = {
     // exercise real cross-module workflows. See issue #931.
     "<rootDir>/tests/**/*.test.ts",
     // E2E fixture unit tests
+    // Only .test.ts by default — .spec.ts files in e2e/ are Playwright specs.
+    // Exception: p2p-mock-bridge was renamed to .spec.ts (escape Playwright's
+    // **/*.test.ts glob) and is explicitly listed here so Jest still finds it.
     "<rootDir>/e2e/**/*.test.ts",
     "<rootDir>/e2e/**/*.test.tsx",
+    "<rootDir>/e2e/fixtures/p2p-mock-bridge.spec.ts",
   ],
   // The six game-state suites that were previously skipped here have been
   // repaired and re-enabled (issue #1093):

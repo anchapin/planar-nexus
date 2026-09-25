@@ -1,0 +1,47 @@
+# Session Handoff Checkpoint
+**Timestamp:** 2026-09-25T05:02:04Z
+**Branch:** main
+**Task:** Fix `storage-backup-manager.test.tsx` failures blocking 7 PRs and 22 dependent issues (closes #2251).
+
+## 1. Accomplished So Far
+
+- Diagnosed 10 failing tests in `src/components/__tests__/storage-backup-manager.test.tsx` (QA report had mis-attributed root cause to "RTL auto-cleanup missing"; actual surface was a multi-mode test design issue).
+- Identified 5 distinct failure modes:
+  1. **Double-render** — inner `beforeEach` blocks for `backup tab`/`restore tab` called `render()` AND `it` bodies re-rendered, creating duplicate DOM trees.
+  2. **Multi-element queries** — Tabs mock renders all tab contents simultaneously, so `screen.getByTestId("alert")` matched 2+ alerts.
+  3. **Dialog mock bug** — original mock hid ALL children (including `DialogTrigger`) when `open=false`, so the trigger button was never queryable.
+  4. **Brittle selectors** — `getByText("Export Backup")` failed because the button had an icon child breaking up the text node; `getAllByText("Import Backup")[0]` matched the `<h3>` heading instead of the `<button>`.
+  5. **Missing state setup** — "disables import button when isProcessing is true" assumed the button always rendered, but it's gated by `importFile` state.
+- Applied targeted fixes to the test file (no production code touched):
+  - Added `cleanup` import + explicit `afterEach(() => cleanup())` for belt-and-suspenders.
+  - Captured render results in outer describe scope (`backupTabRender`, `restoreTabRender`) and switched redundant `render()` to `rerender()`.
+  - Scoped alert/progress queries with `within(tab-content-backup/restore)`.
+  - Rebuilt Dialog mock with React Context so `DialogTrigger` clicks propagate to `onOpenChange`; added `displayName` on `DialogTrigger` mock.
+  - Switched broken `getByText` to `getByRole("button", { name: /pattern/i })` with `/Export/i` and `/Import/i` patterns that match both idle and "Exporting..."/"Importing..." busy states.
+  - Added file input `fireEvent.change` to mount the conditional Import button.
+- Verified all 26 tests in the file pass.
+- Verified full Jest suite: **11,543 pass / 0 fail / 7 skip** across 557 suites.
+- `npm run typecheck` clean; `eslint src/components/__tests__/storage-backup-manager.test.tsx` clean (0 warnings).
+- Committed as `c0f72571 test: fix storage-backup-manager test failures (closes #2251)` on `main`.
+- Wrote QA review to `.agents/results/result-qa.md` with status **PASS**.
+
+## 2. Modified Files
+
+- `src/components/__tests__/storage-backup-manager.test.tsx`: +163 / -55 lines. Added cleanup hook, refactored inner `beforeEach` to capture render result, switched redundant renders to rerenders, rebuilt Dialog mock with React Context, scoped multi-element queries with `within()`, swapped brittle selectors to `getByRole`, added file input simulation for gated buttons.
+
+## 3. Current Verification State
+
+- **Branch:** `main` (commit `c0f72571`).
+- **Working tree:** clean (only untracked `.agents/results/result-qa.md` and `.foreman/runs/4d4d84e102de/`).
+- **`storage-backup-manager.test.tsx`:** 26/26 pass.
+- **Full Jest suite:** 11,543 pass / 0 fail / 7 skip (skips are pre-existing `it.todo`s, unrelated).
+- **`npm run typecheck`:** clean.
+- **`eslint` (touched file):** 0 warnings.
+- **CI status:** Not yet re-verified post-commit (see next step).
+- **PR status:** No PR opened for `c0f72571` — commit landed directly on `main` via local workflow. The 7 PRs that were blocked should now be mergeable, but if they were auto-merged before this fix landed, they may already include the test file and need a rebase.
+
+## 4. Immediate Next Step
+
+1. **Verify CI green on `c0f72571`.** Push if not already pushed, then run `ci-wait` against the resulting PR/commit to confirm the `build` job's required gates (test, lint, typecheck, commitlint, mutation-smoke, a11y-contrast, e2e, security, tauri-updater-config, turn-credentials-guard, engine-size-budget, coverage-docs-guard, test-count-docs-guard) all pass. The `use-deck-coach-chat.test.ts` flake observed in one earlier local run (#1241, "clearMessages without an active conversation still wipes deck-scoped legacy data") is a pre-existing flake unrelated to this fix — if it re-appears, rerun once or isolate that suite.
+2. **Confirm the 7 blocked PRs are now mergeable.** Check `gh pr list --label="blocked:storage-backup-tests"` (or whatever label tracks them) and re-run their CI.
+3. **Open a follow-up issue if needed** for the `DialogTrigger` mock's `cloneElement` path (LOW-severity finding in `.agents/results/result-qa.md`) — only if a third Dialog consumer appears with an exotic child.
