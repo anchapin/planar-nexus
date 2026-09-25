@@ -47,10 +47,12 @@ jobs:
         id: changed
         run: |
           echo "Checking changed files..."
-          echo "changed=${{ contains(github.event.pull_request.changed_files, 'src/lib/game-state/') }}" >> "$GITHUB_OUTPUT"
-          echo "game_state_changed=${{ contains(github.event.pull_request.changed_files, 'src/lib/game-state/') }}" >> "$GITHUB_OUTPUT"
-          echo "ai_changed=${{ contains(github.event.pull_request.changed_files, 'src/ai/') }}" >> "$GITHUB_OUTPUT"
-          echo "all_changed_files=${{ github.event.pull_request.changed_files }}" >> "$GITHUB_OUTPUT"
+          {
+            echo "changed=${{ contains(github.event.pull_request.changed_files, 'src/lib/game-state/') }}"
+            echo "game_state_changed=${{ contains(github.event.pull_request.changed_files, 'src/lib/game-state/') }}"
+            echo "ai_changed=${{ contains(github.event.pull_request.changed_files, 'src/ai/') }}"
+            echo "all_changed_files=${{ github.event.pull_request.changed_files }}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Run Jest flake detector
         if: steps.changed.outputs.game_state_changed == 'true'

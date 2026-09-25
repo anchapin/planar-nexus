@@ -131,9 +131,9 @@ jest.mock("@/lib/server-usage-logger", () => ({
 }));
 
 jest.mock("@/lib/api-session", () => ({
-  getApiSession: jest.fn<
-    () => Promise<{ userId: string }>
-  >().mockResolvedValue({ userId: "test-user-1" }),
+  getApiSession: jest
+    .fn<() => Promise<{ userId: string }>>()
+    .mockResolvedValue({ userId: "test-user-1" }),
   requireApiSession: jest
     .fn<() => Promise<{ userId: string }>>()
     .mockResolvedValue({ userId: "test-user-1" }),
@@ -233,9 +233,26 @@ function makeRequest(
 }
 
 beforeEach(() => {
+  // jest.clearAllMocks only wipes call history; it does NOT remove
+  // mockReturnValue/mockResolvedValue/mockImplementation that a prior test
+  // installed on the top-level jest.fn() mocks below. That leak caused the
+  // flake detector (5 randomized runs) to fail intermittently — see issue
+  // #2234. Explicitly mockReset the suite-local mocks so each test starts
+  // from a known state, then re-prime the defaults the other tests rely on
+  // (matching the original jest.mock(...) factory implementations).
   jest.clearAllMocks();
-  // Re-prime mocks after clearAllMocks (jest.fn() implementations are reset).
+  streamText.mockReset();
+  generateText.mockReset();
+  isModelAllowed.mockReset();
+  getProviderConfig.mockReset();
+  getConfiguredProviders.mockReset();
+  enforceRateLimit.mockReset();
+  getRateLimitHeaders.mockReset();
+  saveMock.mockReset();
+  getAIModel.mockReset();
+  // Re-prime defaults the other tests rely on
   getAIModel.mockResolvedValue({ modelId: "mocked-model" });
+  isModelAllowed.mockReturnValue(true);
   getRateLimitHeaders.mockImplementation(
     (result: any) =>
       ({
