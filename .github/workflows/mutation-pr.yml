@@ -5,17 +5,14 @@ name: Mutation Score (PR info)
 # Engineers merging PRs that touch src/lib/game-state/ have no mutation-score
 # signal on the PR itself.
 #
-# This workflow runs a TARGETED layer-system Stryker run on PRs that touch
-# src/lib/game-state/** (the highest-risk rules-engine module). It is
+# This workflow runs Stryker on ALL rules-engine modules (layer-system,
+# combat, mana, trigger-system, replacement-effects, spell-casting,
+# state-based-actions) for PRs that touch src/lib/game-state/**. It is
 # NON-BLOCKING: the score is posted as a PR comment for engineer awareness,
 # but the job exit code does not gate the PR merge.
 #
 # Full mutation coverage (all allowlisted modules) remains nightly:
 #   .github/workflows/mutation.yml  (schedule + workflow_dispatch)
-#
-# Combat is excluded from per-PR runs because its Stryker runtime exceeds
-# the 2-minute informational window (issue #1989/#2055). Engineers changing
-# combat.ts are prompted to run `npm run mutate:combat` locally.
 
 on:
   pull_request:
@@ -27,13 +24,24 @@ env:
 
 jobs:
   mutation-score:
-    name: Mutation score (layer-system)
+    name: Mutation score (${{ matrix.module }})
     runs-on: ubuntu-latest
     # Non-blocking: this job posts a PR comment but never fails the PR.
     # The PR merge gate is controlled by ci.yml's mutation-smoke + build jobs.
     # The 2-minute timeout bounds CI cost; a timed-out run still posts a
     # "did not complete" comment so engineers know the score wasn't available.
     timeout-minutes: 2
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - layer-system
+          - combat
+          - mana
+          - trigger-system
+          - replacement-effects
+          - spell-casting
+          - state-based-actions
 
     steps:
       - name: Checkout code
@@ -44,9 +52,9 @@ jobs:
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
 
-      - name: Run Stryker mutation testing (layer-system)
+      - name: Run Stryker mutation testing (${{ matrix.module }})
         id: stryker
-        run: npm run mutate:layer-system
+        run: npm run mutate:${{ matrix.module }}
         env:
           STRYKER_CONCURRENCY: 4
         continue-on-error: true
@@ -71,3 +79,4 @@ jobs:
           MUTATION_BELOW_FLOOR: ${{ steps.extract-score.outputs.below-floor }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           TARGET_BRANCH: ${{ github.event.pull_request.base.ref }}
+          MODULE_NAME: ${{ matrix.module }}

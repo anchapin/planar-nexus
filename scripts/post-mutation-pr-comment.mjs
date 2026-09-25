@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Post or update a PR comment with the layer-system mutation score.
+ * Post or update a PR comment with the mutation score for a rules-engine module.
  *
  * Called as the final step of `.github/workflows/mutation-pr.yml` after
  * `scripts/extract-mutation-score.mjs` has populated the score and status
@@ -9,7 +9,7 @@
  * Logic:
  *   - Fetch the PR node ID from `gh pr view --json id`
  *   - Find existing comment from "github-actions[bot]" on this PR
- *     (identified by the "## Mutation Score (layer-system)" heading).
+ *     (identified by the "## Mutation Score (<module>)" heading).
  *   - Update existing comment, or create a new one.
  *
  * The comment is informational only. This workflow is NON-BLOCKING:
@@ -28,10 +28,18 @@
  *   MUTATION_BELOW_FLOOR — "true" | "false"
  *   PR_NUMBER          — pull request number
  *   TARGET_BRANCH      — base branch name (e.g. "main")
+ *   MODULE_NAME        — module name, e.g. "layer-system", "combat"
  */
 
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
 import { env } from "node:process";
+
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const require = createRequire(import.meta.url);
+const FLOOR_CONFIG = require(join(REPO_ROOT, "scripts", "mutation-floor.config.js"));
 
 const {
   GITHUB_TOKEN,
@@ -42,9 +50,24 @@ const {
   MUTATION_BELOW_FLOOR,
   PR_NUMBER,
   TARGET_BRANCH,
+  MODULE_NAME = "layer-system",
 } = env;
 
-const FLOOR = 55; // matches layer-system floor in mutation-floor.config.js
+const FLOOR_MAP = {
+  "layer-system": "src/lib/game-state/layer-system.ts",
+  combat: "src/lib/game-state/combat.ts",
+  mana: "src/lib/game-state/mana.ts",
+  "trigger-system": "src/lib/game-state/trigger-system.ts",
+  "replacement-effects": "src/lib/game-state/replacement-effects.ts",
+  "spell-casting": "src/lib/game-state/spell-casting",
+  "state-based-actions": "src/lib/game-state/state-based-actions.ts",
+};
+
+const FLOOR_KEY = FLOOR_MAP[MODULE_NAME];
+const FLOOR =
+  FLOOR_KEY && FLOOR_CONFIG.floors?.[FLOOR_KEY]
+    ? FLOOR_CONFIG.floors[FLOOR_KEY]
+    : FLOOR_CONFIG.defaultFloor ?? 55;
 
 /**
  * Run `gh` with auth and return stdout, or empty string on failure.
@@ -87,13 +110,7 @@ function buildBody(score, status, detected, considered, belowFloor) {
       ? `| ${detected}/${considered} mutants detected |\n`
       : "";
 
-  // Prompt for combat.ts changes
-  const combatNote =
-    TARGET_BRANCH === "main"
-      ? ""
-      : "\n> **Note:** Changes to `combat.ts` are not covered by this per-PR run. If your PR modifies combat, run `npm run mutate:combat` locally to check the mutation score.";
-
-  return `## Mutation Score (layer-system) — info only
+  return `## Mutation Score (${MODULE_NAME}) — info only
 
 | | |
 | --- | --- |
@@ -102,7 +119,7 @@ function buildBody(score, status, detected, considered, belowFloor) {
 | **Floor** | ${FLOOR}% |
 ${detail}| **Generated** | ${now} |
 
-${belowFloor === "true" && status === "fail" ? `⚠️ **Below floor** — the layer-system score is under the ${FLOOR}% threshold. A full score will be reported by the nightly mutation run. Consider running \`npm run mutate:layer-system\` locally to investigate.\n` : ""}${status === "timeout" ? `⏱️ Stryker timed out after 2 minutes (the per-PR informational window). The full score will be reported by the nightly mutation run. If you need an immediate score, run \`npm run mutate:layer-system\` locally.\n` : ""}${combatNote}
+${belowFloor === "true" && status === "fail" ? `⚠️ **Below floor** — the ${MODULE_NAME} score is under the ${FLOOR}% threshold. A full score will be reported by the nightly mutation run. Consider running \`npm run mutate:${MODULE_NAME}\` locally to investigate.\n` : ""}${status === "timeout" ? `⏱️ Stryker timed out after 2 minutes (the per-PR informational window). The full score will be reported by the nightly mutation run. If you need an immediate score, run \`npm run mutate:${MODULE_NAME}\` locally.\n` : ""}
 
 > ⚠️ **This comment is informational only.** The mutation score does NOT gate PR merge. Full mutation coverage (all allowlisted rules-engine modules) runs nightly in [\`.github/workflows/mutation.yml\`](https://github.com/anchapin/planar-nexus/blob/main/.github/workflows/mutation.yml).`;
 }
@@ -155,7 +172,7 @@ async function main() {
     for (const c of comments) {
       if (
         c.author?.login === "github-actions[bot]" &&
-        c.body?.includes("Mutation Score (layer-system)")
+        c.body?.includes(`Mutation Score (${MODULE_NAME})`)
       ) {
         existingCommentId = c.id;
         break;
