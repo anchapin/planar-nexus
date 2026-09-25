@@ -169,6 +169,9 @@ const MUTATE_MODULE_NAMES = [
   "state-based-actions",
   // combat excluded: issue #1989 + #2055 (40+ min Stryker runtime)
   "mana",
+  // Issue #2186: keyword-actions and abilities added to Stryker coverage
+  "keyword-actions",
+  "oracle-text-parser-abilities",
 ];
 for (const name of MUTATE_MODULE_NAMES) {
   const script = `mutate:${name}`;
@@ -234,7 +237,10 @@ function shortModuleName(entry) {
     .replace(/\.ts$/, "")
     .replace(/\*\.ts$/, "")
     .replace(/\*+$/, "")
-    .replace(/\/+$/, "");
+    .replace(/\/+$/, "")
+    // Handle nested paths like src/lib/game-state/oracle-text-parser/abilities.ts
+    // → oracle-text-parser/abilities → oracle-text-parser-abilities
+    .replace(/\//g, "-");
 }
 for (const entry of mutateEntries) {
   const shortName = shortModuleName(entry);

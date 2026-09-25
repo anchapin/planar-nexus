@@ -30,9 +30,14 @@ name: Mutation Testing
 # The allowlist grew from 3 → 5 modules in #1395 (added trigger-system.ts and
 # state-based-actions.ts), from 5 → 6 in #1597 (added combat.ts, CR 506-510),
 # and from 6 → 7 in #1717 (added mana.ts, CR 106 mana pools / CR 305 lands).
-# Issue #1989: combat.ts is EXCLUDED from the nightly matrix (takes >40 min
-# per run on a 4-core runner — too slow for any per-PR gate; its
-# combat.mutation.test.ts remains in place for manual/local runs).
+# Issue #2186: added keyword-actions/ and oracle-text-parser/abilities.ts to
+# Stryker mutation coverage (9-module allowlist = 7 active + 2 excluded:
+# combat + keyword-actions directory). keyword-actions/ handles MTG keyword
+# abilities and actions (destroy, exile, sacrifice, etc.). abilities.ts handles
+# ability word parsing in oracle-text-parser. combat.ts is EXCLUDED from the
+# nightly matrix (takes >40 min per run on a 4-core runner — too slow for any
+# per-PR gate; its combat.mutation.test.ts remains in place for manual/local
+# runs).
 # `break` is currently 44 (issue #1939: lowered from 50 after trigger-system
 # measured 45.00% — zero-coverage debt from #1524/#1528 pending test
 # backfill); it is raised to 70 once the nightly run confirms
@@ -74,6 +79,8 @@ on:
           - trigger-system
           - state-based-actions
           - mana
+          - keyword-actions
+          - oracle-text-parser-abilities
 
 # Queue concurrent triggers (nightly + manual dispatch landing together)
 # instead of cancelling: a half-finished mutation run is still signal, and
@@ -118,7 +125,7 @@ jobs:
           ${{ fromJSON(github.event_name == 'workflow_dispatch' &&
             github.event.inputs.module != 'all' &&
             format('["{0}"]', github.event.inputs.module) ||
-            '["layer-system","replacement-effects","spell-casting","trigger-system","state-based-actions","combat","mana"]') }}
+            '["layer-system","replacement-effects","spell-casting","trigger-system","state-based-actions","combat","mana","keyword-actions","oracle-text-parser-abilities"]') }}
 
     steps:
       - name: Checkout code
