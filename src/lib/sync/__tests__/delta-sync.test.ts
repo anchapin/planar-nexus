@@ -237,6 +237,137 @@ describe("Delta Sync", () => {
     });
   });
 
+  describe("prototype pollution protection", () => {
+    const makeValidDeltaBase = (): GameStateDelta => ({
+      version: 1,
+      timestamp: Date.now(),
+      isFullSync: false,
+      playerDeltas: [],
+      cardDeltas: [],
+      zoneDeltas: [],
+      stackDeltas: [],
+      turnDelta: null,
+      combatDelta: null,
+      checksum: "",
+    });
+
+    it("should reject delta with __proto__ in player data", () => {
+      const baseState = createMinimalAIGameState();
+      const pollutedDelta: GameStateDelta = {
+        ...makeValidDeltaBase(),
+        playerDeltas: [
+          {
+            id: "player1",
+            action: "update",
+            data: {
+              __proto__: { polluted: true },
+              life: 40,
+            } as unknown as Record<string, unknown>,
+          },
+        ],
+        checksum: "abc123",
+      };
+
+      const result = applyDelta(baseState, pollutedDelta);
+
+      expect(
+        result.players["player1"] as unknown as Record<string, unknown>,
+      ).not.toHaveProperty("polluted");
+    });
+
+    it("should reject delta with constructor in player data", () => {
+      const baseState = createMinimalAIGameState();
+      const pollutedDelta: GameStateDelta = {
+        ...makeValidDeltaBase(),
+        playerDeltas: [
+          {
+            id: "player1",
+            action: "update",
+            data: {
+              constructor: { prototype: { polluted: true } },
+              life: 40,
+            } as unknown as Record<string, unknown>,
+          },
+        ],
+        checksum: "abc123",
+      };
+
+      const result = applyDelta(baseState, pollutedDelta);
+
+      expect(
+        result.players["player1"] as unknown as Record<string, unknown>,
+      ).not.toHaveProperty("prototype");
+    });
+
+    it("should reject delta with prototype in player data", () => {
+      const baseState = createMinimalAIGameState();
+      const pollutedDelta: GameStateDelta = {
+        ...makeValidDeltaBase(),
+        playerDeltas: [
+          {
+            id: "player1",
+            action: "update",
+            data: {
+              prototype: { polluted: true },
+              life: 40,
+            } as unknown as Record<string, unknown>,
+          },
+        ],
+        checksum: "abc123",
+      };
+
+      const result = applyDelta(baseState, pollutedDelta);
+
+      expect(
+        result.players["player1"] as unknown as Record<string, unknown>,
+      ).not.toHaveProperty("prototype");
+    });
+
+    it("should reject delta with unknown fields not in allowlist", () => {
+      const baseState = createMinimalAIGameState();
+      const pollutedDelta: GameStateDelta = {
+        ...makeValidDeltaBase(),
+        playerDeltas: [
+          {
+            id: "player1",
+            action: "update",
+            data: {
+              maliciousField: "should be blocked",
+              life: 40,
+            } as unknown as Record<string, unknown>,
+          },
+        ],
+        checksum: "abc123",
+      };
+
+      const result = applyDelta(baseState, pollutedDelta);
+
+      expect(
+        result.players["player1"] as unknown as Record<string, unknown>,
+      ).not.toHaveProperty("maliciousField");
+      expect(result.players["player1"].life).toBe(40);
+    });
+
+    it("should reject delta with mismatched checksum", () => {
+      const baseState = createMinimalAIGameState();
+      const validDelta: GameStateDelta = {
+        ...makeValidDeltaBase(),
+        playerDeltas: [
+          {
+            id: "player1",
+            action: "update",
+            data: { life: 30 } as unknown as Record<string, unknown>,
+          },
+        ],
+        checksum: "WRONG_CHECKSUM",
+      };
+
+      const result = applyDelta(baseState, validDelta);
+
+      expect(result).toBe(baseState);
+    });
+  });
+
   describe("shouldUseFullSync", () => {
     it("should return true when lastSyncedState is null", () => {
       const currentState = createMinimalGameState();

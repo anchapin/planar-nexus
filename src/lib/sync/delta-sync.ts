@@ -21,6 +21,49 @@ import type {
 import type { AIGameState, AIPlayerState, AIPermanent } from "@/lib/game-state";
 import { engineToAIState, aiToEngineState } from "@/lib/game-state";
 
+const PROTOTYPE_POLLUTION_KEYS = new Set([
+  "__proto__",
+  "constructor",
+  "prototype",
+  "hasOwnProperty",
+  "isPrototypeOf",
+  "propertyIsEnumerable",
+  "toString",
+  "valueOf",
+  "toLocaleString",
+]);
+
+const PLAYER_STATE_ALLOWED_FIELDS = new Set([
+  "id",
+  "name",
+  "life",
+  "poisonCounters",
+  "commanderDamage",
+  "hand",
+  "graveyard",
+  "exile",
+  "library",
+  "battlefield",
+  "manaPool",
+  "landsPlayedThisTurn",
+  "hasPassedPriority",
+]);
+
+function sanitizePlayerDelta(
+  data: Record<string, unknown>,
+): Partial<AIPlayerState> {
+  const sanitized: Record<string, unknown> = {};
+  for (const key of Object.keys(data)) {
+    if (PROTOTYPE_POLLUTION_KEYS.has(key)) {
+      continue;
+    }
+    if (PLAYER_STATE_ALLOWED_FIELDS.has(key)) {
+      sanitized[key] = data[key];
+    }
+  }
+  return sanitized as Partial<AIPlayerState>;
+}
+
 /**
  * Represents a diff for a single object (card, player, zone, etc.)
  */
@@ -360,19 +403,35 @@ export function applyDelta(
 
   for (const playerDelta of delta.playerDeltas) {
     if (playerDelta.action === "add") {
+      const sanitizedData = sanitizePlayerDelta(
+        playerDelta.data as Record<string, unknown>,
+      );
       (newState.players as Record<string, AIPlayerState>)[playerDelta.id] =
-        playerDelta.data as unknown as AIPlayerState;
+        sanitizedData as unknown as AIPlayerState;
     } else if (playerDelta.action === "remove") {
       delete (newState.players as Record<string, AIPlayerState>)[
         playerDelta.id
       ];
     } else if (playerDelta.action === "update" && playerDelta.data) {
+      const sanitizedData = sanitizePlayerDelta(
+        playerDelta.data as Record<string, unknown>,
+      );
       (newState.players as Record<string, AIPlayerState>)[playerDelta.id] = {
         ...((newState.players as Record<string, AIPlayerState>)[
           playerDelta.id
         ] ?? {}),
-        ...(playerDelta.data as Partial<AIPlayerState>),
+        ...sanitizedData,
       };
+    }
+  }
+
+  if (delta.checksum !== undefined) {
+    const computed = computeChecksum(newState);
+    if (computed !== delta.checksum) {
+      console.warn(
+        `[delta-sync] Checksum mismatch: expected ${delta.checksum}, got ${computed}. Rejecting delta.`,
+      );
+      return baseState;
     }
   }
 
