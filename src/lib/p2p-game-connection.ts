@@ -217,7 +217,7 @@ export interface GameMessage {
   data: unknown;
 }
 
-const GAME_MESSAGE_TYPES: ReadonlySet<GameMessageType> = new Set([
+export const GAME_MESSAGE_TYPES: ReadonlySet<GameMessageType> = new Set([
   "game-state-sync",
   "game-action",
   "chat",

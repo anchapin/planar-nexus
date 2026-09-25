@@ -271,6 +271,7 @@ export function safeParseJson<T>(
 // ──────────────────────────────────────────────────────────────────────────
 
 import { hmacSha256Hex } from "./p2p-handshake";
+import { GAME_MESSAGE_TYPES, GameMessageType } from "./p2p-game-connection";
 
 /**
  * A signed message envelope: an existing {@link GameMessage} bound to a
@@ -355,7 +356,9 @@ function canonicalizeData(value: unknown): string {
   if (typeof value === "object") {
     const obj = value as Record<string, unknown>;
     const keys = Object.keys(obj).sort();
-    const parts = keys.map((k) => `${JSON.stringify(k)}:${canonicalizeData(obj[k])}`);
+    const parts = keys.map(
+      (k) => `${JSON.stringify(k)}:${canonicalizeData(obj[k])}`,
+    );
     return `{${parts.join(",")}}`;
   }
   // Functions, symbols, etc. — fall back to JSON.stringify so the digest
@@ -387,7 +390,9 @@ export function signMessageEnvelope<T extends GameMessageLike>(
   sessionKeyHex: string,
 ): MessageEnvelope<T> {
   if (typeof sessionKeyHex !== "string" || sessionKeyHex.length === 0) {
-    throw new Error("signMessageEnvelope: sessionKeyHex must be a non-empty string");
+    throw new Error(
+      "signMessageEnvelope: sessionKeyHex must be a non-empty string",
+    );
   }
   const hmac = hmacSha256Hex(sessionKeyHex, canonicalMessageForHmac(message));
   return { payload: message, hmac };
@@ -440,7 +445,10 @@ export function verifyMessageEnvelope(
   if (typeof sessionKeyHex !== "string" || sessionKeyHex.length === 0) {
     return false;
   }
-  const expected = hmacSha256Hex(sessionKeyHex, canonicalMessageForHmac(payload));
+  const expected = hmacSha256Hex(
+    sessionKeyHex,
+    canonicalMessageForHmac(payload),
+  );
   const actual = (envelope as { hmac: string }).hmac;
   // Constant-time compare: same shape as the capability-token verifier in
   // p2p-handshake.ts. Both sides are hex SHA-256 (64 chars), iteration bounded.
@@ -463,6 +471,7 @@ export function isGameMessageLike(value: unknown): value is GameMessageLike {
   const v = value as Record<string, unknown>;
   return (
     typeof v.type === "string" &&
+    GAME_MESSAGE_TYPES.has(v.type as GameMessageType) &&
     typeof v.senderId === "string" &&
     typeof v.seq === "number" &&
     Number.isFinite(v.seq) &&

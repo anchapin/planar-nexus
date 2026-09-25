@@ -288,7 +288,10 @@ describe("HMAC-signed message envelopes (issue #1252)", () => {
 
     it("differs when senderId changes", () => {
       const a = canonicalMessageForHmac(sampleMessage);
-      const b = canonicalMessageForHmac({ ...sampleMessage, senderId: "player-2" });
+      const b = canonicalMessageForHmac({
+        ...sampleMessage,
+        senderId: "player-2",
+      });
       expect(a).not.toBe(b);
     });
 
@@ -357,21 +360,31 @@ describe("HMAC-signed message envelopes (issue #1252)", () => {
       expect(isGameMessageLike(noSeq)).toBe(false);
     });
 
+    it("rejects messages with an unknown type string", () => {
+      expect(
+        isGameMessageLike({ ...sampleMessage, type: "FORFEIT_GAME" }),
+      ).toBe(false);
+      expect(
+        isGameMessageLike({ ...sampleMessage, type: "PLAYER_ACTION" }),
+      ).toBe(false);
+      expect(isGameMessageLike({ ...sampleMessage, type: "__proto__" })).toBe(
+        false,
+      );
+    });
+
     it("accepts a well-formed envelope (does NOT verify the signature)", () => {
       const env = signMessageEnvelope(sampleMessage, SESSION_KEY);
       expect(isMessageEnvelope(env)).toBe(true);
     });
 
     it("rejects an envelope without a non-empty hmac string", () => {
-      expect(
-        isMessageEnvelope({ payload: sampleMessage, hmac: "" }),
-      ).toBe(false);
-      expect(
-        isMessageEnvelope({ payload: sampleMessage, hmac: 123 }),
-      ).toBe(false);
-      expect(
-        isMessageEnvelope({ payload: sampleMessage }),
-      ).toBe(false);
+      expect(isMessageEnvelope({ payload: sampleMessage, hmac: "" })).toBe(
+        false,
+      );
+      expect(isMessageEnvelope({ payload: sampleMessage, hmac: 123 })).toBe(
+        false,
+      );
+      expect(isMessageEnvelope({ payload: sampleMessage })).toBe(false);
     });
   });
 
@@ -394,10 +407,7 @@ describe("HMAC-signed message envelopes (issue #1252)", () => {
       // still pass one. We don't throw on non-string to keep the helper
       // fail-soft in dynamic contexts; the verifier will reject it instead.
       expect(() =>
-        signMessageEnvelope(
-          sampleMessage,
-          null as unknown as string,
-        ),
+        signMessageEnvelope(sampleMessage, null as unknown as string),
       ).toThrow();
     });
 
@@ -521,9 +531,7 @@ describe("HMAC-signed message envelopes (issue #1252)", () => {
     it("rejects an empty/invalid session key", () => {
       const env = signMessageEnvelope(sampleMessage, SESSION_KEY);
       expect(verifyMessageEnvelope(env, "")).toBe(false);
-      expect(
-        verifyMessageEnvelope(env, null as unknown as string),
-      ).toBe(false);
+      expect(verifyMessageEnvelope(env, null as unknown as string)).toBe(false);
     });
 
     it("is robust against an HMAC of the wrong length", () => {
@@ -538,12 +546,13 @@ describe("HMAC-signed message envelopes (issue #1252)", () => {
       // signature must produce a verification failure.
       const env = signMessageEnvelope(sampleMessage, SESSION_KEY);
       for (let i = 0; i < env.hmac.length; i += 13) {
-        const flipped = env.hmac.slice(0, i) +
+        const flipped =
+          env.hmac.slice(0, i) +
           (env.hmac[i] === "0" ? "1" : "0") +
           env.hmac.slice(i + 1);
-        expect(verifyMessageEnvelope({ ...env, hmac: flipped }, SESSION_KEY)).toBe(
-          false,
-        );
+        expect(
+          verifyMessageEnvelope({ ...env, hmac: flipped }, SESSION_KEY),
+        ).toBe(false);
       }
     });
   });
