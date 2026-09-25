@@ -107,6 +107,7 @@ jest.mock("@/components/ui/button", () => ({
     variant,
     type,
     className,
+    asChild,
     ...props
   }: {
     children: React.ReactNode;
@@ -115,6 +116,7 @@ jest.mock("@/components/ui/button", () => ({
     variant?: string;
     type?: "button" | "submit" | "reset";
     className?: string;
+    asChild?: boolean;
     [key: string]: unknown;
   }) => (
     <button
