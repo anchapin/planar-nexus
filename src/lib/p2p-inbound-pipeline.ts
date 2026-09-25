@@ -60,12 +60,15 @@ import {
   type PeerActionValidationResult,
   type PeerGameActionPayload,
 } from "./p2p-game-connection";
+import { hmacSha256Hex } from "./p2p-handshake";
 import {
   safeParseJson,
   isMessageEnvelope,
-  isMessageEnvelopeShape,
+  isMessageEnvelopeShallow,
   verifyMessageEnvelope,
-  verifyMessageEnvelopeHmac,
+  canonicalMessageForHmac,
+  type GameMessageLike,
+  type MessageEnvelope,
 } from "./p2p-json-validation";
 import type { AntiReplayTracker } from "./anti-replay-tracker";
 import { isMessageAllowedForRole, type PeerRole } from "./peer-role";
@@ -454,22 +457,24 @@ const shapeStep: InboundPipelineStep = {
     }
 
     // Keyed link — envelope mode, fail closed at every sub-check.
+    if (!parsed) {
+      return { pass: false, outcome: "rejected" };
+    }
     if (
-      !parsed ||
-      !(state.wireMode.revalidatePayloadShape
-        ? isMessageEnvelope(parsed)
-        : isMessageEnvelopeShape(parsed))
+      state.wireMode.revalidatePayloadShape
+        ? !isMessageEnvelope(parsed)
+        : !isMessageEnvelopeShallow(parsed)
     ) {
       state.config.onEnvelopeRejected?.();
       logRejection(
         state.config,
         "warn",
-        state.config.messages.envelopeMalformed,
+        state.config.messages.envelopePayloadShape,
         logContextFor(state),
       );
-      return { pass: false };
+      return { pass: false, outcome: "rejected" };
     }
-    const envelope = parsed;
+    const envelope = parsed as unknown as MessageEnvelope;
     // HMAC under the per-sender verification key of THIS link (+ optional
     // sender binding to the delivering link). An envelope signed under any
     // other pair key — or bearing a swapped senderId — fails here even if
@@ -484,7 +489,14 @@ const shapeStep: InboundPipelineStep = {
             senderKey,
             state.wireMode.expectedSenderId,
           )
-        : !verifyMessageEnvelopeHmac(envelope, senderKey)
+        : !(
+            hmacSha256Hex(
+              senderKey,
+              canonicalMessageForHmac(
+                envelope.payload as unknown as GameMessageLike,
+              ),
+            ) === envelope.hmac
+          )
     ) {
       state.config.onEnvelopeRejected?.();
       const ep = envelope.payload as

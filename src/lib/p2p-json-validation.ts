@@ -525,15 +525,15 @@ export function isMessageEnvelope(value: unknown): value is MessageEnvelope {
   );
 }
 
-export interface MessageEnvelopeShape {
-  hmac: string;
-  payload: unknown;
-}
-
-export function isMessageEnvelopeShape(
+export function isMessageEnvelopeShallow(
   value: unknown,
-): value is MessageEnvelopeShape {
+): value is MessageEnvelope {
   if (typeof value !== "object" || value === null) return false;
   const v = value as Record<string, unknown>;
-  return typeof v.hmac === "string" && v.hmac.length > 0;
+  return (
+    typeof v.hmac === "string" &&
+    v.hmac.length > 0 &&
+    typeof v.payload === "object" &&
+    v.payload !== null
+  );
 }
