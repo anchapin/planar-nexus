@@ -1,7 +1,7 @@
 module.exports = {
   '*.{ts,tsx}': [
     'eslint --fix --no-warn-ignored',
-    () => 'tsc --noEmit --pretty',
+    () => 'tsc --noEmit',
     (files) => {
       // Only run Jest for files under src/ (E2E specs in e2e/ use Playwright)
       const srcFiles = files.filter((f) => f.startsWith('src/'));
