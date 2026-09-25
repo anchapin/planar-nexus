@@ -1,9 +1,6 @@
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
-import {
-  REMOTE_IMAGE_HOSTS,
-  WEB_CSP,
-} from "./src/lib/security/csp-allowlist";
+import { REMOTE_IMAGE_HOSTS, WEB_CSP } from "./src/lib/security/csp-allowlist";
 
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
@@ -57,6 +54,10 @@ const nextConfig: NextConfig = {
             value: "strict-origin-when-cross-origin",
           },
           { key: "Strict-Transport-Security", value: "max-age=15552000" },
+          {
+            key: "Permissions-Policy",
+            value: "camera=(self), microphone=(self), payment=(self)",
+          },
         ],
       },
     ];
@@ -103,7 +104,6 @@ const nextConfig: NextConfig = {
       "lucide-react",
     ],
   },
-
 };
 
 export default withNextIntl(nextConfig);
