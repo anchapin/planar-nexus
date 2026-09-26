@@ -83,12 +83,12 @@ describe("buildOpponentDeckPrompt (issue #1586)", () => {
     const { system } = buildOpponentDeckPrompt({ format: "commander" });
     // SECURITY_PREAMBLE is embedded verbatim in the system message so the
     // LLM sees it. The role block ("You are a Magic: The Gathering
-    // deck-generation assistant") is a fixed preamble that sits BEFORE the
+    // deck-generation assistant") is a fixed preamble that sits AFTER the
     // SECURITY_PREAMBLE constant.
     expect(system).toContain(SECURITY_PREAMBLE);
-    expect(system.startsWith("You are a Magic: The Gathering")).toBe(true);
-    // The SECURITY_PREAMBLE appears AFTER the role block in the assembly.
-    expect(system.indexOf(SECURITY_PREAMBLE)).toBeGreaterThan(0);
+    expect(system.startsWith(SECURITY_PREAMBLE)).toBe(true);
+    // The "You are a Magic" role block appears AFTER the SECURITY_PREAMBLE.
+    expect(system.indexOf("You are a Magic: The Gathering")).toBeGreaterThan(0);
   });
 
   it("sanitises an override phrase embedded in a color identity entry", () => {

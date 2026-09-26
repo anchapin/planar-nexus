@@ -99,8 +99,8 @@ describe("buildPostGamePrompt (issue #1586)", () => {
       notes: "I lost because I tapped out before the opponent's turn.",
     });
     expect(system).toContain(SECURITY_PREAMBLE);
-    expect(system.startsWith("You are a Magic: The Gathering")).toBe(true);
-    expect(system.indexOf(SECURITY_PREAMBLE)).toBeGreaterThan(0);
+    expect(system.startsWith(SECURITY_PREAMBLE)).toBe(true);
+    expect(system.indexOf("You are a Magic: The Gathering")).toBeGreaterThan(0);
   });
 
   it("fences the notes blob with a unique tag and redacts the override phrase", () => {
