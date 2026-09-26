@@ -786,8 +786,8 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
                 </p>
                 <p className="mt-1 text-muted-foreground">
                   {dbError} — this is usually transient (browser restart or
-                  privacy mode). Your cards are not lost; retry the
-                  connection. If it keeps failing, reload the app.
+                  privacy mode). Your cards are not lost; retry the connection.
+                  If it keeps failing, reload the app.
                 </p>
               </div>
             </div>
@@ -1005,15 +1005,69 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
                   ))}
                 </SelectGroup>
 
-                {/* Color Presets */}
-                <SelectGroup>
-                  <SelectLabel>Color</SelectLabel>
-                  {presetsByCategory.color.map((preset) => (
-                    <SelectItem key={preset.id} value={preset.id}>
-                      {preset.name}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
+                {/* Mana Color Filter Buttons */}
+                <div
+                  className="flex flex-wrap gap-1 py-1"
+                  role="group"
+                  aria-label="Mana color filter"
+                >
+                  {[
+                    {
+                      value: "W",
+                      label: "W",
+                      class: "bg-white border border-gray-300 text-black",
+                    },
+                    {
+                      value: "U",
+                      label: "U",
+                      class: "bg-blue-600 border border-blue-700 text-white",
+                    },
+                    {
+                      value: "B",
+                      label: "B",
+                      class: "bg-gray-800 border border-gray-900 text-white",
+                    },
+                    {
+                      value: "R",
+                      label: "R",
+                      class: "bg-red-600 border border-red-700 text-white",
+                    },
+                    {
+                      value: "G",
+                      label: "G",
+                      class: "bg-green-600 border border-green-700 text-white",
+                    },
+                  ].map((color) => {
+                    const isActive =
+                      filters.color?.colors?.includes(color.value) ?? false;
+                    return (
+                      <button
+                        key={color.value}
+                        onClick={() => {
+                          const currentColors = filters.color?.colors ?? [];
+                          const newColors = isActive
+                            ? currentColors.filter((c) => c !== color.value)
+                            : [...currentColors, color.value];
+                          setFilter("color", {
+                            mode: "include",
+                            colors: newColors,
+                            matchColorIdentity:
+                              filters.color?.matchColorIdentity ?? false,
+                          });
+                        }}
+                        aria-pressed={isActive}
+                        title={`${isActive ? "Remove" : "Add"} ${color.value} mana filter`}
+                        className={`w-8 h-8 rounded font-bold text-sm transition-colors ${color.class} ${
+                          isActive
+                            ? "ring-2 ring-offset-1 ring-primary"
+                            : "opacity-70 hover:opacity-100"
+                        }`}
+                      >
+                        {color.label}
+                      </button>
+                    );
+                  })}
+                </div>
 
                 {/* Clear Filters Option */}
                 <SelectItem value="clear" className="text-muted-foreground">
