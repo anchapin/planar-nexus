@@ -3,7 +3,7 @@ import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import reactPlugin from "eslint-plugin-react";
 import reactHooksPlugin from "eslint-plugin-react-hooks";
-import { aiSecurityPlugin } from "./eslint/rules/index.cjs";
+import aiSecurityPlugin from "./eslint/rules/plugin.mjs";
 
 // Issue #1724: the rules engine (src/lib/game-state/**) is self-contained.
 // Engine files may import vendored/third-party modules and other engine
@@ -149,21 +149,7 @@ const eslintConfig = [
       "react/no-danger": "off",
     },
   },
-  // Issue #2151: AI flows that call LLM providers must include SECURITY_PREAMBLE
-// to prevent prompt injection attacks. This rule makes the preamble mandatory
-// by construction - any flow using generateText/streamText must use the
-// buildSystemPrompt helper or directly include SECURITY_PREAMBLE.
-{
-  files: ["src/ai/flows/**/*.{ts,tsx}"],
-  plugins: {
-    ai: aiSecurityPlugin,
-  },
-  rules: {
-    "ai/require-security-preamble": "error",
-  },
-},
-
-// Issue #1710 + #1925: the game-state barrel is the engine's sole public API.
+  // Issue #1710 + #1925: the game-state barrel is the engine's sole public API.
   // ALL patterns use `regex` (not `group`) so ESLint flat config MERGES them.
   // The barrel deep-import pattern and relative deep-import patterns all live
   // in the same rule entry to avoid ESLint replacing group-based options with
@@ -233,6 +219,34 @@ const eslintConfig = [
     ["src/lib/game-state/*/*/*.{ts,tsx}"],
     "^\\.\\./\\.\\./\\.\\./",
   ),
+  // Issue #2151: All AI flow files that build LLM prompts must import and
+  // prepend SECURITY_PREAMBLE from @/ai/prompt-security to prevent prompt
+  // injection attacks. This rule fires as an error so it blocks commits.
+  {
+    files: ["src/ai/flows/**/*.{ts,tsx}"],
+    plugins: {
+      "@planar-nexus/ai-security": aiSecurityPlugin,
+    },
+    ignores: [
+      // Test files are validated by prompt-security-coverage.test.ts instead.
+      "**/__tests__/**",
+      "**/*.test.ts",
+      "**/*.test.tsx",
+      // These flows are pure data exports / utilities that do not build prompts.
+      "src/ai/flows/judge-call-extraction-prompt.ts",
+      "src/ai/flows/coach-grounding-guard.ts",
+      "src/ai/flows/sideboard-plan.ts",
+      "src/ai/flows/verify-citations.ts",
+      "src/ai/flows/coach-evidence-ledger.ts",
+      "src/ai/flows/coach-stream.ts",
+      "src/ai/flows/coach-context-prefetch.ts",
+      "src/ai/flows/coach-memory-summary.ts",
+      "src/ai/flows/compare-decks.ts",
+    ],
+    rules: {
+      "@planar-nexus/ai-security/ai-flow-security-preamble": "error",
+    },
+  },
   {
     ignores: [
       "next-env.d.ts",
