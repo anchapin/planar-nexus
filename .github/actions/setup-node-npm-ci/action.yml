@@ -27,6 +27,17 @@ runs:
       shell: bash
       run: git config --global --add safe.directory '*'
 
+    - name: Free disk space
+      # Issue #2255: GitHub-hosted runners can hit disk-space exhaustion that causes
+      # `actions/checkout` to silently fail to extract some files, resulting in a
+      # missing `package-lock.json`.  Clean up before checkout to prevent this.
+      shell: bash
+      run: |
+        rm -rf node_modules || true
+        rm -rf ~/.npm/_cacache || true
+        rm -rf /home/runner/.cache || true
+        docker system prune -af --volumes || true
+
     - name: Checkout code
       uses: actions/checkout@v7
       with:
