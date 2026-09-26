@@ -3,6 +3,7 @@ import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import reactPlugin from "eslint-plugin-react";
 import reactHooksPlugin from "eslint-plugin-react-hooks";
+import { aiSecurityPlugin } from "./eslint/rules/index.cjs";
 
 // Issue #1724: the rules engine (src/lib/game-state/**) is self-contained.
 // Engine files may import vendored/third-party modules and other engine
@@ -148,7 +149,21 @@ const eslintConfig = [
       "react/no-danger": "off",
     },
   },
-  // Issue #1710 + #1925: the game-state barrel is the engine's sole public API.
+  // Issue #2151: AI flows that call LLM providers must include SECURITY_PREAMBLE
+// to prevent prompt injection attacks. This rule makes the preamble mandatory
+// by construction - any flow using generateText/streamText must use the
+// buildSystemPrompt helper or directly include SECURITY_PREAMBLE.
+{
+  files: ["src/ai/flows/**/*.{ts,tsx}"],
+  plugins: {
+    ai: aiSecurityPlugin,
+  },
+  rules: {
+    "ai/require-security-preamble": "error",
+  },
+},
+
+// Issue #1710 + #1925: the game-state barrel is the engine's sole public API.
   // ALL patterns use `regex` (not `group`) so ESLint flat config MERGES them.
   // The barrel deep-import pattern and relative deep-import patterns all live
   // in the same rule entry to avoid ESLint replacing group-based options with
