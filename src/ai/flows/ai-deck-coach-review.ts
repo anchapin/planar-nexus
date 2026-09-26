@@ -9,17 +9,21 @@
  * - DeckReviewOutput - The return type for reviewDeck function.
  */
 
-import { reviewDeckHeuristicAsync } from '@/ai/worker/heuristic-deck-coach-worker-bridge';
-import { validateCardLegality } from '@/lib/server-card-operations';
-import { enforceRateLimit, aiRequestQueue, RateLimitError } from '@/lib/rate-limiter';
-import { callAIProxy } from '@/lib/ai-proxy-client';
-import { createLocalCardLookup, verifyCitations } from './verify-citations';
+import { reviewDeckHeuristicAsync } from "@/ai/worker/heuristic-deck-coach-worker-bridge";
+import { validateCardLegality } from "@/lib/server-card-operations";
 import {
-  SECURITY_PREAMBLE,
+  enforceRateLimit,
+  aiRequestQueue,
+  RateLimitError,
+} from "@/lib/rate-limiter";
+import { callAIProxy } from "@/lib/ai-proxy-client";
+import { createLocalCardLookup, verifyCitations } from "./verify-citations";
+import {
+  prependSecurityPreamble,
   sanitizeUserInput,
   validateDeckReviewOutput,
   wrapUntrusted,
-} from '@/ai/prompt-security';
+} from "@/ai/prompt-security";
 
 // Input types for deck review function
 export interface DeckReviewInput {
@@ -70,14 +74,14 @@ export interface DeckReviewOutput {
       missing: string;
       description: string;
       suggestion: string;
-      impact: 'high' | 'medium' | 'low';
+      impact: "high" | "medium" | "low";
     }>;
   };
 }
 
 export async function reviewDeck(
   input: DeckReviewInput,
-  useAI: boolean = false
+  useAI: boolean = false,
 ): Promise<DeckReviewOutput> {
   // Enforce rate limiting
   const userId = `deck-review-${input.format}`;
@@ -86,35 +90,37 @@ export async function reviewDeck(
   } catch (error) {
     if (error instanceof RateLimitError) {
       throw new Error(
-        `Rate limit exceeded. Please wait ${Math.ceil(error.retryAfter / 1000)} seconds before making another request.`
+        `Rate limit exceeded. Please wait ${Math.ceil(error.retryAfter / 1000)} seconds before making another request.`,
       );
     }
     throw error;
   }
 
   // Check online status if in browser
-  const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+  const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
 
   // Use AI if requested and online
   if (useAI && !isOffline) {
     try {
       const response = await callAIProxy<DeckReviewOutput>({
-        provider: 'openai',
-        endpoint: 'chat/completions',
-        model: 'gpt-4o-mini',
+        provider: "openai",
+        endpoint: "chat/completions",
+        model: "gpt-4o-mini",
         body: {
           messages: [
-            { 
-              role: 'system', 
-              content: 'You are a Magic: The Gathering deck coach. Review the following decklist and suggest improvements. Return result as JSON.\n\n' + SECURITY_PREAMBLE
+            {
+              role: "system",
+              content: prependSecurityPreamble(
+                "You are a Magic: The Gathering deck coach. Review the following decklist and suggest improvements. Return result as JSON.",
+              ),
             },
-            { 
-              role: 'user', 
-              content: `Format: ${sanitizeUserInput(input.format)}\n\nDecklist:\n${wrapUntrusted(input.decklist, 'decklist')}` 
-            }
+            {
+              role: "user",
+              content: `Format: ${sanitizeUserInput(input.format)}\n\nDecklist:\n${wrapUntrusted(input.decklist, "decklist")}`,
+            },
           ],
-          response_format: { type: 'json_object' }
-        }
+          response_format: { type: "json_object" },
+        },
       });
 
       if (response.success && response.data) {
@@ -127,7 +133,7 @@ export async function reviewDeck(
         }
       }
     } catch (error) {
-      console.error('AI deck review failed, falling back to heuristic:', error);
+      console.error("AI deck review failed, falling back to heuristic:", error);
     }
   }
 
@@ -135,7 +141,9 @@ export async function reviewDeck(
   return aiRequestQueue.add(async () => {
     // ... rest of heuristic logic ...
     // Parse the decklist to get card data
-    const lines = input.decklist.split('\n').filter(line => line.trim() !== '');
+    const lines = input.decklist
+      .split("\n")
+      .filter((line) => line.trim() !== "");
     const cards: HeuristicCard[] = [];
 
     // Simple parser - in production, you'd use proper card database lookup
@@ -151,8 +159,8 @@ export async function reviewDeck(
           cmc: 0,
           colors: [],
           legalities: {},
-          type_line: 'Unknown',
-          mana_cost: '{0}',
+          type_line: "Unknown",
+          mana_cost: "{0}",
           color_identity: [],
         });
       }
@@ -192,7 +200,7 @@ export async function reviewDeck(
           );
           const hallucinated = new Set(
             verifications
-              .filter((v) => v.status === 'not-found')
+              .filter((v) => v.status === "not-found")
               .map((v) => v.cited.name.toLowerCase()),
           );
           if (hallucinated.size > 0) {
@@ -206,61 +214,73 @@ export async function reviewDeck(
         let validatedCardsToAdd = cardsToAdd;
         if (cardsToAdd.length > 0) {
           const validation = await validateCardLegality(
-            cardsToAdd.map(c => ({ name: c.name, quantity: c.quantity })),
-            input.format
+            cardsToAdd.map((c) => ({ name: c.name, quantity: c.quantity })),
+            input.format,
           );
 
           if (validation.notFound.length > 0 || validation.illegal.length > 0) {
             // Remove illegal or not found cards
             validatedCardsToAdd = cardsToAdd.filter(
-              c => !validation.notFound.includes(c.name) && !validation.illegal.includes(c.name)
+              (c) =>
+                !validation.notFound.includes(c.name) &&
+                !validation.illegal.includes(c.name),
             );
           }
         }
 
         // Ensure equal counts
-        const addCount = validatedCardsToAdd.reduce((sum, c) => sum + c.quantity, 0);
-        const removeCount = cardsToRemove.reduce((sum, c) => sum + c.quantity, 0);
+        const addCount = validatedCardsToAdd.reduce(
+          (sum, c) => sum + c.quantity,
+          0,
+        );
+        const removeCount = cardsToRemove.reduce(
+          (sum, c) => sum + c.quantity,
+          0,
+        );
 
-      if (addCount !== removeCount) {
-        // Adjust removals to match additions. Drop entries once their quantity
-        // reaches zero — otherwise the same zero-quantity tail item would be
-        // popped and re-pushed forever, looping infinitely while earlier items
-        // still hold quantity (regression found + fixed for issue #1078).
-        const adjustedRemoves = [...cardsToRemove];
-        while (adjustedRemoves.reduce((sum, c) => sum + c.quantity, 0) > addCount) {
-          const last = adjustedRemoves.pop();
-          if (!last) break;
-          const newQuantity = Math.max(0, last.quantity - 1);
-          if (newQuantity > 0) {
-            adjustedRemoves.push({ ...last, quantity: newQuantity });
+        if (addCount !== removeCount) {
+          // Adjust removals to match additions. Drop entries once their quantity
+          // reaches zero — otherwise the same zero-quantity tail item would be
+          // popped and re-pushed forever, looping infinitely while earlier items
+          // still hold quantity (regression found + fixed for issue #1078).
+          const adjustedRemoves = [...cardsToRemove];
+          while (
+            adjustedRemoves.reduce((sum, c) => sum + c.quantity, 0) > addCount
+          ) {
+            const last = adjustedRemoves.pop();
+            if (!last) break;
+            const newQuantity = Math.max(0, last.quantity - 1);
+            if (newQuantity > 0) {
+              adjustedRemoves.push({ ...last, quantity: newQuantity });
+            }
           }
+          return {
+            ...option,
+            cardsToAdd: validatedCardsToAdd,
+            cardsToRemove: adjustedRemoves.filter((c) => c.quantity > 0),
+          };
         }
+
         return {
           ...option,
           cardsToAdd: validatedCardsToAdd,
-          cardsToRemove: adjustedRemoves.filter(c => c.quantity > 0),
+          cardsToRemove,
         };
-      }
+      }),
+    );
 
-      return {
-        ...option,
-        cardsToAdd: validatedCardsToAdd,
-        cardsToRemove,
-      };
-    })
-  );
-
-  return {
-    reviewSummary: (isOffline || useAI) 
-      ? `[Heuristic Mode - AI Unavailable] ${result.reviewSummary}` 
-      : result.reviewSummary,
-    deckOptions: validatedOptions.filter(option =>
-      (option.cardsToAdd && option.cardsToAdd.length > 0) ||
-      (option.cardsToRemove && option.cardsToRemove.length > 0)
-    ),
-    archetype: result.archetype,
-    synergies: result.synergies,
-  };
-  }, 'normal');
+    return {
+      reviewSummary:
+        isOffline || useAI
+          ? `[Heuristic Mode - AI Unavailable] ${result.reviewSummary}`
+          : result.reviewSummary,
+      deckOptions: validatedOptions.filter(
+        (option) =>
+          (option.cardsToAdd && option.cardsToAdd.length > 0) ||
+          (option.cardsToRemove && option.cardsToRemove.length > 0),
+      ),
+      archetype: result.archetype,
+      synergies: result.synergies,
+    };
+  }, "normal");
 }
