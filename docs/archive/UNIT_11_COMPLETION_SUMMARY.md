@@ -9,12 +9,14 @@ Successfully removed all Firebase dependencies from Planar Nexus and replaced wi
 ### 1. Dependencies Removed
 
 **File: `/package.json`**
+
 - Removed `firebase: ^12.9.0` from dependencies
 - Firebase SDK is no longer required for the application
 
 ### 2. Firebase Code Removed
 
 **Directory: `/src/lib/firebase/`**
+
 - Removed entire Firebase integration module containing:
   - `index.ts` - Firebase module exports
   - `firebase-config.ts` - Firebase initialization and configuration
@@ -27,6 +29,7 @@ Successfully removed all Firebase dependencies from Planar Nexus and replaced wi
 Replaces Firebase Auth with localStorage-based user management:
 
 **Features:**
+
 - User authentication with display names
 - Unique user ID generation
 - User preferences storage
@@ -34,6 +37,7 @@ Replaces Firebase Auth with localStorage-based user management:
 - Sign in/sign out functionality
 
 **Key Functions:**
+
 ```typescript
 signIn(userName: string): LocalUser
 signOut(): void
@@ -45,6 +49,7 @@ getUserPreference<T>(key: string, defaultValue?: T): T | undefined
 ```
 
 **Storage Keys:**
+
 - `planar_nexus_user` - User session data
 - `planar_nexus_preferences` - User preferences
 
@@ -54,6 +59,7 @@ getUserPreference<T>(key: string, defaultValue?: T): T | undefined
 Replaces Firebase Realtime Database with IndexedDB for game state storage:
 
 **Features:**
+
 - Game session creation and joining
 - Game state persistence using IndexedDB
 - Game code to game ID mapping
@@ -63,6 +69,7 @@ Replaces Firebase Realtime Database with IndexedDB for game state storage:
 - Game status tracking (active, paused, completed, abandoned)
 
 **Key Functions:**
+
 ```typescript
 initializeGameStorage(): Promise<void>
 createGame(hostId, hostName, gameCode, initialGameState?, callbacks?): Promise<LocalGameSession>
@@ -76,6 +83,7 @@ endGame(): Promise<void>
 ```
 
 **IndexedDB Schema:**
+
 - Database: `PlanarNexusGameDB` (version 1)
 - Object Store: `games`
   - Indexes: `gameCode`, `status`, `updatedAt`
@@ -83,6 +91,7 @@ endGame(): Promise<void>
   - Used for quick game code lookups
 
 **Data Types:**
+
 ```typescript
 interface LocalGameSession {
   gameId: string;
@@ -96,11 +105,11 @@ interface LocalGameSession {
   createdAt: number;
   updatedAt: number;
   lastActionAt: number;
-  status: 'active' | 'paused' | 'completed' | 'abandoned';
+  status: "active" | "paused" | "completed" | "abandoned";
 }
 
 interface GameStateUpdate {
-  type: 'full-sync' | 'delta' | 'action';
+  type: "full-sync" | "delta" | "action";
   version: number;
   timestamp: number;
   senderId: string;
@@ -111,11 +120,13 @@ interface GameStateUpdate {
 ### 5. Multiplayer Architecture
 
 **No Changes Required** - P2P multiplayer already implemented:
+
 - **Signaling:** Uses PeerJS (`/src/lib/p2p-signaling.ts`)
 - **WebRTC:** Native WebRTC with ICE configuration (`/src/lib/webrtc-p2p.ts`)
 - **Connection Management:** Full P2P connection handling
 
 **Existing P2P Components:**
+
 - PeerJS for cloud-based signaling (free tier)
 - ICE configuration with STUN/TURN servers
 - NAT traversal support
@@ -127,6 +138,7 @@ interface GameStateUpdate {
 **Existing Systems (No Changes Required):**
 
 #### Card Storage
+
 - **Implementation:** `/src/lib/card-database.ts`
 - **Storage:** IndexedDB
 - **Database:** `PlanarNexusCardDB`
@@ -137,6 +149,7 @@ interface GameStateUpdate {
   - Bulk import/export
 
 #### Saved Games
+
 - **Implementation:** `/src/lib/saved-games.ts`
 - **Storage:** localStorage
 - **Key:** `planar_nexus_saved_games`
@@ -147,6 +160,7 @@ interface GameStateUpdate {
   - Replay data
 
 #### Other Local Storage Uses
+
 - **API Keys:** `/src/lib/api-key-storage.ts`
 - **Auto-save Config:** `/src/lib/auto-save-config.ts`
 - **Usage Tracking:** `/src/lib/usage-tracking.ts`
@@ -160,8 +174,9 @@ interface GameStateUpdate {
 #### Replacing Firebase Auth with Local User Management
 
 **Before (Firebase):**
+
 ```typescript
-import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { signInAnonymously, onAuthStateChanged } from "firebase/auth";
 
 // Sign in
 const result = await signInAnonymously(auth);
@@ -170,31 +185,33 @@ const userId = result.user.uid;
 // Listen for auth changes
 onAuthStateChanged(auth, (user) => {
   if (user) {
-    console.log('User ID:', user.uid);
+    console.log("User ID:", user.uid);
   }
 });
 ```
 
 **After (Local):**
+
 ```typescript
-import { signIn, getCurrentUser, isAuthenticated } from '@/lib/local-user';
+import { signIn, getCurrentUser, isAuthenticated } from "@/lib/local-user";
 
 // Sign in
-const user = signIn('Player Name');
+const user = signIn("Player Name");
 const userId = user.id;
 
 // Check if authenticated
 if (isAuthenticated()) {
   const currentUser = getCurrentUser();
-  console.log('User ID:', currentUser?.id);
+  console.log("User ID:", currentUser?.id);
 }
 ```
 
 #### Replacing Firebase Realtime Database with Local Game Storage
 
 **Before (Firebase):**
+
 ```typescript
-import { ref, set, onValue, getDatabase } from 'firebase/database';
+import { ref, set, onValue, getDatabase } from "firebase/database";
 
 const db = getDatabase();
 
@@ -208,20 +225,25 @@ onValue(ref(db, `games/${gameId}/state`), (snapshot) => {
 ```
 
 **After (Local):**
+
 ```typescript
-import { createGame, updateGameState, getGameState } from '@/lib/local-game-storage';
+import {
+  createGame,
+  updateGameState,
+  getGameState,
+} from "@/lib/local-game-storage";
 
 // Create game
 const session = await createGame(hostId, hostName, gameCode, initialState, {
   onGameStateUpdate: (gameState, version) => {
-    console.log('Game state updated:', version);
+    console.log("Game state updated:", version);
   },
   onPlayerJoined: (playerId, playerName) => {
-    console.log('Player joined:', playerName);
+    console.log("Player joined:", playerName);
   },
   onError: (error) => {
-    console.error('Error:', error);
-  }
+    console.error("Error:", error);
+  },
 });
 
 // Update game state
@@ -234,12 +256,17 @@ const state = await getGameState();
 #### Replacing Firebase Signaling with PeerJS
 
 **Before (Firebase Signaling):**
+
 ```typescript
-import { FirebaseSignalingService } from '@/lib/firebase';
+import { FirebaseSignalingService } from "@/lib/firebase";
 
 const signaling = new FirebaseSignalingService({
-  onOfferReceived: (offer) => { /* ... */ },
-  onAnswerReceived: (answer) => { /* ... */ },
+  onOfferReceived: (offer) => {
+    /* ... */
+  },
+  onAnswerReceived: (answer) => {
+    /* ... */
+  },
   // ...
 });
 
@@ -247,15 +274,27 @@ await signaling.createSession(hostId, hostName);
 ```
 
 **After (PeerJS - Already Implemented):**
+
 ```typescript
-import { createHostSignaling, createClientSignaling } from '@/lib/p2p-signaling';
+import {
+  createHostSignaling,
+  createClientSignaling,
+} from "@/lib/p2p-signaling";
 
 // Host
 const host = createHostSignaling(playerName, {
-  onConnectionStateChange: (state) => { /* ... */ },
-  onMessage: (message, peerId) => { /* ... */ },
-  onPeerConnected: (peerId) => { /* ... */ },
-  onError: (error) => { /* ... */ }
+  onConnectionStateChange: (state) => {
+    /* ... */
+  },
+  onMessage: (message, peerId) => {
+    /* ... */
+  },
+  onPeerConnected: (peerId) => {
+    /* ... */
+  },
+  onError: (error) => {
+    /* ... */
+  },
 });
 
 await host.initialize(gameCode);
@@ -296,6 +335,7 @@ await client.connectToGame(gameCode);
 #### Data Migration
 
 **No Migration Required:**
+
 - Firebase was never actually used in production (only module existed)
 - No user data needs to be migrated
 - Clean transition to local-only architecture
@@ -378,30 +418,35 @@ await client.connectToGame(gameCode);
 ## Benefits of Firebase Removal
 
 ### 1. **No Cloud Dependencies**
+
 - No Firebase project setup required
 - No API keys to manage
 - No cloud costs
 - Works completely offline
 
 ### 2. **Privacy**
+
 - All data stays local
 - No data sent to third-party services
 - No account creation required
 - User data controlled by user
 
 ### 3. **Simplicity**
+
 - No cloud infrastructure to maintain
 - No database to manage
 - No authentication server to run
 - Reduced attack surface
 
 ### 4. **Performance**
+
 - No network latency for local operations
 - IndexedDB is fast for local storage
 - P2P connections are direct (no relay required)
 - Faster game state synchronization
 
 ### 5. **Cost**
+
 - Zero cloud costs
 - No Firebase usage limits
 - No billing to manage
@@ -412,6 +457,7 @@ await client.connectToGame(gameCode);
 ### IndexedDB vs Firebase Realtime Database
 
 **IndexedDB Advantages:**
+
 - 100% offline capable
 - No network latency
 - No cloud costs
@@ -419,6 +465,7 @@ await client.connectToGame(gameCode);
 - No rate limits
 
 **Firebase Advantages Lost:**
+
 - Real-time sync across devices (not needed for this use case)
 - Cloud backup (users can export their data if needed)
 - Easy multi-device access (not a primary use case)
@@ -428,6 +475,7 @@ await client.connectToGame(gameCode);
 ### PeerJS vs Firebase Signaling
 
 **PeerJS Advantages:**
+
 - No custom server required
 - Free cloud signaling service
 - Simplifies WebRTC setup
@@ -435,6 +483,7 @@ await client.connectToGame(gameCode);
 - Good NAT traversal support
 
 **Firebase Signaling Advantages Lost:**
+
 - Custom signaling logic (not needed with PeerJS)
 - Full control over signaling server (not required)
 
@@ -443,6 +492,7 @@ await client.connectToGame(gameCode);
 ### Data Storage Strategy
 
 **Current Architecture:**
+
 - **Cards:** IndexedDB (`PlanarNexusCardDB`)
 - **Game State:** IndexedDB (`PlanarNexusGameDB`)
 - **Saved Games:** localStorage
@@ -450,6 +500,7 @@ await client.connectToGame(gameCode);
 - **Preferences:** localStorage
 
 **Rationale:**
+
 - IndexedDB for large, structured data (cards, game state)
 - localStorage for small, frequently accessed data (user, preferences)
 - Both supported in all modern browsers
@@ -460,6 +511,7 @@ await client.connectToGame(gameCode);
 ### Optional: Data Export/Import
 
 Add ability to export/import user data:
+
 - Export all IndexedDB data to JSON
 - Import from JSON for backup/migration
 - Useful for device migration
@@ -467,6 +519,7 @@ Add ability to export/import user data:
 ### Optional: Cloud Backup (Optional)
 
 If users want cloud backup, could add:
+
 - Optional cloud backup service (e.g., Dropbox, Google Drive)
 - User-controlled encryption
 - Completely opt-in
@@ -475,6 +528,7 @@ If users want cloud backup, could add:
 ### Optional: Multi-Device Sync
 
 If needed for multiple devices:
+
 - Use QR codes for game state transfer
 - Manual save/load of game files
 - Direct P2P transfer between devices
@@ -482,18 +536,21 @@ If needed for multiple devices:
 ## Verification
 
 ### Build Status
+
 - ✅ TypeScript compilation successful
 - ✅ Type checking passes
 - ✅ Linting passes
 - ✅ No Firebase dependencies in package.json
 
 ### Code Cleanliness
+
 - ✅ Firebase directory removed
 - ✅ No Firebase imports in codebase
 - ✅ No Firebase configuration files
 - ✅ No environment variables for Firebase
 
 ### Architecture
+
 - ✅ Local user management implemented
 - ✅ Local game state storage implemented
 - ✅ P2P multiplayer already functional
@@ -503,12 +560,14 @@ If needed for multiple devices:
 ## Conclusion
 
 Unit 11: Firebase Integration Removal is complete. The application now operates entirely without cloud services, using:
+
 - Local user management (localStorage)
 - IndexedDB for data persistence
 - PeerJS for P2P multiplayer signaling
 - Native WebRTC for direct connections
 
 This makes the application:
+
 - **Privacy-focused:** All data stays local
 - **Offline-capable:** Works without internet
 - **Cost-free:** No cloud services or APIs
