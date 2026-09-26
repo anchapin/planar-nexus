@@ -1,282 +1,324 @@
-# Game State Module
+# Game State Module — Rules Engine
 
-This module provides the foundational data structures for the Planar Nexus MTG game engine.
+> **The correctness-critical core of Planar Nexus.** All外人 imports from `@/lib/game-state` must use the barrel (`index.ts`). Deep imports into sub-modules are forbidden and will cause ESLint errors (#1710).
+
+---
 
 ## Overview
 
-The game state module implements a complete, type-safe representation of a Magic: The Gathering game, including:
+The rules engine implements a full Magic: The Gathering game in TypeScript. It is organized into focused sub-modules:
 
-- **Card Instances**: Individual cards in play with state tracking
-- **Zones**: All game zones (library, hand, battlefield, graveyard, exile, stack, command)
-- **Players**: Complete player state including life, mana, counters
-- **Turn Phases**: Full turn structure with all phases and steps
-- **Combat**: Attackers, blockers, damage assignment
-- **Stack**: Spell and ability resolution
-- **Priority**: Tracking priority passes
+| Module                       | Responsibility                                                                                                     |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `types/`                     | Core TypeScript interfaces (`GameState`, `CardInstance`, `Zone`, `Player`, etc.)                                   |
+| `game-state/`                | Game state creation, initialization, and top-level game operations                                                 |
+| `card-instance.ts`           | Card instance predicates (`isCreature`, `isLand`, etc.) and accessors (`getPower`, `getToughness`)                 |
+| `zones.ts`                   | Zone creation, card movement between zones, zone queries                                                           |
+| `turn-phases.ts`             | Turn structure, phase/step advancement, priority tracking                                                          |
+| `combat.ts`                  | Attacker/blocker declaration, combat damage assignment, combat победе                                              |
+| `layer-system/`              | Full Layer 1–7 system for continuous card effects (P/T changes, type changes, control changes, counters)           |
+| `state-based-actions.ts`     | MTG Comprehensive Rules 704 — lethal damage, 0 toughness, life ≤ 0, 10+ poison, legendary rule, empty library      |
+| `trigger-system/`            | Triggered ability detection, queuing, and resolution                                                               |
+| `replacement-effects/`       | Replacement effect detection and application (layer 0 effects)                                                     |
+| `spell-casting/`             | Spell and ability resolution on the stack                                                                          |
+| `keyword-actions.ts`         | Implementations for evergreen keywords: `tapCard`, `untapCard`, `addCounters`, `destroyCard`, `exileCard`, etc.    |
+| `abilities/`                 | Static abilities, activated abilities, triggered ability signatures                                                |
+| `evergreen-keywords.ts`      | Parsing and application of evergreen keyword mechanics                                                             |
+| `oracle-text-parser.ts`      | Oracle text → structured effect parsing                                                                            |
+| `commander-damage.ts`        | Commander damage tracking per opponent                                                                             |
+| `legendary-rule.ts`          | "Choose a legendary creature" waiting choice logic                                                                 |
+| `corpse-keyword.ts`          | Corpse counter mechanic                                                                                            |
+| `phasing.ts`                 | Phase 704.5 and "without doing anything" upkeep triggers                                                           |
+| `linked-effects.ts`          | Linked effect resolution (e.g., `{this} enters with X counters → {this} gets Y counters when counters are removed) |
+| `event-sourcing.ts`          | Event log, replay serialization, time-travel                                                                       |
+| `replay.ts`                  | Replay compression and state reconstruction                                                                        |
+| `state-hash.ts`              | Deterministic state fingerprinting for sync                                                                        |
+| `serialization.ts`           | JSON serialization/deserialization of `GameState`                                                                  |
+| `format-rules.ts`            | Format legality (Commander Banned List, Standard rotation, etc.)                                                   |
+| `targeting-validation.ts`    | Legal target checking                                                                                              |
+| `hand-targeting.ts`          | Hand-targeting mechanic (e.g., `Target Hand`)                                                                      |
+| `hand-card-filter.ts`        | `Fateful Hour`, `High Alert` hand-based effects                                                                    |
+| `auto-pass-priority.ts`      | Stemless flash, "At next upkeep" priority auto-pass                                                                |
+| `priority-guard.ts`          | Priority queue guards                                                                                              |
+| `prototype.ts`               | Prototype counter mechanics                                                                                        |
+| `mutate.ts`                  | Mutate keyword mechanics                                                                                           |
+| `judge-call-edge-cases.ts`   | Tournament edge cases requiring judge calls                                                                        |
+| `terminology-translation.ts` | Alternate phrasing resolution                                                                                      |
+| `errors.ts`                  | Engine-level error types                                                                                           |
+| `ai-contract.ts`             | AI-compatible state snapshot interface                                                                             |
 
-## Core Types
+---
 
-### GameState
+## Key Design Decisions
 
-The main `GameState` interface contains:
+### 1. Immutable Updates
 
-```typescript
-interface GameState {
-  gameId: string;
-  players: Map<PlayerId, Player>;
-  cards: Map<CardInstanceId, CardInstance>;
-  zones: Map<string, Zone>;
-  stack: StackObject[];
-  turn: Turn;
-  combat: Combat;
-  waitingChoice: WaitingChoice | null;
-  priorityPlayerId: PlayerId | null;
-  // ... more
-}
-```
-
-### CardInstance
-
-Represents a single physical card with all its state:
-
-```typescript
-interface CardInstance {
-  id: CardInstanceId;
-  oracleId: string;
-  cardData: ScryfallCard;
-  controllerId: PlayerId;
-  ownerId: PlayerId;
-  isTapped: boolean;
-  counters: Counter[];
-  damage: number;
-  // ... and more
-}
-```
-
-## Usage
-
-### Creating a New Game
+Every function that modifies `GameState` returns a **new** `GameState` object. The original is never mutated.
 
 ```typescript
-import { createInitialGameState, startGame } from "@/lib/game-state";
-
-// Create game with 2 players
-let state = createInitialGameState(["Alice", "Bob"], 20, false);
-
-// Load decks
-state = loadDeckForPlayer(state, player1Id, deck1Cards);
-state = loadDeckForPlayer(state, player2Id, deck2Cards);
-
-// Start the game
-state = startGame(state);
-```
-
-### Card Operations
-
-```typescript
-import {
-  tapCard,
-  addCounters,
-  attachCard,
-  isCreature,
-  getPower,
-  getToughness,
-} from "@/lib/game-state";
-
-// Tap a permanent
-const tapped = tapCard(creature);
-
-// Add +1/+1 counters
-const buffed = addCounters(creature, "+1/+1", 2);
-
-// Attach Equipment
-const equipped = attachCard(equipment, creatureId);
-
-// Check creature stats
-if (isCreature(card)) {
-  console.log(getPower(card), getToughness(card));
-}
-```
-
-### Zone Management
-
-```typescript
-import { drawCard, moveCardBetweenZones, exileCards } from "@/lib/game-state";
-
-// Draw a card
-state = drawCard(state, playerId);
-
-// Move card from battlefield to graveyard
-state = moveCardBetweenZones(
-  state.zones.get("battlefield"),
-  state.zones.get("graveyard"),
-  cardId,
-);
-
-// Exile multiple cards
-state = exileCards(fromZone, exileZone, [cardId1, cardId2]);
-```
-
-### Turn Phases
-
-```typescript
-import {
-  advancePhase,
-  isMainPhase,
-  canCastSorcerySpeedSpells,
-} from "@/lib/game-state";
-
-// Check phase
-if (isMainPhase(state.turn.currentPhase)) {
-  // Can cast sorcery-speed spells
-}
-
-// Advance phase
-const nextTurn = advancePhase(state.turn);
-```
-
-### Priority and Stack
-
-```typescript
-import { passPriority } from "@/lib/game-state";
-
-// Player passes priority
-state = passPriority(state, playerId);
-```
-
-## Game Flow
-
-### 1. Setup
-
-1. Create initial game state
-2. Load player decks
-3. Shuffle libraries
-4. Draw starting hands
-
-### 2. Turn Structure
-
-Each turn follows this phase order:
-
-1. **Untap** - No priority
-2. **Upkeep** - Priority, triggers go on stack
-3. **Draw** - Priority, active player draws (except first turn)
-4. **Pre-combat Main** - Priority, can cast sorceries
-5. **Begin Combat** - Priority
-6. **Declare Attackers** - Priority
-7. **Declare Blockers** - Priority
-8. **Combat Damage** - Priority
-9. **End Combat** - Priority
-10. **Post-combat Main** - Priority, can cast sorceries
-11. **End** - Priority, triggers resolve
-12. **Cleanup** - No priority normally
-
-### 3. State-Based Actions
-
-Checked whenever a player receives priority:
-
-- Creatures with lethal damage
-- Creatures with toughness 0 or less
-- Players with 0 or less life
-- Players with 10+ poison counters
-- Empty library when drawing
-
-### 4. Winning and Losing
-
-Players lose when:
-
-- Life total reaches 0 or less
-- Accumulates 10 poison counters
-- Attempts to draw from empty library
-- Concedes
-
-Game ends when:
-
-- Only one player remains
-- All players lose simultaneously (draw)
-
-## Design Decisions
-
-### Immutable Updates
-
-The game state uses immutable updates. Functions return new state objects rather than mutating existing ones:
-
-```typescript
-// Good
+// Correct
 const newState = drawCard(state, playerId);
 
-// Bad - don't do this
+// Wrong — mutates in place
 state.zones.get("hand")?.cardIds.push(cardId);
 ```
 
-This enables:
+**Why this matters:**
 
-- Time travel debugging
-- Easy state serialization
-- Undo/redo functionality
-- Deterministic multiplayer sync
+- **Time-travel debugging** — replay any point in game history
+- **Deterministic multiplayer sync** — every player sees the same state for the same actions
+- **Undo/redo** — cheap state snapshots for game-logs and judge calls
+- **Testing** — assertions are stable; no shared mutable fixture state
 
-### Zone IDs
+### 2. Zone IDs
 
-Zones are identified by `{playerId}-{zoneType}`:
+Zones are identified by composite string keys of the form `{playerId}-{zoneType}`:
 
-- `p1-library` - Player 1's library
-- `p2-battlefield` - Player 2's battlefield
-- `stack` - Shared stack zone
+```
+p1-library      p1-hand      p1-battlefield     p1-graveyard    p1-exile
+p2-library      p2-hand      p2-battlefield     p2-graveyard    p2-exile
+                                   stack
+                                  command
+```
 
-### Timestamps
+Use `parseZoneKey(zoneId)` → `{ playerId, zoneType }` to destructure. Never hardcode `p1-` / `p2-`.
 
-All timestamp-based effects use Unix epoch milliseconds:
+### 3. Card Timestamps
 
-- `enteredBattlefieldTimestamp` - For "last in, first out" effects
-- `attachedTimestamp` - For attachment ordering
+All timestamp-based effects use Unix epoch milliseconds for deterministic ordering:
 
-## Future Enhancements
+- `enteredBattlefieldTimestamp` — LIFO ordering for enters-the-battlefield triggers
+- `attachedTimestamp` — attachment order for Auras/Equipment
+- `damageTimestamp` — damage prevention/expiration order
 
-This foundation will support:
+### 4. Layer System (Layers 1–7)
 
-1. **Card Mechanics** (Phase 1.2)
-   - Land playing
-   - Spell casting
-   - Stack resolution
-   - Combat system
-   - Activated/triggered abilities
+The layer system resolves continuous card effects in MTG layer order (CR 613). Each layer is re-resolved in dependency order until a fixpoint is reached:
 
-2. **Rules Engine** (Phase 1.3)
-   - Oracle text parsing
-   - Evergreen keywords
-   - Replacement effects
-   - Layer system
+| Layer | Effect type                                     | Examples                            |
+| ----- | ----------------------------------------------- | ----------------------------------- |
+| 1     | Rules that add/remove abilities                 | Hexproof, indestructible            |
+| 2     | Effects that add/remove creature types          | "All creatures are Insects"         |
+| 3     | Control-change effects                          | `Turntimber Ranger` Squirrel tokens |
+| 4     | Power/toughness-changing effects                | +1/+1 counters, `Giant Growth`      |
+| 5a/5b | Type-changing effects                           | `Shadow`, un--cards                 |
+| 6     | P/T counters (layer 6, no sub-layer)            | +1/+1 counters                      |
+| 7     | Other (enters as enters tapped, mana producers) |                                     |
 
-3. **Multiplayer** (Phase 4)
-   - Game state serialization
-   - Deterministic sync
-   - Replay system
+Layer system functions live in `layer-system/index.ts`. `getEffectivePower` / `getEffectiveToughness` are the canonical P/T accessors — never read `card.power` directly on a creature.
+
+### 5. Event Sourcing
+
+All game mutations are recorded as typed events in `gameState.eventLog`. Each event records:
+
+```typescript
+interface GameEvent {
+  id: string;
+  type: string;
+  timestamp: number;
+  payload: Record<string, unknown>;
+  playerId?: PlayerId; // who initiated it
+}
+```
+
+Replay, undo, and AI simulation all consume this event log. **Every state mutation must emit an event.**
+
+---
+
+## How to Add a New Card Effect
+
+### Step 1 — Classify the effect
+
+First, determine which effect category the card belongs to:
+
+| Category                                                         | Where to implement              |
+| ---------------------------------------------------------------- | ------------------------------- |
+| **Keyword ability** (flying, trample, hexproof…)                 | `evergreen-keywords.ts`         |
+| **Keyword action** (tap to activate, sacrifice, exile…)          | `keyword-actions.ts`            |
+| **Triggered ability** (ETB, death, attack…)                      | `trigger-system/`               |
+| **Replacement effect** (enters tapped, prevention, redirection…) | `replacement-effects/`          |
+| **Static ability** (continuous P/T boost, type change…)          | `layer-system/` or `abilities/` |
+| **Mana ability**                                                 | `mana/`                         |
+| **Spell resolution**                                             | `spell-casting/`                |
+
+### Step 2 — Find the right file
+
+Search for similar existing effects:
+
+```bash
+# Find existing tap-cost effects
+rg "tapCard" src/lib/game-state/keyword-actions.ts
+
+# Find existing P/T boost effects
+rg "getEffectivePower|getEffectiveToughness" src/lib/game-state/layer-system/
+
+# Find existing replacement effects
+rg "replacementEffect|replacement" src/lib/game-state/replacement-effects/
+```
+
+### Step 3 — Add the effect
+
+**Example: adding a new keyword action `sacrificeCard`**
+
+1. Add the function to `keyword-actions.ts`:
+
+```typescript
+export function sacrificeCard(
+  state: GameState,
+  cardId: CardInstanceId,
+  playerId: PlayerId,
+  optional = false,
+  effectId?: string,
+): GameState {
+  const card = state.cards.get(cardId);
+  if (!card) return state;
+
+  // Move to graveyard via replacement if applicable, otherwise direct
+  state = moveCardBetweenZones(
+    state,
+    cardId,
+    `${playerId}-battlefield`,
+    `${playerId}-graveyard`,
+  );
+
+  state = emitEvent(state, {
+    type: "SACRIFICED",
+    cardId,
+    playerId,
+    effectId,
+    optional,
+  });
+
+  return checkStateBasedActions(state);
+}
+```
+
+2. Export it from the barrel in `index.ts` (keyword-actions already exports `export *`).
+
+3. If the effect needs a waiting choice (`optional: true`), add a `WaitingChoice` variant in `types/` and handle it in the UI.
+
+**Example: adding a static P/T bonus (layer system)**
+
+In `layer-system/index.ts`, find the `Layer1PowerToughnessEffect` type and add a new variant:
+
+```typescript
+type Layer1PowerToughnessEffect =
+  | { type: "counter"; counterType: CounterType; amount: number }
+  | { type: "static"; power: number; toughness: number; source: CardInstanceId }
+  | { type: "new-effect" /* your new variant */ };
+```
+
+Then add the application logic in `applyLayer1Effects()`.
+
+**Example: adding a triggered ability**
+
+In `trigger-system/`, add a new trigger signature:
+
+```typescript
+export const SACRIFICE_TRIGGERS: TriggerSignature = {
+  event: "SACRIFICED",
+  filter: (event, card) => event.cardId === card.id,
+  effect: async (state, event, card) => {
+    // Your effect resolution here
+  },
+};
+```
+
+### Step 4 — Register in format rules
+
+If the card is format-legal, add it to the relevant list in `format-rules.ts`. If it's banned or restricted, add it to the banlist arrays.
+
+### Step 5 — Add tests
+
+See [Testing](#testing) below.
+
+---
 
 ## Testing
 
-Example test structure:
+### Running Tests
 
-```typescript
-describe("GameState", () => {
-  it("should create initial game state", () => {
-    const state = createInitialGameState(["Alice", "Bob"]);
-    expect(state.players.size).toBe(2);
-    expect(state.turn.turnNumber).toBe(1);
-  });
+```bash
+# Full Jest suite
+npm test
 
-  it("should draw cards correctly", () => {
-    let state = createInitialGameState(["Alice"]);
-    state = loadDeckForPlayer(state, playerId, deckCards);
-    const beforeHand = getPlayerHand(state, playerId);
-    state = drawCard(state, playerId);
-    const afterHand = getPlayerHand(state, playerId);
-    expect(afterHand.cardIds.length).toBe(beforeHand.cardIds.length + 1);
-  });
-});
+# Single file
+npm test -- --testPathPattern="layer-system"
+
+# Single test by name
+npm test -- --testNamePattern="should apply +1/+1 counters"
+
+# Watch mode
+npm run test:watch
+
+# Coverage report
+npm run test:coverage
 ```
 
-## Related Files
+### Mutation Testing (Stryker)
 
-- `/src/lib/game-rules.ts` - App-facing facade for the engine-owned format rules (see `format-rules.ts` here, issue #1724) plus deck-legality tooling
-- `/src/lib/card-database.ts` - DeckCard / SavedDeck types; re-exports the engine-owned ScryfallCard / MinimalCard shape (`types/card-data.ts`)
-- `/src/ai/flows/` - AI deck generation
+The rules engine is the only place in the codebase that runs mutation testing. Stryker mutates operators in the engine source and asserts that test suites catch every mutant.
+
+```bash
+# Layer system mutation test (fastest, ~2 min)
+npm run mutate:layer-system
+
+# Combat
+npm run mutate:combat
+
+# Spell casting
+npm run mutate:spell-casting
+
+# Trigger system
+npm run mutate:trigger-system
+
+# State-based actions
+npm run mutate:state-based-actions
+
+# Mana
+npm run mutate:mana
+
+# Replacement effects
+npm run mutate:replacement-effects
+```
+
+Mutation testing runs **nightly** in `.github/workflows/mutation.yml`. Per-PR, only a fast config guard runs (`mutation-smoke`). Full Stryker for `layer-system` runs on PRs touching `src/lib/game-state/` via `.github/workflows/mutation-pr.yml` (informational, non-blocking).
+
+> **Coverage floors are enforced in CI and ratcheted.** Run `npm run test:coverage:ratchet` to raise the floor after improving coverage. Never hand-raise a threshold above measured coverage — CI will fail.
+
+### Coverage Floor
+
+- `jest.config.js` `coverageThreshold.global` is the enforced floor (currently 70% for the engine).
+- `scripts/ratchet-coverage.js` automatically bumps the floor to measured coverage on `npm run test:coverage:ratchet`.
+- `scripts/qa-coverage-gate.js` fails CI if any `it.todo` remains in `src/lib/game-state/__tests__/qa-coverage-holes.test.ts` (rows GS-RT-1..13 must have real tests).
+
+### Video-Derived Fixtures
+
+The `src/lib/__fixtures__/video-derived/` JSON fixtures are turned into Jest tests via `scripts/generate-test-fixture.ts`. Edits under `src/lib/game-state/**` or `__fixtures__/**` trigger the `video-derived-tests` workflow in CI.
+
+---
+
+## Public API
+
+The **only** supported import path is:
+
+```typescript
+import {
+  createInitialGameState,
+  drawCard,
+  checkStateBasedActions,
+} from "@/lib/game-state";
+```
+
+ESLint rule `@typescript-eslint/no-restricted-imports` errors on any import targeting a sub-path like `@/lib/game-state/layer-system` from outside the engine.
+
+Inside the engine (`src/lib/game-state/`), sub-module imports are permitted.
+
+---
+
+## Related Documentation
+
+- [`docs/TESTING.md`](../../../docs/TESTING.md) — Canonical testing guide (mutation story, coverage enforcement, video fixtures)
+- [`docs/PERSISTENCE_ARCHITECTURE.md`](../../../docs/PERSISTENCE_ARCHITECTURE.md) — IndexedDB persistence
+- [`AGENTS.md`](../../../AGENTS.md) — Project overview, CI gates, commit conventions
+- [`CLAUDE.md`](../../../CLAUDE.md) — Broader architecture notes
