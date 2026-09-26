@@ -263,8 +263,9 @@ beforeEach(() => {
   );
   getConfiguredProviders.mockReturnValue(["openai"]);
   saveMock.mockResolvedValue(undefined);
-
-  (generateText as any).mockResolvedValue({
+  (
+    generateText as unknown as jest.Mock<(...args: any[]) => any>
+  ).mockResolvedValue({
     text: "",
     finishReason: undefined,
     usage: undefined,

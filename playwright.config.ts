@@ -15,8 +15,10 @@ export default defineConfig({
   testDir: "./e2e",
 
   // Skip fixtures/ — those are Jest unit-test helpers, not Playwright specs.
-  // Without this, Playwright picks up **/*.test.ts files in fixtures/ that use
-  // Jest globals (describe/test/expect), causing "describe is not defined".
+  // p2p-mock-bridge.ts (renamed from .spec.ts to avoid being mistaken for a
+  // Playwright spec) is excluded by **/fixtures/**. The **/*.spec.ts pattern
+  // was removed — it was erroneously suppressing all legitimate Playwright
+  // e2e specs (*.spec.ts) which use the same file-extension convention.
   testIgnore: ["**/fixtures/**"],
 
   // Timeout for individual tests (30 seconds)

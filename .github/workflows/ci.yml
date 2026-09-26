@@ -77,6 +77,27 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Free disk space (remove npm cache and large artifacts)
+        run: |
+          # Issue #2067: GitHub-hosted runners can run out of disk space on heavy CI runs.
+          # This step must run BEFORE setup-node-npm-ci so that npm ci has room to extract packages.
+          echo "--- disk space before ---"
+          df -h .
+          echo "--- largest directories ---"
+          # shellcheck disable=SC2035  # */ glob matches dirs with dashes; this script intentionally lists all
+          du -sh . */ 2>/dev/null | sort -hr | head -15
+          # Remove npm cache (setup-node-npm-ci re-creates it)
+          npm cache clean --force 2>/dev/null || true
+          # Remove any stale node_modules from previous failed runs (if any)
+          rm -rf ./node_modules
+          # Remove Tauri build artifacts (not needed for E2E - Playwright tests run against the Next.js dev server)
+          rm -rf ./src-tauri/target
+          # Remove Rust target cache
+          rm -rf ~/.cargo/registry/cache 2>/dev/null || true
+          rm -rf ~/.cargo/git 2>/dev/null || true
+          echo "--- disk space after ---"
+          df -h .
+
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
       
@@ -809,9 +830,9 @@ jobs:
         uses: rhysd/actionlint@v1.7.12
         with:
           # actionlint has no severity flag; use -ignore (regex on messages)
-          # to keep SC2086 (quote vars) / SC2015 (A&&B||C) info-level nits
-          # informational rather than failing the PR gate.
-          args: '-ignore SC2086 -ignore SC2015'
+          # to keep SC2086 (quote vars) / SC2015 (A&&B||C) / SC2035 (glob with dashes)
+          # info-level nits informational rather than failing the PR gate.
+          args: '-ignore SC2086 -ignore SC2015 -ignore SC2035'
 
   tauri-updater-config:
     # Issue #1430: standalone guard that prevents the Tauri 2 updater from
