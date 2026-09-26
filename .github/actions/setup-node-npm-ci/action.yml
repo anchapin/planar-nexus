@@ -34,11 +34,11 @@ runs:
       shell: bash
       run: |
         df -h .
-        rm -rf ~/.npm
-        rm -rf ~/.cache
+        rm -rf ~/.npm 2>/dev/null || true
+        rm -rf ~/.cache 2>/dev/null || true
         rm -rf /tmp/* 2>/dev/null || true
-        rm -rf /root/.npm
-        rm -rf /root/.cache
+        rm -rf /root/.npm 2>/dev/null || true
+        rm -rf /root/.cache 2>/dev/null || true
         rm -rf "$AGENT_TOOLSDIRECTORY" 2>/dev/null || true
         rm -rf /opt/hostedtoolcache/CodeQL 2>/dev/null || true
         rm -rf /usr/local/share/boost 2>/dev/null || true
