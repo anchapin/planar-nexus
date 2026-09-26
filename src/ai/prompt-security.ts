@@ -20,6 +20,7 @@
  * + the preamble contain the rest, and output validation limits blast radius.
  */
 
+import DOMPurify from "dompurify";
 import type { DeckReviewOutput } from "./flows/ai-deck-coach-review";
 
 /** Default maximum length (chars) for a single sanitized user field. */
@@ -44,6 +45,27 @@ export interface SanitizeOptions {
 const CONTROL_CHARS =
   // eslint-disable-next-line no-control-regex -- control/bidi/zero-width chars are intentionally targeted for removal.
   /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F\u202A-\u202E\u2066-\u2069\u200B-\u200D\uFEFF]/g;
+
+/**
+ * Dangerous HTML tag pattern: matches opening/closing script, style, object, embed, etc.
+ * These tags are never legitimate in AI text output and indicate injection.
+ */
+const DANGEROUS_TAG_PATTERN = /<\/?(?:script|style|object|embed|applet|form|input|textarea|select|option|button|iframe|noembed|noscript)/i;
+
+/**
+ * XSS event handler pattern: matches onclick, onerror, onload, etc.
+ * These are the primary attack vectors for stored XSS.
+ */
+const XSS_EVENT_PATTERN = /\bon\w+\s*=/i;
+
+/** Reject AI output containing dangerous HTML tags or XSS event handlers; throws Error. */
+function rejectHtml(value: string): void {
+  if (DANGEROUS_TAG_PATTERN.test(value) || XSS_EVENT_PATTERN.test(value)) {
+    throw new Error(
+      "AI output contains HTML-like markup and has been rejected.",
+    );
+  }
+}
 
 /**
  * Curated list of high-signal injection patterns. Each entry is stored as a
@@ -220,10 +242,22 @@ export function validateDeckReviewOutput(
     return null;
   }
 
-  const cleanStr = (v: unknown, max: number): string =>
-    clampString(sanitizeUserInput(v, { redactInjection: false }), max);
+  const cleanStr = (v: unknown, max: number): string => {
+    const raw = sanitizeUserInput(v, { redactInjection: false });
+    const clamped = clampString(raw, max);
+    return DOMPurify.sanitize(clamped, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
+  };
 
-  const reviewSummary = hasSummary ? cleanStr(o.reviewSummary, 8000) : "";
+  const cleanAndRejectHtml = (v: unknown, max: number): string => {
+    const raw = sanitizeUserInput(v, { redactInjection: false });
+    const clamped = clampString(raw, max);
+    rejectHtml(clamped);
+    return DOMPurify.sanitize(clamped, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
+  };
+
+  const rawSummary = hasSummary ? clampString(sanitizeUserInput(o.reviewSummary, { redactInjection: false }), 8000) : "";
+  rejectHtml(rawSummary);
+  const reviewSummary = DOMPurify.sanitize(rawSummary, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
 
   const deckOptions: DeckReviewOutput["deckOptions"] = hasOptions
     ? (o.deckOptions as unknown[])
@@ -231,17 +265,25 @@ export function validateDeckReviewOutput(
           if (typeof opt !== "object" || opt === null) return null;
           const p = opt as Record<string, unknown>;
           const title =
-            typeof p.title === "string" ? cleanStr(p.title, 300) : "";
+            typeof p.title === "string" ? cleanAndRejectHtml(p.title, 300) : "";
           const description =
             typeof p.description === "string"
-              ? cleanStr(p.description, 4000)
+              ? cleanAndRejectHtml(p.description, 4000)
               : "";
           if (!title && !description) return null;
+          const cardsToAdd = (parseCardList(p.cardsToAdd) ?? []).map((c) => {
+            rejectHtml(c.name);
+            return c;
+          });
+          const cardsToRemove = (parseCardList(p.cardsToRemove) ?? []).map((c) => {
+            rejectHtml(c.name);
+            return c;
+          });
           return {
             title,
             description,
-            cardsToAdd: parseCardList(p.cardsToAdd),
-            cardsToRemove: parseCardList(p.cardsToRemove),
+            cardsToAdd,
+            cardsToRemove,
           };
         })
         .filter((x): x is DeckReviewOutput["deckOptions"][number] => x !== null)
@@ -257,9 +299,10 @@ export function validateDeckReviewOutput(
   ) {
     const a = archetype as Record<string, unknown>;
     result.archetype = {
-      primary: cleanStr(a.primary, 200),
+      primary: cleanStr(a.primary ?? "", 200),
       confidence: typeof a.confidence === "number" ? a.confidence : 0,
     };
+    rejectHtml(result.archetype.primary);
   }
 
   return result;
@@ -273,10 +316,12 @@ function parseCardList(
   for (const entry of raw) {
     if (typeof entry !== "object" || entry === null) continue;
     const e = entry as Record<string, unknown>;
-    const name =
+    const rawName =
       typeof e.name === "string"
         ? sanitizeUserInput(e.name, { redactInjection: false })
         : "";
+    rejectHtml(rawName);
+    const name = DOMPurify.sanitize(rawName, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
     const quantity =
       typeof e.quantity === "number" && Number.isFinite(e.quantity)
         ? Math.max(0, Math.floor(e.quantity))
