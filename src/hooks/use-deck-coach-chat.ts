@@ -173,6 +173,13 @@ export interface UseDeckCoachChatReturn {
     json: string,
     options?: { scope?: "active" | "original" },
   ) => Promise<CoachConversationImportResult | { error: string }>;
+  /**
+   * Force a synchronous flush of the current messages to IndexedDB. Tests can
+   * await this to guarantee the persistence write completes before asserting
+   * on stored records. In production, prefer letting `sendMessage`'s internal
+   * finally-block call handle it automatically.
+   */
+  persist: () => Promise<void>;
 }
 
 export interface ChatRequestOptions {
@@ -912,6 +919,7 @@ export function useDeckCoachChat(
     removeConversation,
     exportActiveDeckToJSON,
     importFromJSON,
+    persist: persistCurrent,
   };
 }
 

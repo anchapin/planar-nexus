@@ -186,7 +186,19 @@ export async function readAllLegacyRows(
       return new Map();
     }
 
-    const tx = db.transaction(legacyStoreName, "readonly");
+    let tx: IDBTransaction;
+    try {
+      tx = db.transaction(legacyStoreName, "readonly");
+    } catch (txErr) {
+      // The IDBDatabase can be returned in a closed state on Firefox when
+      // another tab deletes the legacy DB (versionchange event races against
+      // the success handler) or when the browser closes an idle connection.
+      // Treat this as "nothing to migrate" rather than crashing.
+      if (txErr instanceof DOMException && txErr.name === "InvalidStateError") {
+        return new Map();
+      }
+      throw txErr;
+    }
     const store = tx.objectStore(legacyStoreName);
 
     const rows = await new Promise<
@@ -283,7 +295,19 @@ export async function ensureLegacyV4Consolidation(
   }
 
   // Skip if the marker is already set OR any target store is missing.
-  if (await storage.get("preferences", "v4-consolidation-done")) {
+  let alreadyDone = false;
+  try {
+    alreadyDone = !!(await storage.get("preferences", "v4-consolidation-done"));
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "InvalidStateError") {
+      console.warn(
+        "[indexeddb-storage] v4 consolidation skipped: database closed during marker read (retrying on next open)",
+      );
+      return;
+    }
+    throw err;
+  }
+  if (alreadyDone) {
     return;
   }
   const requiredStores = [

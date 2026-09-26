@@ -341,7 +341,7 @@ export function aggregateReport(
   let stable = 0;
   for (const s of specs) {
     if (s.total === 0) continue;
-    if (s.passes === 0) {
+    if (s.passes === 0 && s.skipped < args.runs) {
       alwaysBroken.push(s);
     } else if (s.passes < args.threshold) {
       flaky.push(s);
