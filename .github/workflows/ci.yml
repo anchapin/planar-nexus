@@ -827,7 +827,7 @@ jobs:
         run: node scripts/check-setup-node-npm-ci-version.mjs
 
       - name: Run actionlint
-        uses: rhysd/actionlint@v1.7.16
+        uses: rhysd/actionlint@v1.7.12
         with:
           # actionlint has no severity flag; use -ignore (regex on messages)
           # to keep SC2086 (quote vars) / SC2015 (A&&B||C) / SC2035 (glob with dashes)
