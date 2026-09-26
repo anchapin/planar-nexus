@@ -66,7 +66,7 @@ import {
   RateLimitError,
   type RateLimitConfig,
 } from "@/lib/server-rate-limiter";
-import { getClientIdentifier } from "@/lib/server-request-identity";
+
 import {
   HTTP_STATUS_BY_CLASS,
   newCorrelationId,
@@ -111,11 +111,13 @@ const ENV_TURN_HMAC_TTL = "TURN_HMAC_TTL_SECONDS";
  * a `clientId`-only endpoint with no throttle is an open mint for
  * the operator's coturn deployment (an attacker can re-mint faster
  * than any per-credential TTL elapses, eroding the short-lived HMAC
- * guarantee at the layer above the crypto). Capped at 5 requests
- * per hour per server-verified client identifier (IP / forwarded
- * header / coarse UA fingerprint — see {@link getClientIdentifier}),
- * mirroring the shared policy already used by `/api/ai-proxy`,
- * `/api/chat`, and `/api/ai-proxy/validate` (#1782/#1868/#1795).
+ * guarantee at the layer above the crypto). Capped at 12 requests
+ * per hour per server-verified authenticated user ID — the session
+ * userId is used as the key, not IP (per-IP keys allow a shared-IP
+ * DoS where one bad actor behind NAT exhausts the bucket for all
+ * other users sharing that IP). Mirrors the policy already used by
+ * `/api/ai-proxy`, `/api/chat`, and `/api/ai-proxy/validate`
+ * (#1782/#1868/#1795/#2144).
  */
 const TURN_CREDENTIAL_RATE_LIMIT: RateLimitConfig = {
   maxRequests: 12,
@@ -178,8 +180,8 @@ interface TurnIceServerView {
  * `RTCPeerConnection`'s configuration. The long-term secret is
  * never included in the response.
  *
- * #1798 — the endpoint is gated by the shared
- * {@link getClientIdentifier} / {@link enforceRateLimit} policy
+ * #1798 / #2144 — the endpoint is gated by the shared
+ * userId-based {@link enforceRateLimit} policy
  * BEFORE any operator-side state is consulted. A rate-limited caller
  * therefore learns nothing about whether `TURN_HMAC_SECRET` is
  * configured, what TTL is in effect, or whether the credential mint
@@ -192,11 +194,13 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const authResult = await requireApiSession(request);
   if (authResult instanceof NextResponse) return authResult;
 
-  // #1798 — gate the endpoint BEFORE any provider/secret lookup.
-  // Server-verified client identifier only; never read from the
-  // request body or query string (a client-supplied key would let
-  // callers rotate their own bucket).
-  const clientIdentifier = getClientIdentifier(request);
+  // #1798 / #2144 — gate the endpoint BEFORE any provider/secret lookup.
+  // Authenticated user ID is the rate-limit key: IP-based keys allow
+  // a shared-IP DoS where one bad actor exhausts the bucket for
+  // everyone behind the same NAT (corporate network, mobile carrier,
+  // coffee-shop WiFi).  User-ID keys are server-verified via the
+  // session cookie and cannot be rotated by the client.
+  const clientIdentifier = `userId:${authResult.userId}`;
 
   let rateLimitResult;
   try {
