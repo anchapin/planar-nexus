@@ -58,6 +58,16 @@ const nextConfig: NextConfig = {
             key: "Permissions-Policy",
             value: "camera=(self), microphone=(self), payment=(self)",
           },
+          // COEP/COOP headers enable SharedArrayBuffer (required for
+          // WebRTC DataChannels via RTCPeerConnection, issue #2145).
+          {
+            key: "Cross-Origin-Embedder-Policy",
+            value: "require-corp",
+          },
+          {
+            key: "Cross-Origin-Opener-Policy",
+            value: "same-origin",
+          },
         ],
       },
     ];

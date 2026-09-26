@@ -61,7 +61,7 @@ import {
 
 // Color options for filtering
 const COLOR_OPTIONS = [
-  { value: "W", label: "White", className: "bg-white border" },
+  { value: "W", label: "White", className: "bg-white border-gray-400" },
   { value: "U", label: "Blue", className: "bg-blue-500" },
   { value: "B", label: "Black", className: "bg-zinc-800" },
   { value: "R", label: "Red", className: "bg-red-500" },

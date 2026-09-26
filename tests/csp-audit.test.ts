@@ -253,6 +253,19 @@ describe("web deployment security headers (issue #1822)", () => {
     );
   });
 
+  test("COEP/COOP headers are configured for WebRTC SharedArrayBuffer (issue #2145)", () => {
+    const text = readText(NEXT_CONFIG);
+    // COEP: required for SharedArrayBuffer access in cross-origin contexts.
+    expect(text).toMatch(
+      /key:\s*["']Cross-Origin-Embedder-Policy["'],\s*value:\s*["']require-corp["']/,
+    );
+    // COOP: required in tandem with COEP; same-origin prevents window.opener
+    // from bypassing the COEP isolation boundary.
+    expect(text).toMatch(
+      /key:\s*["']Cross-Origin-Opener-Policy["'],\s*value:\s*["']same-origin["']/,
+    );
+  });
+
   test("WEB_CSP mirrors TAURI_CSP directive-for-directive except script-src", () => {
     // The core #1273 sync invariant, extended to the third consumer:
     // the web policy must be the desktop policy (same directives, same
