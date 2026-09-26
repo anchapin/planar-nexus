@@ -199,4 +199,68 @@ describe("validateDeckReviewOutput (issue #1107)", () => {
     expect(out?.deckOptions).toHaveLength(1);
     expect(out?.deckOptions[0].title).toBe("good");
   });
+
+  it("rejects HTML-like strings in AI output fields (HTML injection)", () => {
+    const payloads = [
+      "<script>alert(1)</script>",
+      "<img src=x onerror=alert(1)>",
+      "<svg onload=alert(1)>",
+      "test<script>alert('xss')</script>",
+      'onclick=alert(1)',
+      "<style>body{}</style>",
+    ];
+    for (const payload of payloads) {
+      expect(() =>
+        validateDeckReviewOutput({
+          reviewSummary: payload,
+          deckOptions: [],
+        }),
+      ).toThrow();
+    }
+  });
+
+  it("sanitizes deckOption title and description fields with DOMPurify", () => {
+    const out = validateDeckReviewOutput({
+      reviewSummary: "Clean summary",
+      deckOptions: [
+        {
+          title: "Safe <b>title</b>",
+          description: "Safe <i>description</i>",
+        },
+      ],
+    });
+    expect(out?.deckOptions[0].title).toBe("Safe title");
+    expect(out?.deckOptions[0].description).toBe("Safe description");
+  });
+
+  it("rejects HTML injection in deckOption title and description", () => {
+    expect(() =>
+      validateDeckReviewOutput({
+        reviewSummary: "ok",
+        deckOptions: [{ title: "<script>alert(1)</script>", description: "desc" }],
+      }),
+    ).toThrow();
+
+    expect(() =>
+      validateDeckReviewOutput({
+        reviewSummary: "ok",
+        deckOptions: [{ title: "title", description: "<img src=x onerror=alert(1)>" }],
+      }),
+    ).toThrow();
+  });
+
+  it("rejects HTML injection in card names within deckOptions", () => {
+    expect(() =>
+      validateDeckReviewOutput({
+        reviewSummary: "ok",
+        deckOptions: [
+          {
+            title: "title",
+            description: "desc",
+            cardsToAdd: [{ name: "<script>alert(1)</script>", quantity: 1 }],
+          },
+        ],
+      }),
+    ).toThrow();
+  });
 });
