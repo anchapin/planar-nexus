@@ -16,15 +16,17 @@
  *     (acceptance criterion b) regardless of `TURN_HMAC_TTL_SECONDS`
  *   - The HMAC verifies against the secret (acceptance criterion c)
  *
- * #1798 — per-identity rate limit (mirrors `/api/ai-proxy/validate`):
+ * #1798 / #2144 — per-identity rate limit (mirrors `/api/ai-proxy/validate`):
  *   - 429 with `Retry-After` + `X-RateLimit-*` headers when the shared
  *     limiter rejects the request
  *   - Rate-limit check runs BEFORE any `TURN_HMAC_SECRET` read so the
  *     endpoint cannot be used as an oracle for operator deployment state
- *   - Server-verified client identifier (IP / forwarded header / UA
- *     fingerprint) — never the query-supplied `clientId` parameter —
- *     buckets the limiter so a single identity cannot drain the mint
- *     by churning `clientId` values
+ *   - Authenticated userId (NOT IP / forwarded header / UA fingerprint)
+ *     is the bucket key — IP-based keys allow a shared-IP DoS where
+ *     one bad actor behind NAT exhausts the bucket for all other
+ *     users sharing that IP (#2144).  Never the query-supplied
+ *     `clientId` parameter — that would let callers rotate their own
+ *     bucket to dodge the limit.
  *   - `X-RateLimit-*` headers are stamped on the 200 success path so
  *     legitimate clients can self-throttle
  *
@@ -379,10 +381,9 @@ describe("GET /api/signaling/turn-credentials — rate limiting (issue #1798)", 
     expect(data.code).not.toBe("TURN_HMAC_SECRET_NOT_CONFIGURED");
   });
 
-  it("uses the server-verified client identifier (never the query's clientId)", async () => {
+  it("uses the server-verified userId as rate-limit key (never the query's clientId)", async () => {
     process.env.TURN_HMAC_SECRET =
       "test-secret-do-not-use-in-prod-1234567890abcdef";
-    getClientIdentifierMock.mockReturnValue("ip:10.0.0.42");
 
     const { GET } = await loadRoute();
     const res = await GET(
@@ -392,12 +393,13 @@ describe("GET /api/signaling/turn-credentials — rate limiting (issue #1798)", 
     );
     expect(res.status).toBe(200);
 
-    // The bucket key is the SERVER-VERIFIED identifier, not the
-    // query-supplied clientId — otherwise an attacker could rotate
-    // clientId to dodge the per-identity limit.
-    expect(getClientIdentifierMock).toHaveBeenCalledTimes(1);
+    // The bucket key is the SERVER-VERIFIED authenticated userId
+    // (not the query-supplied clientId and not IP — #2144).  IP-based
+    // keys allow a shared-IP DoS where one bad actor behind NAT
+    // exhausts the bucket for all other users sharing that IP.
+    expect(getClientIdentifierMock).not.toHaveBeenCalled();
     expect(enforceRateLimitMock).toHaveBeenCalledWith(
-      "ip:10.0.0.42",
+      "userId:test-user-1",
       expect.objectContaining({
         maxRequests: 12,
         windowMs: 60 * 60 * 1000,
@@ -409,15 +411,15 @@ describe("GET /api/signaling/turn-credentials — rate limiting (issue #1798)", 
     expect(enforceCallArgs[0]).not.toContain("peer-1");
   });
 
-  it("clientId churn under one identity is rate-limited (acceptance criterion)", async () => {
-    // #1798 — "clientId churn under one identity" test. An attacker
-    // submitting different clientId values per request from a single
-    // server-verified identity (IP) must not be able to dodge the
-    // bucket — the bucket key is the identity, NOT the clientId.
+  it("clientId churn under one userId is rate-limited (acceptance criterion)", async () => {
+    // #1798 / #2144 — "clientId churn under one identity" test. An
+    // attacker submitting different clientId values per request from a
+    // single authenticated userId must not be able to dodge the bucket
+    // — the bucket key is the userId, NOT the clientId (and not IP,
+    // which would allow a shared-IP DoS as described in #2144).
     process.env.TURN_HMAC_SECRET =
       "test-secret-do-not-use-in-prod-1234567890abcdef";
-    getClientIdentifierMock.mockReturnValue("ip:10.0.0.42");
-    // First request succeeds, second request (same identity, different
+    // First request succeeds, second request (same userId, different
     // clientId) is rate-limited.
     enforceRateLimitMock.mockResolvedValueOnce({
       success: true,
@@ -449,11 +451,11 @@ describe("GET /api/signaling/turn-credentials — rate limiting (issue #1798)", 
     expect(dataB.code).toBe("RATE_LIMIT_EXCEEDED");
 
     // Both requests hit the SAME bucket key (the server-verified
-    // identity), even though the query's clientId differs.
-    expect(getClientIdentifierMock).toHaveBeenCalledTimes(2);
+    // userId), even though the query's clientId differs.
+    expect(getClientIdentifierMock).not.toHaveBeenCalled();
     const calls = enforceRateLimitMock.mock.calls as Array<[string, unknown]>;
-    expect(calls[0][0]).toBe("ip:10.0.0.42");
-    expect(calls[1][0]).toBe("ip:10.0.0.42");
+    expect(calls[0][0]).toBe("userId:test-user-1");
+    expect(calls[1][0]).toBe("userId:test-user-1");
   });
 
   it("emits rate-limit headers on the success response", async () => {
