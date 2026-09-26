@@ -1,4 +1,4 @@
-import { reviewDeck, DeckReviewInput } from "@/ai/flows/ai-deck-coach-review";
+import { reviewDeck, DeckReviewInput, DeckReviewOutput } from "@/ai/flows/ai-deck-coach-review";
 import {
   generateAIOpponentDeck,
   AIOpponentDeckGenerationInput,
@@ -50,7 +50,7 @@ export async function getDeckReview(input: DeckReviewInput) {
     // Issue #1994: use AI when any provider is configured, heuristic otherwise
     const useAI = isAnyProviderConfigured();
     const review = await reviewDeck(input, useAI);
-    return sanitizeDeckReview(review);
+    return sanitizeDeckReview(review) as DeckReviewOutput;
   } catch (error) {
     console.error("Error getting deck review:", error);
     if (error instanceof Error) {
@@ -122,7 +122,7 @@ export async function generateOpponent(
       difficulty: input.difficulty ?? "medium",
       format: input.format ?? "commander",
     };
-    return { source: "ai", deck: sanitizeGeneratedDeckOutput(deck) ?? deck };
+    return { source: "ai", deck: (sanitizeGeneratedDeckOutput(deck) as GeneratedDeck | null) ?? deck };
   } catch (error) {
     console.error(
       "Error generating AI opponent, falling back to heuristic:",

@@ -1,50 +1,52 @@
 /**
- * @fileOverview Output sanitization for AI-generated content (issue #2150).
- *
- * AI outputs (deck reviews, opponent descriptions, coaching advice) are
- * untrusted — the model may inadvertently include malicious HTML, script
- * injection, or other XSS vectors. This module sanitizes all string fields
- * in AI output objects before they are returned to the client.
- *
- * Strategy:
- *   - Strip raw HTML tags entirely (not escape) so markdown formatting survives.
- *   - Remove javascript:, data: (except data:image/ for embedded images).
- *   - Remove inline event handlers (onclick, onerror, onload, on*).
- *   - Remove SVG/XML dangerous elements (embed, object, iframe, form).
- *   - Clamp output length to a safe upper bound.
+ * Sanitization utilities for AI-generated content.
+ * Strips HTML tags, XSS vectors, and other unsafe content from strings and objects.
  */
 
-const MAX_OUTPUT_LENGTH = 50_000;
+const DANGEROUS_PROTOCOLS = /^(javascript|vbscript|data):/i;
+const DANGEROUS_TAGS = /<script[^>]*>|<\/script>|<!--[\s\S]*?-->|<iframe[^>]*>|<\/iframe>|<object[^>]*>|<\/object>|<embed[^>]*>|<\/embed>|<link[^>]*>|<meta[^>]*>/gi;
+const DANGEROUS_ATTRS = /\son\w+\s*=/gi;
+const DANGEROUS_ENTITIES = /&(colon|tab|newline|#x0(?:[\da-f]?[\da-f]|[\da-h][\da-f][\da-h])?);?/gi;
 
-/**
- * Patterns used to detect and remove dangerous content.
- */
-const DANGEROUS_TAG =
-  /<\/?(?:script|style|svg|img|video|audio|iframe|embed|object|form|input|button|link|meta|base|xml|math|canvas)[^>]*>/gi;
-const DANGEROUS_ATTR = /\s(on(?:click|dblclick|load|error|submit|change|input|keydown|keyup|keypress|mouse\w+|focus|blur|abort|drag\w+|drop|scroll|copy|cut|paste|play|pause|volumechange|composition\w+|contextmenu|wheel|touch\w+|animation\w+|transition\w+|beforeinput|enterkeyhint)\s*=/gi;
-const JAVASCRIPT_URL = /javascript\s*:/gi;
-const DATA_URL = /data\s*:(?!image\/(?:png|jpeg|jpg|gif|webp|svg\+xml))/gi;
+function sanitizeString(input: string): string {
+  if (!input) return input;
 
-function sanitizeString(value: unknown, maxLen = MAX_OUTPUT_LENGTH): string {
-  if (value === null || value === undefined) return "";
-  let str = typeof value === "string" ? value : String(value);
+  let result = input;
 
-  str = str.replace(DANGEROUS_TAG, "");
-  str = str.replace(DANGEROUS_ATTR, " ");
-  str = str.replace(JAVASCRIPT_URL, "");
-  str = str.replace(DATA_URL, "");
+  result = result.replace(DANGEROUS_TAGS, "");
+  result = result.replace(DANGEROUS_ATTRS, " ");
+  result = result.replace(DANGEROUS_ENTITIES, " ");
+  result = result.replace(/[\x00-\x1F\x7F]/g, "");
 
-  if (str.length > maxLen) {
-    str = str.slice(0, maxLen) + "…[output truncated]";
-  }
+  const parts = result.split(/(&nbsp;|<br\s*\/?>)/i);
+  result = parts
+    .map((part) => {
+      if (/^(&nbsp;|<br\s*\/?>)$/i.test(part)) return part;
+      return part
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&nbsp;/g, " ");
+    })
+    .join("");
 
-  return str.trim();
+  result = result.replace(/^\s+|\s+$/g, "");
+
+  const words = result.split(/(\s+)/);
+  result = words
+    .map((word) => {
+      if (!word) return word;
+      if (DANGEROUS_PROTOCOLS.test(word)) return "";
+      return word;
+    })
+    .filter(Boolean)
+    .join("");
+
+  return result;
 }
 
-/**
- * Recursively sanitize all string fields in a plain object.
- * Handles nested objects and arrays. Non-string primitives pass through.
- */
 function sanitizeObject<T extends object>(obj: T): T {
   if (obj === null || typeof obj !== "object") {
     return obj;
@@ -75,20 +77,16 @@ function sanitizeObject<T extends object>(obj: T): T {
   return result as T;
 }
 
-/**
- * Sanitize a DeckReviewOutput object returned from the AI deck-review flow.
- * Strips all dangerous content from every string field.
- */
-export function sanitizeDeckReview(data: unknown) {
-  if (typeof data !== "object" || data === null) return null;
+export function sanitizeDeckReview(data: unknown): object {
+  if (typeof data !== "object" || data === null) {
+    throw new Error("sanitizeDeckReview requires an object");
+  }
   return sanitizeObject(data as object);
 }
 
-/**
- * Sanitize a GeneratedDeck object from opponent generation.
- * Strips all dangerous content from every string field.
- */
-export function sanitizeGeneratedDeckOutput(data: unknown) {
-  if (typeof data !== "object" || data === null) return null;
+export function sanitizeGeneratedDeckOutput(data: unknown): object {
+  if (typeof data !== "object" || data === null) {
+    throw new Error("sanitizeGeneratedDeckOutput requires an object");
+  }
   return sanitizeObject(data as object);
 }
