@@ -29,6 +29,7 @@ import {
 } from "@/ai/providers/factory";
 import { analyzeMetaHeuristic } from "@/lib/heuristic-meta-analysis";
 import { importDecklist } from "@/lib/server-card-operations";
+import { prependSecurityPreamble } from "@/ai/prompt-security";
 
 export interface MetaAnalysisInput {
   decklist: string;
@@ -130,14 +131,14 @@ export interface AnalyzeMetaOptions {
  */
 function convertHeuristicOutput(
   heuristicResult: ReturnType<typeof analyzeMetaHeuristic>,
-  format: string
+  format: string,
 ): MetaAnalysisOutput {
   // Extract deck strengths and weaknesses from the analysis
   const deckStrengths: string[] = [];
   const deckWeaknesses: string[] = [];
 
   // Analyze the heuristic recommendations to infer strengths/weaknesses
-  heuristicResult.recommendations.forEach(rec => {
+  heuristicResult.recommendations.forEach((rec) => {
     if (rec.description.includes("naturally strong")) {
       deckStrengths.push(`Strong against ${rec.matchup.against}`);
     } else if (rec.description.includes("struggles against")) {
@@ -146,35 +147,40 @@ function convertHeuristicOutput(
   });
 
   // Add format-specific strengths/weaknesses
-  if (format === 'commander') {
+  if (format === "commander") {
     deckStrengths.push("Access to powerful Commanders and effects");
     deckWeaknesses.push("Slower game pace may struggle against fast combo");
-  } else if (format === 'modern') {
+  } else if (format === "modern") {
     deckStrengths.push("Access to powerful modern cards");
     deckWeaknesses.push("Must prepare for diverse meta");
   }
 
   // Convert heuristic recommendations to matchup analysis
-  const matchupAnalysis: MatchupRecommendation[] = heuristicResult.recommendations.map(rec => ({
-    archetype: rec.matchup.against,
-    recommendation: rec.description,
-    sideboardNotes: rec.matchup.strategy,
-  }));
+  const matchupAnalysis: MatchupRecommendation[] =
+    heuristicResult.recommendations.map((rec) => ({
+      archetype: rec.matchup.against,
+      recommendation: rec.description,
+      sideboardNotes: rec.matchup.strategy,
+    }));
 
   // Convert card suggestions with reasons
-  const allCardsToAdd = heuristicResult.recommendations.flatMap(rec => rec.cardsToAdd || []);
-  const allCardsToRemove = heuristicResult.recommendations.flatMap(rec => rec.cardsToRemove || []);
+  const allCardsToAdd = heuristicResult.recommendations.flatMap(
+    (rec) => rec.cardsToAdd || [],
+  );
+  const allCardsToRemove = heuristicResult.recommendations.flatMap(
+    (rec) => rec.cardsToRemove || [],
+  );
 
   const cardSuggestions: {
     cardsToAdd: CardSuggestion[];
     cardsToRemove: CardSuggestion[];
   } = {
-    cardsToAdd: allCardsToAdd.map(card => ({
+    cardsToAdd: allCardsToAdd.map((card) => ({
       name: card.name,
       quantity: card.quantity,
       reason: `Improves performance against metagame archetypes based on heuristic analysis`,
     })),
-    cardsToRemove: allCardsToRemove.map(card => ({
+    cardsToRemove: allCardsToRemove.map((card) => ({
       name: card.name,
       quantity: card.quantity,
       reason: `Underperforming in current metagame according to heuristic analysis`,
@@ -182,10 +188,14 @@ function convertHeuristicOutput(
   };
 
   // Generate strategic advice
-  const strategicAdvice = `Based on the ${format} metagame, focus on ${heuristicResult.currentMeta} ` +
-    `${heuristicResult.archetypes.slice(0, 3).map(a => a.name).join(', ')} are the dominant archetypes. ` +
+  const strategicAdvice =
+    `Based on the ${format} metagame, focus on ${heuristicResult.currentMeta} ` +
+    `${heuristicResult.archetypes
+      .slice(0, 3)
+      .map((a) => a.name)
+      .join(", ")} are the dominant archetypes. ` +
     `Prepare your deck with appropriate answers and strategies for these common matchups. ` +
-    `The heuristic analysis suggests optimizing for ${heuristicResult.recommendations.map(r => r.title).join(' and ')}.`;
+    `The heuristic analysis suggests optimizing for ${heuristicResult.recommendations.map((r) => r.title).join(" and ")}.`;
 
   return {
     metaOverview: heuristicResult.currentMeta,
@@ -213,7 +223,7 @@ function convertHeuristicOutput(
  */
 async function buildHeuristicOutput(
   input: MetaAnalysisInput,
-  heuristicResult: ReturnType<typeof analyzeMetaHeuristic>
+  heuristicResult: ReturnType<typeof analyzeMetaHeuristic>,
 ): Promise<MetaAnalysisOutput> {
   // Validate card suggestions for legality
   const validatedOutput = convertHeuristicOutput(heuristicResult, input.format);
@@ -221,16 +231,22 @@ async function buildHeuristicOutput(
   // Validate cards to add for legality
   if (validatedOutput.cardSuggestions.cardsToAdd.length > 0) {
     const cardNamesToValidate = validatedOutput.cardSuggestions.cardsToAdd
-      .map(c => `${c.quantity} ${c.name}`)
-      .join('\n');
+      .map((c) => `${c.quantity} ${c.name}`)
+      .join("\n");
 
-    const importResult = await importDecklist(cardNamesToValidate, input.format);
+    const importResult = await importDecklist(
+      cardNamesToValidate,
+      input.format,
+    );
 
     if (importResult.notFound.length > 0 || importResult.illegal.length > 0) {
       // Remove illegal or not found cards
-      validatedOutput.cardSuggestions.cardsToAdd = validatedOutput.cardSuggestions.cardsToAdd.filter(
-        c => !importResult.notFound.includes(c.name) && !importResult.illegal.includes(c.name)
-      );
+      validatedOutput.cardSuggestions.cardsToAdd =
+        validatedOutput.cardSuggestions.cardsToAdd.filter(
+          (c) =>
+            !importResult.notFound.includes(c.name) &&
+            !importResult.illegal.includes(c.name),
+        );
     }
   }
 
@@ -280,10 +296,7 @@ async function buildHeuristicOutput(
 
   // Final invariant: addCount must equal removeCount whenever at least one
   // side is non-empty. Both zero is a legitimate "no actionable swap" result.
-  if (
-    addCount !== removeCount &&
-    (addCount > 0 || removeCount > 0)
-  ) {
+  if (addCount !== removeCount && (addCount > 0 || removeCount > 0)) {
     // Defensive: if quantities somehow became 0 on one side after trimming,
     // collapse to the non-empty side so the returned plan is still a valid
     // 1-for-1 swap.
@@ -350,8 +363,12 @@ function toCardSuggestion(value: unknown): CardSuggestion | null {
   const name = typeof record.name === "string" ? record.name.trim() : "";
   if (!name) return null;
   const rawQuantity = Number(record.quantity);
-  const quantity = Number.isFinite(rawQuantity) ? Math.max(1, Math.floor(rawQuantity)) : 1;
-  const reason = isNonEmptyString(record.reason) ? record.reason : "LLM suggestion";
+  const quantity = Number.isFinite(rawQuantity)
+    ? Math.max(1, Math.floor(rawQuantity))
+    : 1;
+  const reason = isNonEmptyString(record.reason)
+    ? record.reason
+    : "LLM suggestion";
   return { name, quantity, reason };
 }
 
@@ -365,12 +382,17 @@ function toCardSuggestionArray(value: unknown): CardSuggestion[] {
 function toMatchupRecommendation(value: unknown): MatchupRecommendation | null {
   if (typeof value !== "object" || value === null) return null;
   const record = value as Record<string, unknown>;
-  const archetype = typeof record.archetype === "string" ? record.archetype.trim() : "";
-  const recommendation = typeof record.recommendation === "string" ? record.recommendation.trim() : "";
+  const archetype =
+    typeof record.archetype === "string" ? record.archetype.trim() : "";
+  const recommendation =
+    typeof record.recommendation === "string"
+      ? record.recommendation.trim()
+      : "";
   if (!archetype || !recommendation) return null;
-  const sideboardNotes = typeof record.sideboardNotes === "string" && record.sideboardNotes.trim()
-    ? record.sideboardNotes
-    : undefined;
+  const sideboardNotes =
+    typeof record.sideboardNotes === "string" && record.sideboardNotes.trim()
+      ? record.sideboardNotes
+      : undefined;
   return sideboardNotes === undefined
     ? { archetype, recommendation }
     : { archetype, recommendation, sideboardNotes };
@@ -382,12 +404,18 @@ function toMatchupRecommendation(value: unknown): MatchupRecommendation | null {
  * unsalvageable so the caller falls back to the heuristic output rather than
  * surfacing malformed content to the user.
  */
-export function coerceMetaAnalysisOutput(raw: unknown): MetaAnalysisOutput | null {
+export function coerceMetaAnalysisOutput(
+  raw: unknown,
+): MetaAnalysisOutput | null {
   if (typeof raw !== "object" || raw === null) return null;
   const record = raw as Record<string, unknown>;
 
-  const metaOverview = typeof record.metaOverview === "string" ? record.metaOverview.trim() : "";
-  const strategicAdvice = typeof record.strategicAdvice === "string" ? record.strategicAdvice.trim() : "";
+  const metaOverview =
+    typeof record.metaOverview === "string" ? record.metaOverview.trim() : "";
+  const strategicAdvice =
+    typeof record.strategicAdvice === "string"
+      ? record.strategicAdvice.trim()
+      : "";
   if (!metaOverview || !strategicAdvice) return null;
 
   const deckStrengths = toStringArray(record.deckStrengths);
@@ -400,11 +428,14 @@ export function coerceMetaAnalysisOutput(raw: unknown): MetaAnalysisOutput | nul
     : [];
 
   const cardSuggestionsRecord =
-    typeof record.cardSuggestions === "object" && record.cardSuggestions !== null
+    typeof record.cardSuggestions === "object" &&
+    record.cardSuggestions !== null
       ? (record.cardSuggestions as Record<string, unknown>)
       : {};
   const cardsToAdd = toCardSuggestionArray(cardSuggestionsRecord.cardsToAdd);
-  const cardsToRemove = toCardSuggestionArray(cardSuggestionsRecord.cardsToRemove);
+  const cardsToRemove = toCardSuggestionArray(
+    cardSuggestionsRecord.cardsToRemove,
+  );
 
   // Require at least one substantive, validated section beyond the overview so
   // a bare `{ metaOverview, strategicAdvice }` never displaces the heuristic.
@@ -445,19 +476,21 @@ function buildMetaLLMMessages(
   system: string;
   messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
 } {
-  const system = [
-    "You are an expert Magic: The Gathering metagame analyst.",
-    "Produce a STRICT JSON object (no prose, no markdown fences) matching this TypeScript type exactly:",
-    "{ metaOverview: string; deckStrengths: string[]; deckWeaknesses: string[];",
-    "  matchupAnalysis: { archetype: string; recommendation: string; sideboardNotes?: string }[];",
-    "  cardSuggestions: { cardsToAdd: { name: string; quantity: number; reason: string }[];",
-    "                     cardsToRemove: { name: string; quantity: number; reason: string }[] };",
-    "  sideboardSuggestions?: { name: string; quantity: number; reason: string }[];",
-    "  strategicAdvice: string }.",
-    "Reference the player's SPECIFIC deck, archetype and cards (never generic boilerplate).",
-    "Keep the total quantity of cardsToAdd equal to the total quantity of cardsToRemove.",
-    "Output ONLY the JSON object.",
-  ].join(" ");
+  const system = prependSecurityPreamble(
+    [
+      "You are an expert Magic: The Gathering metagame analyst.",
+      "Produce a STRICT JSON object (no prose, no markdown fences) matching this TypeScript type exactly:",
+      "{ metaOverview: string; deckStrengths: string[]; deckWeaknesses: string[];",
+      "  matchupAnalysis: { archetype: string; recommendation: string; sideboardNotes?: string }[];",
+      "  cardSuggestions: { cardsToAdd: { name: string; quantity: number; reason: string }[];",
+      "                     cardsToRemove: { name: string; quantity: number; reason: string }[] };",
+      "  sideboardSuggestions?: { name: string; quantity: number; reason: string }[];",
+      "  strategicAdvice: string }.",
+      "Reference the player's SPECIFIC deck, archetype and cards (never generic boilerplate).",
+      "Keep the total quantity of cardsToAdd equal to the total quantity of cardsToRemove.",
+      "Output ONLY the JSON object.",
+    ].join(" "),
+  );
 
   const grounding = {
     format: input.format,
@@ -517,7 +550,10 @@ async function tryEnrichMetaWithLLM(
     (async (args: {
       model: unknown;
       system: string;
-      messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+      messages: Array<{
+        role: "system" | "user" | "assistant";
+        content: string;
+      }>;
       temperature?: number;
       abortSignal?: AbortSignal | null;
     }) => {
@@ -582,10 +618,10 @@ async function tryEnrichMetaWithLLM(
 
 export async function analyzeMetaAndSuggest(
   input: MetaAnalysisInput,
-  opts: AnalyzeMetaOptions = {}
+  opts: AnalyzeMetaOptions = {},
 ): Promise<MetaAnalysisOutput> {
   // Parse the decklist to get card names + quantities
-  const lines = input.decklist.split('\n').filter(line => line.trim() !== '');
+  const lines = input.decklist.split("\n").filter((line) => line.trim() !== "");
   const parsed: Array<{ name: string; quantity: number }> = [];
   for (const line of lines) {
     const match = line.match(/^(\d+)\s+(.+)$/);
@@ -609,15 +645,15 @@ export async function analyzeMetaAndSuggest(
       input.format as Parameters<typeof importDecklist>[1],
     );
     if (importResult.found.length > 0) {
-      cards = importResult.found.map(c => ({
+      cards = importResult.found.map((c) => ({
         name: c.name,
         count: c.count,
         id: c.id,
         cmc: c.cmc,
         colors: c.colors,
         legalities: c.legalities,
-        type_line: c.type_line || 'Unknown',
-        mana_cost: c.mana_cost ?? '{0}',
+        type_line: c.type_line || "Unknown",
+        mana_cost: c.mana_cost ?? "{0}",
         color_identity: c.color_identity ?? [],
       }));
     }
@@ -636,8 +672,8 @@ export async function analyzeMetaAndSuggest(
         cmc: 0,
         colors: [],
         legalities: {},
-        type_line: 'Unknown',
-        mana_cost: '{0}',
+        type_line: "Unknown",
+        mana_cost: "{0}",
         color_identity: [],
       });
     }
@@ -648,7 +684,7 @@ export async function analyzeMetaAndSuggest(
     input.decklist,
     input.format,
     cards,
-    input.focusArchetype
+    input.focusArchetype,
   );
 
   // Build the validated heuristic output (legality + rebalance) once; it is the
