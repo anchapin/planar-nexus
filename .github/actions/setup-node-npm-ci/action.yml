@@ -73,6 +73,26 @@ runs:
       shell: bash
       run: npm cache clean --force
 
+    - name: Free disk space
+      # Issue #2255: GitHub-hosted runners exhaust disk space before npm ci
+      # completes.  Aggressively remove known large directories to free room
+      # for the npm ci footprint.
+      shell: bash
+      run: |
+        df -h .
+        rm -rf ~/.npm
+        rm -rf ~/.cache
+        rm -rf /tmp/* 2>/dev/null || true
+        rm -rf /root/.npm
+        rm -rf /root/.cache
+        rm -rf "$AGENT_TOOLSDIRECTORY" 2>/dev/null || true
+        rm -rf /opt/hostedtoolcache/CodeQL 2>/dev/null || true
+        rm -rf /usr/local/share/boost 2>/dev/null || true
+        rm -rf ~/Library/Logs 2>/dev/null || true
+        rm -rf "$LOCALAPPDATA" 2>/dev/null || true
+        echo "--- disk space after cleanup ---"
+        df -h .
+
     - name: Install dependencies
       # Issue #1837: GitHub-hosted runners intermittently hit npm-registry
       # network errors (ETIMEDOUT/ENETUNREACH/ECONNRESET) during npm ci.
