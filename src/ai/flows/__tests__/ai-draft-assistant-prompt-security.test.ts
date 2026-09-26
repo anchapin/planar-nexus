@@ -113,8 +113,8 @@ describe("buildDraftPickPrompt (issue #1586)", () => {
       packCards: samplePack,
     });
     expect(system).toContain(SECURITY_PREAMBLE);
-    expect(system.startsWith("You are a Magic: The Gathering")).toBe(true);
-    expect(system.indexOf(SECURITY_PREAMBLE)).toBeGreaterThan(0);
+    expect(system.startsWith(SECURITY_PREAMBLE)).toBe(true);
+    expect(system.indexOf("You are a Magic: The Gathering")).toBeGreaterThan(0);
   });
 
   it("redacts the override phrase and fences the multi-line pool/pack blobs with unique tags", () => {

@@ -239,6 +239,22 @@ export function buildSystemPrompt(...parts: string[]): string {
 }
 
 /**
+ * Prepends SECURITY_PREAMBLE to a single prompt string.
+ * All AI flows that build prompts from user-supplied strings MUST use this function
+ * to ensure the security preamble is always present and cannot be accidentally omitted.
+ *
+ * @example
+ * ```ts
+ * const system = prependSecurityPreamble(
+ *   "You are a deck coach. Analyze the provided deck list.",
+ * );
+ * ```
+ */
+export function prependSecurityPreamble(prompt: string): string {
+  return SECURITY_PREAMBLE + "\n\n" + prompt;
+}
+
+/**
  * Defensive parser for the structured {@link DeckReviewOutput} returned by the
  * AI deck-review flow. Rejects non-object / malformed payloads so they fall
  * back to the heuristic coach instead of being rendered as trusted text.

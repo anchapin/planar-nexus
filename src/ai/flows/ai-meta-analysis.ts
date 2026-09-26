@@ -29,7 +29,7 @@ import {
 } from "@/ai/providers/factory";
 import { analyzeMetaHeuristic } from "@/lib/heuristic-meta-analysis";
 import { importDecklist } from "@/lib/server-card-operations";
-import { SECURITY_PREAMBLE } from "@/ai/prompt-security";
+import { prependSecurityPreamble } from "@/ai/prompt-security";
 
 export interface MetaAnalysisInput {
   decklist: string;
@@ -476,20 +476,21 @@ function buildMetaLLMMessages(
   system: string;
   messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
 } {
-  const system = [
-    SECURITY_PREAMBLE,
-    "You are an expert Magic: The Gathering metagame analyst.",
-    "Produce a STRICT JSON object (no prose, no markdown fences) matching this TypeScript type exactly:",
-    "{ metaOverview: string; deckStrengths: string[]; deckWeaknesses: string[];",
-    "  matchupAnalysis: { archetype: string; recommendation: string; sideboardNotes?: string }[];",
-    "  cardSuggestions: { cardsToAdd: { name: string; quantity: number; reason: string }[];",
-    "                     cardsToRemove: { name: string; quantity: number; reason: string }[] };",
-    "  sideboardSuggestions?: { name: string; quantity: number; reason: string }[];",
-    "  strategicAdvice: string }.",
-    "Reference the player's SPECIFIC deck, archetype and cards (never generic boilerplate).",
-    "Keep the total quantity of cardsToAdd equal to the total quantity of cardsToRemove.",
-    "Output ONLY the JSON object.",
-  ].join(" ");
+  const system = prependSecurityPreamble(
+    [
+      "You are an expert Magic: The Gathering metagame analyst.",
+      "Produce a STRICT JSON object (no prose, no markdown fences) matching this TypeScript type exactly:",
+      "{ metaOverview: string; deckStrengths: string[]; deckWeaknesses: string[];",
+      "  matchupAnalysis: { archetype: string; recommendation: string; sideboardNotes?: string }[];",
+      "  cardSuggestions: { cardsToAdd: { name: string; quantity: number; reason: string }[];",
+      "                     cardsToRemove: { name: string; quantity: number; reason: string }[] };",
+      "  sideboardSuggestions?: { name: string; quantity: number; reason: string }[];",
+      "  strategicAdvice: string }.",
+      "Reference the player's SPECIFIC deck, archetype and cards (never generic boilerplate).",
+      "Keep the total quantity of cardsToAdd equal to the total quantity of cardsToRemove.",
+      "Output ONLY the JSON object.",
+    ].join(" "),
+  );
 
   const grounding = {
     format: input.format,
