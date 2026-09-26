@@ -23,6 +23,7 @@ import {
   IndexedDBBlockedError,
   registerVersionChangeClose,
 } from "./indexeddb-open-events";
+import DOMPurify from "dompurify";
 import type { Format } from "@/lib/game-rules";
 
 // Minimal card data for offline use (subset of Scryfall data): the raw
@@ -826,6 +827,28 @@ export async function clearImageCache(): Promise<void> {
  * ==========================================
  */
 
+function sanitizeCardTextFields(card: MinimalCard): MinimalCard {
+  const sanitized = { ...card };
+  if (sanitized.oracle_text) {
+    sanitized.oracle_text = DOMPurify.sanitize(sanitized.oracle_text, {
+      ALLOWED_TAGS: [],
+      ALLOWED_ATTR: [],
+    });
+  }
+  if (sanitized.card_faces) {
+    sanitized.card_faces = sanitized.card_faces.map((face) => ({
+      ...face,
+      ...(face.oracle_text && {
+        oracle_text: DOMPurify.sanitize(face.oracle_text, {
+          ALLOWED_TAGS: [],
+          ALLOWED_ATTR: [],
+        }),
+      }),
+    }));
+  }
+  return sanitized;
+}
+
 /**
  * Import cards from a JSON array (for user-provided card database).
  * Uses a single transaction for the entire import with progress callbacks
@@ -877,10 +900,13 @@ export async function importCardsFromJSON(
   }
 
   const batchSize = 500;
-  const cardsWithLowerName = cards.map((card) => ({
-    ...card,
-    name_lower: card.name.toLowerCase(),
-  }));
+  const cardsWithLowerName = cards.map((card) => {
+    const sanitized = sanitizeCardTextFields(card);
+    return {
+      ...sanitized,
+      name_lower: sanitized.name.toLowerCase(),
+    };
+  });
 
   return new Promise<void>((resolve, reject) => {
     const transaction = db!.transaction([STORE_NAME], "readwrite");
