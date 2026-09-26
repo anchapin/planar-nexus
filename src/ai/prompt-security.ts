@@ -50,7 +50,8 @@ const CONTROL_CHARS =
  * Dangerous HTML tag pattern: matches opening/closing script, style, object, embed, etc.
  * These tags are never legitimate in AI text output and indicate injection.
  */
-const DANGEROUS_TAG_PATTERN = /<\/?(?:script|style|object|embed|applet|form|input|textarea|select|option|button|iframe|noembed|noscript)/i;
+const DANGEROUS_TAG_PATTERN =
+  /<\/?(?:script|style|object|embed|applet|form|input|textarea|select|option|button|iframe|noembed|noscript)/i;
 
 /**
  * XSS event handler pattern: matches onclick, onerror, onload, etc.
@@ -221,6 +222,23 @@ export const SECURITY_PREAMBLE = [
 ].join("\n");
 
 /**
+ * Builds a system prompt for AI flows by prepending SECURITY_PREAMBLE to the
+ * provided prompt parts. All coach flows MUST use this function (or directly
+ * include SECURITY_PREAMBLE) when building system prompts for LLM calls.
+ *
+ * @example
+ * ```ts
+ * const system = buildSystemPrompt(
+ *   "You are a deck coach.",
+ *   "Analyze the provided deck list.",
+ * );
+ * ```
+ */
+export function buildSystemPrompt(...parts: string[]): string {
+  return [SECURITY_PREAMBLE, ...parts].join("\n\n");
+}
+
+/**
  * Defensive parser for the structured {@link DeckReviewOutput} returned by the
  * AI deck-review flow. Rejects non-object / malformed payloads so they fall
  * back to the heuristic coach instead of being rendered as trusted text.
@@ -255,9 +273,17 @@ export function validateDeckReviewOutput(
     return DOMPurify.sanitize(clamped, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
   };
 
-  const rawSummary = hasSummary ? clampString(sanitizeUserInput(o.reviewSummary, { redactInjection: false }), 8000) : "";
+  const rawSummary = hasSummary
+    ? clampString(
+        sanitizeUserInput(o.reviewSummary, { redactInjection: false }),
+        8000,
+      )
+    : "";
   rejectHtml(rawSummary);
-  const reviewSummary = DOMPurify.sanitize(rawSummary, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
+  const reviewSummary = DOMPurify.sanitize(rawSummary, {
+    ALLOWED_TAGS: [],
+    ALLOWED_ATTR: [],
+  });
 
   const deckOptions: DeckReviewOutput["deckOptions"] = hasOptions
     ? (o.deckOptions as unknown[])
@@ -275,10 +301,12 @@ export function validateDeckReviewOutput(
             rejectHtml(c.name);
             return c;
           });
-          const cardsToRemove = (parseCardList(p.cardsToRemove) ?? []).map((c) => {
-            rejectHtml(c.name);
-            return c;
-          });
+          const cardsToRemove = (parseCardList(p.cardsToRemove) ?? []).map(
+            (c) => {
+              rejectHtml(c.name);
+              return c;
+            },
+          );
           return {
             title,
             description,
@@ -321,7 +349,10 @@ function parseCardList(
         ? sanitizeUserInput(e.name, { redactInjection: false })
         : "";
     rejectHtml(rawName);
-    const name = DOMPurify.sanitize(rawName, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] });
+    const name = DOMPurify.sanitize(rawName, {
+      ALLOWED_TAGS: [],
+      ALLOWED_ATTR: [],
+    });
     const quantity =
       typeof e.quantity === "number" && Number.isFinite(e.quantity)
         ? Math.max(0, Math.floor(e.quantity))
