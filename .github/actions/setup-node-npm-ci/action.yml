@@ -27,6 +27,26 @@ runs:
       shell: bash
       run: git config --global --add safe.directory '*'
 
+    - name: Free disk space (before cache restore)
+      # Issue #2255: GitHub-hosted runners exhaust disk during cache restoration
+      # (actions/setup-node npm cache, and the package-lock.json cache).
+      # Clean up BEFORE setup-node so there is room to extract caches.
+      shell: bash
+      run: |
+        df -h .
+        rm -rf ~/.npm
+        rm -rf ~/.cache
+        rm -rf /tmp/* 2>/dev/null || true
+        rm -rf /root/.npm
+        rm -rf /root/.cache
+        rm -rf "$AGENT_TOOLSDIRECTORY" 2>/dev/null || true
+        rm -rf /opt/hostedtoolcache/CodeQL 2>/dev/null || true
+        rm -rf /usr/local/share/boost 2>/dev/null || true
+        rm -rf ~/Library/Logs 2>/dev/null || true
+        rm -rf "$LOCALAPPDATA" 2>/dev/null || true
+        echo "--- disk space after cleanup ---"
+        df -h .
+
     - name: Checkout code
       uses: actions/checkout@v7
       with:
@@ -72,26 +92,6 @@ runs:
       # metadata points to stale/missing lock-file entries.
       shell: bash
       run: npm cache clean --force
-
-    - name: Free disk space
-      # Issue #2255: GitHub-hosted runners exhaust disk space before npm ci
-      # completes.  Aggressively remove known large directories to free room
-      # for the npm ci footprint.
-      shell: bash
-      run: |
-        df -h .
-        rm -rf ~/.npm
-        rm -rf ~/.cache
-        rm -rf /tmp/* 2>/dev/null || true
-        rm -rf /root/.npm
-        rm -rf /root/.cache
-        rm -rf "$AGENT_TOOLSDIRECTORY" 2>/dev/null || true
-        rm -rf /opt/hostedtoolcache/CodeQL 2>/dev/null || true
-        rm -rf /usr/local/share/boost 2>/dev/null || true
-        rm -rf ~/Library/Logs 2>/dev/null || true
-        rm -rf "$LOCALAPPDATA" 2>/dev/null || true
-        echo "--- disk space after cleanup ---"
-        df -h .
 
     - name: Install dependencies
       # Issue #1837: GitHub-hosted runners intermittently hit npm-registry
