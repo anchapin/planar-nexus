@@ -12,6 +12,10 @@ import {
   type DifficultyLevel,
 } from "@/ai/opponent-deck-generator";
 import type { Format } from "@/lib/game-rules";
+import {
+  sanitizeDeckReview,
+  sanitizeGeneratedDeckOutput,
+} from "@/lib/sanitize";
 
 /**
  * @fileOverview Client-side wrappers around the AI flows.
@@ -46,7 +50,7 @@ export async function getDeckReview(input: DeckReviewInput) {
     // Issue #1994: use AI when any provider is configured, heuristic otherwise
     const useAI = isAnyProviderConfigured();
     const review = await reviewDeck(input, useAI);
-    return review;
+    return sanitizeDeckReview(review);
   } catch (error) {
     console.error("Error getting deck review:", error);
     if (error instanceof Error) {
@@ -118,7 +122,7 @@ export async function generateOpponent(
       difficulty: input.difficulty ?? "medium",
       format: input.format ?? "commander",
     };
-    return { source: "ai", deck };
+    return { source: "ai", deck: sanitizeGeneratedDeckOutput(deck) ?? deck };
   } catch (error) {
     console.error(
       "Error generating AI opponent, falling back to heuristic:",
