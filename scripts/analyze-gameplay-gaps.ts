@@ -76,9 +76,17 @@ function grepFiles(dir: string, pattern: RegExp, ext: string): { file: string; l
 }
 
 // ─── 1. Extract Keywords from Parser ───
+// Issue #1725 split oracle-text-parser.ts into an oracle-text-parser/ directory.
+// The keyword arrays now live in oracle-text-parser/keywords.ts inside the
+// extractKeywords function. We read both locations and merge so the gap
+// analyzer keeps working.
 const parserText = readFile(path.join(GAME_STATE_DIR, "oracle-text-parser.ts"));
-const evergreenKeywords = extractArrayItems(parserText, "evergreenKeywords");
-const abilityWords = extractArrayItems(parserText, "abilityWords");
+const keywordsModuleText = readFile(
+  path.join(GAME_STATE_DIR, "oracle-text-parser", "keywords.ts")
+);
+const combinedParserText = `${parserText}\n${keywordsModuleText}`;
+const evergreenKeywords = extractArrayItems(combinedParserText, "evergreenKeywords");
+const abilityWords = extractArrayItems(combinedParserText, "abilityWords");
 
 // ─── 2. Extract Enforcement Functions ───
 const keywordsText = readFile(path.join(GAME_STATE_DIR, "evergreen-keywords.ts"));
