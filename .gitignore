@@ -107,3 +107,9 @@ firestore-debug.log
 # When committed they appear as gitlinks (mode 160000) with no .gitmodules
 # entry, which makes `git submodule status` fail and spams every CI job.
 .claude/worktrees/
+
+# scratch / repro files (issue #2299)
+DEMO_OPPONENT_GENERATOR.ts
+gameboard_screenshot.png
+repro_parser.ts
+test-serialization.ts
