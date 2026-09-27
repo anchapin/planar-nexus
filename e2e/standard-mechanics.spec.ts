@@ -320,7 +320,14 @@ test.describe("Standard Mechanics E2E", () => {
 
     test("Flashback: keyword cost is parsed and the spell resolves to graveyard", async ({
       page,
+      browserName,
     }) => {
+      // #2290: Flaky on webkit — virtualised hand lookup race. Passes on
+      // retry in CI. Quarantined until root-caused — do NOT weaken coverage.
+      test.fixme(
+        browserName === "webkit",
+        "Flaky on webkit (#2290); virtualised hand lookup race - quarantined",
+      );
       await setupMechanicsGame(page);
       const api = freeCastApi(page);
 

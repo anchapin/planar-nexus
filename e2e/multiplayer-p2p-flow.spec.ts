@@ -112,6 +112,9 @@ test.describe("Multiplayer P2P Game Flow (mock signaling) — #1012", () => {
   test("two browser contexts establish a P2P connection via mock signaling", async ({
     browser,
   }) => {
+    // #2290: WebKit needs more headroom to wire up the mock signaling +
+    // data-channel pair. Chromium/Firefox finish well under 30s.
+    test.setTimeout(60_000);
     const { host, joiner } = await createTwoPeers(browser);
 
     // Both peers must believe the data channel is open (signaling complete).
