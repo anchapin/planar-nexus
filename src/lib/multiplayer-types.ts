@@ -2,11 +2,19 @@
  * Multiplayer type definitions for lobby management and game hosting
  */
 
-export type GameFormat = 'commander' | 'standard' | 'modern' | 'pioneer' | 'legacy' | 'vintage' | 'pauper';
-export type PlayerCount = '2' | '3' | '4';
-export type LobbyStatus = 'waiting' | 'ready' | 'in-progress';
-export type PlayerStatus = 'not-ready' | 'ready' | 'host';
-export type GameMode = '1v1' | '2v2' | 'ffa' | 'commander-1v1' | 'commander-ffa';
+export type GameFormat =
+  | "commander"
+  | "standard"
+  | "modern"
+  | "pioneer"
+  | "legacy"
+  | "vintage"
+  | "pauper";
+export type PlayerCount = "2" | "3" | "4";
+export type LobbyStatus = "waiting" | "ready" | "in-progress";
+export type PlayerStatus = "not-ready" | "ready" | "host";
+export type GameMode =
+  "1v1" | "2v2" | "ffa" | "commander-1v1" | "commander-ffa";
 
 /**
  * Issue #1255 — explicit lobby lifecycle states. The previous code conflated
@@ -25,11 +33,7 @@ export type GameMode = '1v1' | '2v2' | 'ffa' | 'commander-1v1' | 'commander-ffa'
  *   *           → WAITING       (closeLobby resets to a fresh state)
  */
 export type LobbyState =
-  | 'WAITING'
-  | 'READY_CHECK'
-  | 'STARTING'
-  | 'IN_GAME'
-  | 'ENDED';
+  "WAITING" | "READY_CHECK" | "STARTING" | "IN_GAME" | "ENDED";
 
 /**
  * Issue #1255 — distinguishes a full-roster ready check (e.g. when 2nd peer
@@ -37,7 +41,7 @@ export type LobbyState =
  * The UI uses the `kind` to render a different copy: the full check waits
  * for every non-spectator peer; the late-joiner check is a single-peer gate.
  */
-export type ReadyCheckKind = 'full' | 'late-joiner';
+export type ReadyCheckKind = "full" | "late-joiner";
 
 /**
  * Issue #1255 — per-peer answer to a `READY_CHECK_REQUEST`. Stored on the
@@ -101,11 +105,11 @@ export interface SeatHold {
   /** Wall-clock ms when the hold expires; auto-released past this point. */
   expiresAt: number;
   /** Why the hold was created (e.g. 'peer-disconnected'). */
-  reason: 'peer-disconnected' | 'rejoin-window';
+  reason: "peer-disconnected" | "rejoin-window";
 }
 
 // Team-related types for 2v2 mode
-export type TeamId = 'team-a' | 'team-b';
+export type TeamId = "team-a" | "team-b";
 
 export interface Team {
   id: TeamId;
@@ -132,6 +136,10 @@ export interface Player {
   joinedAt: number;
   // Team assignment for 2v2 mode
   teamId?: TeamId;
+  // Tracks whether the player has lost the game; defaults to false. Wired to
+  // game-state so 2v2 team win detection (see lobby-manager.isTeamEliminated)
+  // can recognize a fully eliminated team.
+  hasLost?: boolean;
 }
 
 export interface GameLobby {
@@ -183,7 +191,15 @@ export interface LobbySettings {
 }
 
 export interface LobbyMessage {
-  type: 'player-joined' | 'player-left' | 'player-ready' | 'player-not-ready' | 'game-starting' | 'chat' | 'host-migration' | 'error';
+  type:
+    | "player-joined"
+    | "player-left"
+    | "player-ready"
+    | "player-not-ready"
+    | "game-starting"
+    | "chat"
+    | "host-migration"
+    | "error";
   data: unknown;
   senderId?: string;
   timestamp: number;
@@ -197,7 +213,7 @@ export interface LobbyMessage {
  * drifts from the peer's.
  */
 export interface ReadyCheckRequestMessage {
-  type: 'ready-check-request';
+  type: "ready-check-request";
   data: {
     sessionId: string;
     kind: ReadyCheckKind;
@@ -216,7 +232,7 @@ export interface ReadyCheckRequestMessage {
  * to STARTING on a quorum of "all answered", not "all said yes").
  */
 export interface ReadyCheckResponseMessage {
-  type: 'ready-check-response';
+  type: "ready-check-response";
   data: {
     sessionId: string;
     peerId: string;
@@ -232,14 +248,14 @@ export interface ReadyCheckResponseMessage {
  * Re-exported from the host-migration module for convenience.
  */
 export interface HostMigrationLobbyMessage extends LobbyMessage {
-  type: 'host-migration';
+  type: "host-migration";
   data: {
     migrationId: string;
     previousHostId: string;
     newHostId: string;
     remainingPeers: string[];
     gameState: unknown;
-    reason: 'host-disconnected' | 'host-left';
+    reason: "host-disconnected" | "host-left";
   };
 }
 

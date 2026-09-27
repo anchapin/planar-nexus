@@ -1074,24 +1074,36 @@ class LobbyManager {
 
   /**
    * Check if a team has lost (all players eliminated)
+   * Issue #2296: wired to per-player `hasLost` state so 2v2 matches can end.
    */
-  isTeamEliminated(_teamId: TeamId): boolean {
-    if (!this.currentLobby) return false;
+  isTeamEliminated(teamId: TeamId): boolean {
+    const lobby = this.currentLobby;
+    if (!lobby) return false;
 
-    // This would need to be connected to actual game state
-    // For now, return false as placeholder
-    return false;
+    const team = lobby.teams?.find((t) => t.id === teamId);
+    if (!team) return false;
+    if (team.playerIds.length === 0) return false;
+
+    return team.playerIds.every(
+      (playerId) =>
+        lobby.players.find((p) => p.id === playerId)?.hasLost === true,
+    );
   }
 
   /**
    * Get winning team if game is over
+   * Issue #2296: returns the last non-eliminated team; ties/unresolved games
+   * (zero or multiple surviving teams) yield undefined.
    */
   getWinningTeam(): Team | undefined {
-    if (!this.currentLobby || !this.currentLobby.teams) return undefined;
+    const lobby = this.currentLobby;
+    if (!lobby || !lobby.teams) return undefined;
 
-    // This would need to be connected to actual game state
-    // For now, return undefined as placeholder
-    return undefined;
+    const survivingTeams = lobby.teams.filter(
+      (t) => !this.isTeamEliminated(t.id),
+    );
+    if (survivingTeams.length !== 1) return undefined;
+    return survivingTeams[0];
   }
 
   /**
