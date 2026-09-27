@@ -3,7 +3,13 @@
  * Issue #1728: QR scan flow with graceful fallback + detection wiring.
  */
 
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import {
+  render,
+  screen,
+  waitFor,
+  fireEvent,
+  act,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import P2PJoinPage from "../page";
 import { useP2PSignaling } from "@/hooks/use-p2p-signaling";
@@ -100,8 +106,11 @@ afterEach(() => {
 describe("P2PJoinPage QR flow (issue #1728)", () => {
   it("explains the fallback instead of silently flipping when scanning is unsupported", async () => {
     // No BarcodeDetector installed (default jsdom state).
-    render(<P2PJoinPage />);
+    await act(async () => {
+      render(<P2PJoinPage />);
+    });
 
+    await waitFor(() => screen.getByLabelText(/your name/i));
     await user.type(screen.getByLabelText(/your name/i), "Bob");
     await user.click(screen.getByRole("button", { name: /scan qr code/i }));
 
@@ -125,8 +134,11 @@ describe("P2PJoinPage QR flow (issue #1728)", () => {
 
   it("populates the connection code and joins when a valid offer QR is scanned", async () => {
     installScanningCamera(VALID_OFFER);
-    render(<P2PJoinPage />);
+    await act(async () => {
+      render(<P2PJoinPage />);
+    });
 
+    await waitFor(() => screen.getByLabelText(/your name/i));
     await user.type(screen.getByLabelText(/your name/i), "Bob");
     await user.click(screen.getByRole("button", { name: /scan qr code/i }));
 
@@ -148,8 +160,11 @@ describe("P2PJoinPage QR flow (issue #1728)", () => {
 
   it("shows a notice and does not join when the QR is not a connection code", async () => {
     installScanningCamera("https://example.com/not-a-connection-code");
-    render(<P2PJoinPage />);
+    await act(async () => {
+      render(<P2PJoinPage />);
+    });
 
+    await waitFor(() => screen.getByLabelText(/your name/i));
     await user.type(screen.getByLabelText(/your name/i), "Bob");
     await user.click(screen.getByRole("button", { name: /scan qr code/i }));
 
@@ -165,8 +180,11 @@ describe("P2PJoinPage QR flow (issue #1728)", () => {
   });
 
   it("keeps the manual join path working end to end", async () => {
-    render(<P2PJoinPage />);
+    await act(async () => {
+      render(<P2PJoinPage />);
+    });
 
+    await waitFor(() => screen.getByLabelText(/your name/i));
     await user.type(screen.getByLabelText(/your name/i), "Bob");
     fireEvent.change(screen.getByLabelText(/connection code/i), {
       target: { value: VALID_OFFER },
