@@ -58,8 +58,15 @@ const nextConfig: NextConfig = {
             key: "Permissions-Policy",
             value: "camera=(self), microphone=(self), payment=(self)",
           },
-          // COEP/COOP headers enable SharedArrayBuffer (required for
-          // WebRTC DataChannels via RTCPeerConnection, issue #2145).
+        ],
+      },
+      {
+        // COEP/COOP headers are required only on routes that use WebRTC
+        // DataChannels via RTCPeerConnection (SharedArrayBuffer, issue #2145).
+        // Applying per-route avoids COEP conflicts on pages that load cross-
+        // origin resources without proper crossorigin attributes (issue #2288).
+        source: "/multiplayer/:path*",
+        headers: [
           {
             key: "Cross-Origin-Embedder-Policy",
             value: "require-corp",

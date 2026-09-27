@@ -70,6 +70,7 @@ jobs:
     # that boots `npm run dev` (Playwright's webServer inherits this env).
     env:
       NEXT_PUBLIC_TAURI_FALLBACK: '1'
+      NEXT_DISABLE_DEV_OVERLAY: 'true'
 
     steps:
       - name: Checkout code
@@ -156,6 +157,7 @@ jobs:
     # flake run exercises the same desktop path and doesn't false-positive.
     env:
       NEXT_PUBLIC_TAURI_FALLBACK: '1'
+      NEXT_DISABLE_DEV_OVERLAY: 'true'
 
     steps:
       - name: Checkout code
@@ -344,6 +346,7 @@ jobs:
     # exercises the same desktop code path as the per-PR chromium run.
     env:
       NEXT_PUBLIC_TAURI_FALLBACK: '1'
+      NEXT_DISABLE_DEV_OVERLAY: 'true'
 
     steps:
       - name: Checkout code

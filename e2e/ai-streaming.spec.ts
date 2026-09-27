@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 /**
  * AI Streaming E2E Tests
@@ -8,33 +8,75 @@ import { test, expect } from "@playwright/test";
  * `CoachStreamEvent` per `data:` line). These specs pin the wire contract the
  * client-facing chat consumes.
  *
+ * Issue #2288: `page.route` is unreliable with WebKit under load.
+ * All AI proxy mocks use `addInitScript` (window.fetch interception) instead,
+ * which works consistently across all browsers.
+ *
  * Note: tool calling is intentionally NOT tested here — the hardened
  * `/api/chat` no longer exposes a tool surface (card search lives behind
  * `/api/ai-proxy`).
  */
-test.describe("AI Streaming & Tools", () => {
-  test.beforeEach(async ({ page }) => {
-    await page.goto("/deck-coach");
+
+async function mockChatApi(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const chunks = [
+      'data: {"type":"text","value":"Hello! "}\n\n',
+      'data: {"type":"text","value":"I am your AI coach."}\n\n',
+      'data: {"type":"done"}\n\n',
+    ];
+    const body = chunks.join("");
+
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      if (url.includes("/api/chat")) {
+        return Promise.resolve(
+          new Response(body, {
+            status: 200,
+            headers: { "Content-Type": "text/event-stream" },
+          }),
+        );
+      }
+      return originalFetch(input, init);
+    };
   });
+}
 
+async function mockAiProxyFailure(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = (
+      input: RequestInfo | URL,
+      init?: RequestInit,
+    ): Promise<Response> => {
+      const url =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      if (url.includes("/api/ai-proxy")) {
+        return Promise.reject(new Error("internetdisconnected"));
+      }
+      return originalFetch(input, init);
+    };
+  });
+}
+
+test.describe("AI Streaming & Tools", () => {
   test("should stream coach SSE events from /api/chat", async ({ page }) => {
-    // Mock the chat API to return the hardened SSE event stream.
-    await page.route("**/api/chat", async (route) => {
-      const encoder = new TextEncoder();
-      const chunks = [
-        'data: {"type":"text","value":"Hello! "}\n\n',
-        'data: {"type":"text","value":"I am your AI coach."}\n\n',
-        'data: {"type":"done"}\n\n',
-      ];
+    await mockChatApi(page);
 
-      await route.fulfill({
-        status: 200,
-        contentType: "text/event-stream",
-        body: Buffer.from(chunks.join("")),
-      });
-    });
+    await page.goto("/deck-coach");
 
-    // Exercise the endpoint via fetch in the page and read the full stream.
     const response = await page.evaluate(async () => {
       const res = await fetch("/api/chat", {
         method: "POST",
@@ -60,34 +102,21 @@ test.describe("AI Streaming & Tools", () => {
     expect(response).toContain('data: {"type":"done"}');
   });
 
-  // Issue #2070: Tests the heuristic fallback when AI is unavailable.
-  // Note: In CI environments where no AI providers are configured, the code
-  // path goes directly to heuristic without attempting AI calls. This test
-  // verifies the deck-coach UI works when AI is mocked to fail.
   test("should use heuristic mode when AI API fails", async ({ page }) => {
-    // Mock API failure - abort the request to simulate network/API error
-    await page.route("**/api/ai-proxy", async (route) => {
-      await route.abort("internetdisconnected");
-    });
+    await mockAiProxyFailure(page);
 
     await page.goto("/deck-coach");
     await page.waitForLoadState("domcontentloaded");
 
-    // The textarea should be visible after page loads
     const textarea = page.locator('textarea[placeholder*="1 Sol Ring"]');
     await expect(textarea).toBeVisible({ timeout: 10000 });
 
-    // Enter a decklist
     await textarea.fill("1 Black Lotus\n1 Mox Ruby");
 
-    // Click the Review button
     await page.click('button:has-text("Review My Deck")');
 
-    // Wait for analysis to complete (may use heuristic if AI fails)
-    // The page should still be functional - verify no error dialog
     await page.waitForTimeout(2000);
 
-    // Verify the textarea still exists and the page is responsive
     await expect(textarea).toBeVisible();
   });
 });
