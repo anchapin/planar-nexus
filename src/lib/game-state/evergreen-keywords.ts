@@ -20,6 +20,7 @@ import type {
   PlayerId,
 } from "./types";
 import { ZoneType } from "./types";
+import { hasWardStrict } from "./keyword-actions/ward";
 
 /**
  * Check if a card has a specific keyword
@@ -832,13 +833,14 @@ const DEFAULT_WARD_COST = "{2}";
  * target of a spell or ability an opponent controls, counter that spell or ability
  * unless its controller pays [cost]."
  *
- * Detection: the card's `keywords` array contains "Ward", OR the oracle text
- * contains "ward" as a standalone keyword (word-bounded, so "warden"/"forward"
- * do not match).
+ * Detection: defer to `hasWardStrict` (parsed-keywords only, canonical
+ * contract — see `keyword-actions/ward.ts`); fall back to a word-bounded
+ * oracle-text match only when the strict check returns false, so cards
+ * whose `keywords` array is missing the tag still resolve correctly via
+ * oracle text. Word-bounding keeps "warden" / "forward" from matching.
  */
 export function hasWard(card: CardInstance): boolean {
-  const keywords = card.cardData.keywords || [];
-  if (keywords.some((k) => /^ward\b/i.test(k.trim()))) {
+  if (hasWardStrict(card)) {
     return true;
   }
   const oracleText = card.cardData.oracle_text || "";
