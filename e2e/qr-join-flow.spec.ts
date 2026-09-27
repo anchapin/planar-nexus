@@ -168,15 +168,26 @@ async function fillUntilButtonEnabled(
   fields: Array<{ label: string; value: string }>,
   buttonName: string,
 ): Promise<void> {
+  const button = page.getByRole("button", { name: buttonName });
+
   await expect(async () => {
     for (const field of fields) {
       await page.getByLabel(field.label).fill(field.value);
     }
-    // Short inner timeout: fail fast so the outer loop re-fills, which is
-    // what recovers a fill that was swallowed by the pre-hydration page.
-    await expect(page.getByRole("button", { name: buttonName })).toBeEnabled({
-      timeout: 500,
-    });
+    // Issue #2288: Use waitForFunction with polling to actively check button
+    // stability. This avoids the race where toBeEnabled({timeout:500}) passes
+    // on a momentary enabled state that React immediately re-disables.
+    await page.waitForFunction(
+      (btn) => {
+        if (!btn) return false;
+        return (
+          !(btn as HTMLButtonElement).disabled &&
+          btn.getAttribute("aria-disabled") !== "true"
+        );
+      },
+      await button.elementHandle(),
+      { timeout: 5000, polling: 100 },
+    );
   }).toPass({ timeout: 15_000 });
 }
 
