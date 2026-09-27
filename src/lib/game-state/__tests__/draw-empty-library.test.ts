@@ -168,3 +168,64 @@ describe("drawCard — empty library loss (CR 704.5c, issue #1580)", () => {
     expect(finalState.status).toBe("in_progress");
   });
 });
+
+/**
+ * Issue #2291 — the same CR 704.5c loss, but for the drawCard exported from
+ * player-actions.ts (the alternate implementation that was previously returning
+ * `state` unchanged, deferring the loss to an SBA sweep that never fired).
+ *
+ * Keeping this regression pinned to player-actions.drawCard specifically
+ * guards the fix at the exact code path the issue points at
+ * (src/lib/game-state/player-actions.ts:177-180).
+ */
+describe("drawCard (player-actions) — empty library loss (CR 704.5c, issue #2291)", () => {
+  // Use the alternate drawCard from player-actions so a regression in that
+  // module's export is caught even if the game-state barrel is fixed later.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { drawCard: drawCardFromPlayerActions } = jest.requireActual(
+    "../player-actions",
+  ) as typeof import("../player-actions");
+
+  function emptyLibraryState(): GameState {
+    const state = createInitialGameState(["Alice", "Bob"], 20, false);
+    const aliceId = Array.from(state.players.keys())[0];
+    // Empty Alice's library entirely.
+    const libraryZoneId = `${aliceId}-library`;
+    const library = state.zones.get(libraryZoneId);
+    if (!library) throw new Error("library zone missing");
+    const emptiedZones = new Map(state.zones);
+    emptiedZones.set(libraryZoneId, { ...library, cardIds: [] });
+    return { ...state, zones: emptiedZones };
+  }
+
+  it("marks the player as lost when draw is attempted with an empty library", () => {
+    const state = emptyLibraryState();
+    const aliceId = Array.from(state.players.keys())[0];
+
+    const next = drawCardFromPlayerActions(state, aliceId);
+
+    const player = next.players.get(aliceId);
+    expect(player).toBeDefined();
+    expect(player!.hasLost).toBe(true);
+    expect(player!.lossReason).toMatch(/empty library/i);
+    // Other player is untouched.
+    const playerIds = Array.from(state.players.keys());
+    const bobId = playerIds.find((id) => id !== aliceId)!;
+    expect(next.players.get(bobId)!.hasLost).toBe(false);
+    // Status / winner are intentionally NOT advanced here: that's the
+    // job of drawWithSBAChecking + checkWinCondition in the game-state
+    // barrel; player-actions.drawCard only marks the loss flag.
+    expect(next.status).toBe("not_started");
+  });
+
+  it("does not mark the player as lost when the library is non-empty", () => {
+    const state = createInitialGameState(["Alice", "Bob"], 20, false);
+    const aliceId = Array.from(state.players.keys())[0];
+
+    const next = drawCardFromPlayerActions(state, aliceId);
+
+    const player = next.players.get(aliceId);
+    expect(player!.hasLost).toBe(false);
+    expect(player!.lossReason).toBeNull();
+  });
+});
