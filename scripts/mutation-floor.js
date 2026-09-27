@@ -37,15 +37,27 @@ const {
 function main() {
   if (!fs.existsSync(REPORT_PATH)) {
     process.stderr.write(
-      `mutation-floor: ${REPORT_PATH} not found — skipping (nothing to gate).\n`,
+      `mutation-floor: ${REPORT_PATH} not found — failing closed (issue #2295). ` +
+        `A missing report means Stryker did not produce one; the floor gate ` +
+        `must not silently skip and hide the upstream failure.\n`,
     );
-    process.exitCode = 0;
+    process.exitCode = 1;
     return;
   }
 
   let data;
   try {
-    data = JSON.parse(fs.readFileSync(REPORT_PATH, "utf8"));
+    const raw = fs.readFileSync(REPORT_PATH, "utf8");
+    if (raw.trim().length === 0) {
+      process.stderr.write(
+        `mutation-floor: ${REPORT_PATH} is empty — failing closed (issue #2295). ` +
+          `Stryker wrote a zero-byte report; the floor gate must not silently ` +
+          `skip and hide the upstream failure.\n`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+    data = JSON.parse(raw);
   } catch (err) {
     process.stderr.write(
       `mutation-floor: failed to parse ${REPORT_PATH}: ${err && err.message}\n`,
