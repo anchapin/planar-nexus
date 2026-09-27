@@ -485,10 +485,25 @@ describe("mutation-floor.js CLI", () => {
     expect(runCli({ MUTATION_FLOOR: "30" }).status).toBe(0);
   });
 
-  it("exits 0 with a skip note when the report is absent (Stryker's own gate covers hard failures)", () => {
+  it("exits 1 with a clear error when the report is absent (#2295 — fail-closed)", () => {
     const res = runCli();
-    expect(res.status).toBe(0);
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain("mutation.json");
     expect(res.stderr).toContain("not found");
+    expect(res.stderr).toContain("#2295");
+  });
+
+  it("exits 1 with a clear error when the report is empty (#2295 — fail-closed)", () => {
+    mkdirSync(path.join(workDir, "reports", "mutation"), { recursive: true });
+    writeFileSync(
+      path.join(workDir, "reports", "mutation", "mutation.json"),
+      "",
+    );
+    const res = runCli();
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain("mutation.json");
+    expect(res.stderr).toContain("empty");
+    expect(res.stderr).toContain("#2295");
   });
 
   it("exits 1 on a malformed report instead of silently passing", () => {
