@@ -250,6 +250,13 @@ beforeEach(() => {
   getRateLimitHeaders.mockReset();
   saveMock.mockReset();
   getAIModel.mockReset();
+  // Pin Date.now() to a fixed epoch so any test that constructs mock
+  // `resetAt: Date.now() + 60_000` values (or that compares response
+  // headers against the route's own `Date.now()`-derived resetAt) yields
+  // deterministic values across runs. Without this, sub-millisecond
+  // drift between mock setup and route invocation can produce flake
+  // failures on slow CI runners — see issue #2293.
+  jest.spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
   // Re-prime defaults the other tests rely on
   getAIModel.mockResolvedValue({ modelId: "mocked-model" });
   isModelAllowed.mockReturnValue(true);
