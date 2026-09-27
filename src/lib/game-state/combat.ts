@@ -30,6 +30,7 @@ import {
   getMenaceMinimumBlockers,
   getLandwalkTypes,
 } from "./evergreen-keywords";
+import { hasDefenderStrict } from "./keyword-actions/defender";
 
 /**
  * Result of a combat action
@@ -88,6 +89,17 @@ export function canAttack(
         reason: "Summoning sickness (haste not granted)",
       };
     }
+  }
+
+  // CR 702.13 — defender: this creature can't attack.
+  // Consult the strict parsed-keywords check (not substring oracle text) so
+  // a card whose oracle text merely mentions "defender" (e.g. a continuous
+  // effect grant) is not incorrectly rejected. Issue #2293.
+  if (hasDefenderStrict(card)) {
+    return {
+      canAttack: false,
+      reason: "Creature has defender (CR 702.13)",
+    };
   }
 
   // Must have a defender
@@ -1185,6 +1197,9 @@ export function getAvailableAttackers(
         card.cardData.oracle_text?.toLowerCase().includes("haste");
       if (!hasHaste) return false;
     }
+
+    // CR 702.13 — defender creatures cannot attack. Issue #2293.
+    if (hasDefenderStrict(card)) return false;
 
     return true;
   });
