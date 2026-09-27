@@ -10,6 +10,7 @@ import {
   canTarget as canTargetKeyword,
   canBlockProtectedAttacker,
 } from "./evergreen-keywords";
+import { canCastAtInstantSpeed } from "./keyword-actions/flash";
 import { hasSplitSecondOnStack } from "./auto-pass-priority";
 
 /**
@@ -403,12 +404,15 @@ export class ValidationService {
 
     // Check timing rules (Sorcery vs Instant)
     const typeLine = card.cardData.type_line?.toLowerCase() || "";
-    const oracleText = card.cardData.oracle_text?.toLowerCase() || "";
     const isInstant = typeLine.includes("instant");
-    const hasFlash = oracleText.includes("flash");
+    // CR 702.8 — flash. Delegated to the canonical helper so the parsed
+    // keyword list (not raw oracle text) is consulted; cards with
+    // Flashback / "flash" in unrelated oracle text are NOT incorrectly
+    // granted flash. Issue #2293: replaced substring oracle-text search.
+    const canCastInstant = canCastAtInstantSpeed(card);
 
     // Sorcery-speed spells have additional restrictions
-    if (!isInstant && !hasFlash) {
+    if (!isInstant && !canCastInstant) {
       // Must be your turn
       if (state.turn.activePlayerId !== action.playerId) {
         return {
