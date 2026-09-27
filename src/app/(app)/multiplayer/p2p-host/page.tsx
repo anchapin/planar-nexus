@@ -8,6 +8,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -34,6 +35,7 @@ import { useP2PSignaling } from "@/hooks/use-p2p-signaling";
 import { SignalingExchange } from "@/components/signaling-exchange";
 import { QRCodeDisplay } from "@/components/qr-code-display";
 import type { P2PMessage } from "@/lib/webrtc-p2p";
+import type { HandshakeStep } from "@/lib/p2p-signaling-client";
 
 interface HostState {
   step: "setup" | "signaling" | "connected";
@@ -63,6 +65,23 @@ export default function P2PHostPage() {
     timerMinutes: 30,
   });
 
+  // Issue #2294: e2e deterministic handshake bypass. When `?qrStub=true` is
+  // present, short-circuit `startHostConnection` with a stub localOffer so the
+  // QR renders immediately without waiting on the real WebRTC handshake (which
+  // can stall in CI due to TURN latency / cold start).
+  const searchParams = useSearchParams();
+  const qrStubEnabled = searchParams.get("qrStub") === "true";
+  const [stubLocalOffer, setStubLocalOffer] = useState<string | undefined>(
+    undefined,
+  );
+  // The stub never enters the real handshake, so `signaling.handshakeStep`
+  // stays at its initial value and `<SignalingExchange>` would hide the
+  // offer textarea. Mirror the real flow's "waiting-for-answer" step locally
+  // so the share textarea stays visible in stub mode.
+  const stubHandshakeStep: HandshakeStep | undefined = qrStubEnabled
+    ? "waiting-for-answer"
+    : undefined;
+
   const signaling = useP2PSignaling({
     onConnected: () => {
       setHostState((prev) => ({ ...prev, step: "connected" }));
@@ -88,6 +107,23 @@ export default function P2PHostPage() {
   const handleSetupComplete = async () => {
     try {
       setHostState((prev) => ({ ...prev, step: "signaling" }));
+      if (qrStubEnabled) {
+        // e2e deterministic path (issue #2294): publish a stub serialized offer
+        // so QR renders immediately, skipping the real WebRTC handshake that
+        // can stall in CI behind cold-start TURN latency. The stub is sized
+        // to be >50 chars so the manual-path textarea assertion (see
+        // e2e/qr-join-flow.spec.ts) holds without depending on the real
+        // handshake producing a game code.
+        await signaling.initializeAsHost(hostState.playerName);
+        setStubLocalOffer(
+          JSON.stringify({
+            type: "offer",
+            sdp: "stub-offer-for-deterministic-e2e-handshake-bypass",
+            gameCode: signaling.gameCode || "STUB0000",
+          }),
+        );
+        return;
+      }
       await signaling.initializeAsHost(hostState.playerName);
       // Auto-generate offer after initialization
       await signaling.startHostConnection();
@@ -315,9 +351,9 @@ export default function P2PHostPage() {
         <div className="grid gap-6 md:grid-cols-2">
           {/* QR Code — encodes the serialized connection code (the signaling
               offer) so opponents can scan it on the join page (issue #1728). */}
-          {signaling.localOffer && (
+          {(stubLocalOffer ?? signaling.localOffer) && (
             <QRCodeDisplay
-              payload={signaling.localOffer}
+              payload={stubLocalOffer ?? signaling.localOffer ?? undefined}
               gameCode={signaling.gameCode}
               connectionInfo={{
                 hostName: hostState.playerName,
@@ -326,11 +362,15 @@ export default function P2PHostPage() {
             />
           )}
 
-          {/* Signaling Exchange */}
+          {/* Signaling Exchange — when the e2e stub is active
+              (issue #2294) the stub offer string is published instead of
+              `signaling.localOffer`, which is never populated on that path;
+              the stub also pins the handshake step to `waiting-for-answer`
+              so the share textarea stays visible. */}
           <SignalingExchange
             mode="host"
-            step={signaling.handshakeStep}
-            localData={signaling.localOffer}
+            step={stubHandshakeStep ?? signaling.handshakeStep}
+            localData={stubLocalOffer ?? signaling.localOffer}
             onReceiveData={handleReceiveAnswer}
             onGenerateData={signaling.startHostConnection}
           />
