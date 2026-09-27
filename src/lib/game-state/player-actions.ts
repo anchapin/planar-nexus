@@ -175,8 +175,27 @@ export function drawCard(state: GameState, playerId: PlayerId): GameState {
   }
 
   if (library.cardIds.length === 0) {
-    // Player loses when they can't draw (handled by state-based actions)
-    return state;
+    // CR 704.5c: If a player would draw from an empty library, they lose the game.
+    // We mark the loss here, at the moment the draw is attempted — deferring to
+    // an SBA sweep would be wrong, because a player whose library is merely empty
+    // between draws is fine; the loss only triggers when a draw is actually
+    // required from an empty library.
+    const player = state.players.get(playerId);
+    if (!player) {
+      throw new Error(`Player ${playerId} not found`);
+    }
+    const updatedPlayer = {
+      ...player,
+      hasLost: true,
+      lossReason: "Attempted to draw from empty library",
+    };
+    const updatedPlayers = new Map(state.players);
+    updatedPlayers.set(playerId, updatedPlayer);
+    return {
+      ...state,
+      players: updatedPlayers,
+      lastModifiedAt: Date.now(),
+    };
   }
 
   const cardId = library.cardIds[library.cardIds.length - 1];
