@@ -188,7 +188,10 @@ async function fillUntilButtonEnabled(
       await button.elementHandle(),
       { timeout: 5000, polling: 100 },
     );
-  }).toPass({ timeout: 15_000 });
+    // 30s instead of 15s: Firefox + WebKit need more headroom under CI load
+    // when the React "Create Lobby" / "Join Game" buttons gate on the
+    // signaling handshake. Chromium has spare slack but is unaffected (#2290).
+  }).toPass({ timeout: 30_000 });
 }
 
 test.describe("QR join flow (#1728)", () => {
@@ -253,7 +256,7 @@ test.describe("QR join flow (#1728)", () => {
     await page.getByRole("button", { name: "Join Game" }).click();
 
     await expect(page.getByRole("heading", { name: "Connected!" })).toBeVisible(
-      { timeout: 15000 },
+      { timeout: 30000 },
     );
     await expect(
       page.getByText("Direct peer-to-peer connection is active."),

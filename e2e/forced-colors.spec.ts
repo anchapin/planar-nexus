@@ -76,9 +76,19 @@ test.describe("Forced-colors mode (#1269)", () => {
         await expect(bar).toHaveAttribute("aria-valuemin", "0");
       }
 
+      // Filter out external resource errors (e.g. picsum.photos CORP blocks
+      // under Firefox HCM emulation). These are non-functional - the avatar
+      // placeholder simply doesn't render - and unrelated to the surface
+      // navigability that this smoke test is verifying (#2290).
+      const actionableErrors = consoleErrors.filter(
+        (msg) =>
+          !/Cross-Origin-Resource-Policy/i.test(msg) &&
+          !/NS_BINDING_ABORTED|NS_ERROR_NETWORK/i.test(msg) &&
+          !/picsum\.photos/i.test(msg),
+      );
       expect(
-        consoleErrors,
-        `Console errors on ${route.path}: ${consoleErrors.join("\n")}`,
+        actionableErrors,
+        `Console errors on ${route.path}: ${actionableErrors.join("\n")}`,
       ).toEqual([]);
     });
   }

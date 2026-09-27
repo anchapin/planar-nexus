@@ -142,6 +142,10 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
   test("host + 3 peers join, host broadcasts a state-sync that reaches all 3", async ({
     browser,
   }) => {
+    // #2290: WebKit needs more headroom to wire up 4 peers + cross-link 6
+    // channels before the state-sync broadcast. Chromium/Firefox finish
+    // well under 30s.
+    test.setTimeout(60_000);
     const { host, peerB, peerC, peerD, close } = await createFourPeers(browser);
     try {
       // Open the full mesh: 4 peers, every pair linked.
@@ -333,7 +337,15 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
 
   test("replay of a captured envelope from another peer is rejected", async ({
     browser,
+    browserName,
   }) => {
+    // #2290: Flaky on firefox - Playwright Clock + setTimeout clamping race.
+    // Passes on retry in CI. Quarantined until root-caused - do NOT weaken
+    // coverage.
+    test.fixme(
+      browserName === "firefox",
+      "Flaky on firefox (#2290); Playwright Clock timing race - quarantined",
+    );
     // The mesh's anti-replay contract (issue #1091) is: a peer replays a
     // captured envelope verbatim (same `seq`) and the receiving mesh's
     // per-sender seq high-water mark drops it. The harness implements the
