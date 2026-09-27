@@ -234,6 +234,50 @@ const ZoneDisplay = memo(function ZoneDisplay({
   );
 });
 
+// Hoisted out of `PlayerArea` so its identity is stable across re-renders.
+// When defined inside the parent's function body (#2292) every render
+// produced a fresh component reference and React unmounted/remounted each
+// zone — wiping transient UI state (focus, hover, scroll, animations).
+// Mirrors the prop contract of the internal `ZoneDisplay`; pre-binds
+// `playerId` plus the player-scoped click handlers so call sites stay terse.
+interface ZoneDisplayLocalProps {
+  zone: ZoneType;
+  title: string;
+  count: number;
+  cards: ZoneCard[];
+  bgColor?: string;
+  size?: "small" | "default" | "large";
+  playerId: string;
+  onCardClick: (cardId: string, zone: ZoneType) => void;
+  onZoneClick: (zone: ZoneType, playerId: string) => void;
+}
+
+const ZoneDisplayLocal = memo(function ZoneDisplayLocal({
+  zone,
+  title,
+  count,
+  cards,
+  bgColor = "bg-muted/50",
+  size = "default",
+  playerId,
+  onCardClick,
+  onZoneClick,
+}: ZoneDisplayLocalProps) {
+  return (
+    <ZoneDisplay
+      zone={zone}
+      title={title}
+      count={count}
+      cards={cards}
+      bgColor={bgColor}
+      size={size}
+      onCardClick={onCardClick}
+      onZoneClick={onZoneClick}
+      playerId={playerId}
+    />
+  );
+});
+
 // Memoized PlayerInfo component for performance optimization
 interface PlayerInfoProps {
   player: PlayerState;
@@ -378,34 +422,9 @@ const PlayerArea = memo(function PlayerArea({
     [onCardClick],
   );
 
-  // Local ZoneDisplay wrapper for backward compatibility
-  const ZoneDisplayLocal = ({
-    zone,
-    title,
-    count,
-    cards,
-    bgColor = "bg-muted/50",
-    size = "default",
-  }: {
-    zone: ZoneType;
-    title: string;
-    count: number;
-    cards: ZoneCard[];
-    bgColor?: string;
-    size?: "small" | "default" | "large";
-  }) => (
-    <ZoneDisplay
-      zone={zone}
-      title={title}
-      count={count}
-      cards={cards}
-      bgColor={bgColor}
-      size={size}
-      onCardClick={handleCardClick}
-      onZoneClick={handleZoneClick}
-      playerId={player.id}
-    />
-  );
+  // `ZoneDisplayLocal` is now a module-level `memo()` component (#2292) —
+  // defined here it would re-create its identity every render and force a
+  // full remount of every zone, losing transient UI state.
 
   return (
     <div
@@ -428,6 +447,9 @@ const PlayerArea = memo(function PlayerArea({
           cards={player.commandZone}
           bgColor="bg-yellow-500/10"
           size="small"
+          playerId={player.id}
+          onCardClick={handleCardClick}
+          onZoneClick={handleZoneClick}
         />
       )}
 
@@ -442,6 +464,9 @@ const PlayerArea = memo(function PlayerArea({
               cards={player.library}
               bgColor="bg-blue-500/10"
               size="small"
+              playerId={player.id}
+              onCardClick={handleCardClick}
+              onZoneClick={handleZoneClick}
             />
             <ZoneDisplayLocal
               zone="graveyard"
@@ -450,6 +475,9 @@ const PlayerArea = memo(function PlayerArea({
               cards={player.graveyard}
               bgColor="bg-stone-500/10"
               size="small"
+              playerId={player.id}
+              onCardClick={handleCardClick}
+              onZoneClick={handleZoneClick}
             />
             <ZoneDisplayLocal
               zone="exile"
@@ -458,6 +486,9 @@ const PlayerArea = memo(function PlayerArea({
               cards={player.exile}
               bgColor="bg-sky-500/10"
               size="small"
+              playerId={player.id}
+              onCardClick={handleCardClick}
+              onZoneClick={handleZoneClick}
             />
           </div>
           <ZoneDisplayLocal
@@ -467,6 +498,9 @@ const PlayerArea = memo(function PlayerArea({
             cards={player.battlefield}
             bgColor="bg-green-500/10"
             size="large"
+            playerId={player.id}
+            onCardClick={handleCardClick}
+            onZoneClick={handleZoneClick}
           />
         </div>
       ) : (
@@ -498,6 +532,9 @@ const PlayerArea = memo(function PlayerArea({
                 cards={player.hand}
                 bgColor="bg-primary/10"
                 size="small"
+                playerId={player.id}
+                onCardClick={handleCardClick}
+                onZoneClick={handleZoneClick}
               />
             )}
           </div>
@@ -513,6 +550,9 @@ const PlayerArea = memo(function PlayerArea({
               cards={player.library}
               bgColor="bg-blue-500/10"
               size="small"
+              playerId={player.id}
+              onCardClick={handleCardClick}
+              onZoneClick={handleZoneClick}
             />
             <ZoneDisplayLocal
               zone="graveyard"
@@ -521,6 +561,9 @@ const PlayerArea = memo(function PlayerArea({
               cards={player.graveyard}
               bgColor="bg-stone-500/10"
               size="small"
+              playerId={player.id}
+              onCardClick={handleCardClick}
+              onZoneClick={handleZoneClick}
             />
             <ZoneDisplayLocal
               zone="exile"
@@ -529,6 +572,9 @@ const PlayerArea = memo(function PlayerArea({
               cards={player.exile}
               bgColor="bg-sky-500/10"
               size="small"
+              playerId={player.id}
+              onCardClick={handleCardClick}
+              onZoneClick={handleZoneClick}
             />
             {!isBottom && (
               <ZoneDisplayLocal
@@ -538,6 +584,9 @@ const PlayerArea = memo(function PlayerArea({
                 cards={player.hand}
                 bgColor="bg-primary/10"
                 size="small"
+                playerId={player.id}
+                onCardClick={handleCardClick}
+                onZoneClick={handleZoneClick}
               />
             )}
           </div>
@@ -550,6 +599,9 @@ const PlayerArea = memo(function PlayerArea({
               cards={player.battlefield}
               bgColor="bg-green-500/10"
               size="large"
+              playerId={player.id}
+              onCardClick={handleCardClick}
+              onZoneClick={handleZoneClick}
             />
           </div>
         </div>
@@ -600,6 +652,10 @@ function arePlayerAreaPropsEqual(
   );
 }
 export { arePlayerAreaPropsEqual };
+// Test-only export for issue #2292 regression test. Re-importing the module
+// must yield the same component reference — this is the entire contract that
+// was broken when `ZoneDisplayLocal` was declared inside `PlayerArea`.
+export { ZoneDisplayLocal };
 
 export function GameBoard({
   players,
@@ -795,8 +851,12 @@ export function GameBoard({
     <div
       className={cn(
         "w-full h-full p-1 bg-background overflow-visible",
-        mode === "high-contrast" || mode === "both" ? "game-board-high-contrast" : undefined,
-        mode === "color-blind" || mode === "both" ? "game-board-colorblind" : undefined
+        mode === "high-contrast" || mode === "both"
+          ? "game-board-high-contrast"
+          : undefined,
+        mode === "color-blind" || mode === "both"
+          ? "game-board-colorblind"
+          : undefined,
       )}
       role="application"
       aria-label="Game Board"
