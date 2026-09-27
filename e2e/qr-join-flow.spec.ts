@@ -198,7 +198,7 @@ test.describe("QR join flow (#1728)", () => {
     await installDeterministicPeerApi(page);
 
     // --- HOST: create lobby, get the connection QR + offer string ---
-    await page.goto("/multiplayer/p2p-host");
+    await page.goto("/multiplayer/p2p-host?qrStub=true");
     await page.waitForLoadState("networkidle");
 
     await fillUntilButtonEnabled(
@@ -217,7 +217,9 @@ test.describe("QR join flow (#1728)", () => {
 
     // The QR encodes the serialized connection code (the signaling offer).
     const qrImage = page.getByRole("img", { name: "Connection QR code" });
-    await expect(qrImage).toBeVisible({ timeout: 20000 });
+    // Issue #2294: deterministic signaling stub renders the QR immediately,
+    // but keep a generous timeout as defense-in-depth for cold CI runners.
+    await expect(qrImage).toBeVisible({ timeout: 60000 });
     await expect(qrImage).toHaveAttribute("src", /^data:image\/png;base64,/);
 
     // The same connection code is copyable as text for the manual path.

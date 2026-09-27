@@ -8,6 +8,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -63,6 +64,16 @@ export default function P2PHostPage() {
     timerMinutes: 30,
   });
 
+  // Issue #2294: e2e deterministic handshake bypass. When `?qrStub=true` is
+  // present, short-circuit `startHostConnection` with a stub localOffer so the
+  // QR renders immediately without waiting on the real WebRTC handshake (which
+  // can stall in CI due to TURN latency / cold start).
+  const searchParams = useSearchParams();
+  const qrStubEnabled = searchParams.get("qrStub") === "true";
+  const [stubLocalOffer, setStubLocalOffer] = useState<string | undefined>(
+    undefined,
+  );
+
   const signaling = useP2PSignaling({
     onConnected: () => {
       setHostState((prev) => ({ ...prev, step: "connected" }));
@@ -88,6 +99,20 @@ export default function P2PHostPage() {
   const handleSetupComplete = async () => {
     try {
       setHostState((prev) => ({ ...prev, step: "signaling" }));
+      if (qrStubEnabled) {
+        // e2e deterministic path (issue #2294): publish a stub serialized offer
+        // so QR renders immediately, skipping the real WebRTC handshake that
+        // can stall in CI behind cold-start TURN latency.
+        await signaling.initializeAsHost(hostState.playerName);
+        setStubLocalOffer(
+          JSON.stringify({
+            type: "offer",
+            sdp: "stub-offer",
+            gameCode: signaling.gameCode,
+          }),
+        );
+        return;
+      }
       await signaling.initializeAsHost(hostState.playerName);
       // Auto-generate offer after initialization
       await signaling.startHostConnection();
@@ -315,9 +340,9 @@ export default function P2PHostPage() {
         <div className="grid gap-6 md:grid-cols-2">
           {/* QR Code — encodes the serialized connection code (the signaling
               offer) so opponents can scan it on the join page (issue #1728). */}
-          {signaling.localOffer && (
+          {(stubLocalOffer ?? signaling.localOffer) && (
             <QRCodeDisplay
-              payload={signaling.localOffer}
+              payload={stubLocalOffer ?? signaling.localOffer ?? undefined}
               gameCode={signaling.gameCode}
               connectionInfo={{
                 hostName: hostState.playerName,
