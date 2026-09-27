@@ -56,6 +56,7 @@ import {
 import { QRCodeDisplay } from "@/components/qr-code-display";
 import { P2PStatusBanner } from "@/components/p2p-status-banner";
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
+import { useToast } from "@/hooks/use-toast";
 
 export default function HostLobbyPage() {
   const {
@@ -96,6 +97,7 @@ export default function HostLobbyPage() {
     evaluateReadyCheck,
   } = useLobby();
   const { confirm, confirmDialog } = useConfirmDialog();
+  const { toast } = useToast();
 
   // Form state
   const [gameName, setGameName] = useState("");
@@ -383,7 +385,11 @@ export default function HostLobbyPage() {
     if (reasonInput === null) return;
     const result = kickPeer(peerId, reasonInput || undefined);
     if (!result.removed && !result.banned && result.reason) {
-      window.alert(result.reason);
+      toast({
+        variant: "destructive",
+        title: "Failed to kick player",
+        description: result.reason,
+      });
     }
   };
 
