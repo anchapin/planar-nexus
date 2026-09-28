@@ -37,6 +37,7 @@ import { hasDeathtouchStrict } from "./keyword-actions/deathtouch";
 import { hasLifelinkStrict } from "./keyword-actions/lifelink";
 import { hasHasteStrict } from "./keyword-actions/haste";
 import { hasShroudStrict } from "./keyword-actions/shroud";
+import { hasPersistStrict } from "./keyword-actions/persist";
 
 /**
  * Check if a card has a specific keyword
@@ -1038,14 +1039,28 @@ export function isProtectedByWard(
   return card.controllerId !== sourceControllerId;
 }
 
-// ============== PERSIST ==============
+// ============== PERSIST (CR 702.78) ==============
 /**
  * Check if a card has persist keyword
  * CR 702.78: When a creature with persist dies, if it had no -1/-1 counters on it,
  * return it to the battlefield with a -1/-1 counter on it.
+ *
+ * Issue #2338: defers to `hasPersistStrict` (parsed-keywords only) first, then
+ * falls back to a **word-boundary** oracle-text test for cards whose `keywords`
+ * array is missing the tag. Mirrors the shape established by `hasHaste` from
+ * #2334 and `hasShroud` from #2336.
+ *
+ * The fallback must stay anchored. The previous `hasKeyword(card, "persist")`
+ * was an unanchored `includes`, so any creature whose text merely *mentioned*
+ * persist (`persistent`, `persists`, `persisted`, `impersistency`) was treated
+ * as a persist creature — and since this gate sits on the state-based-action
+ * death path, `handlePersist` would then return that card to the battlefield
+ * from the graveyard with a -1/-1 counter. A real state-corruption bug, not a
+ * cosmetic one.
  */
 export function hasPersist(card: CardInstance): boolean {
-  if (!hasKeyword(card, "persist")) {
+  const oracleText = card.cardData.oracle_text ?? "";
+  if (!hasPersistStrict(card) && !/\bpersist\b/i.test(oracleText)) {
     return false;
   }
   // CR 702.78: persist is a creature keyword ("When this creature is put into
