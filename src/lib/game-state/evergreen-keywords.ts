@@ -33,6 +33,7 @@ import { hasFirstStrikeStrict } from "./keyword-actions/first-strike";
 import { hasDoubleStrikeStrict } from "./keyword-actions/double-strike";
 import { hasTrampleStrict } from "./keyword-actions/trample";
 import { hasVigilanceStrict } from "./keyword-actions/vigilance";
+import { hasDeathtouchStrict } from "./keyword-actions/deathtouch";
 
 /**
  * Check if a card has a specific keyword
@@ -103,8 +104,20 @@ export function hasDoubleStrike(card: CardInstance): boolean {
 // ============== DEATHTOUCH ==============
 /**
  * Check if a card has deathtouch
+ *
+ * CR 702.2 — "Any nonzero amount of damage assigned to a creature by a
+ * source with deathtouch is sufficient to destroy it." 702.2b extends
+ * this to the trample damage-assignment step. 702.2a marks it as a
+ * static ability.
+ *
+ * Plan E (#2330): strict parsed-keyword check first (no substring
+ * false-positives on flavor-word "deathtouch" mentions or
+ * continuous-effect grant phrasing), then `hasKeyword` substring
+ * fallback for cards with missing `keywords` tags. Mirrors the shape
+ * established by `hasVigilance` from #2328.
  */
 export function hasDeathtouch(card: CardInstance): boolean {
+  if (hasDeathtouchStrict(card)) return true;
   return hasKeyword(card, "deathtouch");
 }
 
