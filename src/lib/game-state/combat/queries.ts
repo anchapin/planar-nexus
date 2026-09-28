@@ -23,7 +23,6 @@ import {
 } from "../layer-system";
 import {
   markCreatureAttackedForBoast,
-  hasInfect,
   hasDeathtouch,
   getToxicLevel,
   getProtectionQualities,

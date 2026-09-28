@@ -2825,10 +2825,13 @@ describe("Combat System - Deathtouch and Indestructible (#669)", () => {
 });
 
 // ============================================================
-// Infect and Toxic keyword combat damage (Issue #972)
-// CR 702.93 (Infect): damage to creatures is dealt as -1/-1 counters;
-//   damage to players is dealt as poison counters (no life loss).
-// CR 702.94 (Toxic): a creature with toxic N that deals combat damage
+// Infect and Toxic keyword combat damage (Issue #972, #2351)
+// CR 702.90b (Infect): damage to a player is dealt as that many poison
+//   counters instead of as life loss.
+// CR 702.90c (Infect): damage to a creature is dealt as that many -1/-1
+//   counters, and that damage "isn't marked on that creature" — so
+//   deathtouch (CR 702.2b) never applies to infect damage.
+// CR 702.95 (Toxic): a creature with toxic N that deals combat damage
 //   to a player causes that player to get N poison counters IN ADDITION
 //   to the normal damage effects.
 // ============================================================
@@ -2843,7 +2846,7 @@ describe("Combat System - Infect and Toxic (#972)", () => {
     );
   }
 
-  it("infect attacker deals -1/-1 counters (not marked damage) to a blocker (CR 702.93b)", () => {
+  it("infect attacker deals -1/-1 counters (not marked damage) to a blocker (CR 702.90c)", () => {
     // 3/3 infect attacker vs 0/5 blocker: 3 infect damage → 3 -1/-1 counters.
     // Blocker effective toughness drops to 2, so it survives with counters and
     // NO damage marked on it.
@@ -2920,7 +2923,7 @@ describe("Combat System - Infect and Toxic (#972)", () => {
     expect(bobGraveyard.cardIds).toContain(blockerId);
   });
 
-  it("infect attacker unblocked deals poison counters to player (no life loss) (CR 702.93c)", () => {
+  it("infect attacker unblocked deals poison counters to player (no life loss) (CR 702.90b)", () => {
     // 3/3 infect attacker unblocked → 3 poison counters, life unchanged.
     const { state, aliceId, bobId } = setupGameWithCreatures(
       [
@@ -2949,7 +2952,7 @@ describe("Combat System - Infect and Toxic (#972)", () => {
     expect(bob.life).toBe(20); // no life loss with infect
   });
 
-  it("toxic attacker unblocked deals normal damage plus toxic poison (CR 702.94)", () => {
+  it("toxic attacker unblocked deals normal damage plus toxic poison (CR 702.95)", () => {
     // 2/2 toxic 1 attacker unblocked → 2 life loss AND 1 poison counter.
     const { state, aliceId, bobId } = setupGameWithCreatures(
       [
@@ -3000,10 +3003,17 @@ describe("Combat System - Infect and Toxic (#972)", () => {
     expect(bob.poisonCounters).toBe(3);
   });
 
-  it("infect + deathtouch attacker destroys a blocker with a single point (CR 702.2b + 702.93b)", () => {
+  it("infect + deathtouch attacker does NOT destroy a blocker — deathtouch does not apply to infect damage (CR 702.90c)", () => {
     // 1/1 infect + deathtouch attacker vs 0/5 blocker: 1 infect damage →
-    // 1 -1/-1 counter, and because the source has deathtouch any nonzero
-    // infect damage is lethal, so the blocker is destroyed.
+    // 1 -1/-1 counter, no marked damage, and NO deathtouch lethality.
+    //
+    // Issue #2351 corrected this expectation. CR 702.90c says infect damage to
+    // a creature "isn't marked on that creature" — counters are placed instead,
+    // so no damage is ever dealt to the blocker and CR 702.2b has nothing to
+    // apply to. The old expectation (blocker destroyed) let a deathtouch+infect
+    // source destroy a legal permanent, and it double-counted the counters.
+    // This matches Blightsteel Colossus (infect + deathtouch + trample): 1
+    // damage into a 0/5 leaves it alive at -1/4.
     const { state, aliceId, bobId } = setupGameWithCreatures(
       [
         {
@@ -3032,13 +3042,11 @@ describe("Combat System - Infect and Toxic (#972)", () => {
     const result = resolveCombatDamage(blk.state);
     expect(result.success).toBe(true);
 
-    // Blocker is destroyed (deathtouch lethality) despite only 1 damage.
-    // Note: counters are cleared when a card moves to the graveyard
-    // (moveCardToZone resets counters), so we assert destruction here;
-    // the infect -1/-1 counter behaviour is verified in the surviving-
-    // blocker test above.
+    // One -1/-1 counter, zero marked damage, and the blocker survives.
+    expect(getMinusOneCounters(result.state, blockerId)).toBe(1);
+    expect(result.state.cards.get(blockerId)!.damage).toBe(0);
     const bobGraveyard = result.state.zones.get(`${bobId}-graveyard`)!;
-    expect(bobGraveyard.cardIds).toContain(blockerId);
+    expect(bobGraveyard.cardIds).not.toContain(blockerId);
   });
 
   it("non-infect attacker marks normal damage and adds no -1/-1 counters", () => {
@@ -3105,7 +3113,7 @@ describe("Combat System - Infect and Toxic (#972)", () => {
     expect(bob.poisonCounters).toBe(1);
   });
 
-  it("infect blocker deals -1/-1 counters to the attacker (CR 702.93b)", () => {
+  it("infect blocker deals -1/-1 counters to the attacker (CR 702.90c)", () => {
     // 0/3 attacker (0 power) blocked by a 2/2 infect blocker: the blocker
     // deals 2 infect damage to the attacker → 2 -1/-1 counters on attacker.
     const { state, aliceId, bobId } = setupGameWithCreatures(

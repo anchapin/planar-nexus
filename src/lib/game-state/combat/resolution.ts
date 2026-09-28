@@ -7,12 +7,7 @@
 
 import type { GameState, CardInstanceId, PlayerId } from "../types";
 import { Phase, isOnBattlefield } from "../types";
-import {
-  isCreature,
-  getPower,
-  getToughness,
-  addCounters,
-} from "../card-instance";
+import { isCreature, getPower } from "../card-instance";
 import { dealDamageToCard } from "../keyword-actions";
 import { checkStateBasedActions } from "../state-based-actions";
 import { dealCommanderDamage, isCommander } from "../commander-damage";
@@ -136,21 +131,23 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
           // Check if attacker is a commander
           const isAttackerCommander = isCommander(attackerCard);
 
-          // Check for infect (CR 702.93) and toxic (CR 702.94)
+          // Check for infect (CR 702.90) and toxic (CR 702.95)
           const attackerHasInfect = hasInfect(attackerCard);
           const attackerToxicLevel = getToxicLevel(attackerCard);
 
           // Apply damage to player
-          // CR 702.93 (Infect): ALL damage to players is dealt as poison counters, not life loss
-          // CR 702.94 (Toxic): Player gets poison counters equal to toxic level IN ADDITION to damage
+          // CR 702.90b (Infect): damage this deals to a player is dealt as that
+          // many poison counters instead of as life loss
+          // CR 702.95 (Toxic): player also gets poison counters equal to the
+          // toxic level, IN ADDITION to the damage
           if (attackerHasInfect) {
-            // Infect converts damage to poison - no life loss occurs (CR 702.93)
+            // Infect converts damage to poison - no life loss occurs (CR 702.90b)
             let updatedDefender = {
               ...defender,
               poisonCounters: defender.poisonCounters + damage,
             };
 
-            // If creature also has toxic, add toxic poison as well (CR 702.94)
+            // If creature also has toxic, add toxic poison as well (CR 702.95)
             if (attackerToxicLevel > 0) {
               updatedDefender = {
                 ...updatedDefender,
@@ -189,7 +186,7 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
               ),
             };
 
-            // Toxic gives additional poison counters per CR 702.94
+            // Toxic gives additional poison counters per CR 702.95
             if (attackerToxicLevel > 0) {
               const currentDefender = updatedState.players.get(
                 attacker.defenderId as PlayerId,
@@ -271,8 +268,9 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
       );
 
       const attackerHasDeathtouch = hasDeathtouch(attackerCard);
-      // CR 702.93 (Infect): damage to creatures from a source with infect
-      // is dealt as -1/-1 counters instead of marked damage.
+      // CR 702.90c: damage this deals to creatures is dealt as -1/-1 counters
+      // instead of being marked on them. Handled inside `dealDamageToCard`
+      // (issue #2351) so the replacement/prevention pipeline runs first.
       const attackerHasInfect = hasInfect(attackerCard);
 
       // Deal damage from attacker to blockers
@@ -307,65 +305,46 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
           damage = Math.min(remainingDamage, blockerToughness);
         }
 
-        if (attackerHasInfect) {
-          // CR 702.93b: Infect damage to a creature is dealt as -1/-1
-          // counters; it is NOT marked as damage on the creature.
-          const blockerWithCounters = addCounters(blockerCard, "-1/-1", damage);
-          let finalBlocker = blockerWithCounters;
-          // CR 702.2b + 702.93b: A source with both infect and deathtouch
-          // still counts as a deathtouch source — any nonzero infect damage
-          // is lethal, so mark lethal damage to trigger SBA destruction.
-          if (attackerHasDeathtouch && damage > 0) {
-            const lethalDamage = getToughness(blockerWithCounters);
-            finalBlocker = {
-              ...blockerWithCounters,
-              damage: Math.max(blockerWithCounters.damage, lethalDamage),
+        // CR 702.90c: when the attacker has infect, this call places -1/-1
+        // counters on the blocker instead of marking damage. Issue #2351 moved
+        // that conversion into `dealDamageToCard` so it also applies to
+        // non-combat damage (CR 702.90e) and so protection / replacement
+        // effects get to run first. This branch stays a thin caller.
+        const damageResult = dealDamageToCard(
+          updatedState,
+          blocker.cardId,
+          damage,
+          true,
+          attacker.cardId,
+        );
+        updatedState = damageResult.state;
+
+        // Check for lifelink on blocker (CR 702.15). Independent of whether the
+        // damage became counters — lifelink keys off the damage the blocker
+        // *assigns* in the assignment step, and infect on the *attacker* does
+        // not change what the blocker is lifelinked for.
+        if (blockerHasLifelink) {
+          const blockerController = updatedState.players.get(
+            blockerCard.controllerId,
+          );
+          if (blockerController) {
+            updatedState = {
+              ...updatedState,
+              players: new Map(updatedState.players).set(
+                blockerCard.controllerId!,
+                {
+                  ...blockerController,
+                  life: blockerController.life + damage,
+                },
+              ),
             };
           }
-          updatedState = {
-            ...updatedState,
-            cards: new Map(updatedState.cards).set(
-              blocker.cardId,
-              finalBlocker,
-            ),
-            lastModifiedAt: Date.now(),
-          };
-          damageEvents.push(
-            `${attackerCard.cardData.name} deals ${damage} infect damage (${damage} -1/-1 counters) to ${blockerCard.cardData.name}`,
-          );
-        } else {
-          // Apply damage to blocker
-          const damageResult = dealDamageToCard(
-            updatedState,
-            blocker.cardId,
-            damage,
-            true,
-            attacker.cardId,
-          );
-          updatedState = damageResult.state;
-
-          // Check for lifelink on blocker
-          if (blockerHasLifelink) {
-            const blockerController = updatedState.players.get(
-              blockerCard.controllerId,
-            );
-            if (blockerController) {
-              updatedState = {
-                ...updatedState,
-                players: new Map(updatedState.players).set(
-                  blockerCard.controllerId!,
-                  {
-                    ...blockerController,
-                    life: blockerController.life + damage,
-                  },
-                ),
-              };
-            }
-          }
-          damageEvents.push(
-            `${attackerCard.cardData.name} deals ${damage} to ${blockerCard.cardData.name}`,
-          );
         }
+        damageEvents.push(
+          attackerHasInfect
+            ? `${attackerCard.cardData.name} deals ${damage} infect damage (${damage} -1/-1 counters) to ${blockerCard.cardData.name}`
+            : `${attackerCard.cardData.name} deals ${damage} to ${blockerCard.cardData.name}`,
+        );
 
         remainingDamage -= damage;
       }
@@ -394,10 +373,18 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
             const attackerHasInfect = hasInfect(attackerCard);
 
             if (attackerHasInfect) {
-              // Excess trample damage with infect also applies as poison
+              // Excess trample damage from an infect source becomes poison
+              // counters (CR 702.90b). Issue #2351: toxic used to be omitted
+              // here while the *unblocked* path stacked both, so a creature with
+              // infect + toxic N + trample gave fewer poison counters when it
+              // was blocked than when it was not. Ruling: "Creatures that have
+              // both infect and Toxic can add poison counters from both
+              // abilities." (CR 702.95 for the toxic half.)
+              const infectToxicLevel = getToxicLevel(attackerCard);
               const updatedDefender = {
                 ...defender,
-                poisonCounters: defender.poisonCounters + remainingDamage,
+                poisonCounters:
+                  defender.poisonCounters + remainingDamage + infectToxicLevel,
               };
               updatedState = {
                 ...updatedState,
@@ -407,14 +394,16 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
                 ),
               };
               damageEvents.push(
-                `${attackerCard.cardData.name} tramples ${remainingDamage} poison to ${defender.name}`,
+                infectToxicLevel > 0
+                  ? `${attackerCard.cardData.name} tramples ${remainingDamage} poison to ${defender.name} and ${infectToxicLevel} toxic poison`
+                  : `${attackerCard.cardData.name} tramples ${remainingDamage} poison to ${defender.name}`,
               );
             } else {
               let updatedDefender = {
                 ...defender,
                 life: Math.max(0, defender.life - remainingDamage),
               };
-              // CR 702.94 (Toxic): any combat damage to a player from a toxic
+              // CR 702.95 (Toxic): any combat damage to a player from a toxic
               // source adds toxic-level poison counters in addition to life loss.
               const toxicLevel = getToxicLevel(attackerCard);
               if (toxicLevel > 0) {
@@ -494,53 +483,25 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
         const blockerPower = getEffectivePower(blockerCard, layerSystem);
         if (blockerPower <= 0) continue;
 
-        // CR 702.93 (Infect): a blocker with infect deals damage to the
-        // attacker as -1/-1 counters instead of marked damage.
+        // CR 702.90c: a blocker with infect places -1/-1 counters on the
+        // attacker instead of marking damage. Issue #2351: the conversion lives
+        // in `dealDamageToCard`, which also handles the deathtouch interaction
+        // (a deathtouch blocker with infect must NOT mark lethal damage on top
+        // of the counters — 702.90c says the damage "isn't marked").
         const blockerHasInfect = hasInfect(blockerCard);
-        if (blockerHasInfect) {
-          const currentAttacker = updatedState.cards.get(attacker.cardId);
-          if (currentAttacker) {
-            const attackerWithCounters = addCounters(
-              currentAttacker,
-              "-1/-1",
-              blockerPower,
-            );
-            let finalAttacker = attackerWithCounters;
-            // CR 702.2b + 702.93b: infect + deathtouch is lethal.
-            const blockerHasDeathtouch = hasDeathtouch(blockerCard);
-            if (blockerHasDeathtouch && blockerPower > 0) {
-              const lethalDamage = getToughness(attackerWithCounters);
-              finalAttacker = {
-                ...attackerWithCounters,
-                damage: Math.max(attackerWithCounters.damage, lethalDamage),
-              };
-            }
-            updatedState = {
-              ...updatedState,
-              cards: new Map(updatedState.cards).set(
-                attacker.cardId,
-                finalAttacker,
-              ),
-              lastModifiedAt: Date.now(),
-            };
-            damageEvents.push(
-              `${blockerCard.cardData.name} deals ${blockerPower} infect damage (${blockerPower} -1/-1 counters) to ${attackerCard.cardData.name}`,
-            );
-          }
-        } else {
-          // Apply damage from blocker to attacker
-          const damageResult = dealDamageToCard(
-            updatedState,
-            attacker.cardId,
-            blockerPower,
-            true,
-            blocker.cardId,
-          );
-          updatedState = damageResult.state;
-          damageEvents.push(
-            `${blockerCard.cardData.name} deals ${blockerPower} to ${attackerCard.cardData.name}`,
-          );
-        }
+        const damageResult = dealDamageToCard(
+          updatedState,
+          attacker.cardId,
+          blockerPower,
+          true,
+          blocker.cardId,
+        );
+        updatedState = damageResult.state;
+        damageEvents.push(
+          blockerHasInfect
+            ? `${blockerCard.cardData.name} deals ${blockerPower} infect damage (${blockerPower} -1/-1 counters) to ${attackerCard.cardData.name}`
+            : `${blockerCard.cardData.name} deals ${blockerPower} to ${attackerCard.cardData.name}`,
+        );
       }
     }
   }
