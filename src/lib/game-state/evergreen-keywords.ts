@@ -32,6 +32,7 @@ import { hasMenaceStrict } from "./keyword-actions/menace";
 import { hasFirstStrikeStrict } from "./keyword-actions/first-strike";
 import { hasDoubleStrikeStrict } from "./keyword-actions/double-strike";
 import { hasTrampleStrict } from "./keyword-actions/trample";
+import { hasVigilanceStrict } from "./keyword-actions/vigilance";
 
 /**
  * Check if a card has a specific keyword
@@ -293,12 +294,17 @@ export function getExcessTrampleDamage(
   return Math.min(damageRemaining, damage - blockerToughness);
 }
 
-// ============== VIGILANCE ==============
+// ============== VIGILANCE (CR 702.2b) ==============
 /**
- * Check if a card has vigilance
+ * Check if a card has vigilance.
+ *
+ * Issue #2328: defers to `hasVigilanceStrict` (parsed-keywords only)
+ * first; falls back to the substring `hasKeyword` helper for cards
+ * whose `keywords` array is missing the tag. Mirrors the flying /
+ * reach / menace / first-strike / double-strike / trample pattern.
  */
 export function hasVigilance(card: CardInstance): boolean {
-  return hasKeyword(card, "vigilance");
+  return hasVigilanceStrict(card) || hasKeyword(card, "vigilance");
 }
 
 /**

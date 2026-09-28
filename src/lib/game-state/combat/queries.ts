@@ -33,6 +33,7 @@ import {
 import { hasDefenderStrict } from "../keyword-actions/defender";
 import { hasFlyingStrict } from "../keyword-actions/flying";
 import { hasReachStrict } from "../keyword-actions/reach";
+import { hasVigilanceStrict } from "../keyword-actions/vigilance";
 
 /**
  * Result of a combat action
@@ -61,11 +62,13 @@ export function canAttack(
   }
 
   // Must not be tapped (unless has vigilance)
+  // Issue #2328: defer to the strict `hasVigilanceStrict` check so a
+  // card whose oracle text merely mentions "vigilance" as a flavor word
+  // or continuous-effect grant reference cannot attack from the tap zone.
+  // The canonical `hasVigilance` (from `evergreen-keywords`) preserves
+  // the substring fallback for cards with missing keyword tags.
   if (card.isTapped) {
-    const hasVigilance =
-      card.cardData.keywords?.includes("Vigilance") ||
-      card.cardData.oracle_text?.toLowerCase().includes("vigilance");
-    if (!hasVigilance) {
+    if (!hasVigilanceStrict(card)) {
       return { canAttack: false, reason: "Creature is tapped" };
     }
   }
@@ -246,11 +249,10 @@ export function getAvailableAttackers(
     if (!isCreature(card)) return false;
 
     // Must not be tapped (unless has vigilance)
+    // Issue #2328: defer to the strict `hasVigilanceStrict` check (see
+    // `canAttack` above for the rationale).
     if (card.isTapped) {
-      const hasVigilance =
-        card.cardData.keywords?.includes("Vigilance") ||
-        card.cardData.oracle_text?.toLowerCase().includes("vigilance");
-      if (!hasVigilance) return false;
+      if (!hasVigilanceStrict(card)) return false;
     }
 
     // Must not have summoning sickness (unless haste)
