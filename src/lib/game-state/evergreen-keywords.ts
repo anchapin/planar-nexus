@@ -21,6 +21,11 @@ import type {
 } from "./types";
 import { ZoneType } from "./types";
 import { hasWardStrict } from "./keyword-actions/ward";
+import { hasHexproofStrict } from "./keyword-actions/hexproof";
+import {
+  hasProtectionFromColorStrict,
+  getProtectionQualitiesStrict,
+} from "./keyword-actions/protection";
 
 /**
  * Check if a card has a specific keyword
@@ -102,10 +107,21 @@ export function hasShroud(card: CardInstance): boolean {
 
 // ============== HEXPROOF ==============
 /**
- * Check if a card has hexproof
+ * Check if a card has hexproof.
+ * CR 702.11: Hexproof - Can't be targeted by opponents.
+ *
+ * Detection: defer to `hasHexproofStrict` (parsed-keywords only, canonical
+ * contract — see `keyword-actions/hexproof.ts`); fall back to a substring
+ * oracle-text check only when the strict check returns false, so cards
+ * whose `keywords` array is missing the tag still resolve correctly. This
+ * mirrors the flash/defender/ward pattern (CR 702.8 / 702.13 / 702.21).
  */
 export function hasHexproof(card: CardInstance): boolean {
-  return hasKeyword(card, "hexproof");
+  if (hasHexproofStrict(card)) {
+    return true;
+  }
+  const oracleText = card.cardData.oracle_text || "";
+  return /\bhexproof\b/i.test(oracleText);
 }
 
 /**
@@ -329,11 +345,22 @@ export function getCardColors(card: CardInstance): string[] {
 }
 
 /**
- * Extract protection qualities from a card's oracle text
- * Parses phrases like "protection from black", "protection from red and blue"
- * Returns array of qualities (colors) the card is protected from
+ * Extract protection qualities from a card.
+ * CR 702.16: Protection from a color means the permanent can't be targeted
+ * by, blocked by, dealt damage by, or enchanted by anything with that
+ * protected quality, and damage from such sources is prevented.
+ *
+ * Detection: defer to `getProtectionQualitiesStrict` (parsed-keywords only,
+ * canonical contract — see `keyword-actions/protection.ts`); fall back to
+ * the oracle-text regex only when the strict check returns empty, so cards
+ * whose `keywords` array is missing the tag still resolve correctly. This
+ * mirrors the flash/defender/ward/hexproof pattern.
  */
 export function getProtectionQualities(card: CardInstance): string[] {
+  const strict = getProtectionQualitiesStrict(card);
+  if (strict.length > 0) {
+    return strict;
+  }
   const oracleText = card.cardData.oracle_text?.toLowerCase() || "";
   const qualities: string[] = [];
 
@@ -358,9 +385,17 @@ export function getProtectionQualities(card: CardInstance): string[] {
 }
 
 /**
- * Check if a card has protection from a color
+ * Check if a card has protection from a color.
+ *
+ * Detection: defer to `hasProtectionFromColorStrict` (parsed-keywords only,
+ * canonical contract — see `keyword-actions/protection.ts`); fall through to
+ * the regex-based `getProtectionQualities` (which itself defers to the
+ * strict variant first) only when the strict check returns false.
  */
 export function hasProtectionFrom(card: CardInstance, color: string): boolean {
+  if (hasProtectionFromColorStrict(card, color)) {
+    return true;
+  }
   const qualities = getProtectionQualities(card);
   const normalizedColor = normalizeColor(color);
   return qualities.some((q) => q.toLowerCase() === normalizedColor);
@@ -419,6 +454,12 @@ export function canBeTargetedByColor(
 /**
  * Check if a card can be targeted based on hexproof/shroud from a player
  * CR 702.11 (Hexproof), CR 702.18 (Shroud)
+ *
+ * CR 702.11a: Hexproof blocks opponent targeting regardless of source
+ * color. A colorless source (e.g. an artifact) targeting a hexproof
+ * creature is still blocked — previously this function required
+ * `effectColor` to be truthy before testing hexproof, which let colorless
+ * sources bypass it. That gate is removed.
  */
 export function canTargetKeyword(
   card: CardInstance,
@@ -429,10 +470,13 @@ export function canTargetKeyword(
     return { canTarget: true };
   }
 
-  if (hasHexproof(card) && effectColor) {
+  // CR 702.11: hexproof blocks opponent targeting regardless of color.
+  if (hasHexproof(card)) {
     return { canTarget: false, reason: "Target has hexproof" };
   }
 
+  // CR 702.16a: protection-from-X blocks targeting by sources with the
+  // protected quality. Only meaningful when the source has a color.
   if (effectColor && hasProtectionFrom(card, effectColor)) {
     return { canTarget: false, reason: "Target has protection" };
   }

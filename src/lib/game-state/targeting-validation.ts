@@ -15,11 +15,9 @@ import type {
   PlayerId,
   GameState,
 } from "./types";
-import {
-  hasWard,
-  getWardCost,
-  isProtectedByWard,
-} from "./evergreen-keywords";
+import { hasWard, getWardCost, isProtectedByWard } from "./evergreen-keywords";
+import { hasHexproofStrict } from "./keyword-actions/hexproof";
+import { getProtectionQualitiesStrict } from "./keyword-actions/protection";
 import { parseWardCostString, type WardCostDescriptor } from "./ward-system";
 
 /**
@@ -112,9 +110,19 @@ export function hasProtectionFromColor(
 
 /**
  * Get all qualities a card has protection from
- * Returns array of colors/quality types
+ * Returns array of colors/quality types.
+ *
+ * Defer to `getProtectionQualitiesStrict` (parsed-keywords only, canonical
+ * contract — see `keyword-actions/protection.ts`); fall back to the
+ * oracle-text regex only when the strict check returns empty, so cards
+ * whose `keywords` array is missing the tag still resolve correctly. This
+ * mirrors the ward/hexproof pattern.
  */
 export function getProtectionQualities(card: CardInstance): string[] {
+  const strict = getProtectionQualitiesStrict(card);
+  if (strict.length > 0) {
+    return strict;
+  }
   const oracleText = card.cardData.oracle_text?.toLowerCase() || "";
   const qualities: string[] = [];
 
@@ -197,12 +205,22 @@ export function isProtectedFromSource(
 }
 
 /**
- * Check if a card has hexproof from a specific controller
- * CR 702.11: Hexproof - Can't be targeted by opponents
+ * Check if a card has hexproof.
+ * CR 702.11: Hexproof - Can't be targeted by opponents.
+ *
+ * Detection: defer to `hasHexproofStrict` (parsed-keywords only, canonical
+ * contract — see `keyword-actions/hexproof.ts`); fall back to a substring
+ * oracle-text check only when the strict check returns false, so cards
+ * whose `keywords` array is missing the tag still resolve correctly. This
+ * mirrors the flash/defender/ward pattern and brings targeting-validation
+ * into contract parity with `evergreen-keywords.hasHexproof`.
  */
 export function hasHexproof(card: CardInstance): boolean {
-  const oracleText = card.cardData.oracle_text?.toLowerCase() || "";
-  return oracleText.includes("hexproof");
+  if (hasHexproofStrict(card)) {
+    return true;
+  }
+  const oracleText = card.cardData.oracle_text || "";
+  return /\bhexproof\b/i.test(oracleText);
 }
 
 /**
