@@ -34,6 +34,7 @@ import { hasDoubleStrikeStrict } from "./keyword-actions/double-strike";
 import { hasTrampleStrict } from "./keyword-actions/trample";
 import { hasVigilanceStrict } from "./keyword-actions/vigilance";
 import { hasDeathtouchStrict } from "./keyword-actions/deathtouch";
+import { hasLifelinkStrict } from "./keyword-actions/lifelink";
 
 /**
  * Check if a card has a specific keyword
@@ -185,11 +186,25 @@ export function canBeDestroyed(card: CardInstance): boolean {
   return !isIndestructible(card);
 }
 
-// ============== LIFELINK ==============
+// ============== LIFELINK (CR 702.15) ==============
 /**
  * Check if a card has lifelink
+ *
+ * CR 702.15 — "Damage dealt by a source with lifelink causes its
+ * controller to gain that much life." 702.15a marks it as a static
+ * ability; 702.15b is the life-gain trigger that fires after damage
+ * assignment (`effect-resolution.ts::applyLifelink`) and the
+ * damage-assignment wiring in `combat/resolution.ts`.
+ *
+ * Plan F (#2332): strict parsed-keyword check first (no substring
+ * false-positives on flavor-word "lifelink" mentions or
+ * continuous-effect grant phrasing), then `hasKeyword` substring
+ * fallback for cards with missing `keywords` tags. Mirrors the shape
+ * established by `hasVigilance` from #2328 and `hasDeathtouch` from
+ * #2330.
  */
 export function hasLifelink(card: CardInstance): boolean {
+  if (hasLifelinkStrict(card)) return true;
   return hasKeyword(card, "lifelink");
 }
 
