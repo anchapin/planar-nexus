@@ -26,6 +26,9 @@ import {
   hasProtectionFromColorStrict,
   getProtectionQualitiesStrict,
 } from "./keyword-actions/protection";
+import { hasFlyingStrict } from "./keyword-actions/flying";
+import { hasReachStrict } from "./keyword-actions/reach";
+import { hasMenaceStrict } from "./keyword-actions/menace";
 
 /**
  * Check if a card has a specific keyword
@@ -40,12 +43,17 @@ export function hasKeyword(card: CardInstance, keyword: string): boolean {
   );
 }
 
-// ============== FLYING ==============
+// ============== FLYING (CR 702.9) ==============
 /**
  * Check if a card has flying
+ *
+ * Issue #2324: defers to `hasFlyingStrict` (parsed-keywords only) first;
+ * falls back to the substring `hasKeyword` helper for cards whose
+ * `keywords` array is missing the tag. Mirrors the ward / hexproof /
+ * protection pattern.
  */
 export function hasFlying(card: CardInstance): boolean {
-  return hasKeyword(card, "flying");
+  return hasFlyingStrict(card) || hasKeyword(card, "flying");
 }
 
 /**
@@ -158,12 +166,17 @@ export function hasLifelink(card: CardInstance): boolean {
   return hasKeyword(card, "lifelink");
 }
 
-// ============== MENACE ==============
+// ============== MENACE (CR 702.110) ==============
 /**
  * Check if a card has menace
+ *
+ * Issue #2324: defers to `hasMenaceStrict` (parsed-keywords only) first;
+ * falls back to the substring `hasKeyword` helper for cards whose
+ * `keywords` array is missing the tag. Mirrors the ward / hexproof /
+ * protection pattern.
  */
 export function hasMenace(card: CardInstance): boolean {
-  return hasKeyword(card, "menace");
+  return hasMenaceStrict(card) || hasKeyword(card, "menace");
 }
 
 /**
@@ -173,12 +186,17 @@ export function getMenaceMinimumBlockers(card: CardInstance): number {
   return hasMenace(card) ? 2 : 1;
 }
 
-// ============== REACH ==============
+// ============== REACH (CR 702.12) ==============
 /**
  * Check if a card has reach
+ *
+ * Issue #2324: defers to `hasReachStrict` (parsed-keywords only) first;
+ * falls back to the substring `hasKeyword` helper for cards whose
+ * `keywords` array is missing the tag. Mirrors the ward / hexproof /
+ * protection pattern.
  */
 export function hasReach(card: CardInstance): boolean {
-  return hasKeyword(card, "reach");
+  return hasReachStrict(card) || hasKeyword(card, "reach");
 }
 
 // ============== LANDWALK (CR 702.14) ==============
