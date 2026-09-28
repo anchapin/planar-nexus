@@ -236,8 +236,11 @@ export function checkStateBasedActions(
 
       // SBAs 704.5f–704.5n only apply to permanents on the battlefield
       if (isOnBf) {
-        // SBA 704.5f: A creature with lethal damage is destroyed
-        // Indestructible creatures are not destroyed by lethal damage (CR 702.12)
+        // SBA 704.5g: A creature with lethal damage is destroyed.
+        // Indestructible creatures are not destroyed by lethal damage
+        // (CR 702.12a). (Numbering corrected in #2350: this was cited as
+        // 704.5f, which is the 0-toughness rule; `judge-call-edge-cases.ts`
+        // and `evergreen-keywords.ts` already had them the right way round.)
         if (
           isCreature(card) &&
           hasLethalDamage(card) &&
@@ -252,7 +255,10 @@ export function checkStateBasedActions(
           }
         }
 
-        // SBA 704.5g: A creature with toughness 0 or less is destroyed
+        // SBA 704.5f: A creature with toughness 0 or less is put into its
+        // owner's graveyard. This is NOT destruction, so indestructible does
+        // not apply (CR 702.12b) — see the `ignoreIndestructible` flag at the
+        // apply site below. (Numbering corrected in #2350.)
         if (isCreature(card)) {
           // Use getEffectiveToughness which applies all layer system effects
           // (layers 1-7 including counters in Layer 7c) per CR 613.8.
@@ -268,7 +274,7 @@ export function checkStateBasedActions(
               cardsToDestroy.push(card.id);
             }
             descriptions.push(
-              `${card.cardData.name} is destroyed (toughness 0 or less)`,
+              `${card.cardData.name} is put into its owner's graveyard (toughness 0 or less)`,
             );
             actionsPerformed = true;
           }
@@ -411,7 +417,21 @@ export function checkStateBasedActions(
       const dyingCard = updatedState.cards.get(cardId);
       const countersAtDeath = dyingCard?.counters;
 
-      const destroyResult = destroyCard(updatedState, cardId);
+      // `ignoreIndestructible: true` is required here (issue #2350, CR 702.12b).
+      // Only the lethal-damage SBA in this list (704.5g) is *destruction*, and
+      // it is already pre-filtered by `!hasIndestructible(card)` above, so the
+      // indestructible check never needed to run again at the apply site. The
+      // other three are "put into a graveyard" actions that indestructible does
+      // not stop: 704.5f (toughness 0 or less), 704.5m (Aura enchanting
+      // nothing), 704.5n (Equipment/Fortification on an illegal object).
+      //
+      // Without this flag the apply silently no-opped for those three: the SBA
+      // pushed a description like "X is destroyed (toughness 0 or less)" and
+      // then destroyCard refused, leaving the permanent on the battlefield
+      // forever and re-reporting the same "destruction" on every subsequent
+      // state check. Regeneration (which also only stops destruction, CR
+      // 701.13) is bypassed for the same reason.
+      const destroyResult = destroyCard(updatedState, cardId, true);
       if (destroyResult.success) {
         updatedState = destroyResult.state;
         const card = updatedState.cards.get(cardId);

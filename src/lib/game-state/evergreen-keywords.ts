@@ -40,6 +40,7 @@ import { hasShroudStrict } from "./keyword-actions/shroud";
 import { hasPersistStrict } from "./keyword-actions/persist";
 import { hasProwessStrict } from "./keyword-actions/prowess";
 import { hasMutateStrict } from "./keyword-actions/mutate";
+import { hasIndestructibleKeyword } from "./keyword-actions/indestructible";
 import {
   hasInfectStrict,
   isInfectGrantOrNegationPhrase,
@@ -190,12 +191,29 @@ export function isProtectedByHexproof(
   return target.controllerId !== sourceControllerId;
 }
 
-// ============== HEXPROOF ==============
+// ============== INDESTRUCTIBLE (CR 702.12) ==============
 /**
  * Check if a card is indestructible
+ *
+ * Issue #2350: this used to be `hasKeyword(card, "indestructible")`, whose
+ * oracle-text arm is an **unanchored** `oracleText.includes("indestructible")` —
+ * it matched grant phrases such as "Other creatures you control have
+ * indestructible." More importantly it was a *second, divergent* copy of the
+ * gate: `keyword-actions/removal.ts::hasIndestructible` did the same job with a
+ * **case-sensitive** keyword match, so the two answered `false`/`true`
+ * respectively for `keywords: ["indestructible"]`.
+ *
+ * It now delegates to `hasIndestructibleKeyword` — the single canonical gate in
+ * `keyword-actions/indestructible.ts` (strict parsed-keywords first, then
+ * grant/negation rejection, then an anchored oracle fallback).
+ *
+ * CR 702.12a — a permanent with indestructible can't be destroyed, and ignores
+ * the lethal-damage state-based action (CR 704.5g). CR 702.12b — it does NOT
+ * prevent a permanent from being put into a graveyard directly, so this must
+ * not gate the 0-toughness SBA, sacrifice, or exile.
  */
 export function isIndestructible(card: CardInstance): boolean {
-  return hasKeyword(card, "indestructible");
+  return hasIndestructibleKeyword(card);
 }
 
 /**
