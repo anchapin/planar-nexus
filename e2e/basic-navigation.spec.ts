@@ -21,6 +21,7 @@ async function navigateViaSidebar(
   linkName: string,
   urlRegex: RegExp,
   headingName: string,
+  timeout = 30000,
 ) {
   await page
     .locator(SIDEBAR)
@@ -29,11 +30,10 @@ async function navigateViaSidebar(
 
   // First navigation to a heavy route triggers a one-time dev-compile that can
   // exceed Playwright's 5s default. Allow up to 30s for the URL to settle.
-  await expect(page).toHaveURL(urlRegex, { timeout: 30000 });
+  await expect(page).toHaveURL(urlRegex, { timeout });
   await expect(
     page.getByRole("heading", { name: headingName, level: 1, exact: true }),
-    { timeout: 30000 },
-  ).toBeVisible();
+  ).toBeVisible({ timeout });
 }
 
 test.describe("Basic Navigation", () => {
@@ -57,11 +57,13 @@ test.describe("Basic Navigation", () => {
   });
 
   test("should navigate to Deck Builder via sidebar", async ({ page }) => {
+    test.slow();
     await navigateViaSidebar(
       page,
       "Deck Builder",
       /\/deck-builder/,
       "Deck Builder",
+      60000,
     );
   });
 
