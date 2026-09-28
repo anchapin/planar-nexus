@@ -36,6 +36,16 @@ module.exports = {
       "<rootDir>/node_modules/@orama/orama/dist/commonjs/index.js",
     "^@orama/plugin-data-persistence$":
       "<rootDir>/node_modules/@orama/plugin-data-persistence/dist/commonjs.cjs",
+    // Issue #2317: legacy `src/lib/game-state/combat.ts` was deleted so the
+    // `combat/` directory split (#2137) becomes the canonical surface. Both
+    // Jest (here) and Next.js (via Node's natural resolution order) fall
+    // through to `combat/index.ts` once the file is gone; this mapper is
+    // belt-and-suspenders for any future import that uses an alias or path
+    // Jest's resolver would otherwise mishandle. Regex is scoped to the
+    // engine surface only — does NOT match `types/combat.ts` (different
+    // parent), so the `Combat` interface in `src/lib/game-state/types/`
+    // remains reachable through `types/game.ts::import { Combat }`.
+    "^.*/game-state/combat$": "<rootDir>/src/lib/game-state/combat/index.ts",
   },
   transform: {
     "^.+\\.tsx?$": [
