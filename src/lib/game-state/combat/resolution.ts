@@ -29,6 +29,9 @@ import {
   getProtectionQualities,
   getMenaceMinimumBlockers,
   getLandwalkTypes,
+  hasFirstStrike,
+  hasDoubleStrike,
+  hasTrample,
 } from "../evergreen-keywords";
 
 /**
@@ -85,9 +88,13 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
     if (!attackerCard) continue;
 
     const attackerPower = getEffectivePower(attackerCard, layerSystem);
-    const attackerHasTrample =
-      attackerCard.cardData.keywords?.includes("Trample") ||
-      attackerCard.cardData.oracle_text?.toLowerCase().includes("trample");
+    // CR 702.3 — trample detection. Issue #2326: defer to the strict
+    // parsed-keywords helper `evergreen-keywords.hasTrample`, which
+    // consults the parsed `keywords` array first and only falls back to
+    // the substring `oracle_text` for cards missing the keyword tag.
+    // Replaces the prior inline substring fallback (false-positive on
+    // flavor / grant-effect mentions of the word "trample").
+    const attackerHasTrample = hasTrample(attackerCard);
 
     const assignedBlockers = state.combat.blockers.get(attacker.cardId);
 
@@ -452,19 +459,21 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
         const blockerCard = updatedState.cards.get(blocker.cardId);
         if (!blockerCard) continue;
 
-        // Check if this blocker should deal damage in the current step
+        // Check if this blocker should deal damage in the current step.
+        // CR 702.7 / CR 702.4 — blocker first strike / double strike
+        // detection. Issue #2326: defer to the strict parsed-keywords
+        // helpers `evergreen-keywords.hasFirstStrike` /
+        // `hasDoubleStrike`. The `blocker.hasFirstStrike` /
+        // `blocker.hasDoubleStrike` shape flags (set at block declaration
+        // time, see `declaration.ts`) are still consulted so a blocker
+        // whose keyword was granted by a continuous effect after
+        // declaration is correctly identified via the strict check on
+        // the current `blockerCard` (which carries the granted keyword
+        // post-layer).
         const blockerHasFirstStrike =
-          blocker.hasFirstStrike ||
-          blockerCard.cardData.keywords?.includes("First Strike") ||
-          blockerCard.cardData.oracle_text
-            ?.toLowerCase()
-            .includes("first strike");
+          blocker.hasFirstStrike || hasFirstStrike(blockerCard);
         const blockerHasDoubleStrike =
-          blocker.hasDoubleStrike ||
-          blockerCard.cardData.keywords?.includes("Double Strike") ||
-          blockerCard.cardData.oracle_text
-            ?.toLowerCase()
-            .includes("double strike");
+          blocker.hasDoubleStrike || hasDoubleStrike(blockerCard);
 
         if (isFirstStrikeStep) {
           // First strike step: only blockers with first strike or double strike

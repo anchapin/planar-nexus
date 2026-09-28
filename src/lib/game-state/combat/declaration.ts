@@ -30,6 +30,8 @@ import {
   getProtectionQualities,
   getMenaceMinimumBlockers,
   getLandwalkTypes,
+  hasFirstStrike,
+  hasDoubleStrike,
 } from "../evergreen-keywords";
 
 /**
@@ -97,17 +99,19 @@ export function declareAttackers(
   const attackers: import("../types").Attacker[] = validAttackers.map(
     (attack) => {
       const attackerCard = state.cards.get(attack.cardId);
-      const hasFirstStrike = attackerCard
-        ? attackerCard.cardData.keywords?.includes("First Strike") ||
-          attackerCard.cardData.oracle_text
-            ?.toLowerCase()
-            .includes("first strike")
+      // CR 702.7 / CR 702.4 — first strike / double strike detection.
+      // Issue #2326: defer to the strict parsed-keywords helpers in
+      // `evergreen-keywords.hasFirstStrike` / `hasDoubleStrike`, which
+      // consult the parsed `keywords` array first and only fall back to
+      // the substring `oracle_text` for cards missing the keyword tag.
+      // Replaces the prior inline substring fallback (false-positive on
+      // flavor / grant-effect mentions of the phrase "first strike" /
+      // "double strike").
+      const attackerHasFirstStrike = attackerCard
+        ? hasFirstStrike(attackerCard)
         : false;
-      const hasDoubleStrike = attackerCard
-        ? attackerCard.cardData.keywords?.includes("Double Strike") ||
-          attackerCard.cardData.oracle_text
-            ?.toLowerCase()
-            .includes("double strike")
+      const attackerHasDoubleStrike = attackerCard
+        ? hasDoubleStrike(attackerCard)
         : false;
 
       return {
@@ -119,8 +123,8 @@ export function declareAttackers(
         damageToDeal: attackerCard
           ? getEffectivePower(attackerCard, layerSystem)
           : 0,
-        hasFirstStrike: hasFirstStrike || false,
-        hasDoubleStrike: hasDoubleStrike || false,
+        hasFirstStrike: attackerHasFirstStrike || false,
+        hasDoubleStrike: attackerHasDoubleStrike || false,
       };
     },
   );
@@ -251,15 +255,13 @@ export function declareBlockers(
         const blockerPower = blocker
           ? getEffectivePower(blocker, layerSystem)
           : 0;
-        const blockerHasFirstStrike = blocker
-          ? blocker.cardData.keywords?.includes("First Strike") ||
-            blocker.cardData.oracle_text?.toLowerCase().includes("first strike")
-          : false;
+        // CR 702.7 / CR 702.4 — blocker first strike / double strike
+        // detection. Issue #2326: defer to the strict parsed-keywords
+        // helpers in `evergreen-keywords.hasFirstStrike` /
+        // `hasDoubleStrike` (see attacker-side comment above).
+        const blockerHasFirstStrike = blocker ? hasFirstStrike(blocker) : false;
         const blockerHasDoubleStrike = blocker
-          ? blocker.cardData.keywords?.includes("Double Strike") ||
-            blocker.cardData.oracle_text
-              ?.toLowerCase()
-              .includes("double strike")
+          ? hasDoubleStrike(blocker)
           : false;
 
         // Calculate damage to deal
