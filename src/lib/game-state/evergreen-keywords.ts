@@ -39,6 +39,7 @@ import { hasHasteStrict } from "./keyword-actions/haste";
 import { hasShroudStrict } from "./keyword-actions/shroud";
 import { hasPersistStrict } from "./keyword-actions/persist";
 import { hasProwessStrict } from "./keyword-actions/prowess";
+import { hasMutateStrict } from "./keyword-actions/mutate";
 
 /**
  * Check if a card has a specific keyword
@@ -1095,9 +1096,21 @@ export function canPersistTrigger(
  * Check if a card has mutate keyword
  * CR 702.140: Mutate is an ability that lets you cast a creature with mutate
  * over a creature you control, merging them into one creature.
+ *
+ * Issue #2346: this used to be `hasKeyword(card, "mutate")` — a second,
+ * divergent copy of the same name that disagreed with `mutate.ts`'s
+ * `hasMutate` (which used a case-SENSITIVE `keywords.includes("Mutate")`).
+ * It now defers to the shared `hasMutateStrict`, then falls back to an
+ * **anchored** oracle-text match for untagged cards, so the two exports can no
+ * longer return different answers for the same card.
+ *
+ * KNOWN LIMIT (deliberate, see #2346): anchoring does not fix the *grant* case
+ * — a card whose oracle text grants mutate to others still reads as having it.
+ * Pinned by `__tests__/keyword-mutate.test.ts`.
  */
 export function hasMutate(card: CardInstance): boolean {
-  return hasKeyword(card, "mutate");
+  const oracleText = card.cardData.oracle_text ?? "";
+  return hasMutateStrict(card) || /\bmutate\b/i.test(oracleText);
 }
 
 /**
