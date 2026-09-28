@@ -38,6 +38,7 @@ import { hasLifelinkStrict } from "./keyword-actions/lifelink";
 import { hasHasteStrict } from "./keyword-actions/haste";
 import { hasShroudStrict } from "./keyword-actions/shroud";
 import { hasPersistStrict } from "./keyword-actions/persist";
+import { hasProwessStrict } from "./keyword-actions/prowess";
 
 /**
  * Check if a card has a specific keyword
@@ -1241,9 +1242,33 @@ export function getToxicLevel(card: CardInstance): number {
  * CR 702.108a: Prowess is a triggered ability. "Whenever you cast a noncreature
  * spell, this creature gets +1/+1 until end of turn." Prowess is a creature
  * keyword, so it has no effect on non-creatures.
+ *
+ * Issue #2344: defers to `hasProwessStrict` (parsed-keywords only) first, then
+ * falls back to a **word-boundary** oracle-text test for cards whose `keywords`
+ * array is missing the tag. Mirrors the shape established by `hasPersist`
+ * from #2338.
+ *
+ * The fallback must stay anchored. The previous `hasKeyword(card, "prowess")`
+ * was an unanchored `includes`, so any creature whose text merely *mentioned*
+ * the substring `prowess` (`prowesses`, `unprowess`) was treated as a prowess
+ * creature. Because this gate sits on the trigger-detection path
+ * (`cast.ts -> detectProwessTriggers -> hasProwess`), `applyProwessBoost` then
+ * stamped a +1/+1 onto that creature via the layer-7 power/toughness read —
+ * a live stat corruption, not a cosmetic one.
+ *
+ * KNOWN LIMIT (deliberate, see #2344): anchoring does not fix the *grant* case
+ * — a creature whose oracle text grants prowess to others (e.g. "Other
+ * creatures you control have prowess.") still reads as having it. Handling
+ * that needs a grant/negation-aware oracle parse rather than keyword parsing;
+ * the same limitation is already recorded for `hexproof from` and
+ * `lose shroud`. The written-out-ability *false negative* (a card with no
+ * keyword tag whose text spells out the trigger in full) is a known limit for
+ * the same reason. Both are pinned by
+ * `__tests__/keyword-prowess.test.ts` so the behavior cannot drift silently.
  */
 export function hasProwess(card: CardInstance): boolean {
-  if (!hasKeyword(card, "prowess")) {
+  const oracleText = card.cardData.oracle_text ?? "";
+  if (!hasProwessStrict(card) && !/\bprowess\b/i.test(oracleText)) {
     return false;
   }
   // CR 702.108: prowess only does something on a creature.
