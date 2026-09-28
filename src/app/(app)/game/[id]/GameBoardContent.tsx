@@ -338,7 +338,18 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     if (!shouldAttachFreeCastHook()) return;
     const api = createFreeCastApi({
       getState: () => gameStateRef.current,
-      setState: (next) => setGameState(next),
+      // Update BOTH the React state AND the ref synchronously so that the
+      // free-cast hook's getState() returns the latest state on the very
+      // next call (not after the React render + useEffect cycle). This
+      // fixes a real flake where back-to-back patchCardOracle -> moveCard
+      // calls would see stale state (the moveCard's getState() would read
+      // the pre-patch ref because the React render + useEffect hadn't fired
+      // yet), and moveCardToZone would then overwrite the patched cardData
+      // when committing its move result.
+      setState: (next) => {
+        gameStateRef.current = next;
+        setGameState(next);
+      },
     });
     (window as unknown as Record<string, unknown>).__TEST__ = api;
     (window as unknown as Record<string, unknown>).__TEST_freeCast__ =
