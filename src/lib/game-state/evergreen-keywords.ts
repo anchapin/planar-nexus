@@ -36,6 +36,7 @@ import { hasVigilanceStrict } from "./keyword-actions/vigilance";
 import { hasDeathtouchStrict } from "./keyword-actions/deathtouch";
 import { hasLifelinkStrict } from "./keyword-actions/lifelink";
 import { hasHasteStrict } from "./keyword-actions/haste";
+import { hasShroudStrict } from "./keyword-actions/shroud";
 
 /**
  * Check if a card has a specific keyword
@@ -136,10 +137,20 @@ export function isLethalDamage(damage: number, source: CardInstance): boolean {
 // ============== SHROUD ==============
 /**
  * Check if a card has shroud
- * CR 702.18: Can't be targeted at all
+ * CR 702.18a: Can't be the target of spells or abilities
+ *
+ * Detection: defer to `hasShroudStrict` (parsed-keywords only, canonical
+ * contract — see `keyword-actions/shroud.ts`); fall back to the substring
+ * `hasKeyword` helper only when the strict check returns false, so cards
+ * whose `keywords` array is missing the tag still resolve correctly. This
+ * mirrors the flash/defender/ward/hexproof/haste pattern and brings this
+ * copy into contract parity with `targeting-validation.hasShroud`.
+ *
+ * Unlike hexproof, shroud blocks targeting by *everyone* (CR 702.18a) —
+ * there is no controller-symmetry escape hatch.
  */
 export function hasShroud(card: CardInstance): boolean {
-  return hasKeyword(card, "shroud");
+  return hasShroudStrict(card) || hasKeyword(card, "shroud");
 }
 
 // ============== HEXPROOF ==============

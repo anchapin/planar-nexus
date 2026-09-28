@@ -17,6 +17,7 @@ import type {
 } from "./types";
 import { hasWard, getWardCost, isProtectedByWard } from "./evergreen-keywords";
 import { hasHexproofStrict } from "./keyword-actions/hexproof";
+import { hasShroudStrict } from "./keyword-actions/shroud";
 import { getProtectionQualitiesStrict } from "./keyword-actions/protection";
 import { parseWardCostString, type WardCostDescriptor } from "./ward-system";
 
@@ -61,12 +62,32 @@ export interface TargetValidationResult {
 
 /**
  * Check if a card has shroud (can't be targeted at all)
- * CR 702.18: "Hexproof and Shroud" - Shroud prevents all targeting
- * Uses word boundary to avoid matching "unshroud" or similar words
+ * CR 702.18a: "A permanent with shroud can't be the target of spells or
+ * abilities."
+ *
+ * Detection: defer to `hasShroudStrict` (parsed-keywords only, canonical
+ * contract — see `keyword-actions/shroud.ts`); fall back to a word-bound
+ * regex on the oracle text only when the strict check returns false, so
+ * cards whose `keywords` array is missing the tag still resolve correctly.
+ *
+ * Issue #2336: before this, the strict check was absent and the oracle
+ * text was the *only* source consulted. That produced a genuine false
+ * negative in the live targeting pipeline — a permanent carrying
+ * `keywords: ["Shroud"]`, or one that gained shroud through a
+ * layer-applied continuous-effect grant, but whose oracle text does not
+ * literally contain the word "Shroud", was treated as targetable. This
+ * mirrors the hexproof strict-first shape applied in #2322 and brings
+ * targeting-validation into contract parity with `evergreen-keywords.hasShroud`.
+ *
+ * Note the word boundary in the fallback avoids matching "unshroud",
+ * "shrouded", or similar stems.
  */
 export function hasShroud(card: CardInstance): boolean {
+  if (hasShroudStrict(card)) {
+    return true;
+  }
   const oracleText = card.cardData.oracle_text?.toLowerCase() || "";
-  // Use word boundary to match only the word "shroud" not "unshroud", "SGROUD", etc.
+  // Use word boundary to match only the word "shroud" not "unshroud", etc.
   const shroudRegex = /\bshroud\b/i;
   return shroudRegex.test(oracleText);
 }
@@ -384,7 +405,12 @@ export function getTargetingRestrictions(card: CardInstance): string[] {
   const restrictions: string[] = [];
   const oracleText = card.cardData.oracle_text?.toLowerCase() || "";
 
-  if (oracleText.includes("shroud")) {
+  // Issue #2336: use the strict-first `hasShroud` rather than a bare
+  // `oracleText.includes("shroud")` substring, so a permanent that carries
+  // parsed-keyword shroud (or gained it from a continuous effect) is
+  // reported to the UI instead of silently omitted, and an oracle text that
+  // merely mentions shroud in a non-keyword context is not mislabelled.
+  if (hasShroud(card)) {
     restrictions.push("Shroud (can't be targeted)");
   }
 
