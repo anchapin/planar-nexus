@@ -35,6 +35,7 @@ import { hasTrampleStrict } from "./keyword-actions/trample";
 import { hasVigilanceStrict } from "./keyword-actions/vigilance";
 import { hasDeathtouchStrict } from "./keyword-actions/deathtouch";
 import { hasLifelinkStrict } from "./keyword-actions/lifelink";
+import { hasHasteStrict } from "./keyword-actions/haste";
 
 /**
  * Check if a card has a specific keyword
@@ -345,8 +346,22 @@ export function tapsWhenAttacking(card: CardInstance): boolean {
 // ============== HASTE ==============
 /**
  * Check if a card has haste
+ *
+ * CR 702.10 — "A creature with haste can attack or use abilities with
+ * the tap symbol or untap symbol as though it had been under its
+ * controller's control continuously since the beginning of their most
+ * recent turn." 702.10a marks it as a static ability.
+ *
+ * Plan G (#2334): strict parsed-keyword check first (no substring
+ * false-positives on flavor-word "haste" mentions or continuous-effect
+ * grant phrasing — a false positive silently bypasses summoning
+ * sickness, CR 302.6), then `hasKeyword` substring fallback for cards
+ * with missing `keywords` tags. Mirrors the shape established by
+ * `hasVigilance` from #2328, `hasDeathtouch` from #2330, and
+ * `hasLifelink` from #2332.
  */
 export function hasHaste(card: CardInstance): boolean {
+  if (hasHasteStrict(card)) return true;
   return hasKeyword(card, "haste");
 }
 

@@ -29,6 +29,7 @@ import {
   getProtectionQualities,
   getMenaceMinimumBlockers,
   getLandwalkTypes,
+  hasHaste,
 } from "../evergreen-keywords";
 import { hasDefenderStrict } from "../keyword-actions/defender";
 import { hasFlyingStrict } from "../keyword-actions/flying";
@@ -74,11 +75,17 @@ export function canAttack(
   }
 
   // Must not have summoning sickness (unless haste)
+  //
+  // CR 702.10 / 302.6 — haste waives summoning sickness. Issue #2334:
+  // replaced the inline substring oracle-text fallback
+  // (`keywords?.includes("Haste") || oracle_text.toLowerCase().includes("haste")`)
+  // with the canonical `hasHaste`, which defers to `hasHasteStrict`
+  // (parsed keywords only) first. The old substring check could grant
+  // haste to a card whose oracle text merely mentions "haste" (flavor
+  // word, "creatures you control have haste" grant reference), silently
+  // letting it attack the turn it entered.
   if (card.hasSummoningSickness) {
-    const hasHaste =
-      card.cardData.keywords?.includes("Haste") ||
-      card.cardData.oracle_text?.toLowerCase().includes("haste");
-    if (!hasHaste) {
+    if (!hasHaste(card)) {
       return {
         canAttack: false,
         reason: "Summoning sickness (haste not granted)",
@@ -256,11 +263,12 @@ export function getAvailableAttackers(
     }
 
     // Must not have summoning sickness (unless haste)
+    //
+    // CR 702.10 / 302.6 — issue #2334: canonical `hasHaste` (strict
+    // parsed-keywords first) replaces the inline substring oracle-text
+    // check; see the matching comment in `canAttack` for the rationale.
     if (card.hasSummoningSickness) {
-      const hasHaste =
-        card.cardData.keywords?.includes("Haste") ||
-        card.cardData.oracle_text?.toLowerCase().includes("haste");
-      if (!hasHaste) return false;
+      if (!hasHaste(card)) return false;
     }
 
     // CR 702.13 — defender creatures cannot attack. Issue #2293.
