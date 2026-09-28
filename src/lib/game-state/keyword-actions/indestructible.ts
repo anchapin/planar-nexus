@@ -39,19 +39,21 @@
  * the parsed `keywords` array — mirroring `hasInfectStrict`, `hasMutateStrict`,
  * `hasProwessStrict`, `hasDeathtouchStrict`, and the other strict checks here.
  *
- * `isIndestructibleGrantOrNegationPhrase` is the second half of the fix, for the
- * same reason `isInfectGrantOrNegationPhrase` exists (#2351): **anchoring alone
- * does not close the grant/negation false positives.** `/\bindestructible\b/i`
- * still matches inside "gains indestructible" and "lose indestructible" — the
- * word appears there as the object of a grant or a negation aimed at other
- * objects, never as this card's own keyword.
+ * The second half of the fix is the oracle fallback's grant/negation rejection,
+ * for the same reason it exists for infect (#2351): **anchoring alone does not
+ * close the grant/negation false positives.** `/\bindestructible\b/i` still
+ * matches inside "gains indestructible" and "lose indestructible" — the word
+ * appears there as the object of a grant or a negation aimed at other objects,
+ * never as this card's own keyword. #2348 generalized this module's former
+ * private `INDESTRUCTIBLE_GRANT_OR_NEGATION_PHRASES` list (which was identical
+ * to infect's, modulo the keyword) into the shared
+ * `oracleTextDeclaresOwnKeyword` helper in `./grant-negation`.
  *
- * DELIBERATE SCOPE (see #2348 for the generalization): this exclusion list is
- * indestructible-only and phrase-shaped. It does NOT attempt to parse grants —
- * an untagged card with a *written-out* self-grant of indestructible still reads
- * `false`, which is the correct answer until the grant is actually paid. A
- * genuine indestructible card carries `keywords: ["Indestructible"]`, so the
- * strict arm answers first and this list is unreachable for it. Bare
+ * DELIBERATE SCOPE (see `grant-negation.ts`): the guard is phrase-shaped, not a
+ * grant parse. An untagged card with a *written-out* self-grant of indestructible
+ * still reads `false`, which is the correct answer until the grant is actually
+ * paid. A genuine indestructible card carries `keywords: ["Indestructible"]`, so
+ * the strict arm answers first and the guard is unreachable for it. Bare
  * "has indestructible" is deliberately NOT in the list so that a written-out
  * "This creature has indestructible." still resolves true — the false-negative
  * direction is the expensive one.
@@ -63,6 +65,7 @@
  * agree — a divergent second copy is the defect being fixed, so the composition
  * lives here once and both call sites delegate.
  */
+import { oracleTextDeclaresOwnKeyword } from "./grant-negation";
 import type { CardInstance } from "../types";
 
 /**
@@ -82,52 +85,6 @@ export function hasIndestructibleStrict(card: CardInstance): boolean {
 }
 
 /**
- * Oracle-text phrases where the standalone word "indestructible" is the object
- * of a grant, a negation, or a reference to *other* indestructible objects —
- * never the keyword of the card being read.
- *
- * One entry per phrasing class, anchored on the verb that precedes the word
- * (the same five classes as `isInfectGrantOrNegationPhrase`):
- *
- *   - `gains? indestructible`    "This creature gains indestructible until end
- *                               of turn."
- *   - `lose[sd]? indestructible` "Other creatures lose indestructible."
- *   - `have indestructible`      "Other creatures you control have
- *                               indestructible."
- *   - `with indestructible`      "Creatures you control with indestructible
- *                               get +1/+1 ..."
- *   - `has indestructible as long as`
- *                               "... has indestructible as long as ..." — a
- *                               conditional self-grant, which is why the
- *                               conditional is required rather than a bare
- *                               `has indestructible`
- */
-const INDESTRUCTIBLE_GRANT_OR_NEGATION_PHRASES: readonly RegExp[] = [
-  /\bgains?\s+indestructible\b/i,
-  /\blose[sd]?\s+indestructible\b/i,
-  /\bhave\s+indestructible\b/i,
-  /\bwith\s+indestructible\b/i,
-  /\bhas\s+indestructible\s+as\s+long\s+as\b/i,
-];
-
-/**
- * True iff `oracleText` mentions indestructible only as a grant, a negation, or
- * a reference aimed at other objects, so the standalone word must not be read
- * as the reading card's own keyword.
- *
- * Callers apply this ONLY as a rejection guard on the oracle-text fallback
- * (after `hasIndestructibleStrict` has already said no) — never as a way to
- * strip a keyword from a parsed `keywords` array.
- */
-export function isIndestructibleGrantOrNegationPhrase(
-  oracleText: string,
-): boolean {
-  return INDESTRUCTIBLE_GRANT_OR_NEGATION_PHRASES.some((re) =>
-    re.test(oracleText),
-  );
-}
-
-/**
  * The single canonical indestructible gate: strict parsed-keywords first, then
  * grant/negation rejection, then an **anchored** oracle-text fallback for cards
  * whose `keywords` array is missing the tag.
@@ -135,6 +92,9 @@ export function isIndestructibleGrantOrNegationPhrase(
  * This is the shape established by `hasInfect` (#2351) and `hasHexproof`
  * (#2331). Both historical callers — `keyword-actions/removal.ts` and
  * `evergreen-keywords.ts` — delegate here so they cannot drift apart again.
+ * #2348 factored the fallback arm itself out to the shared
+ * `oracleTextDeclaresOwnKeyword` in `./grant-negation`, so shroud, hexproof,
+ * mutate and prowess now reject grant/negation phrases through the same code.
  *
  * SCOPE — DESTRUCTION ONLY (CR 702.12a vs 702.12b). This gate answers "is this
  * permanent protected from *destruction*", nothing more. Per 702.12b
@@ -154,9 +114,8 @@ export function hasIndestructibleKeyword(card: CardInstance): boolean {
   if (hasIndestructibleStrict(card)) {
     return true;
   }
-  const oracleText = card.cardData.oracle_text ?? "";
-  if (isIndestructibleGrantOrNegationPhrase(oracleText)) {
-    return false;
-  }
-  return /\bindestructible\b/i.test(oracleText);
+  return oracleTextDeclaresOwnKeyword(
+    "indestructible",
+    card.cardData.oracle_text ?? "",
+  );
 }

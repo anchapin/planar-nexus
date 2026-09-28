@@ -183,16 +183,33 @@ describe("evergreen-keywords.hasShroud (CR 702.18a)", () => {
     expect(hasShroud(makeInstance(card))).toBe(false);
   });
 
-  it("does not false-positive on the stem 'shrouded' in oracle text", () => {
-    // The substring fallback is `oracleText.includes("shroud")`, so this
-    // still resolves true — documented as the known, accepted limit of the
-    // fallback. Pinned so a future tightening of the fallback is a
-    // deliberate, visible change rather than a silent behaviour shift.
+  it("does not false-positive on the stem 'unshroud' in oracle text", () => {
+    // Issue #2348: the fallback used to be the unanchored `hasKeyword`
+    // helper (`oracleText.includes("shroud")`), so this resolved true — the
+    // accepted limit this test was written to make visible. The fallback is
+    // now the shared `oracleTextDeclaresOwnKeyword`, which is word-bounded, so
+    // "unshroud" is a *mention* and not the keyword. This is the deliberate,
+    // visible tightening the previous version of this test anticipated.
     const card = makeCardData({
       keywords: [],
       oracle_text: "This has the word unshroud",
     });
-    expect(hasShroud(makeInstance(card))).toBe(true);
+    expect(hasShroud(makeInstance(card))).toBe(false);
+  });
+
+  it("does not false-positive on the stems 'unshrouded' / 'enshrouded' / 'shrouding'", () => {
+    // Same root cause: none of these is the word "shroud" standing alone, so
+    // none is the keyword (CR 702.18a). Before #2348 every one of these
+    // resolved true here AND disagreed with `targeting-validation.hasShroud`,
+    // which was already word-bounded and correctly rejected all three.
+    for (const oracle_text of [
+      "This creature is unshrouded.",
+      "Enshrouded in mist.",
+      "Shrouding the temple.",
+    ]) {
+      const card = makeCardData({ keywords: [], oracle_text });
+      expect(hasShroud(makeInstance(card))).toBe(false);
+    }
   });
 
   it("gates canTarget on the strict path (no spell may target a shrouded permanent)", () => {

@@ -17,6 +17,7 @@ import type {
 import { getManaValue } from "./card-instance";
 import { isPriorityPlayer } from "./priority-guard";
 import { hasMutateStrict } from "./keyword-actions/mutate";
+import { oracleTextDeclaresOwnKeyword } from "./keyword-actions/grant-negation";
 
 /**
  * Check if a card has the mutate ability
@@ -34,20 +35,19 @@ import { hasMutateStrict } from "./keyword-actions/mutate";
  * substring inside `mutates`, `Unmutated` and `commutates`; the `\b` anchor
  * closes that.
  *
- * KNOWN LIMIT (deliberate, see #2346): anchoring does not fix the *grant* case —
- * a card whose oracle text grants mutate to others (e.g. "Other creatures you
- * control have mutate.") still reads as having it. Handling that needs a
- * grant/negation-aware oracle parse rather than keyword parsing; the same
- * limitation is already recorded for `hexproof from`, `lose shroud`, and
- * prowess. It is pinned by `__tests__/keyword-mutate.test.ts` so the behaviour
- * cannot drift silently.
+ * Issue #2348 closed the KNOWN LIMIT recorded in #2346: the fallback now goes
+ * through the shared `oracleTextDeclaresOwnKeyword` helper, which rejects
+ * grant/negation phrases before accepting the anchored match. So "Other
+ * creatures you control have mutate." and "Creatures your opponents control lose
+ * mutate." no longer read as mutate here. The `hexproof from <quality>` variant
+ * remains a separate, documented carve-out in `keyword-actions/hexproof.ts` —
+ * the guard does not attempt it.
  */
 export function hasMutate(card: CardInstance): boolean {
-  const oracleText = card.cardData.oracle_text ?? "";
-  if (hasMutateStrict(card) || /\bmutate\b/i.test(oracleText)) {
-    return true;
-  }
-  return false;
+  return (
+    hasMutateStrict(card) ||
+    oracleTextDeclaresOwnKeyword("mutate", card.cardData.oracle_text ?? "")
+  );
 }
 
 /**

@@ -35,22 +35,22 @@
  * parsed `keywords` array — mirroring `hasMutateStrict`, `hasProwessStrict`,
  * `hasHasteStrict`, `hasShroudStrict`, and the other strict checks here.
  *
- * `isInfectGrantOrNegationPhrase` is the second half of the fix, and it exists
- * because **anchoring alone does not close the two live combat FPs**. `/\binfect\b/i`
- * still matches inside "This creature gains infect until end of turn" and
- * "Creatures your opponents control lose infect" — the word appears there as
- * the *object of a grant or a negation aimed at other objects*, never as this
- * card's own keyword. So the oracle fallback in `evergreen-keywords.hasInfect`
- * rejects a grant/negation phrase before it accepts the anchored match.
+ * The oracle fallback in `evergreen-keywords.hasInfect` needs the second half of
+ * the fix too, because **anchoring alone does not close the two live combat
+ * FPs**. `/\binfect\b/i` still matches inside "This creature gains infect until
+ * end of turn" and "Creatures your opponents control lose infect" — the word
+ * appears there as the *object of a grant or a negation aimed at other
+ * objects*, never as this card's own keyword. That rejection is now the shared
+ * `oracleTextDeclaresOwnKeyword` helper in `./grant-negation` (#2348), which
+ * this module's former private `INFECT_GRANT_OR_NEGATION_PHRASES` list became.
+ * The per-keyword `isKeywordGrantOrNegationPhrase` list here is **deleted**;
+ * this module keeps only the strict check.
  *
- * DELIBERATE SCOPE (see #2348 for the generalization): this exclusion list is
- * infect-only and phrase-shaped. It does NOT attempt to parse grants — an
- * untagged card with a *written-out* self-grant of infect still reads `false`,
- * which is the correct answer until the grant is actually paid. A genuine
- * infect card carries `keywords: ["Infect"]`, so the strict arm answers first
- * and this list is unreachable for it. The one accepted trade-off is a card
- * that both carries real infect *and* mentions granting it to others; it will
- * false-negative until #2348 models grants. Bare "has infect" is deliberately
+ * DELIBERATE SCOPE (see `grant-negation.ts`): the guard is phrase-shaped, not a
+ * grant parse. An untagged card with a *written-out* self-grant of infect still
+ * reads `false`, which is the correct answer until the grant is actually paid. A
+ * genuine infect card carries `keywords: ["Infect"]`, so the strict arm answers
+ * first and the guard is unreachable for it. Bare "has infect" is deliberately
  * NOT in the list so that a written-out "This creature has infect." still
  * resolves true (the false-negative direction is the expensive one).
  *
@@ -80,47 +80,4 @@ import type { CardInstance } from "../types";
 export function hasInfectStrict(card: CardInstance): boolean {
   const keywords = card.cardData.keywords ?? [];
   return keywords.some((k) => /^infect\b/i.test(k.trim()));
-}
-
-/**
- * Oracle-text phrases where the standalone word "infect" is the object of a
- * grant, a negation, or a reference to *other* infect-bearing objects — never
- * the keyword of the card being read.
- *
- * One entry per phrasing class, anchored on the verb that precedes the word:
- *
- *   - `gains? infect`      "This creature gains infect until end of turn."
- *                          (Vector Asp, Pestilent Souleater, Corpsejack Menace,
- *                          Phyrexian Unlife, Grafted Exoskeleton)
- *   - `lose[sd]? infect`   "Creatures your opponents control lose infect."
- *                          (Melira, Sylvok Outcast)
- *   - `have infect`        "Other creatures you control have infect."
- *   - `with infect`        "Creatures you control with infect get +1/+1 ..."
- *                          (Triumph of the Hordes), and the "creature with
- *                          infect" reference form
- *   - `has infect as long as`
- *                          "... has infect as long as an opponent is poisoned."
- *                          (Viridian Betrayers) — a conditional self-grant, which
- *                          is why the conditional is required rather than a bare
- *                          `has infect`
- */
-const INFECT_GRANT_OR_NEGATION_PHRASES: readonly RegExp[] = [
-  /\bgains?\s+infect\b/i,
-  /\blose[sd]?\s+infect\b/i,
-  /\bhave\s+infect\b/i,
-  /\bwith\s+infect\b/i,
-  /\bhas\s+infect\s+as\s+long\s+as\b/i,
-];
-
-/**
- * True iff `oracleText` mentions infect only as a grant/negation/reference
- * aimed at other objects, so the standalone word must not be read as the
- * reading card's own keyword.
- *
- * Callers apply this ONLY as a rejection guard on the oracle-text fallback
- * (after `hasInfectStrict` has already said no) — never as a way to strip a
- * keyword from a parsed `keywords` array.
- */
-export function isInfectGrantOrNegationPhrase(oracleText: string): boolean {
-  return INFECT_GRANT_OR_NEGATION_PHRASES.some((re) => re.test(oracleText));
 }

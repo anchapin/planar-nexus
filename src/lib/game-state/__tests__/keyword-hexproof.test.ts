@@ -164,18 +164,37 @@ describe("evergreen-keywords.hasHexproof — strict-first with substring fallbac
     expect(hasHexproof(makeInstance(card))).toBe(false);
   });
 
-  it("does NOT match the substring inside an unrelated oracle-text usage (flavor/grant)", () => {
+  it("does NOT match a card that only GRANTS hexproof to others", () => {
     const card = makeCardData({
       keywords: [],
       oracle_text:
         "Other creatures you control have hexproof. (This creature does not.)",
     });
-    // Word-bounded: "hexproof." appears as a standalone token, so the
-    // fallback DOES match here. This is intentional: cards whose keywords
-    // array is missing the tag still resolve correctly. The strict check
-    // is what distinguishes them; the fallback is the legacy
-    // oracle-text-driven path.
-    expect(hasHexproof(makeInstance(card))).toBe(true);
+    // Issue #2348: the fallback is now the shared
+    // `oracleTextDeclaresOwnKeyword`, which rejects the grant phrase before
+    // accepting the word-bounded match. The fixture text states the correct
+    // answer in its own words — "(This creature does not.)" — and before
+    // #2348 this asserted `true`, i.e. the test contradicted its own fixture.
+    expect(hasHexproof(makeInstance(card))).toBe(false);
+  });
+
+  it("does NOT match a card that only REMOVES hexproof from others", () => {
+    const card = makeCardData({
+      keywords: [],
+      oracle_text: "Creatures your opponents control lose hexproof.",
+    });
+    expect(hasHexproof(makeInstance(card))).toBe(false);
+  });
+
+  it("still resolves true for a genuine untagged hexproof permanent", () => {
+    // The false-negative direction is the expensive one, so the tightening must
+    // not swallow a card that really does have the keyword: "Hexproof" with no
+    // parsed tag, and a written-out "This creature has hexproof.", both still
+    // resolve true. Bare "has" is deliberately NOT in the guard's phrase list.
+    for (const oracle_text of ["Hexproof", "This creature has hexproof."]) {
+      const card = makeCardData({ keywords: [], oracle_text });
+      expect(hasHexproof(makeInstance(card))).toBe(true);
+    }
   });
 
   it("returns false for a card with neither keywords nor oracle text", () => {

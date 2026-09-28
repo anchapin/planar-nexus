@@ -168,16 +168,13 @@ describe("canTargetCard — shroud gate (CR 702.18a)", () => {
     expect(result.valid).toBe(true);
   });
 
-  it("KNOWN LIMIT: the oracle fallback still fires on 'lose shroud'", () => {
-    // Documented accepted limitation of the substring fallback, NOT a
-    // regression introduced by #2336 — the pre-existing word-bound regex
-    // matched this text too. A card that strips shroud from others is
-    // reported as shrouded by both detection copies.
-    //
-    // `hasShroudStrict` correctly rejects this card; only the fallback
-    // over-matches. Tightening this would mean a negation/granting-aware
-    // oracle parse, which is out of scope here and is the same follow-up
-    // noted in `keyword-actions/hexproof.ts` for "hexproof from" variants.
+  it("'lose shroud' no longer blocks targeting (#2348)", () => {
+    // This was a KNOWN LIMIT pinned since #2336: a card that *strips* shroud
+    // from its opponents' creatures was itself reported as shrouded, because
+    // the fallback over-matched the standalone word. #2348 routes both
+    // detection copies through the shared `oracleTextDeclaresOwnKeyword`,
+    // which rejects negation phrases — so the card is now correctly
+    // targetable. CR 702.18a: this permanent does not have shroud.
     const target = instantiate(
       makeCreature({
         keywords: ["Flying"],
@@ -189,8 +186,7 @@ describe("canTargetCard — shroud gate (CR 702.18a)", () => {
     const result = canTargetCard(target, source, "player2");
 
     expect(hasShroudStrict(target)).toBe(false);
-    expect(result.valid).toBe(false);
-    expect(result.reason).toBe("shroud");
+    expect(result.valid).toBe(true);
   });
 });
 
@@ -222,10 +218,11 @@ describe("getTargetingRestrictions — shroud surfacing (CR 702.18a)", () => {
     );
   });
 
-  it("KNOWN LIMIT: still reports shroud for text that only strips it from others", () => {
-    // Same accepted fallback limitation as the gate test above — the UI
-    // list mirrors the gate exactly, so the two stay consistent even where
-    // the shared fallback over-matches.
+  it("no longer reports shroud for text that only strips it from others (#2348)", () => {
+    // The UI list mirrors the gate, so fixing the gate fixes the label. Before
+    // #2348 this mislabelled a shroud-removal lord as "Shroud (can't be
+    // targeted)", which is a user-visible rules error in the targeting
+    // explanation panel.
     const card = instantiate(
       makeCreature({
         keywords: ["Flying"],
@@ -233,8 +230,42 @@ describe("getTargetingRestrictions — shroud surfacing (CR 702.18a)", () => {
       }),
     );
 
-    expect(getTargetingRestrictions(card)).toContain(
+    expect(getTargetingRestrictions(card)).not.toContain(
       "Shroud (can't be targeted)",
+    );
+  });
+
+  it("no longer mislabels a hexproof GRANT as hexproof in the UI list (#2348)", () => {
+    // The hexproof half of `getTargetingRestrictions` was missed by #2336 and
+    // still used a raw unanchored `oracleText.includes("hexproof")`. It now
+    // uses the same strict-first `hasHexproof` as the shroud line above it.
+    const grantor = instantiate(
+      makeCreature({
+        keywords: ["Flying"],
+        oracle_text: "Other creatures you control have hexproof.",
+      }),
+    );
+    const negator = instantiate(
+      makeCreature({
+        keywords: ["Flying"],
+        oracle_text: "Creatures your opponents control lose hexproof.",
+      }),
+    );
+
+    expect(getTargetingRestrictions(grantor)).not.toContain("Hexproof");
+    expect(getTargetingRestrictions(negator)).not.toContain("Hexproof");
+  });
+
+  it("still reports hexproof for a genuine untagged hexproof permanent", () => {
+    // Guard against over-tightening: the false-negative direction is the
+    // expensive one, so a real hexproof permanent with a missing keyword tag
+    // must still be reported.
+    const card = instantiate(
+      makeCreature({ keywords: ["Flying"], oracle_text: "Hexproof" }),
+    );
+
+    expect(getTargetingRestrictions(card)).toContain(
+      "Hexproof (can't be targeted by opponents)",
     );
   });
 

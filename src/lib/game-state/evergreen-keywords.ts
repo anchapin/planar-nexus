@@ -41,10 +41,8 @@ import { hasPersistStrict } from "./keyword-actions/persist";
 import { hasProwessStrict } from "./keyword-actions/prowess";
 import { hasMutateStrict } from "./keyword-actions/mutate";
 import { hasIndestructibleKeyword } from "./keyword-actions/indestructible";
-import {
-  hasInfectStrict,
-  isInfectGrantOrNegationPhrase,
-} from "./keyword-actions/infect";
+import { hasInfectStrict } from "./keyword-actions/infect";
+import { oracleTextDeclaresOwnKeyword } from "./keyword-actions/grant-negation";
 
 /**
  * Check if a card has a specific keyword
@@ -148,17 +146,29 @@ export function isLethalDamage(damage: number, source: CardInstance): boolean {
  * CR 702.18a: Can't be the target of spells or abilities
  *
  * Detection: defer to `hasShroudStrict` (parsed-keywords only, canonical
- * contract — see `keyword-actions/shroud.ts`); fall back to the substring
- * `hasKeyword` helper only when the strict check returns false, so cards
- * whose `keywords` array is missing the tag still resolve correctly. This
- * mirrors the flash/defender/ward/hexproof/haste pattern and brings this
- * copy into contract parity with `targeting-validation.hasShroud`.
+ * contract — see `keyword-actions/shroud.ts`); fall back to the shared
+ * `oracleTextDeclaresOwnKeyword` helper only when the strict check returns
+ * false, so cards whose `keywords` array is missing the tag still resolve
+ * correctly.
+ *
+ * Issue #2348 changed that fallback. It used to be the `hasKeyword` helper,
+ * whose oracle arm is an **unanchored** `oracleText.includes("shroud")`, so
+ * "This creature is unshrouded.", "Shrouding the temple." and "Enshrouded in
+ * mist." all read as shroud — and this copy disagreed with
+ * `targeting-validation.hasShroud` on exactly those three, which uses a
+ * word-boundary anchor. Both now call the same helper and cannot drift.
  *
  * Unlike hexproof, shroud blocks targeting by *everyone* (CR 702.18a) —
  * there is no controller-symmetry escape hatch.
  */
 export function hasShroud(card: CardInstance): boolean {
-  return hasShroudStrict(card) || hasKeyword(card, "shroud");
+  if (hasShroudStrict(card)) {
+    return true;
+  }
+  return oracleTextDeclaresOwnKeyword(
+    "shroud",
+    card.cardData.oracle_text ?? "",
+  );
 }
 
 // ============== HEXPROOF ==============
@@ -167,17 +177,26 @@ export function hasShroud(card: CardInstance): boolean {
  * CR 702.11: Hexproof - Can't be targeted by opponents.
  *
  * Detection: defer to `hasHexproofStrict` (parsed-keywords only, canonical
- * contract — see `keyword-actions/hexproof.ts`); fall back to a substring
- * oracle-text check only when the strict check returns false, so cards
- * whose `keywords` array is missing the tag still resolve correctly. This
- * mirrors the flash/defender/ward pattern (CR 702.8 / 702.13 / 702.21).
+ * contract — see `keyword-actions/hexproof.ts`); fall back to the shared
+ * `oracleTextDeclaresOwnKeyword` helper only when the strict check returns
+ * false, so cards whose `keywords` array is missing the tag still resolve
+ * correctly. This mirrors the flash/defender/ward pattern (CR 702.8 / 702.13 /
+ * 702.21).
+ *
+ * Issue #2348: the fallback previously accepted a bare anchored match, so "Other
+ * creatures you control have hexproof." and "Creatures your opponents control
+ * lose hexproof." read as hexproof — a card that only *grants* hexproof to
+ * others was wrongly untargetable on the live `canTarget` path. The shared
+ * helper rejects grant/negation phrases first.
  */
 export function hasHexproof(card: CardInstance): boolean {
   if (hasHexproofStrict(card)) {
     return true;
   }
-  const oracleText = card.cardData.oracle_text || "";
-  return /\bhexproof\b/i.test(oracleText);
+  return oracleTextDeclaresOwnKeyword(
+    "hexproof",
+    card.cardData.oracle_text ?? "",
+  );
 }
 
 /**
@@ -1126,13 +1145,18 @@ export function canPersistTrigger(
  * **anchored** oracle-text match for untagged cards, so the two exports can no
  * longer return different answers for the same card.
  *
- * KNOWN LIMIT (deliberate, see #2346): anchoring does not fix the *grant* case
- * — a card whose oracle text grants mutate to others still reads as having it.
- * Pinned by `__tests__/keyword-mutate.test.ts`.
+ * Issue #2348 closed the remaining KNOWN LIMIT recorded in #2346: the fallback
+ * now rejects grant/negation phrases through the shared
+ * `oracleTextDeclaresOwnKeyword` helper, so "Other creatures you control have
+ * mutate." and "Creatures your opponents control lose mutate." no longer read
+ * as mutate. Anchoring alone could not do this — those sentences contain the
+ * standalone word `mutate` by design.
  */
 export function hasMutate(card: CardInstance): boolean {
-  const oracleText = card.cardData.oracle_text ?? "";
-  return hasMutateStrict(card) || /\bmutate\b/i.test(oracleText);
+  return (
+    hasMutateStrict(card) ||
+    oracleTextDeclaresOwnKeyword("mutate", card.cardData.oracle_text ?? "")
+  );
 }
 
 /**
@@ -1244,26 +1268,26 @@ export function markCreatureAttackedForBoast(
  * loss, -1/-1 counters on blockers).
  *
  * It now defers to `hasInfectStrict` (parsed-keywords only) and falls back to
- * an **anchored** `/\binfect\b/i` test for untagged cards — the shape
- * established by `hasPersist` (#2338) and `hasMutate` (#2346) — after
- * rejecting grant/negation phrases via `isInfectGrantOrNegationPhrase`.
+ * the shared `oracleTextDeclaresOwnKeyword` helper for untagged cards, which
+ * rejects grant/negation phrases before accepting the anchored match. That
+ * helper is the generalization of this gate's original bespoke phrase list
+ * (#2348); the shape was first established by `hasPersist` (#2338) and
+ * `hasMutate` (#2346).
  *
- * KNOWN LIMIT (deliberate, see #2348): the grant/negation rejection is
- * phrase-shaped and infect-only. It does not *parse* grants, so an untagged
- * card that grants itself infect ("{B}: This creature gains infect until end
- * of turn") correctly reads `false` until the activation is actually paid —
- * modelling the payment is #2348's job. Pinned by
+ * REMAINING LIMIT (see `keyword-actions/grant-negation.ts`): the guard is
+ * phrase-shaped, not a grant parse, so an untagged card that grants *itself*
+ * infect ("{B}: This creature gains infect until end of turn") correctly reads
+ * `false` until the activation is actually paid. Pinned by
  * `__tests__/keyword-infect.test.ts`.
  */
 export function hasInfect(card: CardInstance): boolean {
   if (hasInfectStrict(card)) {
     return true;
   }
-  const oracleText = card.cardData.oracle_text ?? "";
-  if (isInfectGrantOrNegationPhrase(oracleText)) {
-    return false;
-  }
-  return /\binfect\b/i.test(oracleText);
+  return oracleTextDeclaresOwnKeyword(
+    "infect",
+    card.cardData.oracle_text ?? "",
+  );
 }
 
 // ============== TOXIC (CR 702.95) ==============
@@ -1328,19 +1352,20 @@ export function getToxicLevel(card: CardInstance): number {
  * stamped a +1/+1 onto that creature via the layer-7 power/toughness read —
  * a live stat corruption, not a cosmetic one.
  *
- * KNOWN LIMIT (deliberate, see #2344): anchoring does not fix the *grant* case
- * — a creature whose oracle text grants prowess to others (e.g. "Other
- * creatures you control have prowess.") still reads as having it. Handling
- * that needs a grant/negation-aware oracle parse rather than keyword parsing;
- * the same limitation is already recorded for `hexproof from` and
- * `lose shroud`. The written-out-ability *false negative* (a card with no
- * keyword tag whose text spells out the trigger in full) is a known limit for
- * the same reason. Both are pinned by
- * `__tests__/keyword-prowess.test.ts` so the behavior cannot drift silently.
+ * Issue #2348 closed the grant-case KNOWN LIMIT recorded in #2344: the fallback
+ * now goes through the shared `oracleTextDeclaresOwnKeyword` helper, so a
+ * creature whose text only *grants* prowess to others ("Other creatures you
+ * control have prowess.") no longer triggers a +1/+1 for itself via
+ * `applyProwessBoost`. The written-out-ability *false negative* (a card with no
+ * keyword tag whose text spells out the trigger in full) remains a known limit
+ * for the same reason — that is a grant *parse*, not phrase rejection — and is
+ * pinned by `__tests__/keyword-prowess.test.ts`.
  */
 export function hasProwess(card: CardInstance): boolean {
-  const oracleText = card.cardData.oracle_text ?? "";
-  if (!hasProwessStrict(card) && !/\bprowess\b/i.test(oracleText)) {
+  if (
+    !hasProwessStrict(card) &&
+    !oracleTextDeclaresOwnKeyword("prowess", card.cardData.oracle_text ?? "")
+  ) {
     return false;
   }
   // CR 702.108: prowess only does something on a creature.

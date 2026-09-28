@@ -181,18 +181,43 @@ describe.each(GATES)("CR 702.140 mutate — %s", (_name, hasMutate) => {
     });
   });
 
-  describe("KNOWN LIMIT — grant text (deliberate, see #2346)", () => {
-    it("still matches a card that GRANTS mutate to others", () => {
+  describe("grant/negation text — closed by #2348", () => {
+    it("no longer matches a card that only GRANTS mutate to others", () => {
       const card = instance({
         keywords: [],
         oracle_text: "Other creatures you control have mutate.",
       });
-      // Anchoring cannot fix this: `mutate` here IS a standalone word, it is
-      // simply not the keyword of *this* card. Fixing it needs a
-      // grant/negation-aware oracle parse, not keyword parsing — the same
-      // limitation already recorded for `hexproof from`, `lose shroud` and
-      // prowess. Pinned so the behaviour cannot drift silently.
-      expect(hasMutate(card)).toBe(true);
+      // #2346 recorded this as a KNOWN LIMIT and pinned `true`. #2348 closed
+      // it: both `hasMutate` copies now route the fallback through the
+      // shared `oracleTextDeclaresOwnKeyword`, which rejects the grant phrase.
+      // Anchoring alone could not do it — `mutate` here IS a standalone word.
+      expect(hasMutate(card)).toBe(false);
+    });
+
+    it("no longer matches a card that only REMOVES mutate from others", () => {
+      const card = instance({
+        keywords: [],
+        oracle_text: "Creatures your opponents control lose mutate.",
+      });
+      expect(hasMutate(card)).toBe(false);
+    });
+
+    it("still matches a genuine untagged mutate card (no over-tightening)", () => {
+      // The false-negative direction is the expensive one, so a real mutate
+      // card whose keyword tag is missing must still resolve true. Bare
+      // "Mutate {3}{U}" and a written-out "This creature has mutate." are both
+      // deliberately outside the guard's phrase list.
+      expect(
+        hasMutate(instance({ keywords: [], oracle_text: "Mutate {3}{U}" })),
+      ).toBe(true);
+      expect(
+        hasMutate(
+          instance({
+            keywords: [],
+            oracle_text: "This creature has mutate.",
+          }),
+        ),
+      ).toBe(true);
     });
   });
 });
@@ -212,6 +237,27 @@ describe("CR 702.140 mutate — the two hasMutate exports agree", () => {
     [
       "negation",
       { keywords: [], oracle_text: "This creature can't be mutated." },
+    ],
+    // #2348: the grant/negation phrase classes, in the "do the two copies
+    // agree" matrix, so a future divergence in either direction is caught here
+    // rather than only in the dedicated describe block above.
+    [
+      "grant to others",
+      { keywords: [], oracle_text: "Other creatures you control have mutate." },
+    ],
+    [
+      "removal from others",
+      {
+        keywords: [],
+        oracle_text: "Creatures your opponents control lose mutate.",
+      },
+    ],
+    [
+      "conditional self-grant",
+      {
+        keywords: [],
+        oracle_text: "This creature has mutate as long as you control a Beast.",
+      },
     ],
   ];
 
