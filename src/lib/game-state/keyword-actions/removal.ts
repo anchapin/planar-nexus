@@ -4,20 +4,39 @@
  * Mechanically extracted from keyword-actions.ts (issue #1725);
  * behavior pinned by the existing engine suites.
  */
-import type { GameState, CardInstance, CardInstanceId, Zone } from '../types';
-import { addCounters, removeCounters, hasCounter, initializePlaneswalkerLoyalty } from '../card-instance';
-import { KeywordActionResult } from './shared';
+import type { GameState, CardInstance, CardInstanceId, Zone } from "../types";
+import {
+  addCounters,
+  removeCounters,
+  hasCounter,
+  initializePlaneswalkerLoyalty,
+} from "../card-instance";
+import { hasIndestructibleKeyword } from "./indestructible";
+import { KeywordActionResult } from "./shared";
 
 /**
  * Check if a card has indestructible
+ *
+ * Issue #2350: this used to be
+ * `keywords.includes("Indestructible") || oracleText.includes("indestructible")`
+ * — a **case-sensitive** keyword match plus an **unanchored** oracle-text one.
+ * The case-sensitivity was a live correctness bug, not a style nit: a card
+ * tagged `keywords: ["indestructible"]` (imported decks, tokens, hand-built
+ * card data — Scryfall itself is title-case) fell through both arms, so SBA
+ * 704.5g destroyed a genuinely indestructible permanent. The oracle arm also
+ * matched grant phrases, pinning a card that merely *gives* indestructible to
+ * others as itself being unkillable.
+ *
+ * It now delegates to `hasIndestructibleKeyword` (CR 702.12a) — the single
+ * canonical gate, shared with `evergreen-keywords.isIndestructible` so the two
+ * copies cannot drift apart again. See `keyword-actions/indestructible.ts`.
+ *
+ * CR 702.12b — this guards DESTRUCTION only. It does not stop a permanent from
+ * being put into a graveyard directly (0-toughness SBA, sacrifice, exile), so
+ * callers applying those must pass `ignoreIndestructible`.
  */
 export function hasIndestructible(card: CardInstance): boolean {
-  const oracleText = card.cardData.oracle_text?.toLowerCase() || "";
-  const keywords = card.cardData.keywords || [];
-
-  return (
-    keywords.includes("Indestructible") || oracleText.includes("indestructible")
-  );
+  return hasIndestructibleKeyword(card);
 }
 
 /**
@@ -483,4 +502,3 @@ export function moveCardToZone(
     affectedCards: [cardId],
   };
 }
-
