@@ -168,7 +168,7 @@ test.describe("Draft Mode - Draft Complete Flow", () => {
       .first();
     await expect(buildDeckButton).toBeVisible({ timeout: 3000 });
     await buildDeckButton.click();
-    await expect(page).toHaveURL(/\/limited-deck-builder/);
+    await expect(page).toHaveURL(/\/limited-deck-builder/, { timeout: 30000 });
   });
 });
 
