@@ -40,6 +40,10 @@ import { hasShroudStrict } from "./keyword-actions/shroud";
 import { hasPersistStrict } from "./keyword-actions/persist";
 import { hasProwessStrict } from "./keyword-actions/prowess";
 import { hasMutateStrict } from "./keyword-actions/mutate";
+import {
+  hasInfectStrict,
+  isInfectGrantOrNegationPhrase,
+} from "./keyword-actions/infect";
 
 /**
  * Check if a card has a specific keyword
@@ -1197,21 +1201,58 @@ export function markCreatureAttackedForBoast(
   return { ...state, cards: updatedCards };
 }
 
-// ============== INFECT (CR 702.93) ==============
+// ============== INFECT (CR 702.90) ==============
 /**
  * Check if a card has infect keyword
- * CR 702.93: Damage dealt by the object to creatures is dealt as though it were
- * poison counters, not damage. Damage dealt to players is dealt as poison counters.
+ *
+ * CR 702.90a is the static ability; the damage replacement it authorizes is
+ * split across 702.90b (damage to a player is dealt as that many poison
+ * counters) and 702.90c (damage to a creature is dealt as that many -1/-1
+ * counters, and that damage "isn't marked on that creature"). 702.90d carries
+ * the last-known-information rule, 702.90e extends the whole thing to damage
+ * dealt from any zone, and 702.90f makes redundant instances of infect do
+ * nothing more. The glossary entry is CR 702.12.
+ *
+ * CR 702.90c is frequently mis-glossed as "dealt as though it were poison
+ * counters". It is not: damage to a **creature** becomes -1/-1 counters. Only
+ * damage to a **player** (702.90b) becomes poison counters.
+ *
+ * Issue #2351: this used to be `hasKeyword(card, "infect")`, whose oracle-text
+ * arm is an **unanchored** `includes("infect")` — it matched inside
+ * "infection" and "Infective", and matched six real permanents whose text
+ * merely grants or negates infect elsewhere. Unlike #2340/#2341/#2346, nothing
+ * filtered this gate upstream: it is read directly at four sites in live combat
+ * resolution, and a false positive inverts the card (poison instead of life
+ * loss, -1/-1 counters on blockers).
+ *
+ * It now defers to `hasInfectStrict` (parsed-keywords only) and falls back to
+ * an **anchored** `/\binfect\b/i` test for untagged cards — the shape
+ * established by `hasPersist` (#2338) and `hasMutate` (#2346) — after
+ * rejecting grant/negation phrases via `isInfectGrantOrNegationPhrase`.
+ *
+ * KNOWN LIMIT (deliberate, see #2348): the grant/negation rejection is
+ * phrase-shaped and infect-only. It does not *parse* grants, so an untagged
+ * card that grants itself infect ("{B}: This creature gains infect until end
+ * of turn") correctly reads `false` until the activation is actually paid —
+ * modelling the payment is #2348's job. Pinned by
+ * `__tests__/keyword-infect.test.ts`.
  */
 export function hasInfect(card: CardInstance): boolean {
-  return hasKeyword(card, "infect");
+  if (hasInfectStrict(card)) {
+    return true;
+  }
+  const oracleText = card.cardData.oracle_text ?? "";
+  if (isInfectGrantOrNegationPhrase(oracleText)) {
+    return false;
+  }
+  return /\binfect\b/i.test(oracleText);
 }
 
-// ============== TOXIC (CR 702.94) ==============
+// ============== TOXIC (CR 702.95) ==============
 /**
  * Get the toxic level of a creature
- * CR 702.94: When a creature with toxic deals damage to a player, that player
- * gets a poison counter. The number is the number of poison counters.
+ * CR 702.95: Whenever a creature with toxic N deals combat damage to a player,
+ * that player gets N poison counters.
  *
  * Returns 0 if the creature doesn't have toxic.
  * Returns 1 for "toxic" (no number specified).
