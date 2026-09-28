@@ -32,6 +32,7 @@ import {
   hasFirstStrike,
   hasDoubleStrike,
   hasTrample,
+  hasLifelink,
 } from "../evergreen-keywords";
 
 /**
@@ -126,12 +127,11 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
           attacker.defenderId as PlayerId,
         );
         if (defender) {
-          // Check for lifelink on attacker
-          const attackerHasLifelink =
-            attackerCard.cardData.keywords?.includes("Lifelink") ||
-            attackerCard.cardData.oracle_text
-              ?.toLowerCase()
-              .includes("lifelink");
+          // Check for lifelink on attacker (CR 702.15).
+          // Issue #2332: defer to canonical `hasLifelink` (now strict-first,
+          // then substring fallback) so flavor-word "lifelink" mentions in
+          // oracle text do not false-positive a real lifelink grant.
+          const attackerHasLifelink = hasLifelink(attackerCard);
 
           // Check if attacker is a commander
           const isAttackerCommander = isCommander(attackerCard);
@@ -286,9 +286,7 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
           blockerCard,
           layerSystem,
         );
-        const blockerHasLifelink =
-          blockerCard.cardData.keywords?.includes("Lifelink") ||
-          blockerCard.cardData.oracle_text?.toLowerCase().includes("lifelink");
+        const blockerHasLifelink = hasLifelink(blockerCard);
 
         // Calculate damage to assign to this blocker.
         // CR 702.19b (trample) + CR 510.1c (general combat): the attacker must
