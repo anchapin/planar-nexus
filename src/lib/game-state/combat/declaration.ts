@@ -15,6 +15,7 @@ import {
   addCounters,
 } from "../card-instance";
 import { dealDamageToCard } from "../keyword-actions";
+import { hasVigilanceStrict } from "../keyword-actions/vigilance";
 import { checkStateBasedActions } from "../state-based-actions";
 import { dealCommanderDamage, isCommander } from "../commander-damage";
 import {
@@ -138,12 +139,14 @@ export function declareAttackers(
     if (card) {
       const updatedCard = { ...card };
 
-      // Check for vigilance - if creature has vigilance, don't tap
-      const hasVigilance =
-        card.cardData.keywords?.includes("Vigilance") ||
-        card.cardData.oracle_text?.toLowerCase().includes("vigilance");
-
-      if (!hasVigilance) {
+      // Check for vigilance - if creature has vigilance, don't tap.
+      // Issue #2328: defer to the strict `hasVigilanceStrict` check so
+      // a card whose oracle text merely mentions "vigilance" as a flavor
+      // word or continuous-effect grant reference is still correctly
+      // tapped at attack declaration. The canonical `hasVigilance` (from
+      // `evergreen-keywords`) preserves the substring fallback for cards
+      // with missing keyword tags.
+      if (!hasVigilanceStrict(card)) {
         updatedCard.isTapped = true;
       }
 
