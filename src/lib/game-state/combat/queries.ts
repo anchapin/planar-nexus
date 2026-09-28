@@ -31,6 +31,8 @@ import {
   getLandwalkTypes,
 } from "../evergreen-keywords";
 import { hasDefenderStrict } from "../keyword-actions/defender";
+import { hasFlyingStrict } from "../keyword-actions/flying";
+import { hasReachStrict } from "../keyword-actions/reach";
 
 /**
  * Result of a combat action
@@ -138,16 +140,13 @@ export function canBlock(
   if (attackerId) {
     const attacker = state.cards.get(attackerId);
     if (attacker && isCreature(attacker)) {
-      // Check flying
-      const attackerHasFlying =
-        attacker.cardData.keywords?.includes("Flying") ||
-        attacker.cardData.oracle_text?.toLowerCase().includes("flying");
-      const blockerHasFlying =
-        blocker.cardData.keywords?.includes("Flying") ||
-        blocker.cardData.oracle_text?.toLowerCase().includes("flying");
-      const blockerHasReach =
-        blocker.cardData.keywords?.includes("Reach") ||
-        blocker.cardData.oracle_text?.toLowerCase().includes("reach");
+      // CR 702.9 / 702.12 — flying evasion, with reach as the exception.
+      // Issue #2324: replaces the prior substring oracle-text fallback with
+      // strict parsed-keyword detection (hasFlyingStrict / hasReachStrict)
+      // so flavor-word mentions of "flying" / "reach" no longer false-positive.
+      const attackerHasFlying = hasFlyingStrict(attacker);
+      const blockerHasFlying = hasFlyingStrict(blocker);
+      const blockerHasReach = hasReachStrict(blocker);
 
       if (attackerHasFlying && !blockerHasFlying && !blockerHasReach) {
         return {
@@ -155,6 +154,14 @@ export function canBlock(
           reason: "Cannot block flying creatures without flying or reach",
         };
       }
+
+      // CR 702.110 — menace. Note: menace is NOT enforced here because
+      // `canBlock` answers "can this individual blocker block this
+      // attacker?" — any single blocker *can* block a menace attacker on
+      // its own. The minimum-two-blocker requirement is enforced at
+      // declaration time in combat/declaration.ts::declareBlockers (which
+      // uses `getMenaceMinimumBlockers` to reject partial assignments).
+      // Issue #2324.
 
       // CR 702.16D: Check protection - creatures with protection from attacker's color can't block
       const attackerColors = attacker.cardData.colors || [];
