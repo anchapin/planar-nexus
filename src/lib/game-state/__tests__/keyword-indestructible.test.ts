@@ -47,9 +47,9 @@ import type { CardInstance, GameState, PlayerId, ScryfallCard } from "../types";
 import { checkStateBasedActions } from "../state-based-actions";
 import {
   hasIndestructibleStrict,
-  isIndestructibleGrantOrNegationPhrase,
   hasIndestructibleKeyword,
 } from "../keyword-actions/indestructible";
+import { isKeywordGrantOrNegationPhrase } from "../keyword-actions/grant-negation";
 import { hasIndestructible as removalHasIndestructible } from "../keyword-actions/removal";
 import { destroyCard, regenerateCard } from "../keyword-actions/removal";
 import { isIndestructible, canBeDestroyed } from "../evergreen-keywords";
@@ -251,10 +251,15 @@ describe("hasIndestructibleStrict (CR 702.12a)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 2. isIndestructibleGrantOrNegationPhrase — the anchoring is not enough
+// 2. isKeywordGrantOrNegationPhrase — the anchoring is not enough
 // ---------------------------------------------------------------------------
 
-describe("isIndestructibleGrantOrNegationPhrase", () => {
+describe("isKeywordGrantOrNegationPhrase", () => {
+  // #2348 moved this phrase list out of `keyword-actions/indestructible.ts`
+  // into the shared `keyword-actions/grant-negation.ts`, generalizing what were
+  // two byte-identical lists (this one and the infect copy from #2351). The
+  // signature is now (keyword, oracleText) so one implementation serves every
+  // strict-first keyword gate.
   const grantOrNegation = [
     "This creature gains indestructible until end of turn.",
     "This creature gain indestructible.",
@@ -266,7 +271,7 @@ describe("isIndestructibleGrantOrNegationPhrase", () => {
   ];
 
   it.each(grantOrNegation)("rejects the grant/negation phrase %s", (text) => {
-    expect(isIndestructibleGrantOrNegationPhrase(text)).toBe(true);
+    expect(isKeywordGrantOrNegationPhrase("indestructible", text)).toBe(true);
   });
 
   const ownKeyword = [
@@ -277,7 +282,7 @@ describe("isIndestructibleGrantOrNegationPhrase", () => {
   ];
 
   it.each(ownKeyword)("does not reject the self-declaration %s", (text) => {
-    expect(isIndestructibleGrantOrNegationPhrase(text)).toBe(false);
+    expect(isKeywordGrantOrNegationPhrase("indestructible", text)).toBe(false);
   });
 });
 

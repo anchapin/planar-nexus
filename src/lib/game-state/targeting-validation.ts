@@ -18,6 +18,7 @@ import type {
 import { hasWard, getWardCost, isProtectedByWard } from "./evergreen-keywords";
 import { hasHexproofStrict } from "./keyword-actions/hexproof";
 import { hasShroudStrict } from "./keyword-actions/shroud";
+import { oracleTextDeclaresOwnKeyword } from "./keyword-actions/grant-negation";
 import { getProtectionQualitiesStrict } from "./keyword-actions/protection";
 import { parseWardCostString, type WardCostDescriptor } from "./ward-system";
 
@@ -81,15 +82,23 @@ export interface TargetValidationResult {
  *
  * Note the word boundary in the fallback avoids matching "unshroud",
  * "shrouded", or similar stems.
+ *
+ * Issue #2348: that hand-rolled anchored regex is now the shared
+ * `oracleTextDeclaresOwnKeyword` helper, which also rejects grant/negation
+ * phrases — "This creature loses shroud." is not shroud, and
+ * `evergreen-keywords.hasShroud` now agrees. The two copies had drifted: the
+ * evergreen copy fell back to the unanchored `hasKeyword` helper and read
+ * "This creature is unshrouded." / "Shrouding the temple." / "Enshrouded in
+ * mist." as shroud while this copy correctly rejected all three.
  */
 export function hasShroud(card: CardInstance): boolean {
   if (hasShroudStrict(card)) {
     return true;
   }
-  const oracleText = card.cardData.oracle_text?.toLowerCase() || "";
-  // Use word boundary to match only the word "shroud" not "unshroud", etc.
-  const shroudRegex = /\bshroud\b/i;
-  return shroudRegex.test(oracleText);
+  return oracleTextDeclaresOwnKeyword(
+    "shroud",
+    card.cardData.oracle_text ?? "",
+  );
 }
 
 /**
@@ -230,18 +239,24 @@ export function isProtectedFromSource(
  * CR 702.11: Hexproof - Can't be targeted by opponents.
  *
  * Detection: defer to `hasHexproofStrict` (parsed-keywords only, canonical
- * contract — see `keyword-actions/hexproof.ts`); fall back to a substring
- * oracle-text check only when the strict check returns false, so cards
- * whose `keywords` array is missing the tag still resolve correctly. This
- * mirrors the flash/defender/ward pattern and brings targeting-validation
- * into contract parity with `evergreen-keywords.hasHexproof`.
+ * contract — see `keyword-actions/hexproof.ts`); fall back to the shared
+ * `oracleTextDeclaresOwnKeyword` helper only when the strict check returns
+ * false, so cards whose `keywords` array is missing the tag still resolve
+ * correctly. This mirrors the flash/defender/ward pattern and brings
+ * targeting-validation into contract parity with `evergreen-keywords.hasHexproof`.
+ *
+ * Issue #2348: the fallback previously accepted a bare anchored match, so
+ * "Other creatures you control have hexproof." read as hexproof and made a card
+ * that only *grants* hexproof wrongly untargetable.
  */
 export function hasHexproof(card: CardInstance): boolean {
   if (hasHexproofStrict(card)) {
     return true;
   }
-  const oracleText = card.cardData.oracle_text || "";
-  return /\bhexproof\b/i.test(oracleText);
+  return oracleTextDeclaresOwnKeyword(
+    "hexproof",
+    card.cardData.oracle_text ?? "",
+  );
 }
 
 /**
@@ -403,7 +418,9 @@ export function getWardRequirements(
  */
 export function getTargetingRestrictions(card: CardInstance): string[] {
   const restrictions: string[] = [];
-  const oracleText = card.cardData.oracle_text?.toLowerCase() || "";
+  // No raw `oracleText` local: #2336 removed the shroud substring check and
+  // #2348 removed the hexproof one, so this function no longer reads the
+  // oracle text directly — every line below goes through a strict-first gate.
 
   // Issue #2336: use the strict-first `hasShroud` rather than a bare
   // `oracleText.includes("shroud")` substring, so a permanent that carries
@@ -414,7 +431,12 @@ export function getTargetingRestrictions(card: CardInstance): string[] {
     restrictions.push("Shroud (can't be targeted)");
   }
 
-  if (oracleText.includes("hexproof")) {
+  // Issue #2348: the hexproof half was missed by #2336 and still used a raw
+  // unanchored `oracleText.includes("hexproof")`, so the UI mislabelled
+  // "Other creatures you control have hexproof." and "Loses hexproof." as
+  // hexproof. It now uses the same strict-first `hasHexproof` as the shroud
+  // line above.
+  if (hasHexproof(card)) {
     restrictions.push("Hexproof (can't be targeted by opponents)");
   }
 

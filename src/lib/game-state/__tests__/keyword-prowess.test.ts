@@ -30,18 +30,19 @@
  * require keyword/text disagreement in both directions, so a backfilling
  * helper would silently destroy the very distinction under test.
  *
- * KNOWN LIMITs (out of scope for #2344, pinned not aspirational — see the
- * matching notes in `keyword-actions/prowess.ts` and `evergreen-keywords.ts`):
- *   1. Anchoring does not fix the *grant* case: a creature whose oracle text
- *      grants prowess to others ("Other creatures you control have prowess.")
- *      still reads as having prowess. Fixing that needs a grant/negation-aware
- *      oracle parse, not keyword parsing — the same limitation already recorded
- *      for `"hexproof from"` and `lose shroud`.
- *   2. The written-out-ability *false negative* — a card with no keyword tag
- *      whose text spells out the full trigger — is also unresolved, for the
- *      same reason.
- * Both are asserted below so the behavior cannot drift silently. The
- * type-line substring guard is a third known limit, unchanged from #2338.
+ * KNOWN LIMITs (see the matching notes in `keyword-actions/prowess.ts` and
+ * `evergreen-keywords.ts`):
+ *   1. CLOSED by #2348. #2344 pinned the *grant* case as a known limit: a
+ *      creature whose oracle text grants prowess to others ("Other creatures you
+ *      control have prowess.") read as having prowess, and `applyProwessBoost`
+ *      then stamped a live +1/+1 on it. The fallback now rejects grant/negation
+ *      phrases via the shared `oracleTextDeclaresOwnKeyword`, so it no longer
+ *      does. The regression pins are below.
+ *   2. STILL OPEN: the written-out-ability *false negative* — a card with no
+ *      keyword tag whose text spells out the full trigger and never uses the
+ *      word "prowess". Closing that needs a real grant/trigger parse, which is
+ *      beyond a phrase guard. Pinned below.
+ * The type-line substring guard is a third known limit, unchanged from #2338.
  */
 
 import { hasProwessStrict } from "../keyword-actions/prowess";
@@ -275,15 +276,39 @@ describe("hasProwess — canonical gate (CR 702.108a)", () => {
     expect(hasProwess(card)).toBe(true);
   });
 
-  it("KNOWN LIMIT: a creature that GRANTS prowess to others still reads as having it", () => {
-    // Pinned behavior, NOT the desired behavior. Anchoring the substring does not
-    // make the oracle parse grant-aware; see KNOWN LIMIT (1) in the file header.
-    // Fixing it requires a grant/negation-aware parse, the same follow-up shape
-    // already tracked for `"hexproof from"` and `lose shroud`.
+  it("a creature that only GRANTS prowess to others no longer reads as prowess (#2348)", () => {
+    // #2344 pinned this as a KNOWN LIMIT with `true`. #2348 closed it: the
+    // fallback now rejects the grant phrase, so a lord that grants prowess
+    // does not trigger a +1/+1 for itself via `applyProwessBoost`. This was
+    // live stat corruption, not a cosmetic label.
     const card = makeInstance(
       makeCardData({
         keywords: [],
         oracle_text: "Other creatures you control have prowess.",
+      }),
+    );
+    expect(hasProwess(card)).toBe(false);
+  });
+
+  it("a creature that only REMOVES prowess from others does not read as prowess (#2348)", () => {
+    const card = makeInstance(
+      makeCardData({
+        keywords: [],
+        oracle_text: "Creatures your opponents control lose prowess.",
+      }),
+    );
+    expect(hasProwess(card)).toBe(false);
+  });
+
+  it("still reads as prowess for a genuine untagged prowess creature", () => {
+    // Guard against over-tightening. The type line is required by CR 702.108
+    // ("prowess only does something on a creature"), and the guard deliberately
+    // leaves bare "has prowess" alone.
+    const card = makeInstance(
+      makeCardData({
+        keywords: [],
+        type_line: "Creature — Human Wizard",
+        oracle_text: "This creature has prowess.",
       }),
     );
     expect(hasProwess(card)).toBe(true);

@@ -15,7 +15,8 @@
  *   2. Anchoring alone is NOT enough. `/\binfect\b/i` still matches "This
  *      creature gains infect until end of turn" and "Creatures your opponents
  *      control lose infect", so the fallback also rejects grant/negation
- *      phrases (see `isInfectGrantOrNegationPhrase`).
+ *      phrases (see `oracleTextDeclaresOwnKeyword` in
+ *      `keyword-actions/grant-negation.ts`).
  *   3. CR 702.90e — infect works from any zone. The conversion used to be
  *      hardcoded in `combat/resolution.ts`, so non-combat damage never
  *      converted. It now lives in `dealDamageToCard`.
