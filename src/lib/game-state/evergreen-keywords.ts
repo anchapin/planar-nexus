@@ -29,6 +29,9 @@ import {
 import { hasFlyingStrict } from "./keyword-actions/flying";
 import { hasReachStrict } from "./keyword-actions/reach";
 import { hasMenaceStrict } from "./keyword-actions/menace";
+import { hasFirstStrikeStrict } from "./keyword-actions/first-strike";
+import { hasDoubleStrikeStrict } from "./keyword-actions/double-strike";
+import { hasTrampleStrict } from "./keyword-actions/trample";
 
 /**
  * Check if a card has a specific keyword
@@ -63,12 +66,17 @@ export function canBlockFlying(card: CardInstance): boolean {
   return hasFlying(card) || hasReach(card);
 }
 
-// ============== FIRST STRIKE ==============
+// ============== FIRST STRIKE (CR 702.7) ==============
 /**
  * Check if a card has first strike
+ *
+ * Issue #2326: defers to `hasFirstStrikeStrict` (parsed-keywords only)
+ * first; falls back to the substring `hasKeyword` helper for cards
+ * whose `keywords` array is missing the tag. Mirrors the flying /
+ * reach / menace pattern.
  */
 export function hasFirstStrike(card: CardInstance): boolean {
-  return hasKeyword(card, "first strike");
+  return hasFirstStrikeStrict(card) || hasKeyword(card, "first strike");
 }
 
 /**
@@ -78,12 +86,17 @@ export function dealsFirstStrikeDamage(card: CardInstance): boolean {
   return hasFirstStrike(card) || hasDoubleStrike(card);
 }
 
-// ============== DOUBLE STRIKE ==============
+// ============== DOUBLE STRIKE (CR 702.4) ==============
 /**
  * Check if a card has double strike
+ *
+ * Issue #2326: defers to `hasDoubleStrikeStrict` (parsed-keywords only)
+ * first; falls back to the substring `hasKeyword` helper for cards
+ * whose `keywords` array is missing the tag. Mirrors the flying /
+ * reach / menace pattern.
  */
 export function hasDoubleStrike(card: CardInstance): boolean {
-  return hasKeyword(card, "double strike");
+  return hasDoubleStrikeStrict(card) || hasKeyword(card, "double strike");
 }
 
 // ============== DEATHTOUCH ==============
@@ -248,12 +261,17 @@ export function hasLandwalk(card: CardInstance): boolean {
   return getLandwalkTypes(card).length > 0;
 }
 
-// ============== TRAMPLE ==============
+// ============== TRAMPLE (CR 702.3) ==============
 /**
  * Check if a card has trample
+ *
+ * Issue #2326: defers to `hasTrampleStrict` (parsed-keywords only)
+ * first; falls back to the substring `hasKeyword` helper for cards
+ * whose `keywords` array is missing the tag. Mirrors the flying /
+ * reach / menace pattern.
  */
 export function hasTrample(card: CardInstance): boolean {
-  return hasKeyword(card, "trample");
+  return hasTrampleStrict(card) || hasKeyword(card, "trample");
 }
 
 /**
