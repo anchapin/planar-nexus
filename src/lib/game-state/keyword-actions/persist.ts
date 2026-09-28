@@ -3,9 +3,62 @@
  *
  * Mechanically extracted from keyword-actions.ts (issue #1725);
  * behavior pinned by the existing engine suites.
+ *
+ * Issue #2338 — evergreen keyword enforcement (persist portion).
+ *
+ * Before this change, persist was gated *only* through
+ * `evergreen-keywords.hasPersist` -> `hasKeyword(card, "persist")`, and
+ * `hasKeyword` resolves as
+ *
+ *     keywords.some(exact) || oracleText.includes("persist")
+ *
+ * The second arm is an **unanchored substring** test. That matters far more
+ * here than for most keywords, because persist's gate sits on the
+ * state-based-action death path:
+ *
+ *     state-based-actions.ts  -> handlePersist() -> hasPersist() -> hasKeyword()
+ *
+ * `handlePersist` returns the card **to the battlefield from the graveyard**
+ * with a -1/-1 counter. So a creature whose `keywords` array omits the tag but
+ * whose oracle text merely contains the substring `persist` was wrongly
+ * re-entered onto the battlefield by the SBA loop. `includes("persist")`
+ * matches inside `persistent`, `persists`, `persisted`, and `impersistency`,
+ * not just the standalone keyword.
+ *
+ * `hasPersistStrict` below establishes the canonical contract — consult ONLY
+ * the parsed `keywords` array — mirroring `hasHasteStrict`, `hasShroudStrict`,
+ * `hasLifelinkStrict`, `hasDeathtouchStrict`, `hasHexproofStrict`, and the
+ * other strict checks in this directory.
+ *
+ * Note: unlike most of those siblings this module is not a pure leaf — it
+ * imports `hasPersist` / `canPersistTrigger` from `evergreen-keywords`, which
+ * in turn imports `hasPersistStrict` from here. That cycle is safe because
+ * every cross-reference is a hoisted function declaration and the strict check
+ * is only ever invoked at runtime, never during module evaluation.
  */
-import type { GameState, CardInstance, CardInstanceId, Counter } from '../types';
-import { hasPersist, canPersistTrigger } from '../evergreen-keywords';
+import type {
+  GameState,
+  CardInstance,
+  CardInstanceId,
+  Counter,
+} from "../types";
+import { hasPersist, canPersistTrigger } from "../evergreen-keywords";
+
+/**
+ * CR 702.78 — strict check for the Persist keyword.
+ *
+ * True iff the parsed `keywords` array contains "persist" as a
+ * case-insensitive, whitespace-trimmed standalone token. Mirrors
+ * `hasHasteStrict` / `hasShroudStrict` / `hasLifelinkStrict` in consulting
+ * only the parsed keyword list, never the raw oracle text.
+ *
+ * The word-boundary anchor matters: a keyword entry of "persistent" or
+ * "persists" is a *mention*, not the keyword, and must not grant persist.
+ */
+export function hasPersistStrict(card: CardInstance): boolean {
+  const keywords = card.cardData.keywords ?? [];
+  return keywords.some((k) => /^persist\b/i.test(k.trim()));
+}
 
 /**
  * Handle persist keyword when a creature dies
@@ -134,4 +187,3 @@ export function handlePersist(
 // the stack is empty (CR 117.1a). The implementation enforces that here and
 // surfaces it via canCycleCard so callers (UI, AI) can gate the action.
 // ===========================================================================
-
