@@ -82,9 +82,15 @@ describe("Mutate Mechanic (CR 702.140)", () => {
   });
 
   describe("hasMutate", () => {
+    // Issue #2346: `hasMutate` now takes a `CardInstance` (the shape the
+    // sibling strict checks use) rather than raw card data, so these three
+    // cases wrap their fixtures in a real instance.
+    const instanceOf = (cardData: ScryfallCard) =>
+      createCardInstance(cardData, playerId, playerId);
+
     it("should return true for cards with Mutate keyword", () => {
       const card = createMutateCreature("Test Creature", 3, 3, 4);
-      expect(hasMutate(card)).toBe(true);
+      expect(hasMutate(instanceOf(card))).toBe(true);
     });
 
     it("should return true for cards with mutate in oracle text", () => {
@@ -99,12 +105,12 @@ describe("Mutate Mechanic (CR 702.140)", () => {
         color_identity: [],
         legalities: { standard: "legal" },
       } as ScryfallCard;
-      expect(hasMutate(card)).toBe(true);
+      expect(hasMutate(instanceOf(card))).toBe(true);
     });
 
     it("should return false for cards without mutate", () => {
       const card = createTargetCreature("Regular Creature", 2, 2);
-      expect(hasMutate(card)).toBe(false);
+      expect(hasMutate(instanceOf(card))).toBe(false);
     });
   });
 
@@ -141,7 +147,12 @@ describe("Mutate Mechanic (CR 702.140)", () => {
       // Give player priority
       state.priorityPlayerId = playerId;
 
-      const result = canCastWithMutate(state, playerId, mutateCard.id, targetCard.id);
+      const result = canCastWithMutate(
+        state,
+        playerId,
+        mutateCard.id,
+        targetCard.id,
+      );
       expect(result.canCast).toBe(true);
     });
 
@@ -158,7 +169,11 @@ describe("Mutate Mechanic (CR 702.140)", () => {
         color_identity: [],
         legalities: { standard: "legal" },
       } as ScryfallCard;
-      const nonCreature = createCardInstance(nonCreatureData, playerId, playerId);
+      const nonCreature = createCardInstance(
+        nonCreatureData,
+        playerId,
+        playerId,
+      );
       state.cards.set(nonCreature.id, nonCreature);
 
       const mutateCardData = createMutateCreature("Mutate Creature", 3, 3, 4);
@@ -167,7 +182,12 @@ describe("Mutate Mechanic (CR 702.140)", () => {
 
       state.priorityPlayerId = playerId;
 
-      const result = canCastWithMutate(state, playerId, mutateCard.id, nonCreature.id);
+      const result = canCastWithMutate(
+        state,
+        playerId,
+        mutateCard.id,
+        nonCreature.id,
+      );
       expect(result.canCast).toBe(false);
       expect(result.reason).toBe("Target is not a creature");
     });
@@ -175,7 +195,11 @@ describe("Mutate Mechanic (CR 702.140)", () => {
     it("should reject casting mutate onto creature you don't control", () => {
       // Create creature controlled by opponent
       const targetCardData = createTargetCreature("Opponent Beast", 2, 2);
-      const targetCard = createCardInstance(targetCardData, opponentId, opponentId);
+      const targetCard = createCardInstance(
+        targetCardData,
+        opponentId,
+        opponentId,
+      );
       state.cards.set(targetCard.id, targetCard);
 
       // Add to opponent's battlefield
@@ -194,7 +218,12 @@ describe("Mutate Mechanic (CR 702.140)", () => {
 
       state.priorityPlayerId = playerId;
 
-      const result = canCastWithMutate(state, playerId, mutateCard.id, targetCard.id);
+      const result = canCastWithMutate(
+        state,
+        playerId,
+        mutateCard.id,
+        targetCard.id,
+      );
       expect(result.canCast).toBe(false);
       expect(result.reason).toBe("You do not control this creature");
     });
@@ -355,9 +384,9 @@ describe("Mutate Mechanic (CR 702.140)", () => {
       // The component should no longer have merge info
       expect(result.state.cards.get(mutateCard.id)?.mutateBaseId).toBeNull();
       // The base should no longer reference this component
-      expect(result.state.cards.get(targetCard.id)?.mutatedCardIds).not.toContain(
-        mutateCard.id,
-      );
+      expect(
+        result.state.cards.get(targetCard.id)?.mutatedCardIds,
+      ).not.toContain(mutateCard.id);
     });
   });
 });

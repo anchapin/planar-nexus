@@ -16,20 +16,38 @@ import type {
 } from "./types";
 import { getManaValue } from "./card-instance";
 import { isPriorityPlayer } from "./priority-guard";
+import { hasMutateStrict } from "./keyword-actions/mutate";
 
 /**
  * Check if a card has the mutate ability
  * CR 702.140: Mutate is a keyword ability
+ *
+ * Issue #2346: defers to `hasMutateStrict` (parsed-keywords only) first, then
+ * falls back to an **anchored** oracle-text match so untagged cards (those whose
+ * `keywords` array is missing the tag but whose text reads "Mutate {2}{U}") are
+ * still recognised. Mirrors the prowess / haste / shroud pattern.
+ *
+ * This previously read `card.keywords?.includes("Mutate")` — a case-SENSITIVE
+ * exact test — so a card tagged `keywords: ["mutate"]` with no oracle text was
+ * rejected here, failing the cast with "Card does not have mutate ability" even
+ * though it genuinely has the keyword. The unanchored text arm also matched the
+ * substring inside `mutates`, `Unmutated` and `commutates`; the `\b` anchor
+ * closes that.
+ *
+ * KNOWN LIMIT (deliberate, see #2346): anchoring does not fix the *grant* case —
+ * a card whose oracle text grants mutate to others (e.g. "Other creatures you
+ * control have mutate.") still reads as having it. Handling that needs a
+ * grant/negation-aware oracle parse rather than keyword parsing; the same
+ * limitation is already recorded for `hexproof from`, `lose shroud`, and
+ * prowess. It is pinned by `__tests__/keyword-mutate.test.ts` so the behaviour
+ * cannot drift silently.
  */
-export function hasMutate(card: {
-  keywords?: string[];
-  oracle_text?: string;
-}): boolean {
-  if (card.keywords?.includes("Mutate")) {
+export function hasMutate(card: CardInstance): boolean {
+  const oracleText = card.cardData.oracle_text ?? "";
+  if (hasMutateStrict(card) || /\bmutate\b/i.test(oracleText)) {
     return true;
   }
-  // Fallback to oracle text check
-  return card.oracle_text?.toLowerCase().includes("mutate") || false;
+  return false;
 }
 
 /**
@@ -48,7 +66,7 @@ export function canCastWithMutate(
   }
 
   // Check if the card has mutate
-  if (!hasMutate(card.cardData)) {
+  if (!hasMutate(card)) {
     return { canCast: false, reason: "Card does not have mutate ability" };
   }
 
