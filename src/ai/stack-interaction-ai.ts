@@ -34,6 +34,7 @@ import {
   ThreatAssessment,
   DetailedEvaluation,
 } from "./game-state-evaluator";
+import { hasFlying, hasTrample } from "./utils/keyword-helpers";
 // Canonical 4-tier difficulty taxonomy (easy/medium/hard/expert). Issue #1070:
 // the public stack-interaction helpers previously re-declared a 3-tier union
 // ("easy" | "medium" | "hard") and silently dropped `expert`, forcing any
@@ -2844,8 +2845,8 @@ export class StackInteractionAI {
     if (permanent.type === "creature") {
       const power = permanent.power || 0;
       score += Math.min(0.4, power / 5);
-      if (permanent.keywords?.includes("flying")) score += 0.1;
-      if (permanent.keywords?.includes("trample")) score += 0.1;
+      if (hasFlying(permanent)) score += 0.1;
+      if (hasTrample(permanent)) score += 0.1;
     }
 
     // Planeswalkers - high priority
