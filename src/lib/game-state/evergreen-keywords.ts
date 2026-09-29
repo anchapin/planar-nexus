@@ -20,6 +20,7 @@ import type {
   PlayerId,
 } from "./types";
 import { ZoneType } from "./types";
+import { isCreature } from "./card-instance";
 import { hasWardStrict } from "./keyword-actions/ward";
 import { hasHexproofStrict } from "./keyword-actions/hexproof";
 import {
@@ -1108,8 +1109,9 @@ export function hasPersist(card: CardInstance): boolean {
   }
   // CR 702.78: persist is a creature keyword ("When this creature is put into
   // a graveyard from the battlefield..."). It has no effect on non-creatures.
-  const typeLine = card.cardData.type_line?.toLowerCase() || "";
-  return typeLine.includes("creature");
+  // Uses the shared `isCreature` predicate — the single source of truth for the
+  // creature type-line question (issue #2349).
+  return isCreature(card);
 }
 
 /**
@@ -1369,8 +1371,9 @@ export function hasProwess(card: CardInstance): boolean {
     return false;
   }
   // CR 702.108: prowess only does something on a creature.
-  const typeLine = card.cardData.type_line?.toLowerCase() || "";
-  return typeLine.includes("creature");
+  // Uses the shared `isCreature` predicate — the single source of truth for the
+  // creature type-line question (issue #2349).
+  return isCreature(card);
 }
 
 /**

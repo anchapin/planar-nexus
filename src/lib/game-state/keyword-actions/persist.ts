@@ -43,6 +43,7 @@ import type {
   Counter,
 } from "../types";
 import { hasPersist, canPersistTrigger } from "../evergreen-keywords";
+import { isCreature } from "../card-instance";
 
 /**
  * CR 702.78 — strict check for the Persist keyword.
@@ -90,9 +91,9 @@ export function handlePersist(
     return { state, persistedCards, descriptions };
   }
 
-  // Only creatures can have persist
-  const typeLine = card.cardData.type_line?.toLowerCase() || "";
-  if (!typeLine.includes("creature")) {
+  // Only creatures can have persist (issue #2349: uses the shared `isCreature`
+  // predicate — the single source of truth for the creature type-line question)
+  if (!isCreature(card)) {
     return { state, persistedCards, descriptions };
   }
 
