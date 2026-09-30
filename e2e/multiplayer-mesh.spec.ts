@@ -226,20 +226,31 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
     // Rebuild the mesh with peer B configured as a "slow" link.
     const { host, peerB, peerC, peerD, close } = await createFourPeers(browser);
     try {
-      // Override peer B's link profile to a slow link. We do this by injecting
-      // a new harness script that patches window.__peer.addNeighbor to apply
-      // a delivery delay on the B → others links. For this test we only need
-      // peer B's INBOUND side to be slow, so we patch the in-page record
-      // path to defer recording by 200ms when the message is from B.
-      // Implementation: wrap __p2pRecord on B's page to check the senderId
-      // and delay if it's peer B (we do the test on the OUTBOUND path
-      // from the other peers' perspective instead: when the host broadcasts,
-      // we want the delivery to B to be slow).
+      // Install Playwright's Clock API on peerB to control timer advancement
+      // deterministically (#1895). This replaces the flaky wall-clock-based
+      // waitForTimeout which varies under CI load, especially on WebKit.
+      await peerB.clock.install({ time: 0 });
+
+      // Open the full mesh with the slow B inbound.
+      await openMeshChannels(
+        [host, peerB, peerC, peerD],
+        [HOST_OPTS, PEER_B_OPTS, PEER_C_OPTS, PEER_D_OPTS],
+      );
+
+      // Make peer B's INBOUND pipe slow: wrap window.__p2pRecord on B's page
+      // so anything stamped with another peer's senderId is recorded 200ms
+      // late. The host's broadcast path is untouched, so this isolates "B is
+      // slow to receive" from "the host is slow to send".
       //
-      // The simplest mechanism is: on the B page, override the
-      // __p2pRecord function to inspect the JSON and if senderId is one of
-      // {host, peer-c, peer-d}, defer recording by 200ms. This simulates
-      // B's INBOUND pipe being slow.
+      // Issue #2375: this wrapper MUST be installed AFTER openMeshChannels.
+      // openMeshChannels navigates every page (page.goto) and re-runs
+      // MOCK_TRANSPORT_INIT, which assigns a fresh window.__p2pRecord.
+      // Installing the wrapper before that navigation silently threw it away,
+      // so B recorded every broadcast immediately and the +50ms sample below
+      // was racing the fanout round trips instead of observing a throttled
+      // pipe. peerB.clock.install survives the navigation (Playwright adds it
+      // as an init script), which is why this read as a clock-precision flake
+      // for three rounds (#1881, #1895, #2071).
       await peerB.evaluate(() => {
         const w = window as unknown as {
           __p2pRecord: (raw: string) => unknown;
@@ -264,17 +275,6 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
           return original(raw);
         };
       });
-
-      // Install Playwright's Clock API on peerB to control timer advancement
-      // deterministically (#1895). This replaces the flaky wall-clock-based
-      // waitForTimeout which varies under CI load, especially on WebKit.
-      await peerB.clock.install({ time: 0 });
-
-      // Open the full mesh with the slow B inbound.
-      await openMeshChannels(
-        [host, peerB, peerC, peerD],
-        [HOST_OPTS, PEER_B_OPTS, PEER_C_OPTS, PEER_D_OPTS],
-      );
 
       // Host broadcasts 3 state-syncs in a tight loop. The mesh's broadcast
       // is synchronous on the host side — it does not wait for any peer's
