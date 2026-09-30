@@ -163,6 +163,22 @@ async function installDeterministicPeerApi(page: Page) {
  * Re-fill inside `toPass` until the gated button reports enabled, so the
  * spec is correct no matter when hydration completes.
  */
+/**
+ * Retry budget for `fillUntilButtonEnabled`. Strictly below TEST_TIMEOUT_MS so
+ * the retries inside it can actually execute (issue #2367).
+ */
+const FILL_RETRY_BUDGET_MS = 20_000;
+
+/**
+ * Per-test timeout for this spec. The global default is 30s
+ * (playwright.config.ts), which every test in this describe block exceeds on
+ * its own internal waits alone: the real-handshake test makes two
+ * `fillUntilButtonEnabled` calls plus a 30s "Connected!" assertion, and the
+ * stub test carries a 60s QR-visibility assertion. Those budgets could never
+ * be spent under a 30s cap.
+ */
+const TEST_TIMEOUT_MS = 120_000;
+
 async function fillUntilButtonEnabled(
   page: Page,
   fields: Array<{ label: string; value: string }>,
@@ -188,10 +204,18 @@ async function fillUntilButtonEnabled(
       await button.elementHandle(),
       { timeout: 5000, polling: 100 },
     );
-    // 30s instead of 15s: Firefox + WebKit need more headroom under CI load
-    // when the React "Create Lobby" / "Join Game" buttons gate on the
-    // signaling handshake. Chromium has spare slack but is unaffected (#2290).
-  }).toPass({ timeout: 30_000 });
+    // Issue #2367: this budget MUST stay strictly below the enclosing test
+    // timeout, or the retry is decorative — the test is killed at the exact
+    // moment `toPass` would still be retrying, and the error that surfaces is
+    // the inner 5s waitForFunction rather than anything about the real
+    // condition. It previously sat at 30_000 against a 30_000 test timeout
+    // (playwright.config.ts), and the failing test below calls this helper
+    // TWICE, so the budget was unwinnable twice over. 20s against the raised
+    // 120s per-test timeout leaves room for ~4 real attempts.
+    //
+    // The #2290 note that Chromium "has spare slack but is unaffected" did not
+    // hold: this failed on the chromium project on main (run 36462831915).
+  }).toPass({ timeout: FILL_RETRY_BUDGET_MS });
 }
 
 test.describe("QR join flow (#1728)", () => {
@@ -202,6 +226,7 @@ test.describe("QR join flow (#1728)", () => {
   test("host renders connection QR (stub mode, issue #2294)", async ({
     page,
   }) => {
+    test.setTimeout(TEST_TIMEOUT_MS);
     await installDeterministicPeerApi(page);
 
     await page.goto("/multiplayer/p2p-host?qrStub=true");
@@ -236,6 +261,7 @@ test.describe("QR join flow (#1728)", () => {
   test("host renders connection QR; join falls back gracefully and joins with the real code", async ({
     page,
   }) => {
+    test.setTimeout(TEST_TIMEOUT_MS);
     await installDeterministicPeerApi(page);
 
     // --- HOST: create lobby, get the connection QR + offer string ---
