@@ -141,56 +141,76 @@ jobs:
 
       - name: Open ratchet PR (auto-merge)
         if: steps.changed.outputs.changed == 'true'
+        id: open_pr
         env:
           WORKFLOW_REF: ${{ github.ref }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
           if [ "$WORKFLOW_REF" != "refs/heads/main" ]; then
-            echo "::notice::Manual run on non-main ref ($WORKFLOW_REF) — jest.config.js rewritten in the workspace only, not pushed."
+            echo "::notice::Manual run on non-main ref ($WORKFLOW_REF) - jest.config.js rewritten in the workspace only, not pushed."
             exit 0
           fi
           # Duplicate suppression: if a previous ratchet PR is still open
           # (its required checks still running), don't stack a conflicting
-          # second PR — the next push to main re-ratchets from the merged
+          # second PR - the next push to main re-ratchets from the merged
           # floor once it lands.
           OPEN_RATCHET_PRS=$(gh pr list --state open \
             --search "in:title chore: auto-ratchet jest coverage floor" \
             --json number --jq 'length')
           if [ "$OPEN_RATCHET_PRS" -gt 0 ]; then
-            echo "::notice::An auto-ratchet PR is already open — skipping duplicate (it will land via auto-merge)."
+            echo "::notice::An auto-ratchet PR is already open - skipping duplicate (it will land via auto-merge)."
             exit 0
           fi
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           BRANCH="chore/auto-ratchet-${{ github.run_id }}"
           git checkout -b "$BRANCH"
-          # Issue #1835: stage the doc tables too — the ratchet script
+          # Issue #1835: stage the doc tables too - the ratchet script
           # rewrites them alongside jest.config.js, and they must land in the
-          # SAME commit as the bump or main drifts doc-inconsistent (the
-          # original bug: only jest.config.js was staged, silently discarding
-          # the rewritten tables).
+          # SAME commit as the bump or main drifts doc-inconsistent.
           git add jest.config.js README.md CONTRIBUTING.md docs/TESTING.md
           # No `[skip ci]`: the PR's own required checks must run to gate the
           # auto-merge. Loop safety is preserved by the job-level `if`
           # (guard 3): the squash-merge commit is authored by
           # github-actions[bot], so the merged bump never re-triggers this
-          # workflow. GITHUB_TOKEN branch pushes don't trigger workflows
-          # (guard 1), and this workflow's `on` only fires on main pushes.
+          # workflow.
           git commit -m "chore: auto-ratchet jest coverage floor to measured value"
           git push origin "$BRANCH"
-      - name: Setup
+          # Issue #2366: this step used to stop at the push. The PR itself was
+          # meant to come from a peter-evans/create-pull-request step below,
+          # but that action commits its OWN staged changes and finds a clean
+          # tree here (this step already committed), so it created nothing.
+          # Result: the branch was pushed, no PR existed, and the merge step
+          # then failed against a PR that was never opened. Open it here,
+          # where the branch is, and hand the URL forward.
+          PR_URL=$(gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "chore: auto-ratchet jest coverage floor" \
+            --body "Automated coverage-floor bump from the Coverage Ratchet workflow (run ${{ github.run_id }}). Commits jest.config.js plus the README/CONTRIBUTING/TESTING doc tables atomically; the issue #1835 consistency guard (scripts/check-coverage-docs-sync.mjs) already passed in-workflow.")
+          echo "pr_url=$PR_URL" >> "$GITHUB_OUTPUT"
+          echo "::notice::Opened ratchet PR ${PR_URL}"
+
+      - name: Enable auto-merge (best effort)
+        if: steps.open_pr.outputs.pr_url != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ steps.open_pr.outputs.pr_url }}
+        # Issue #2366: enabling auto-merge is the last mile, not the work.
+        # By the time we get here the floor has been measured, the config and
+        # doc tables rewritten, the consistency guard passed and the PR
+        # opened - all of it correct and preserved on the branch. If the
+        # merge queue refuses (auto-merge disabled on the repo, a required
+        # check already cancelled, branch-protection changes), that is a
+        # condition to report, not a reason to paint a green run red and
+        # bury the successful ratchet underneath it. Warn and exit 0; the
+        # open PR is the durable artifact and can be landed by hand.
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Create PR
-        uses: peter-evans/create-pull-request@v8
-        with:
-          base: main
-          branch: chore/auto-ratchet-${{ github.run_id }}
-          title: "chore: auto-ratchet jest coverage floor"
-          body: "Automated coverage-floor bump from the Coverage Ratchet workflow (run ${{ github.run_id }} on ${GITHUB_SHA:0:7}). Commits jest.config.js + the README/CONTRIBUTING/TESTING doc tables atomically — the issue #1835 consistency guard (scripts/check-coverage-docs-sync.mjs) already passed in-workflow. Auto-merge is enabled; the PR lands when the required checks finish green."
-
-      - name: Merge PR
-        run: gh pr merge --auto --squash --delete-branch
+          set +e
+          gh pr merge "$PR_URL" --auto --squash --delete-branch
+          MERGE_EXIT=$?
+          set -e
+          if [ "$MERGE_EXIT" -ne 0 ]; then
+            echo "::warning::Could not enable auto-merge on ${PR_URL} (gh exit ${MERGE_EXIT}). The ratchet PR is open and correct - land it manually. Not failing the run: the ratchet itself succeeded."
+          fi
