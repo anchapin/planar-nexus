@@ -61,13 +61,43 @@ function runCmd(cmd, args) {
     maxBuffer: 64 * 1024 * 1024,
   });
   if (result.error) throw result.error;
-  if (result.status !== 0) {
-    throw new Error(
-      `${cmd} ${args.join(" ")} exited with status ${result.status}:\n` +
-        (result.stderr || result.stdout || "").slice(0, 2000),
-    );
-  }
-  return (result.stdout + "\n" + result.stderr).trim();
+  return {
+    status: result.status,
+    output: (result.stdout + "\n" + result.stderr).trim(),
+  };
+}
+
+/**
+ * Issue #2353: a non-zero exit from `npm test` used to throw here, which made
+ * ANY single flaky test anywhere in the repo fail this guard with
+ * "npm test --silent exited with status 1" even when the doc numbers were
+ * perfectly in sync. That is how the ai-proxy route flake turned the
+ * `test-count-docs-guard` job red on `main` for three consecutive merges,
+ * and it also blocks `ratchet-test-count.mjs` locally: a contributor who
+ * hits the flake cannot regenerate the block until the retry clears.
+ *
+ * "Are the docs in sync?" and "is the suite healthy?" are independent
+ * questions and must not be conflated. Jest prints its `Test Suites:` /
+ * `Tests:` summary whether or not tests failed, so the counts are parseable
+ * either way. This guard now answers only the doc-sync question; suite
+ * health is the `test` job's business, and that job reports it.
+ *
+ * @param {number | null} status exit status of the jest run
+ * @param {string} output merged stdout+stderr
+ * @returns {string | null} a human-readable note when the suite was unhealthy
+ */
+function suiteHealthNote(status, output) {
+  if (status === 0) return null;
+  const failedSuites = output.match(/^Test Suites:.*?(\d+)\s+failed/m);
+  const failedTests = output.match(/^Tests:.*?(\d+)\s+failed/m);
+  const parts = [];
+  if (failedSuites) parts.push(`${failedSuites[1]} suite(s) failed`);
+  if (failedTests) parts.push(`${failedTests[1]} test(s) failed`);
+  const detail = parts.length ? parts.join(", ") : `exit status ${status}`;
+  return (
+    `npm test exited non-zero (${detail}). This guard only checks doc sync ` +
+    `and does NOT fail on it (issue #2353); the \`test\` job owns suite health.`
+  );
 }
 
 /**
@@ -78,12 +108,20 @@ function runCmd(cmd, args) {
  * @returns {{ suites: number; total: number; passed: number; skipped: number; todo: number }}
  */
 export function captureJestCounts() {
-  const summary = runCmd("npm", ["test", "--silent"]);
+  const { status, output: summary } = runCmd("npm", ["test", "--silent"]);
+  const healthNote = suiteHealthNote(status, summary);
   const suitesMatch = summary.match(/^Test Suites:\s+(\d+)\s+passed,\s+(\d+)\s+total/m);
   if (!suitesMatch) {
+    // Only reachable when jest produced no summary at all (a crash, an OOM,
+    // a config error). A run with failing tests still prints the summary, and
+    // #2353 requires that case to be parsed rather than thrown on.
     throw new Error(
       "Could not parse `Test Suites:` line from `npm test --silent` " +
-        "output. Expected a line like 'Test Suites: 539 passed, 539 total'.",
+        "output. Expected a line like 'Test Suites: 539 passed, 539 total'. " +
+        (status === 0
+          ? ""
+          : `npm test exited with status ${status} and produced no summary:\n`) +
+        (status === 0 ? "" : summary.slice(-2000)),
     );
   }
   const testsMatch = summary.match(/^Tests:\s+(.+)$/m);
@@ -106,6 +144,7 @@ export function captureJestCounts() {
     passed: parseInt(passedMatch[1], 10),
     skipped: skippedMatch ? parseInt(skippedMatch[1], 10) : 0,
     todo: todoMatch ? parseInt(todoMatch[1], 10) : 0,
+    healthNote,
   };
 }
 
@@ -115,8 +154,17 @@ export function captureJestCounts() {
  * @returns {number}
  */
 export function captureListTestsCount() {
-  const out = runCmd("npx", ["jest", "--listTests"]);
-  return out.split(/\r?\n/).filter((l) => l.trim().length > 0).length;
+  const { status, output } = runCmd("npx", ["jest", "--listTests"]);
+  if (status !== 0) {
+    throw new Error(
+      `npx jest --listTests exited with status ${status}:\n` +
+        output.slice(0, 2000),
+    );
+  }
+  return output
+    .split(/\r?\n/)
+    .filter((l) => l.trim().length > 0 && !l.startsWith("["))
+    .length;
 }
 
 /**
@@ -285,6 +333,10 @@ function runGuard(opts) {
 
   const doc = parseDocBlock(source);
   const errs = diff(doc, live, liveListed);
+
+  if (live.healthNote) {
+    console.warn(`[check-test-count-docs] WARN: ${live.healthNote}`);
+  }
 
   if (errs.length === 0) {
     console.log(
