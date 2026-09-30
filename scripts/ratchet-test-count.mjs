@@ -39,7 +39,11 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const REPO_ROOT = path.resolve(__dirname, "..");
-const DOC_PATH = path.join(REPO_ROOT, "docs", "TEST_VIDEO_FIXTURES.md");
+
+export const DOC_PATHS = [
+  path.join(REPO_ROOT, "docs", "TEST_VIDEO_FIXTURES.md"),
+  path.join(REPO_ROOT, "docs", "onboarding.md"),
+].map((p) => path.resolve(p));
 
 export const START_ANCHOR = "<!-- TEST_COUNT:START -->";
 export const END_ANCHOR = "<!-- TEST_COUNT:END -->";
@@ -161,14 +165,46 @@ export function applyRatchet(source, block) {
   if (startIdx === -1 || endIdx === -1 || endIdx < startIdx) {
     throw new Error(
       `Could not locate the anchored test-count block ` +
-        `(${START_ANCHOR} … ${END_ANCHOR}) in docs/TEST_VIDEO_FIXTURES.md. ` +
+        `(${START_ANCHOR} … ${END_ANCHOR}) in the document. ` +
         `Wrap the suite summary lines in those HTML comments so the ` +
-        `ratchet can keep them in sync (issue #1910).`,
+        `ratchet can keep them in sync (issue #1910 / #2342).`,
     );
   }
   const before = source.slice(0, startIdx);
   const after = source.slice(endIdx + END_ANCHOR.length);
   return before + block + after;
+}
+
+/**
+ * @param {string} docPath
+ * @param {string} block
+ * @param {{ suites: number; total: number; passed: number; skipped: number; todo: number }} counts
+ * @returns {{ updated: boolean; changed: boolean } | { updated: false, error: string }}
+ */
+function ratchetSingle(docPath, block, counts) {
+  let source;
+  try {
+    source = fs.readFileSync(docPath, "utf8");
+  } catch (err) {
+    return {
+      updated: false,
+      error: `could not read ${path.relative(REPO_ROOT, docPath)}: ${err.message}`,
+    };
+  }
+
+  let next;
+  try {
+    next = applyRatchet(source, block);
+  } catch (err) {
+    return { updated: false, error: err.message };
+  }
+
+  if (next === source) {
+    return { updated: true, changed: false };
+  }
+
+  fs.writeFileSync(docPath, next, "utf8");
+  return { updated: true, changed: true };
 }
 
 /**
@@ -188,38 +224,39 @@ function runRatchet() {
 
   const block = renderBlock(counts, listedCount);
 
-  let source;
-  try {
-    source = fs.readFileSync(DOC_PATH, "utf8");
-  } catch (err) {
-    console.error(
-      `[ratchet-test-count] FAIL: could not read ${path.relative(REPO_ROOT, DOC_PATH)}: ${err.message}`,
-    );
-    return 1;
+  let allOk = true;
+  let anyChanged = false;
+
+  for (const docPath of DOC_PATHS) {
+    const result = ratchetSingle(docPath, block, counts);
+    if (!result.updated) {
+      console.error(`[ratchet-test-count] FAIL: ${result.error}`);
+      allOk = false;
+      continue;
+    }
+    const relPath = path.relative(REPO_ROOT, docPath);
+    if (result.changed) {
+      console.log(
+        `[ratchet-test-count] rewrote ${relPath}: ` +
+          `suites=${counts.suites}, tests=${counts.total} ` +
+          `(${counts.passed} passed + ${counts.skipped} skipped).`,
+      );
+      anyChanged = true;
+    } else {
+      console.log(
+        `[ratchet-test-count] noop: ${relPath} ` +
+          `already matches live Jest (suites=${counts.suites}, tests=${counts.total}).`,
+      );
+    }
   }
 
-  let next;
-  try {
-    next = applyRatchet(source, block);
-  } catch (err) {
-    console.error(`[ratchet-test-count] FAIL: ${err.message}`);
-    return 1;
-  }
-
-  if (next === source) {
+  if (!allOk) return 1;
+  if (!anyChanged) {
     console.log(
-      `[ratchet-test-count] noop: test-count block in ${path.relative(REPO_ROOT, DOC_PATH)} ` +
-        `already matches live Jest (suites=${counts.suites}, tests=${counts.total}).`,
+      `[ratchet-test-count] all anchored blocks already current ` +
+        `(suites=${counts.suites}, tests=${counts.total}).`,
     );
-    return 0;
   }
-
-  fs.writeFileSync(DOC_PATH, next, "utf8");
-  console.log(
-    `[ratchet-test-count] rewrote ${path.relative(REPO_ROOT, DOC_PATH)}: ` +
-      `suites=${counts.suites}, tests=${counts.total} ` +
-      `(${counts.passed} passed + ${counts.skipped} skipped).`,
-  );
   return 0;
 }
 

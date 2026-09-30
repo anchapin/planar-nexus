@@ -38,10 +38,14 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const REPO_ROOT = path.resolve(__dirname, "..");
-const DEFAULT_DOC_PATH = path.join(REPO_ROOT, "docs", "TEST_VIDEO_FIXTURES.md");
 
-const START_ANCHOR = "<!-- TEST_COUNT:START -->";
-const END_ANCHOR = "<!-- TEST_COUNT:END -->";
+export const DEFAULT_DOC_PATHS = [
+  path.join(REPO_ROOT, "docs", "TEST_VIDEO_FIXTURES.md"),
+  path.join(REPO_ROOT, "docs", "onboarding.md"),
+].map((p) => path.resolve(p));
+
+export const START_ANCHOR = "<!-- TEST_COUNT:START -->";
+export const END_ANCHOR = "<!-- TEST_COUNT:END -->";
 
 /**
  * Run a command and return merged stdout+stderr as a trimmed string.
@@ -243,23 +247,51 @@ export function diff(doc, live, liveListed) {
 }
 
 function parseArgs(argv) {
-  const opts = { docPath: DEFAULT_DOC_PATH };
+  /** @type {string[]} */
+  const docPaths = [];
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     const next = argv[i + 1];
     if (arg === "--doc") {
       if (!next) throw new Error("--doc requires a path");
-      opts.docPath = path.resolve(process.cwd(), next);
+      docPaths.push(path.resolve(process.cwd(), next));
       i++;
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
   }
-  return opts;
+  // When no --doc flags are given, default to the full list.
+  const finalPaths = docPaths.length > 0 ? docPaths : DEFAULT_DOC_PATHS;
+  return { docPaths: finalPaths };
 }
 
 /**
- * @param {{ docPath: string }} opts
+ * Check a single doc file against the live Jest counts.
+ *
+ * @param {string} docPath
+ * @param {{ suites: number; total: number; passed: number; skipped: number; todo: number }} live
+ * @param {number} liveListed
+ * @returns {{ ok: boolean; docPath: string; errs: string[] }}
+ */
+function checkSingle(docPath, live, liveListed) {
+  let source;
+  try {
+    source = fs.readFileSync(docPath, "utf8");
+  } catch (err) {
+    return {
+      ok: false,
+      docPath,
+      errs: [`could not read: ${err.message}`],
+    };
+  }
+
+  const doc = parseDocBlock(source);
+  const errs = diff(doc, live, liveListed);
+  return { ok: errs.length === 0, docPath, errs };
+}
+
+/**
+ * @param {{ docPaths: string[] }} opts
  * @returns {number} exit code (0 pass, 1 fail)
  */
 function runGuard(opts) {
@@ -273,40 +305,44 @@ function runGuard(opts) {
     return 1;
   }
 
-  let source;
-  try {
-    source = fs.readFileSync(opts.docPath, "utf8");
-  } catch (err) {
+  let allPassed = true;
+
+  for (const docPath of opts.docPaths) {
+    const result = checkSingle(docPath, live, liveListed);
+    const relPath = path.relative(process.cwd(), docPath) || docPath;
+
+    if (result.ok) {
+      console.log(
+        `[check-test-count-docs] PASS: ${relPath} ` +
+          `matches live Jest (suites=${live.suites}, tests=${live.total}, ` +
+          `${live.passed} passed + ${live.skipped} skipped, --listTests=${liveListed}).`,
+      );
+    } else {
+      allPassed = false;
+      console.error(
+        `[check-test-count-docs] FAIL: ${relPath} is out of sync with live Jest:`,
+      );
+      for (const e of result.errs) {
+        console.error(`  - ${e}`);
+      }
+    }
+  }
+
+  if (!allPassed) {
     console.error(
-      `[check-test-count-docs] FAIL: could not read ${opts.docPath}: ${err.message}`,
+      "See https://github.com/anchapin/planar-nexus/issues/1910 and " +
+        "docs/TEST_VIDEO_FIXTURES.md § Verification.",
     );
     return 1;
   }
 
-  const doc = parseDocBlock(source);
-  const errs = diff(doc, live, liveListed);
-
-  if (errs.length === 0) {
+  if (opts.docPaths.length > 1) {
     console.log(
-      `[check-test-count-docs] PASS: ${path.relative(process.cwd(), opts.docPath) || opts.docPath} ` +
-        `matches live Jest (suites=${live.suites}, tests=${live.total}, ` +
-        `${live.passed} passed + ${live.skipped} skipped, --listTests=${liveListed}).`,
+      `[check-test-count-docs] ALL PASS: ${opts.docPaths.length} anchored blocks ` +
+        `match live Jest (suites=${live.suites}, tests=${live.total}).`,
     );
-    return 0;
   }
-
-  console.error(
-    `[check-test-count-docs] FAIL: ${path.relative(process.cwd(), opts.docPath) || opts.docPath} ` +
-      `is out of sync with live Jest:`,
-  );
-  for (const e of errs) {
-    console.error(`  - ${e}`);
-  }
-  console.error(
-    "See https://github.com/anchapin/planar-nexus/issues/1910 and " +
-      "docs/TEST_VIDEO_FIXTURES.md § Verification.",
-  );
-  return 1;
+  return 0;
 }
 
 // Run only when invoked directly, not when imported by a test.

@@ -40,9 +40,10 @@ Source of truth: `npx jest --listTests | wc -l` for the suite count, and `npm te
 
 <!-- TEST_COUNT:START -->
 
-**Test suites:** 591
-**Test cases:** 12322 (12315 passed + 7 skipped)
-**Snapshots:** 3
+# → Test Suites: 591 passed, 591 total (--listTests: 591 files)
+
+# → Tests: 12315 passed, 7 skipped, 12322 total
+
 <!-- TEST_COUNT:END -->
 
 If the numbers above do not match the latest `npm test` run on `main`, a contributor should run `npm run ratchet:test-count` locally to refresh the block and open a follow-up PR — the CI gate otherwise blocks the next merge.
