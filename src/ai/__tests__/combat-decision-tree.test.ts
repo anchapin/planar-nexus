@@ -1749,7 +1749,7 @@ describe("CombatDecisionTree", () => {
         6,
         false,
         6,
-        ["indestructible"],
+        ["Indestructible"],
       );
 
       const verdict = ai.shouldMultiBlock(attacker, blockers, {

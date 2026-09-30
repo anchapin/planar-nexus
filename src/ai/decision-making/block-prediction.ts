@@ -2,6 +2,12 @@ import type {
   AIPermanent as Permanent,
   AIPlayerState as PlayerState,
 } from "@/lib/game-state";
+import {
+  hasIndestructible,
+  hasDeathtouch,
+  hasTrample,
+  hasMenace,
+} from "../utils/keyword-helpers";
 
 export type OpponentArchetype =
   "aggro" | "control" | "midrange" | "tempo" | "combo" | "unknown";
@@ -105,14 +111,10 @@ function computeBlockerScore(
   const attackerMv = attacker.manaValue || 0;
   const blockerRole = classifyCreatureRole(blocker);
 
-  const blockerHasDeathtouch =
-    blocker.keywords?.includes("deathtouch") || false;
-  const blockerIsIndestructible =
-    blocker.keywords?.includes("indestructible") || false;
-  const attackerHasDeathtouch =
-    attacker.keywords?.includes("deathtouch") || false;
-  const attackerIsIndestructible =
-    attacker.keywords?.includes("indestructible") || false;
+  const blockerHasDeathtouch = hasDeathtouch(blocker);
+  const blockerIsIndestructible = hasIndestructible(blocker);
+  const attackerHasDeathtouch = hasDeathtouch(attacker);
+  const attackerIsIndestructible = hasIndestructible(attacker);
 
   const attackerDies =
     !attackerIsIndestructible &&
@@ -248,7 +250,7 @@ export function predictOpponentBlocks(
 
     scoredBlockers.sort((a, b) => b.score - a.score);
 
-    const attackerHasMenace = attacker.keywords?.includes("menace") || false;
+    const attackerHasMenace = hasMenace(attacker);
     const minBlockersNeeded = attackerHasMenace ? 2 : 1;
 
     const blockProbability = scoredBlockers[0].score;
@@ -319,14 +321,10 @@ export function integrateBlockPredictionIntoEV(
     const blockerMv = blocker.manaValue || 0;
     const attackerMv = attacker.manaValue || 0;
 
-    const blockerHasDeathtouch =
-      blocker.keywords?.includes("deathtouch") || false;
-    const attackerHasDeathtouch =
-      attacker.keywords?.includes("deathtouch") || false;
-    const attackerIsIndestructible =
-      attacker.keywords?.includes("indestructible") || false;
-    const blockerIsIndestructible =
-      blocker.keywords?.includes("indestructible") || false;
+    const blockerHasDeathtouch = hasDeathtouch(blocker);
+    const attackerHasDeathtouch = hasDeathtouch(attacker);
+    const attackerIsIndestructible = hasIndestructible(attacker);
+    const blockerIsIndestructible = hasIndestructible(blocker);
 
     const attackerDies =
       !attackerIsIndestructible &&
@@ -339,7 +337,7 @@ export function integrateBlockPredictionIntoEV(
         ? attackerPower > 0
         : attackerPower >= blockerToughness);
 
-    const hasTrample = attacker.keywords?.includes("trample") || false;
+    const attackerHasTrample = hasTrample(attacker);
 
     if (attackerDies && !blockerDies) {
       adjustedEV -= 0.4 * prediction.blockProbability;
@@ -352,12 +350,12 @@ export function integrateBlockPredictionIntoEV(
       adjustedEV += 0.25 * prediction.blockProbability;
       adjustedEV += (blockerMv / 20) * prediction.blockProbability * 0.3;
 
-      if (hasTrample) {
+      if (attackerHasTrample) {
         const excess = attackerPower - blockerToughness;
         adjustedEV += (excess / 20) * prediction.blockProbability * 0.5;
       }
     } else {
-      if (hasTrample) {
+      if (attackerHasTrample) {
         adjustedEV -= 0.1 * prediction.blockProbability;
       }
     }
