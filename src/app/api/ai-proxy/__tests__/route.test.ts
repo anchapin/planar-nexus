@@ -36,24 +36,6 @@ jest.mock("@/ai/providers/factory", () => ({
   isModelAllowed: (...args: unknown[]) => isModelAllowed(...args),
 }));
 
-// Issue #2353: the route calls pingProvider() before it reaches the model,
-// and this suite never mocked it. pingProvider dynamically imports the real
-// factory and the real `ai` SDK, then memoizes the outcome in a MODULE-LEVEL
-// healthCache with a 60s TTL that nothing in the test lifecycle clears. So the
-// first test to reach the model path paid a real health check and cached the
-// verdict for every test after it: in committed file order that first test
-// left a usable entry behind, but under --randomize a different test goes
-// first, caches an unhealthy verdict, and every model-path test after it gets
-// 503 PROVIDER_UNHEALTHY instead of its expected status. That is the whole
-// flake -- these tests were never independent, they were inheriting a warm
-// cache. Mock it, and clear the real cache too, so no ordering can leak.
-const pingProvider = jest.fn() as unknown as jest.Mock<(...args: any[]) => any>;
-jest.mock("@/ai/providers/provider-health", () => ({
-  pingProvider: (...args: unknown[]) => pingProvider(...args),
-  PING_TIMEOUT_MS: 5_000,
-  HEALTH_CACHE_TTL_MS: 60_000,
-}));
-
 const searchCardsTool = { description: "mocked search tool" };
 jest.mock("@/ai/tools/card-search", () => ({
   searchCardsTool,
@@ -268,7 +250,6 @@ beforeEach(() => {
   getRateLimitHeaders.mockReset();
   saveMock.mockReset();
   getAIModel.mockReset();
-  pingProvider.mockReset();
   // Pin Date.now() to a fixed epoch so any test that constructs mock
   // `resetAt: Date.now() + 60_000` values (or that compares response
   // headers against the route's own `Date.now()`-derived resetAt) yields
@@ -278,14 +259,6 @@ beforeEach(() => {
   jest.spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
   // Re-prime defaults the other tests rely on
   getAIModel.mockResolvedValue({ modelId: "mocked-model" });
-  // Healthy by default. A test that wants the unhealthy branch overrides it
-  // locally; nothing is inherited from whichever test happened to run first.
-  pingProvider.mockResolvedValue({
-    provider: "openai",
-    healthy: true,
-    checkedAt: 1_700_000_000_000,
-    latencyMs: 1,
-  });
   isModelAllowed.mockReturnValue(true);
   getRateLimitHeaders.mockImplementation(
     (result: any) =>
