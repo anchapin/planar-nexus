@@ -28,9 +28,29 @@ jobs:
     runs-on: ubuntu-latest
     # Non-blocking: this job posts a PR comment but never fails the PR.
     # The PR merge gate is controlled by ci.yml's mutation-smoke + build jobs.
-    # The 2-minute timeout bounds CI cost; a timed-out run still posts a
-    # "did not complete" comment so engineers know the score wasn't available.
-    timeout-minutes: 2
+    #
+    # Issue #2343: the cost bound used to be a JOB-level `timeout-minutes: 2`.
+    # Stryker cannot finish a module in 2 minutes, so all 9 matrix jobs were
+    # killed and reported as CANCELLED. GitHub buckets a cancelled check as
+    # non-successful, which pins `mergeStateStatus` at UNSTABLE and stops
+    # `gh pr merge --auto` from ever firing, even though this workflow is
+    # non-blocking and every required check was green. Observed on #2328,
+    # #2330, #2332, #2334, #2335, #2337 and #2339: all 9 jobs CANCELLED,
+    # auto-merge stalled, manual `--squash` merged immediately.
+    #
+    # The bound now lives on the Stryker STEP instead, which already carries
+    # `continue-on-error: true`. A step that exceeds its timeout is marked
+    # failed-but-continued rather than cancelling the job, so the job runs on
+    # to the comment steps and reports SUCCESS. That is what the original
+    # comment intended (a timed-out run still posts a did-not-complete
+    # comment) and could not happen while the timeout was job-level:
+    # extract-mutation-score.mjs already handles a missing
+    # reports/mutation/mutation.json by emitting status=timeout.
+    #
+    # The step budget is 12 minutes rather than 2 so a module can actually
+    # finish and produce a real score; the job-level value below is only a
+    # backstop for a hung runner, not the cost bound.
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -59,11 +79,16 @@ jobs:
         run: npm run mutate:${{ matrix.module }}
         env:
           STRYKER_CONCURRENCY: 4
+        # This step carries the cost bound (issue #2343). A step-level timeout
+        # plus continue-on-error marks the step failed and keeps going, where a
+        # job-level timeout cancels the whole job and breaks auto-merge.
+        timeout-minutes: 12
         continue-on-error: true
         # continue-on-error ensures the job completes even when Stryker's exit
-        # code is non-zero (mutant survived or score below threshold), so the
-        # subsequent comment step always runs. The score comment annotates the
-        # pass/fail status, so the informational value is the same either way.
+        # code is non-zero (mutant survived, score below threshold, or the
+        # step timed out), so the subsequent comment step always runs. The
+        # score comment annotates the pass/fail/timeout status, so the
+        # informational value is the same either way.
 
       - name: Extract mutation score
         id: extract-score
