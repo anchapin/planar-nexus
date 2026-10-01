@@ -20,13 +20,26 @@
  * Mirrors `scripts/check-coverage-docs-sync.mjs` (#1712) in shape
  * (plain Node, fast fail-fast guard, dedicated CI job).
  *
+ * Issue #2342: two docs carry the anchored block, in two formats:
+ *   - `docs/TEST_VIDEO_FIXTURES.md` — bash-comment lines inside a fenced
+ *     ```bash block (`# → Test Suites: …` / `# → Tests: …`).
+ *   - `docs/onboarding.md` — markdown lines (`**Test suites:** N`,
+ *     `**Test cases:** N (P passed + S skipped)`, `**Snapshots:** N`).
+ * The guard used to read only the first, so onboarding.md drifted with no
+ * CI failure. It now checks every doc in DEFAULT_DOC_PATHS, detecting each
+ * block's format from its contents, against one Jest run.
+ *
  * Usage:
  *   node scripts/check-test-count-docs.mjs
- *   node scripts/check-test-count-docs.mjs --doc <path>
+ *   node scripts/check-test-count-docs.mjs --doc <path> [--doc <path> …]
+ *   node scripts/check-test-count-docs.mjs --live <counts.json> --doc <path>
  *
- * Exit codes: 0 = pass, 1 = violation. The `--doc` flag exists for the
- * fixture-based tests (no flag = check the committed repo state, which
- * is what CI does).
+ * Exit codes: 0 = pass, 1 = violation. `--doc` and `--live` exist for the
+ * fixture-based tests in tests/test-count-docs-guard.test.ts (no flags =
+ * measure live Jest and check the committed repo state, which is what CI
+ * does). `--live` takes a JSON file of
+ * `{ suites, total, passed, skipped, todo, snapshots, listed }` in place of
+ * running Jest, so the tests do not recurse into the whole suite.
  */
 
 import fs from "node:fs";
@@ -38,7 +51,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const REPO_ROOT = path.resolve(__dirname, "..");
-const DEFAULT_DOC_PATH = path.join(REPO_ROOT, "docs", "TEST_VIDEO_FIXTURES.md");
+export const DEFAULT_DOC_PATHS = [
+  path.join(REPO_ROOT, "docs", "TEST_VIDEO_FIXTURES.md"),
+  path.join(REPO_ROOT, "docs", "onboarding.md"),
+];
 
 const START_ANCHOR = "<!-- TEST_COUNT:START -->";
 const END_ANCHOR = "<!-- TEST_COUNT:END -->";
@@ -110,7 +126,9 @@ function suiteHealthNote(status, output) {
 export function captureJestCounts() {
   const { status, output: summary } = runCmd("npm", ["test", "--silent"]);
   const healthNote = suiteHealthNote(status, summary);
-  const suitesMatch = summary.match(/^Test Suites:\s+(\d+)\s+passed,\s+(\d+)\s+total/m);
+  const suitesMatch = summary.match(
+    /^Test Suites:\s+(\d+)\s+passed,\s+(\d+)\s+total/m,
+  );
   if (!suitesMatch) {
     // Only reachable when jest produced no summary at all (a crash, an OOM,
     // a config error). A run with failing tests still prints the summary, and
@@ -126,7 +144,9 @@ export function captureJestCounts() {
   }
   const testsMatch = summary.match(/^Tests:\s+(.+)$/m);
   if (!testsMatch) {
-    throw new Error("Could not parse `Tests:` line from `npm test --silent` output.");
+    throw new Error(
+      "Could not parse `Tests:` line from `npm test --silent` output.",
+    );
   }
   const tail = testsMatch[1];
   const totalMatch = tail.match(/(\d+)\s+total/);
@@ -138,12 +158,15 @@ export function captureJestCounts() {
       `Could not extract totals from Tests line: ${JSON.stringify(tail)}`,
     );
   }
+  // "Snapshots:   3 passed, 3 total" (or "Snapshots:   0 total").
+  const snapshotsMatch = summary.match(/^Snapshots:.*?(\d+)\s+total/m);
   return {
     suites: parseInt(suitesMatch[2], 10),
     total: parseInt(totalMatch[1], 10),
     passed: parseInt(passedMatch[1], 10),
     skipped: skippedMatch ? parseInt(skippedMatch[1], 10) : 0,
     todo: todoMatch ? parseInt(todoMatch[1], 10) : 0,
+    snapshots: snapshotsMatch ? parseInt(snapshotsMatch[1], 10) : 0,
     healthNote,
   };
 }
@@ -163,8 +186,7 @@ export function captureListTestsCount() {
   }
   return output
     .split(/\r?\n/)
-    .filter((l) => l.trim().length > 0 && !l.startsWith("["))
-    .length;
+    .filter((l) => l.trim().length > 0 && !l.startsWith("[")).length;
 }
 
 /**
@@ -187,9 +209,12 @@ export function parseDocBlock(source) {
     };
   }
   const inner = source.slice(startIdx + START_ANCHOR.length, endIdx);
+  if (detectFormat(inner) === "markdown") return parseMarkdownBlock(inner);
 
   // Suites line: "# → Test Suites: 539 passed, 539 total  (--listTests: 539 files)"
-  const suitesLine = inner.match(/(?:^|\s)Test Suites:\s+(\d+)\s+passed,\s+(\d+)\s+total/);
+  const suitesLine = inner.match(
+    /(?:^|\s)Test Suites:\s+(\d+)\s+passed,\s+(\d+)\s+total/,
+  );
   if (!suitesLine) {
     return {
       ok: false,
@@ -230,12 +255,72 @@ export function parseDocBlock(source) {
 
   return {
     ok: true,
+    format: "bash",
     suites: parseInt(suitesLine[2], 10),
     total: parseInt(totalMatch[1], 10),
     passed: parseInt(passedMatch[1], 10),
     skipped: skippedMatch ? parseInt(skippedMatch[1], 10) : 0,
     todo: todoMatch ? parseInt(todoMatch[1], 10) : 0,
     listed: parseInt(listedMatch[1], 10),
+  };
+}
+
+/**
+ * Which renderer wrote this block. The onboarding doc uses bold markdown
+ * labels; everything else uses the original bash-comment lines.
+ *
+ * @param {string} inner text between the anchors
+ * @returns {"bash" | "markdown"}
+ */
+export function detectFormat(inner) {
+  return /\*\*Test suites:\*\*/.test(inner) ? "markdown" : "bash";
+}
+
+/**
+ * Parse the markdown-format block (docs/onboarding.md, issue #2342):
+ *
+ *   **Test suites:** 594
+ *   **Test cases:** 12444 (12437 passed + 7 skipped)
+ *   **Snapshots:** 3
+ *
+ * @param {string} inner
+ */
+function parseMarkdownBlock(inner) {
+  const suites = inner.match(/\*\*Test suites:\*\*\s+(\d+)/);
+  const cases = inner.match(/\*\*Test cases:\*\*\s+(\d+)\s+\(([^)]*)\)/);
+  const snapshots = inner.match(/\*\*Snapshots:\*\*\s+(\d+)/);
+  if (!suites || !cases || !snapshots) {
+    const missing = [
+      !suites && "**Test suites:** N",
+      !cases && "**Test cases:** N (P passed + S skipped)",
+      !snapshots && "**Snapshots:** N",
+    ].filter(Boolean);
+    return {
+      ok: false,
+      error:
+        `anchored block is missing ${missing.map((m) => `"${m}"`).join(", ")}. ` +
+        `Run \`npm run ratchet:test-count\` to regenerate it.`,
+    };
+  }
+  const breakdown = cases[2];
+  const passedMatch = breakdown.match(/(\d+)\s+passed/);
+  if (!passedMatch) {
+    return {
+      ok: false,
+      error: `could not parse passed count from Test cases breakdown: ${JSON.stringify(breakdown)}`,
+    };
+  }
+  const skippedMatch = breakdown.match(/(\d+)\s+skipped/);
+  const todoMatch = breakdown.match(/(\d+)\s+todo/);
+  return {
+    ok: true,
+    format: "markdown",
+    suites: parseInt(suites[1], 10),
+    total: parseInt(cases[1], 10),
+    passed: parseInt(passedMatch[1], 10),
+    skipped: skippedMatch ? parseInt(skippedMatch[1], 10) : 0,
+    todo: todoMatch ? parseInt(todoMatch[1], 10) : 0,
+    snapshots: parseInt(snapshots[1], 10),
   };
 }
 
@@ -281,7 +366,13 @@ export function diff(doc, live, liveListed) {
         `Run \`npm run ratchet:test-count\` to regenerate.`,
     );
   }
-  if (doc.listed !== liveListed) {
+  if (doc.snapshots !== undefined && doc.snapshots !== live.snapshots) {
+    errs.push(
+      `Snapshots: doc=${doc.snapshots}, live=${live.snapshots}. ` +
+        `Run \`npm run ratchet:test-count\` to regenerate.`,
+    );
+  }
+  if (doc.listed !== undefined && doc.listed !== liveListed) {
     errs.push(
       `--listTests count: doc=${doc.listed}, live=${liveListed}. ` +
         `Run \`npm run ratchet:test-count\` to regenerate.`,
@@ -291,74 +382,126 @@ export function diff(doc, live, liveListed) {
 }
 
 function parseArgs(argv) {
-  const opts = { docPath: DEFAULT_DOC_PATH };
+  /** @type {{ docPaths: string[]; livePath: string | null }} */
+  const opts = { docPaths: [], livePath: null };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     const next = argv[i + 1];
     if (arg === "--doc") {
       if (!next) throw new Error("--doc requires a path");
-      opts.docPath = path.resolve(process.cwd(), next);
+      opts.docPaths.push(path.resolve(process.cwd(), next));
+      i++;
+    } else if (arg === "--live") {
+      if (!next) throw new Error("--live requires a path");
+      opts.livePath = path.resolve(process.cwd(), next);
       i++;
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
   }
+  if (opts.docPaths.length === 0) opts.docPaths = DEFAULT_DOC_PATHS;
   return opts;
 }
 
 /**
- * @param {{ docPath: string }} opts
+ * Read `--live` counts from a JSON file instead of running Jest.
+ *
+ * @param {string} file
+ */
+function readLiveCounts(file) {
+  const raw = JSON.parse(fs.readFileSync(file, "utf8"));
+  for (const key of ["suites", "total", "passed", "listed"]) {
+    if (!Number.isInteger(raw[key])) {
+      throw new Error(`--live file ${file} is missing integer "${key}"`);
+    }
+  }
+  return {
+    live: {
+      suites: raw.suites,
+      total: raw.total,
+      passed: raw.passed,
+      skipped: raw.skipped ?? 0,
+      todo: raw.todo ?? 0,
+      snapshots: raw.snapshots ?? 0,
+      healthNote: null,
+    },
+    liveListed: raw.listed,
+  };
+}
+
+/**
+ * @param {string} p
+ */
+function display(p) {
+  return path.relative(process.cwd(), p) || p;
+}
+
+/**
+ * @param {{ docPaths: string[]; livePath: string | null }} opts
  * @returns {number} exit code (0 pass, 1 fail)
  */
 function runGuard(opts) {
   let live;
   let liveListed;
   try {
-    live = captureJestCounts();
-    liveListed = captureListTestsCount();
+    if (opts.livePath) {
+      ({ live, liveListed } = readLiveCounts(opts.livePath));
+    } else {
+      live = captureJestCounts();
+      liveListed = captureListTestsCount();
+    }
   } catch (err) {
     console.error(`[check-test-count-docs] FAIL: ${err.message}`);
     return 1;
   }
 
-  let source;
-  try {
-    source = fs.readFileSync(opts.docPath, "utf8");
-  } catch (err) {
-    console.error(
-      `[check-test-count-docs] FAIL: could not read ${opts.docPath}: ${err.message}`,
-    );
-    return 1;
-  }
-
-  const doc = parseDocBlock(source);
-  const errs = diff(doc, live, liveListed);
-
   if (live.healthNote) {
     console.warn(`[check-test-count-docs] WARN: ${live.healthNote}`);
   }
 
-  if (errs.length === 0) {
-    console.log(
-      `[check-test-count-docs] PASS: ${path.relative(process.cwd(), opts.docPath) || opts.docPath} ` +
-        `matches live Jest (suites=${live.suites}, tests=${live.total}, ` +
-        `${live.passed} passed + ${live.skipped} skipped, --listTests=${liveListed}).`,
+  let failed = false;
+  for (const docPath of opts.docPaths) {
+    let source;
+    try {
+      source = fs.readFileSync(docPath, "utf8");
+    } catch (err) {
+      console.error(
+        `[check-test-count-docs] FAIL: could not read ${docPath}: ${err.message}`,
+      );
+      failed = true;
+      continue;
+    }
+
+    const doc = parseDocBlock(source);
+    const errs = diff(doc, live, liveListed);
+
+    if (errs.length === 0) {
+      console.log(
+        `[check-test-count-docs] PASS: ${display(docPath)} ` +
+          `matches live Jest (suites=${live.suites}, tests=${live.total}, ` +
+          `${live.passed} passed + ${live.skipped} skipped, ` +
+          `snapshots=${live.snapshots}, --listTests=${liveListed}).`,
+      );
+      continue;
+    }
+
+    failed = true;
+    console.error(
+      `[check-test-count-docs] FAIL: ${display(docPath)} is out of sync with live Jest:`,
     );
-    return 0;
+    for (const e of errs) {
+      console.error(`  - ${e}`);
+    }
   }
 
-  console.error(
-    `[check-test-count-docs] FAIL: ${path.relative(process.cwd(), opts.docPath) || opts.docPath} ` +
-      `is out of sync with live Jest:`,
-  );
-  for (const e of errs) {
-    console.error(`  - ${e}`);
+  if (failed) {
+    console.error(
+      "See https://github.com/anchapin/planar-nexus/issues/1910 and " +
+        "https://github.com/anchapin/planar-nexus/issues/2342.",
+    );
+    return 1;
   }
-  console.error(
-    "See https://github.com/anchapin/planar-nexus/issues/1910 and " +
-      "docs/TEST_VIDEO_FIXTURES.md § Verification.",
-  );
-  return 1;
+  return 0;
 }
 
 // Run only when invoked directly, not when imported by a test.
