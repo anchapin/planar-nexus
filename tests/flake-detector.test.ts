@@ -298,6 +298,81 @@ describe("aggregateReport", () => {
     expect(report.alwaysBroken.map((s) => s.title)).toEqual(["always-broken"]);
   });
 
+  it("treats a spec skipped in every run as stable, not flaky (#2379)", () => {
+    const args = baseArgs({ runs: 5, threshold: 4 });
+    const specs = [
+      baseSpec({
+        title: "always-skipped",
+        outcomes: ["skipped", "skipped", "skipped", "skipped", "skipped"],
+        passes: 0,
+        failures: 0,
+        skipped: 5,
+        total: 5,
+      }),
+    ];
+    const report = aggregateReport(args, [], specs, "t0", "t1");
+    expect(report.flaky).toEqual([]);
+    expect(report.alwaysBroken).toEqual([]);
+    expect(report.stable).toBe(1);
+  });
+
+  it("still flags a genuinely flaky spec alongside skipped ones (#2379)", () => {
+    const args = baseArgs({ runs: 5, threshold: 4 });
+    const specs = [
+      baseSpec({
+        title: "always-skipped",
+        outcomes: ["skipped", "skipped", "skipped", "skipped", "skipped"],
+        skipped: 5,
+        total: 5,
+      }),
+      baseSpec({
+        title: "qr-join-flow",
+        outcomes: ["passed", "passed", "passed", "failed", "failed"],
+        passes: 3,
+        failures: 2,
+        total: 5,
+      }),
+    ];
+    const report = aggregateReport(args, [], specs, "t0", "t1");
+    expect(report.flaky.map((s) => s.title)).toEqual(["qr-join-flow"]);
+    expect(report.alwaysBroken).toEqual([]);
+    expect(report.stable).toBe(1);
+  });
+
+  it("counts a spec that ran and failed every time as always broken, not skipped (#2379)", () => {
+    const args = baseArgs({ runs: 5, threshold: 4 });
+    const specs = [
+      baseSpec({
+        title: "broken",
+        outcomes: ["failed", "failed", "failed", "failed", "failed"],
+        passes: 0,
+        failures: 5,
+        total: 5,
+        lastError: "kaboom",
+      }),
+    ];
+    const report = aggregateReport(args, [], specs, "t0", "t1");
+    expect(report.alwaysBroken.map((s) => s.title)).toEqual(["broken"]);
+    expect(report.stable).toBe(0);
+  });
+
+  it("treats a partly-skipped spec with no failures as stable (#2379)", () => {
+    const args = baseArgs({ runs: 5, threshold: 4 });
+    const specs = [
+      baseSpec({
+        title: "skipped-then-passing",
+        outcomes: ["skipped", "skipped", "passed", "passed", "passed"],
+        passes: 3,
+        failures: 0,
+        skipped: 2,
+        total: 5,
+      }),
+    ];
+    const report = aggregateReport(args, [], specs, "t0", "t1");
+    expect(report.flaky).toEqual([]);
+    expect(report.stable).toBe(1);
+  });
+
   it("ignores specs with zero total", () => {
     const args = baseArgs();
     const report = aggregateReport(
