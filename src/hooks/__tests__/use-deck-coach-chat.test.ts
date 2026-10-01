@@ -813,14 +813,15 @@ describe("useDeckCoachChat — error fallback and clearMessages (#1241)", () => 
     act(() => {
       app.result.current.clearMessages();
     });
-    await act(async () => {
-      await flush();
-    });
 
-    const after = await (
-      await import("@/lib/coach-conversation-storage")
-    ).loadConversations("deck-clear-empty");
-    expect(after).toEqual([]);
+    // clearMessages deletes in the background: deleteConversationsForDeck
+    // loads the deck's records and then deletes each one, two IndexedDB
+    // round trips that one setTimeout(0) flush doesn't always cover on a
+    // loaded CI runner. Wait for the store itself to be empty instead.
+    const storage = await import("@/lib/coach-conversation-storage");
+    await waitFor(async () => {
+      expect(await storage.loadConversations("deck-clear-empty")).toEqual([]);
+    });
     await act(async () => {
       app.unmount();
     });
