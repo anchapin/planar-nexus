@@ -651,12 +651,20 @@ export function cancelEvent(event: TournamentEvent): TournamentEvent {
   };
 }
 
+/**
+ * Record a finished event in the local player's history.
+ *
+ * `placement` is the local player's final position, supplied by the caller
+ * (which already knows it, since it derives `result` from the same row).
+ * The event's own standings can't be used: they don't say which row is the
+ * local player's (issue #2374). Omit it for a dnf or an unknown finish.
+ */
 export function addToEventHistory(
   history: EventHistory[],
   event: TournamentEvent,
   result: EventHistory["result"],
+  placement?: number,
 ): EventHistory[] {
-  const myStanding = event.standings[0];
   const newEntry: EventHistory = {
     id: event.id,
     name: event.name,
@@ -664,7 +672,7 @@ export function addToEventHistory(
     eventType: event.eventType ?? "regular",
     result,
     date: Date.now(),
-    placement: myStanding ? event.standings.indexOf(myStanding) + 1 : undefined,
+    placement,
   };
   return [newEntry, ...history].slice(0, 100);
 }

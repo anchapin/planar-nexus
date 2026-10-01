@@ -225,7 +225,9 @@ export function useTournamentEvents(
                 : "9th+"
           : "dnf";
 
-        setEventHistory((h) => addToEventHistory(h, completedEvent, result));
+        setEventHistory((h) =>
+          addToEventHistory(h, completedEvent, result, myResult?.placement),
+        );
 
         // Update or remove from active
         return prev.map((e) => (e.id === eventId ? completedEvent : e));
