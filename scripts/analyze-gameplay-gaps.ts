@@ -6,6 +6,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
+import * as prettier from "prettier";
 
 // ─── Configuration ───
 const ROOT = path.resolve(__dirname, "..");
@@ -143,24 +144,128 @@ const evergreenKeywords = extractArrayItems(
 const abilityWords = extractArrayItems(combinedParserText, "abilityWords");
 
 // ─── 2. Extract Enforcement Functions ───
-const keywordsText = readFile(
+// Gates live in two places: the original `evergreen-keywords.ts` and the
+// per-keyword `keyword-actions/*.ts` leaves (#2360, the #2356 residual).
+// Scanning only the former reported keywords like indestructible and first
+// strike as unenforced even though their canonical gate is wired.
+const KEYWORD_ACTIONS_DIR = path.join(GAME_STATE_DIR, "keyword-actions");
+const enforcementSources = [
   path.join(GAME_STATE_DIR, "evergreen-keywords.ts"),
+  ...(fs.existsSync(KEYWORD_ACTIONS_DIR)
+    ? fs
+        .readdirSync(KEYWORD_ACTIONS_DIR)
+        .filter((f) => f.endsWith(".ts") && !f.endsWith(".test.ts"))
+        .sort()
+        .map((f) => path.join(KEYWORD_ACTIONS_DIR, f))
+    : []),
+];
+const enforcementFnNames = new Set(
+  enforcementSources.flatMap((file) =>
+    extractExportedFunctions(readFile(file)).map((f) => f.name),
+  ),
 );
-const exportedFns = extractExportedFunctions(keywordsText);
-const enforcementFnNames = new Set(exportedFns.map((f) => f.name));
 
-// Read gameplay files to check for actual usage
-const gameplayCode = GAMEPLAY_FILES.map(readGameplaySource).join("\n");
+// Read gameplay code to check for actual usage. `GAMEPLAY_FILES` misses most
+// of the engine: `keyword-actions.ts` and `spell-casting.ts` are now barrels,
+// so their family directories were never read, and enforcement also happens
+// in targeting-validation.ts, ward-system.ts, trigger-system/ and others
+// (#2360). Treat every non-test engine source as gameplay code except the
+// gate-definition modules themselves, the parser, types and barrels.
+const NON_GAMEPLAY = new Set(
+  [
+    "evergreen-keywords.ts",
+    "keyword-actions",
+    "keyword-actions.ts",
+    "oracle-text-parser",
+    "oracle-text-parser.ts",
+    "types",
+    "types.ts",
+    "index.ts",
+    "__tests__",
+  ].map((rel) => path.join(GAME_STATE_DIR, rel)),
+);
+function collectGameplaySources(dir: string): string[] {
+  return fs
+    .readdirSync(dir, { withFileTypes: true })
+    .flatMap((ent) => {
+      const full = path.join(dir, ent.name);
+      if (NON_GAMEPLAY.has(full) || ent.name === "__tests__") return [];
+      if (ent.isDirectory()) return collectGameplaySources(full);
+      return ent.name.endsWith(".ts") && !ent.name.endsWith(".test.ts")
+        ? [full]
+        : [];
+    })
+    .sort();
+}
+const gameplayCode = collectGameplaySources(GAME_STATE_DIR)
+  .map(readFile)
+  .join("\n");
 
-// Map keyword → likely enforcement function names
+// A function counts as called when code invokes it or passes it as a
+// callback. A bare name match is not enough: imports and re-exports would
+// count, and so would the function's own declaration.
+function calls(fnName: string, code: string): boolean {
+  const call = new RegExp(`(?<!function\\s+)\\b${fnName}\\s*\\(`);
+  const callback = new RegExp(`[(,]\\s*${fnName}\\s*[,)]`);
+  return call.test(code) || callback.test(code);
+}
+
+// Gameplay often reaches a gate through a wrapper in the gate modules
+// (combat calls getMenaceMinimumBlockers, which calls hasMenace). Split each
+// gate module into top-level function bodies and close over "called by a
+// wired function", so a gate reached that way counts as wired.
+const TOP_LEVEL_DECL =
+  /^(?:export\s+)?(?:async\s+)?(?:function\s+(\w+)|const\s+(\w+)\s*=)/;
+const gateBodies = new Map<string, string>();
+for (const file of enforcementSources) {
+  let current: string | null = null;
+  for (const line of readFile(file).split("\n")) {
+    const m = line.match(TOP_LEVEL_DECL);
+    if (m) {
+      current = m[1] ?? m[2];
+      gateBodies.set(current, "");
+    }
+    if (current) gateBodies.set(current, gateBodies.get(current) + line + "\n");
+  }
+}
+const wiredFns = new Set(
+  [...gateBodies.keys()].filter((fn) => calls(fn, gameplayCode)),
+);
+for (let changed = true; changed;) {
+  changed = false;
+  for (const [fn, body] of gateBodies) {
+    if (!wiredFns.has(fn)) continue;
+    for (const callee of gateBodies.keys()) {
+      if (callee !== fn && !wiredFns.has(callee) && calls(callee, body)) {
+        wiredFns.add(callee);
+        changed = true;
+      }
+    }
+  }
+}
+
+// Gates whose names can't be inferred from the keyword. Flash is enforced by
+// canCastAtInstantSpeed (keyword-actions/flash.ts), which spell-casting
+// calls before allowing a cast outside the main phase.
+const ENFORCEMENT_ALIASES: Record<string, string[]> = {
+  flash: ["canCastAtInstantSpeed"],
+};
+
+// Map keyword → likely enforcement function names. Camel-case on word
+// boundaries ("first strike" → FirstStrike; the old space-stripping produced
+// "Firststrike" and never matched), and try the `Strict` / `Keyword` / `From`
+// suffixes the keyword-actions/ leaves use.
 function inferEnforcementFns(keyword: string): string[] {
-  const k = keyword
+  const words = keyword
     .toLowerCase()
-    .replace(/\s+/g, "")
     .replace(/!/g, "")
-    .replace(/from$/, "");
-  const camel = k.replace(/(?:^|\.)(.)/g, (_, c: string) => c.toUpperCase());
-  return [
+    .replace(/\bfrom$/, "")
+    .trim()
+    .split(/[\s-]+/)
+    .filter(Boolean);
+  const camel = words.map((w) => w[0].toUpperCase() + w.slice(1)).join("");
+  if (!camel) return [];
+  const bases = [
     `has${camel}`,
     `is${camel}`,
     `can${camel}`,
@@ -170,10 +275,17 @@ function inferEnforcementFns(keyword: string): string[] {
     `hasLethal${camel}`,
     `calculate${camel}Damage`,
   ];
+  const inferred = bases.flatMap((b) => [
+    b,
+    `${b}Strict`,
+    `${b}Keyword`,
+    `${b}From`,
+  ]);
+  return [...inferred, ...(ENFORCEMENT_ALIASES[keyword.toLowerCase()] ?? [])];
 }
 
 function isUsedInGameplay(fnName: string): boolean {
-  return new RegExp(`\\b${fnName}\\b`).test(gameplayCode);
+  return wiredFns.has(fnName);
 }
 
 function checkEnforcement(keyword: string): {
@@ -281,25 +393,92 @@ lines.push(``);
 lines.push(`## Summary`);
 lines.push(``);
 
-const keywordResults = evergreenKeywords.map((k) => ({
+// ─── Standard scope (epic #2300) ───
+// A keyword is in scope when at least one Standard-legal card carries it,
+// per the committed Scryfall snapshot. Everything else is an accepted gap.
+interface StandardSnapshot {
+  generatedAt: string;
+  cardCount: number;
+  keywords: Record<string, number>;
+}
+const STANDARD_SNAPSHOT = path.join(
+  ROOT,
+  "scripts",
+  "data",
+  "standard-keywords.json",
+);
+const standardSnapshot = JSON.parse(
+  readFile(STANDARD_SNAPSHOT),
+) as StandardSnapshot;
+const snapshotDate = standardSnapshot.generatedAt.slice(0, 10);
+
+const normalizeKeyword = (k: string) =>
+  k.trim().toLowerCase().replace(/!+$/, "");
+const standardCounts = new Map<string, number>();
+for (const [k, n] of Object.entries(standardSnapshot.keywords)) {
+  const key = normalizeKeyword(k);
+  standardCounts.set(key, Math.max(standardCounts.get(key) ?? 0, n));
+}
+
+// The parser declares some keywords in both arrays (flying, landfall, raid,
+// revolt, miracle, ...). Collapse to one row per keyword so no section
+// repeats an entry.
+const declared = new Map<string, Set<string>>();
+for (const [list, source] of [
+  [evergreenKeywords, "keyword"],
+  [abilityWords, "ability word"],
+] as const) {
+  for (const raw of list) {
+    const key = normalizeKeyword(raw);
+    if (!key) continue;
+    if (!declared.has(key)) declared.set(key, new Set());
+    declared.get(key)!.add(source);
+  }
+}
+const declaredCount = evergreenKeywords.length + abilityWords.length;
+const duplicateCount = declaredCount - declared.size;
+
+const allKeywords = [...declared.keys()].map((k) => ({
   keyword: k,
   ...checkEnforcement(k),
   tested: hasTest(k),
+  standardCards: standardCounts.get(k) ?? 0,
 }));
-
-const abilityWordResults = abilityWords.map((k) => ({
-  keyword: k,
-  ...checkEnforcement(k),
-  tested: hasTest(k),
-}));
-
-const allKeywords = [...keywordResults, ...abilityWordResults];
+const keywordResults = allKeywords;
 const fullEnforced = allKeywords.filter((k) => k.status === "full");
 const partialEnforced = allKeywords.filter((k) => k.status === "partial");
 const noneEnforced = allKeywords.filter((k) => k.status === "none");
 
+const inScope = allKeywords.filter((k) => k.standardCards > 0);
+const acceptedGaps = allKeywords.filter((k) => k.standardCards === 0);
+const inScopeFull = inScope.filter((k) => k.status === "full");
+const inScopePartial = inScope.filter((k) => k.status === "partial");
+const inScopeNone = inScope.filter((k) => k.status === "none");
+const inScopeRemainder = inScope.length - inScopeFull.length;
+
+// Keywords on Standard cards the parser doesn't declare at all. Not counted
+// against the epic's denominator yet: many are keyword actions (mill, scry)
+// rather than abilities, so they need triage, not a gate each.
+const undeclaredStandard = [...standardCounts.entries()]
+  .filter(([k]) => !declared.has(k))
+  .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+
 lines.push(
-  `- Total keywords detected: ${evergreenKeywords.length + abilityWords.length}`,
+  `- Standard scope: ${standardSnapshot.cardCount} Standard-legal cards (Scryfall snapshot ${snapshotDate})`,
+);
+lines.push(`- **In scope (on a Standard-legal card): ${inScope.length}**`);
+lines.push(`  - Enforced: ${inScopeFull.length}`);
+lines.push(`  - Partially enforced: ${inScopePartial.length}`);
+lines.push(`  - Not enforced: ${inScopeNone.length}`);
+lines.push(`  - **Remainder (not fully enforced): ${inScopeRemainder}**`);
+lines.push(
+  `- Accepted gaps (not on any Standard-legal card): ${acceptedGaps.length}`,
+);
+lines.push(
+  `- On Standard cards but not declared by the parser: ${undeclaredStandard.length}`,
+);
+lines.push(
+  `- Unique keywords declared by the parser: ${declared.size} (${declaredCount} entries, ${duplicateCount} declared in both arrays)`,
 );
 lines.push(`  - Evergreen keywords: ${evergreenKeywords.length}`);
 lines.push(`  - Ability words: ${abilityWords.length}`);
@@ -322,166 +501,66 @@ function renderTable(title: string, items: typeof keywordResults) {
   if (items.length === 0) return;
   lines.push(`### ${title} (${items.length})`);
   lines.push(``);
-  lines.push(`| Keyword | Enforced | Used in Gameplay | Tested | Function |`);
-  lines.push(`|---------|----------|------------------|--------|----------|`);
-  for (const item of items.sort((a, b) => a.keyword.localeCompare(b.keyword))) {
+  lines.push(
+    `| Keyword | Standard cards | Enforced | Used in Gameplay | Tested | Function |`,
+  );
+  lines.push(
+    `|---------|----------------|----------|------------------|--------|----------|`,
+  );
+  const sorted = [...items].sort(
+    (a, b) =>
+      b.standardCards - a.standardCards || a.keyword.localeCompare(b.keyword),
+  );
+  for (const item of sorted) {
     const tested = item.tested ? "✅" : "❌";
     const used = item.usedInGameplay ? "✅" : "❌";
     const fn = item.fnNames.join(", ") || "—";
     lines.push(
-      `| ${item.keyword} | ${item.status} | ${used} | ${tested} | ${fn} |`,
+      `| ${item.keyword} | ${item.standardCards} | ${item.status} | ${used} | ${tested} | ${fn} |`,
     );
   }
   lines.push(``);
 }
 
-renderTable("Fully Enforced", fullEnforced);
-renderTable("Partially Enforced", partialEnforced);
-
-// Focus on Standard-relevant keywords for the "not enforced" section
-const standardRelevant = [
-  "first strike",
-  "double strike",
-  "enchant",
-  "equip",
-  "convoke",
-  "kicker",
-  "ward",
-  "cycling",
-  "flashback",
-  "proliferate",
-  "explore",
-  "investigate",
-  "food",
-  "learn",
-  "disguise",
-  "plot",
-  "offspring",
-  "gift",
-  "saddle",
-  "descend",
-  "craft",
-  "suspect",
-  "survival",
-  "valiant",
-  "bargain",
-  "celebration",
-  "connive",
-  "casualty",
-  "backup",
-  "blitz",
-  "incubate",
-  "training",
-  "compleated",
-  "enlist",
-  "reconfigure",
-  "undying",
-  "persist",
-  "unleash",
-  "cascade",
-  "delirium",
-  "decayed",
-  "cloak",
-  "eerie",
-  "endure",
-  "forage",
-  "harmonize",
-  "flurry",
-  "manifest dread",
-  "room",
-  "spree",
-  "treasure",
-  "adventure",
-  "dash",
-  "embalm",
-  "escape",
-  "evoke",
-  "exert",
-  "formidable",
-  "hideaway",
-  "meld",
-  "modular",
-  "populate",
-  "rebound",
-  "scavenge",
-  "spectacle",
-  "suspend",
-  "totem armor",
-  "undergrowth",
-  "myriad",
-  "skulk",
-  "frenzy",
-  "goad",
-  "haunt",
-  "imprint",
-  "living weapon",
-  "offering",
-  "prototype",
-  "sunburst",
-  "strive",
-  "vanishing",
-  "dungeon",
-  "venture",
-  "max speed",
-  "start your engines!",
-  "read ahead",
-  "toxic",
-  "affinity",
-  "annihilator",
-  "bloodthirst",
-  "conspire",
-  "devour",
-  "level up",
-  "soulbond",
-  "extort",
-  "dethrone",
-  "hidden agenda",
-  "delve",
-  "ferocious",
-  "exploit",
-  "entwine",
-  "threshold",
-  "underdog",
-  "transmute",
-  "transfigure",
-  "graft",
-  "bloodrush",
-  "cohort",
-  "join forces",
-  "parley",
-  "will of the council",
-  "assemble",
-  "battle cry",
-  "chroma",
-  "eked",
-  "fateful hour",
-  "hellbent",
-  "heroic",
-  "inspired",
-  "kinfall",
-  "lieutenant",
-  "might of the nations",
-  "pack tactics",
-  "radiance",
-  "shield",
-  "strength in numbers",
-  "tempting offer",
-];
-
-const standardNotEnforced = noneEnforced.filter((k) =>
-  standardRelevant.some((sr) =>
-    k.keyword.toLowerCase().includes(sr.toLowerCase()),
-  ),
+lines.push(`## In Scope: Standard`);
+lines.push(``);
+lines.push(
+  `Keywords that appear on at least one Standard-legal card. These are the epic #2300 denominator. Sorted by how many Standard cards carry them.`,
 );
-const otherNotEnforced = noneEnforced.filter(
-  (k) =>
-    !standardRelevant.some((sr) =>
-      k.keyword.toLowerCase().includes(sr.toLowerCase()),
-    ),
-);
+lines.push(``);
+renderTable("Enforced", inScopeFull);
+renderTable("Partially Enforced", inScopePartial);
+renderTable("Not Enforced", inScopeNone);
 
-renderTable("Not Enforced — Standard Relevant", standardNotEnforced);
-renderTable("Not Enforced — Non-Standard / Legacy", otherNotEnforced);
+lines.push(`## Accepted Gaps (${acceptedGaps.length})`);
+lines.push(``);
+lines.push(
+  `Declared by the parser but not on any Standard-legal card as of ${snapshotDate}. Not counted against epic #2300.`,
+);
+lines.push(``);
+lines.push(`| Keyword | Enforced | Reason |`);
+lines.push(`|---------|----------|--------|`);
+for (const item of [...acceptedGaps].sort((a, b) =>
+  a.keyword.localeCompare(b.keyword),
+)) {
+  lines.push(
+    `| ${item.keyword} | ${item.status} | not on any Standard-legal card (${snapshotDate}) |`,
+  );
+}
+lines.push(``);
+
+lines.push(`## On Standard Cards, Not Declared by the Parser`);
+lines.push(``);
+lines.push(
+  `${undeclaredStandard.length} keywords carried by Standard-legal cards that the oracle-text parser never declares, so the engine can't detect them. Needs triage: some are keyword actions (mill, scry) handled by effect resolution rather than a gate. Top 40 by card count:`,
+);
+lines.push(``);
+lines.push(`| Keyword | Standard cards |`);
+lines.push(`|---------|----------------|`);
+for (const [k, n] of undeclaredStandard.slice(0, 40)) {
+  lines.push(`| ${k} | ${n} |`);
+}
+lines.push(``);
 
 // ─── Hardcoded Cards ───
 lines.push(`## Hardcoded Card Effects`);
@@ -548,21 +627,25 @@ lines.push(``);
 // ─── Top Gaps ───
 lines.push(`## Top Priority Gaps`);
 lines.push(``);
-lines.push(`Based on Standard relevance and gameplay impact:`);
+lines.push(
+  `In-scope keywords not fully enforced, ranked by how many Standard-legal cards carry them:`,
+);
 lines.push(``);
-
-const topGaps = [
-  ...partialEnforced.filter((k) => !k.usedInGameplay),
-  ...standardNotEnforced.slice(0, 20),
-];
-
+const topGaps = [...inScopePartial, ...inScopeNone]
+  .sort(
+    (a, b) =>
+      b.standardCards - a.standardCards || a.keyword.localeCompare(b.keyword),
+  )
+  .slice(0, 20);
 let rank = 1;
 for (const item of topGaps) {
   const issue =
     item.status === "partial"
       ? "Partial enforcement — function exists but not wired to gameplay"
-      : "No enforcement function exists";
-  lines.push(`${rank}. **${item.keyword}** — ${issue}`);
+      : "No enforcement function found";
+  lines.push(
+    `${rank}. **${item.keyword}** (${item.standardCards} Standard cards) — ${issue}`,
+  );
   rank++;
 }
 lines.push(``);
@@ -575,7 +658,7 @@ lines.push(
   `1. Fix auto-pass priority (#618) — ${forcedAutoPass.length} locations bypass stack interaction`,
 );
 lines.push(
-  `2. Add mechanic stubs (#628) — ${standardNotEnforced.length} Standard mechanics detected but not enforced`,
+  `2. Add mechanic stubs (#628) — ${inScopeNone.length} in-scope Standard mechanics detected but not enforced`,
 );
 lines.push(
   `3. Fix mana pool emptying (#619) — missing automatic phase transition cleanup`,
@@ -606,14 +689,22 @@ lines.push(``);
 
 // ─── Write Report ───
 fs.mkdirSync(path.dirname(REPORT_PATH), { recursive: true });
-fs.writeFileSync(REPORT_PATH, lines.join("\n"), "utf-8");
-console.log(`✅ Report written to: ${REPORT_PATH}`);
-console.log(
-  `   Keywords detected: ${evergreenKeywords.length + abilityWords.length}`,
-);
-console.log(`   Fully enforced: ${fullEnforced.length}`);
-console.log(`   Partially enforced: ${partialEnforced.length}`);
-console.log(`   Not enforced: ${noneEnforced.length}`);
-console.log(`   Hardcoded cards: ${hardcodedCards.length}`);
-console.log(`   Auto-pass calls: ${forcedAutoPass.length}`);
-console.log(`   Manual tap/untap: ${manualTap.length + manualUntap.length}`);
+// Format with the repo's prettier so the committed report stays clean under
+// `prettier --check` (padded table columns) without a manual pass.
+void prettier
+  .format(lines.join("\n"), { parser: "markdown" })
+  .then((report) => {
+    fs.writeFileSync(REPORT_PATH, report, "utf-8");
+    console.log(`✅ Report written to: ${REPORT_PATH}`);
+    console.log(
+      `   Keywords declared: ${declared.size} unique (${inScope.length} in Standard scope, ${inScopeRemainder} not fully enforced)`,
+    );
+    console.log(`   Fully enforced: ${fullEnforced.length}`);
+    console.log(`   Partially enforced: ${partialEnforced.length}`);
+    console.log(`   Not enforced: ${noneEnforced.length}`);
+    console.log(`   Hardcoded cards: ${hardcodedCards.length}`);
+    console.log(`   Auto-pass calls: ${forcedAutoPass.length}`);
+    console.log(
+      `   Manual tap/untap: ${manualTap.length + manualUntap.length}`,
+    );
+  });
