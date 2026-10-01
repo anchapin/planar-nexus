@@ -188,7 +188,16 @@ async function fillUntilButtonEnabled(
 
   await expect(async () => {
     for (const field of fields) {
-      await page.getByLabel(field.label).fill(field.value);
+      const input = page.getByLabel(field.label);
+      // Issue #2383: clear before filling. If the first fill lands before
+      // React hydrates the dynamically loaded form, React hydrates with empty
+      // state but leaves the typed DOM value in place, and its input value
+      // tracker records that value as current. Re-filling the *same* string
+      // then reads as "no change" and onChange never fires, so the gated
+      // button stays disabled for the whole retry budget. Going through ""
+      // makes every retry a real change React will see.
+      await input.fill("");
+      await input.fill(field.value);
     }
     // Issue #2288: Use waitForFunction with polling to actively check button
     // stability. This avoids the race where toBeEnabled({timeout:500}) passes
