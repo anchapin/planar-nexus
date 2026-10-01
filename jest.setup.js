@@ -474,3 +474,34 @@ global.seedM21Cards = async () => {
     return [];
   }
 };
+
+// Issue #2364: provider-health keeps two pieces of module-level state that
+// survive jest.clearAllMocks()/resetAllMocks(): the proactive `healthCache`
+// (60s TTL, populated by a live ping on first miss) and the `providerHealth`
+// cooldown tracker. Nothing reset them between tests, so whichever test reached
+// pingProvider first decided the verdict for every test after it in the file
+// (#2353's seven "flaky" ai-proxy tests). Both reset hooks already exist and
+// are documented "for test reset"; this wires them up globally.
+//
+// The require is lazy and guarded: a suite that jest.mock()s provider-health
+// gets its mock back here, which has no reset functions, so it is skipped.
+// The module has no imports of its own, so loading it in every suite is cheap.
+// Jest gives each test file its own module registry, so this only has to
+// cover leakage between tests inside one file.
+beforeEach(() => {
+  let health;
+  try {
+    health = require("@/ai/providers/provider-health");
+  } catch {
+    return;
+  }
+  if (typeof health.clearHealthCache === "function") {
+    health.clearHealthCache();
+  }
+  if (
+    health.providerHealth &&
+    typeof health.providerHealth.clear === "function"
+  ) {
+    health.providerHealth.clear();
+  }
+});
