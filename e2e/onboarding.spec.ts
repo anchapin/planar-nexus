@@ -134,7 +134,28 @@ test.describe("Onboarding tour", () => {
     await expect(page.locator(DIALOG)).toBeHidden();
 
     // Restart from Settings.
+    //
+    // forceFreshVisitor() registered an init script in beforeEach, and init
+    // scripts re-run on *every* navigation — so without re-seeding the flag
+    // here, the /settings load would wipe it, the auto-start timer in
+    // OnboardingTour would fire 600ms later, and its full-viewport backdrop
+    // would swallow the click below (#2381). Seeding it also matches what
+    // this test is actually about: a returning user who already finished the
+    // tour and wants it again.
+    await page.addInitScript((key) => {
+      try {
+        window.localStorage.setItem(key, "true");
+      } catch {
+        /* ignore */
+      }
+    }, ONBOARDED_KEY);
+
     await page.goto("/settings");
+
+    // Guard the precondition explicitly: if the tour is open here, the click
+    // below fails as a 30s timeout that says nothing about why.
+    await expect(page.locator(DIALOG)).toBeHidden();
+
     await page.getByRole("button", { name: /Restart tour/i }).click();
 
     // The tour reappears at the welcome step.
