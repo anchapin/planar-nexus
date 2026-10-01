@@ -5,10 +5,6 @@
  * standings/tiebreakers, prize distribution and event history. None of it was
  * exercised: no test file referenced it, so every guard clause and every
  * scoring branch shipped unverified.
- *
- * Where the module has a quirk rather than a bug (addToEventHistory always
- * derives placement from the first standing), the test pins the actual
- * behaviour and says so, rather than asserting what the name implies.
  */
 
 import {
@@ -661,16 +657,20 @@ describe("event history", () => {
     );
   });
 
-  it("records no placement when there are no standings", () => {
+  it("records no placement when the caller supplies none", () => {
     const empty = activeEvent({ standings: [] });
     expect(addToEventHistory([], empty, "dnf")[0].placement).toBeUndefined();
+    expect(
+      addToEventHistory([], activeEvent(), "dnf")[0].placement,
+    ).toBeUndefined();
   });
 
-  it("derives placement from the first standing, so it is always 1", () => {
-    // Quirk, not a bug fix: the module reads standings[0] and then asks for
-    // its index, which is 0 by construction. Pinned so a real placement
-    // calculation shows up as a deliberate change here.
-    expect(addToEventHistory([], activeEvent(), "1st")[0].placement).toBe(1);
+  it("records the placement the caller supplies, not the first standing", () => {
+    // Issue #2374: this used to read standings[0] and ask for its index, so
+    // every finish was recorded as 1st place.
+    const history = addToEventHistory([], activeEvent(), "3rd-8th", 5);
+    expect(history[0].placement).toBe(5);
+    expect(history[0].result).toBe("3rd-8th");
   });
 });
 
