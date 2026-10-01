@@ -30,6 +30,7 @@ import type { Page, Browser, BrowserContext } from "@playwright/test";
 import {
   GAME_MESSAGE_TYPES,
   MOCK_TRANSPORT_INIT,
+  PEER_BOOT_INIT,
   type GameMessage,
   type GameMessageType,
   type PeerOptions,
@@ -52,6 +53,36 @@ export interface MeshPeerOptions extends PeerOptions {
     dropFraction?: number;
   };
 }
+
+/** sessionStorage key holding this page's outbound neighbor ids. */
+export const MESH_NEIGHBORS_KEY = "__meshNeighbors";
+
+/**
+ * In-page source run after the mesh harness: persist every addNeighbor /
+ * removeNeighbor call (whether from linkMeshPeers or a spec's own evaluate)
+ * and replay the stored neighbor set after a reload.
+ */
+const MESH_REPLAY_SOURCE = `
+    var nKey = ${JSON.stringify(MESH_NEIGHBORS_KEY)};
+    function readN() {
+      try { return JSON.parse(sessionStorage.getItem(nKey) || "[]"); } catch (e) { return []; }
+    }
+    function writeN(list) {
+      try { sessionStorage.setItem(nKey, JSON.stringify(list)); } catch (e) {}
+    }
+    var rawAdd = window.__peer.addNeighbor;
+    var rawRemove = window.__peer.removeNeighbor;
+    window.__peer.addNeighbor = function (id) {
+      var list = readN();
+      if (list.indexOf(id) === -1) { list.push(id); writeN(list); }
+      return rawAdd(id);
+    };
+    window.__peer.removeNeighbor = function (id) {
+      writeN(readN().filter(function (x) { return x !== id; }));
+      return rawRemove(id);
+    };
+    readN().forEach(function (id) { rawAdd(id); });
+`;
 
 /**
  * Build an in-page source for a mesh-aware peer harness. Differences from
@@ -387,14 +418,15 @@ export async function setupMeshPeerPages(
     );
 
     await page.addInitScript(MOCK_TRANSPORT_INIT);
+    // Rebuild the harness on every load (see PEER_BOOT_INIT) and replay the
+    // neighbor links the test registered, so a dev-server reload cannot leave
+    // the page without `window.__peer` or with a silently emptied mesh.
+    await page.addInitScript(
+      PEER_BOOT_INIT(buildMeshPeerHarness(opts[i]), MESH_REPLAY_SOURCE),
+    );
     await page.goto(baseURL);
     await page.waitForLoadState("domcontentloaded");
-
-    await page.evaluate(() => {
-      const pc = new RTCPeerConnection();
-      pc.createDataChannel("game");
-    });
-    await page.evaluate(buildMeshPeerHarness(opts[i]));
+    await page.waitForFunction(() => Boolean((window as any).__peer));
   }
 }
 
