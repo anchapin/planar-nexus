@@ -797,6 +797,11 @@ jobs:
       - name: Install Linux system dependencies
         # Same webkit/gtk dev-lib list as the Linux build job in
         # release.yml — clippy/test must link the Tauri host to compile it.
+        # Bounded so a stalled apt-get fails fast instead of holding the
+        # required check for the 6h job default (PR #2385's run hung here for
+        # 85 min). Median over the last 33 green runs was 48s, slowest 930s,
+        # so 20 min clears the slow-mirror tail with headroom.
+        timeout-minutes: 20
         run: |
           sudo apt-get update
           sudo apt-get install -y \
