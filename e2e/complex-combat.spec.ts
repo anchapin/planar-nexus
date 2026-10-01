@@ -38,6 +38,24 @@ import {
   waitForFreeCastHook,
 } from "./helpers/free-cast";
 
+/**
+ * Per-test timeout for this spec (issue #2372). The global default is 30s
+ * (playwright.config.ts), but the blocking/damage test's own waits add up to
+ * well past that: session start alone allows 15s + 15s + 5s + 10s, then the
+ * mountain (15s), the mountain on the battlefield (25s), the goblin (15s, plus
+ * a 10s zone poll and a 20s battlefield check), and two `advanceToPhase` walks
+ * of up to 8 x 3s each. A clean pass on CI already takes ~25s, so ordinary
+ * load pushes it over 30s. Same fix and pattern as #2370 (qr-join-flow).
+ */
+const TEST_TIMEOUT_MS = 120_000;
+
+/**
+ * How long "Advance Phase" may stay disabled before we call it stuck. A bare
+ * click() waits silently until the test timeout, so a stuck button used to
+ * surface as "Test timeout of 30000ms exceeded" with no hint of the cause.
+ */
+const ADVANCE_ENABLED_TIMEOUT_MS = 15_000;
+
 test.describe("Complex Combat E2E", () => {
   test.beforeEach(async ({ page }) => {
     // DEV/TEST ONLY (issue #1431): opt the game page into attaching the
@@ -93,6 +111,10 @@ test.describe("Complex Combat E2E", () => {
     const advanceBtn = page.getByRole("button", { name: "Advance Phase" });
     for (let i = 0; i < 8; i++) {
       await expect(advanceBtn).toBeVisible();
+      await expect(
+        advanceBtn,
+        `"Advance Phase" stayed disabled while walking to the ${label} phase`,
+      ).toBeEnabled({ timeout: ADVANCE_ENABLED_TIMEOUT_MS });
       await advanceBtn.click();
       try {
         await indicator.waitFor({ state: "visible", timeout: 3000 });
@@ -107,6 +129,7 @@ test.describe("Complex Combat E2E", () => {
   test("should handle blocking and damage calculation correctly", async ({
     page,
   }) => {
+    test.setTimeout(TEST_TIMEOUT_MS);
     await startSelfPlaySession(page);
     const api = freeCastApi(page);
     const ids = await api.getPlayerIds();
