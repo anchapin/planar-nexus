@@ -341,7 +341,17 @@ export function aggregateReport(
   let stable = 0;
   for (const s of specs) {
     if (s.total === 0) continue;
-    if (s.passes === 0 && s.skipped < args.runs) {
+    if (s.failures === 0) {
+      // Never failed in any run — stable. This deliberately includes specs
+      // that were SKIPPED in every run (#2379, mirroring the same fix made
+      // to the Jest detector in #1938): a deterministically absent spec
+      // (conditionally skipped forced-colors / performance suites) is not
+      // breakage. The previous guard only kept all-skipped specs out of the
+      // `always broken` bucket and then dropped them straight into `flaky`
+      // via `passes < threshold`, which kept main permanently red on a
+      // healthy suite and buried the one genuinely flaky spec in the report.
+      stable += 1;
+    } else if (s.passes === 0) {
       alwaysBroken.push(s);
     } else if (s.passes < args.threshold) {
       flaky.push(s);
