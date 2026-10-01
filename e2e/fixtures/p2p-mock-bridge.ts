@@ -74,7 +74,8 @@ export class MockDataChannel {
   onerror: ((event: unknown) => void) | null = null;
 
   private _queue: string[] = [];
-  private _p2pOutgoing: ((peerId: string, chLabel: string, data: string) => void) | null = null;
+  private _p2pOutgoing:
+    ((peerId: string, chLabel: string, data: string) => void) | null = null;
   private _peerId: string = "peer";
 
   constructor(label: string) {
@@ -92,7 +93,10 @@ export class MockDataChannel {
 
   send(raw: unknown): void {
     if (this.readyState !== "open") return;
-    const data = typeof raw === "object" && raw !== null ? JSON.stringify(raw) : String(raw);
+    const data =
+      typeof raw === "object" && raw !== null
+        ? JSON.stringify(raw)
+        : String(raw);
     if (this._p2pOutgoing) {
       this._p2pOutgoing(this._peerId, this.label, data);
     }
@@ -134,7 +138,9 @@ export class MockRTCPeerConnection {
     const ch = new MockDataChannel(label);
     ch.readyState = "open";
     ch._setOutgoing(
-      typeof globalThis.__p2pOutgoing === "function" ? globalThis.__p2pOutgoing : null,
+      typeof globalThis.__p2pOutgoing === "function"
+        ? globalThis.__p2pOutgoing
+        : null,
       "peer",
     );
     this._channels.push(ch);
@@ -374,9 +380,73 @@ export function PEER_HARNESS_SOURCE(opts: PeerOptions): string {
 }
 
 /**
+ * Wrap a peer harness so it is rebuilt on every document load, not once.
+ *
+ * Why: E2E runs against `next dev`, and the dev server can force a full page
+ * reload shortly after the HMR socket connects. In WebKit that reload landed
+ * after the harness had been injected with a one-shot `page.evaluate`, so the
+ * fresh document had no `window.__peer` and multiplayer specs failed with
+ * "undefined is not an object (evaluating 'window.__peer.isConnected')" on
+ * every main run. Registering the boot as an init script means the harness is
+ * re-created on any reload, and the state the test set up (an opened channel,
+ * mesh neighbors) is replayed from `sessionStorage`, which survives a reload
+ * of the same tab and starts empty for each new page.
+ *
+ * The boot waits for DOMContentLoaded so the harness binds to the channel at
+ * the same point in the page lifecycle as the old one-shot evaluate did.
+ * Messages already received before a reload are not replayed.
+ *
+ * @param harnessSource  Self-invoking harness source that sets `window.__peer`.
+ * @param afterHarness   Extra in-page source run after the harness, used to
+ *                       persist and replay test-driven state.
+ */
+export function PEER_BOOT_INIT(
+  harnessSource: string,
+  afterHarness: string,
+): string {
+  return `
+(function () {
+  if (window !== window.top) return;
+  function boot() {
+    if (window.__peerBooted) return;
+    window.__peerBooted = true;
+    var pc = new RTCPeerConnection();
+    pc.createDataChannel("game");
+${harnessSource}
+${afterHarness}
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", boot, { once: true });
+  } else {
+    boot();
+  }
+})();
+`;
+}
+
+/** sessionStorage key recording that the test opened this page's channel. */
+export const P2P_CHANNEL_OPEN_KEY = "__p2pChannelOpen";
+
+/**
+ * In-page source run after the 1:1 harness: persist `__p2pOpenChannel()` calls
+ * and re-open the channel after a reload if the test had already opened it.
+ */
+const P2P_REPLAY_SOURCE = `
+    var openKey = ${JSON.stringify(P2P_CHANNEL_OPEN_KEY)};
+    var rawOpen = window.__p2pOpenChannel;
+    window.__p2pOpenChannel = function () {
+      try { sessionStorage.setItem(openKey, "1"); } catch (e) {}
+      return rawOpen();
+    };
+    try {
+      if (sessionStorage.getItem(openKey) === "1") rawOpen();
+    } catch (e) {}
+`;
+
+/**
  * Set up a page as a P2P peer: install the mock transport, wire the outgoing
- * binding to deliver to the peer page, navigate, create the data channel, and
- * build the peer harness. The channel is left in "connecting" state; call
+ * binding to deliver to the peer page, register the reload-safe harness boot
+ * ({@link PEER_BOOT_INIT}), navigate, and wait for `window.__peer`. The channel is left in "connecting" state; call
  * {@link openChannels} once both peers are wired to flip them to "open".
  *
  * @param page        The Playwright page for this peer.
@@ -406,16 +476,14 @@ export async function setupPeerPage(
   );
 
   await page.addInitScript(MOCK_TRANSPORT_INIT);
+  // Create the mock data channel and build the peer harness on every load,
+  // so a dev-server reload cannot leave the page without `window.__peer`.
+  await page.addInitScript(
+    PEER_BOOT_INIT(PEER_HARNESS_SOURCE(opts), P2P_REPLAY_SOURCE),
+  );
   await page.goto(baseURL);
   await page.waitForLoadState("domcontentloaded");
-
-  // Create the mock data channel by instantiating a mock RTCPeerConnection,
-  // then build the peer harness bound to it.
-  await page.evaluate(() => {
-    const pc = new RTCPeerConnection();
-    pc.createDataChannel("game");
-  });
-  await page.evaluate(PEER_HARNESS_SOURCE(opts));
+  await page.waitForFunction(() => Boolean((window as any).__peer));
 }
 
 /**
