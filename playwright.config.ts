@@ -21,6 +21,10 @@ export default defineConfig({
   // e2e specs (*.spec.ts) which use the same file-extension convention.
   testIgnore: ["**/fixtures/**"],
 
+  // Compile every route the specs visit before any test starts, so tests
+  // don't race `next dev`'s on-demand compiles. See e2e/global-setup.ts.
+  globalSetup: "./e2e/global-setup.ts",
+
   // Timeout for individual tests (30 seconds)
   timeout: 30000,
 
