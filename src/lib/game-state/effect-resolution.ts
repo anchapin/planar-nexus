@@ -25,6 +25,7 @@ import {
   createTokenCard,
   counterSpell,
   ventureIntoDungeon,
+  performSurveil,
 } from "./keyword-actions";
 import { dealDamageToCard } from "./keyword-actions";
 import { hasLifelink } from "./evergreen-keywords";
@@ -574,6 +575,18 @@ export function parseSpellEffects(
     });
   }
 
+  // Surveil: "surveil 2", "surveil one" (issue #2300)
+  const surveilMatch = lowerText.match(
+    /\bsurveil\s+(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\b/i,
+  );
+  if (surveilMatch) {
+    const amountStr = surveilMatch[1];
+    const amount = /^\d+$/.test(amountStr)
+      ? parseInt(amountStr, 10)
+      : (wordToNumber(amountStr) ?? 1);
+    effects.push({ effectType: "surveil", amount });
+  }
+
   return effects;
 }
 
@@ -707,6 +720,21 @@ export function resolveEffect(
         success: result.success,
         state: result.state,
         description: result.description,
+        error: result.error,
+      };
+    }
+
+    case "surveil": {
+      const surveilPlayerId =
+        effect.targetId ??
+        (sourceId ? state.cards.get(sourceId)?.controllerId : undefined) ??
+        state.turn.activePlayerId;
+      const result = performSurveil(state, surveilPlayerId, effect.amount);
+      return {
+        success: result.success,
+        state: result.state,
+        description: result.description,
+        affectedCards: result.affectedCards,
         error: result.error,
       };
     }
