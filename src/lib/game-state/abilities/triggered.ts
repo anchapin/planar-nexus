@@ -1,4 +1,5 @@
-import type { GameState } from "../types";
+import type { GameState, CardInstance, CardInstanceId } from "../types";
+import type { TriggerCondition } from "../oracle-text-parser/abilities";
 import { isOnBattlefield } from "../types";
 import { getTriggeredAbilities } from "./parse";
 import { generateTriggeredAbilityId } from "./ids";
@@ -8,6 +9,47 @@ import type {
   TriggerContext,
   TriggeredAbilityInstance,
 } from "./types";
+
+/**
+ * CR 603.6a: does this ETB trigger care about the permanent that entered?
+ * Without an `enteringCardId` in the context (older callers) every ETB
+ * trigger fires, as before.
+ */
+function entersTriggerMatches(
+  state: GameState,
+  cardId: CardInstanceId,
+  card: CardInstance,
+  trigger: TriggerCondition,
+  context?: TriggerContext,
+): boolean {
+  const enteringId = context?.enteringCardId;
+  if (!enteringId || !trigger.subject) return true;
+  if (trigger.subject === "self") return enteringId === cardId;
+  if (trigger.subject === "another" && enteringId === cardId) return false;
+  const entering = state.cards.get(enteringId);
+  if (!entering) return false;
+  const filter = trigger.enteringFilter;
+  if (!filter) return true;
+  const typeLine = (entering.cardData.type_line ?? "").toLowerCase();
+  if (
+    filter.types.length > 0 &&
+    !filter.types.some((type) => typeLine.includes(type))
+  ) {
+    return false;
+  }
+  if (
+    filter.controller === "you" &&
+    entering.controllerId !== card.controllerId
+  )
+    return false;
+  if (
+    filter.controller === "opponent" &&
+    entering.controllerId === card.controllerId
+  )
+    return false;
+  if (filter.nontoken && entering.isToken) return false;
+  return true;
+}
 
 export function detectTriggeredAbilities(
   state: GameState,
@@ -26,7 +68,9 @@ export function detectTriggeredAbilities(
 
       switch (event) {
         case "entersBattlefield":
-          shouldTrigger = ability.trigger.event === "entersBattlefield";
+          shouldTrigger =
+            ability.trigger.event === "entersBattlefield" &&
+            entersTriggerMatches(state, cardId, card, ability.trigger, context);
           break;
         case "landfall":
           shouldTrigger =

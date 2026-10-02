@@ -509,6 +509,7 @@ function resolveSpellCompletion(
           currentState = checkTriggeredAbilities(
             currentState,
             "entersBattlefield",
+            { enteringCardId: stackObject.sourceCardId ?? undefined },
           ).state;
         }
 
