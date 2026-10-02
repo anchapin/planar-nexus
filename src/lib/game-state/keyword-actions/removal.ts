@@ -1,6 +1,7 @@
 import { returnToFrontFace } from "./transform";
 import { fireLandfallTriggers } from "./landfall";
 import { fireEntersTriggers } from "./enters";
+import { applyEntersWithCounters } from "./enters-with-counters";
 /**
  * Zone-removal keyword actions (CR 701): destroy, exile, sacrifice, regenerate, and generic zone moves.
  *
@@ -371,7 +372,9 @@ export function moveCardToZone(
   // Landfall (CR 207.2c): a land put onto the battlefield triggers its
   // controller's landfall abilities.
   if (result.success && targetZoneType === "battlefield") {
-    const withLandfall = fireLandfallTriggers(result.state, cardId);
+    // CR 614.1c: "enters with" counters are on it before any trigger sees it.
+    const withCounters = applyEntersWithCounters(result.state, cardId);
+    const withLandfall = fireLandfallTriggers(withCounters, cardId);
     return { ...result, state: fireEntersTriggers(withLandfall, cardId) };
   }
   return result;
