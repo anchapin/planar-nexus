@@ -18,6 +18,7 @@ import {
   resolveStackObjectEffects,
   parseSpellEffects,
   getEffectsForChosenModes,
+  parseTriggeredAbilityEffects,
 } from "../effect-resolution";
 import { applyWardResolution } from "../ward-system";
 import { applyMutate } from "../mutate";
@@ -268,6 +269,29 @@ export function resolveTopOfStack(state: GameState): GameState {
             currentState = result;
           }
         }
+      }
+    }
+
+    // CR 603.3 / 608.2: a triggered ability with no structured effects does
+    // what its text says. Targeted effects use the targets on the stack
+    // object; with none chosen they do nothing.
+    if (
+      stackObject.type === "ability" &&
+      stackObject.triggered &&
+      (!stackObject.effects || stackObject.effects.length === 0) &&
+      stackObject.text
+    ) {
+      const triggerEffects = parseTriggeredAbilityEffects(
+        stackObject.text,
+        stackObject.controllerId,
+      );
+      if (triggerEffects.length > 0) {
+        currentState = resolveStackObjectEffects(
+          currentState,
+          triggerEffects,
+          stackObject.sourceCardId ?? undefined,
+          stackObject.targets,
+        );
       }
     }
 

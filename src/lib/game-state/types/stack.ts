@@ -46,6 +46,11 @@ export interface StackObject {
   /** Timestamp when added to stack */
   timestamp: number;
   /** Alternative costs used for this spell (e.g., Flashback, Buyback) */
+  /**
+   * True for a triggered ability (CR 603). Its effect is parsed from `text`
+   * at resolution when it carries no structured `effects`.
+   */
+  triggered?: boolean;
   alternativeCostsUsed?: string[];
   /** Whether kicker was paid (CR 702.85). Backward-compat shim; prefer
    *  `timesKicked` for new code. `true` iff `timesKicked > 0`. */

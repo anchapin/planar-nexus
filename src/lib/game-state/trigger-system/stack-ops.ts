@@ -16,6 +16,7 @@ export function putTriggersOnStack(
     const stackObject: StackObject = {
       id: trigger.id,
       type: "ability",
+      triggered: true,
       sourceCardId: trigger.sourceCardId,
       controllerId: card.controllerId,
       name: `${card.cardData.name} triggered ability`,

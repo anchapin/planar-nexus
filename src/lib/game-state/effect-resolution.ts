@@ -642,6 +642,42 @@ export function parseSpellEffects(
 }
 
 /**
+ * Effects of a triggered ability's text (CR 603.3), parsed the same way as a
+ * spell's. Untargeted effects that name "you" (draw, gain life, lose life,
+ * create tokens) belong to the ability's controller rather than the active
+ * player, so a trigger that resolves on an opponent's turn still affects the
+ * right player. Targeted effects take their targets from the stack object.
+ */
+export function parseTriggeredAbilityEffects(
+  text: string,
+  controllerId: PlayerId,
+): StackEffect[] {
+  const lower = text.toLowerCase();
+  const untargeted = !/\btarget\b/.test(lower);
+  return parseSpellEffects(text).map((effect) => {
+    if (
+      untargeted &&
+      (effect.effectType === "card_draw" || effect.effectType === "life_gain") &&
+      !effect.targetId
+    ) {
+      return { ...effect, targetId: controllerId };
+    }
+    if (
+      untargeted &&
+      effect.effectType === "life_loss" &&
+      !effect.targetId &&
+      /\byou lose\b/.test(lower)
+    ) {
+      return { ...effect, targetId: controllerId };
+    }
+    if (effect.effectType === "token_creation" && !effect.controllerId) {
+      return { ...effect, controllerId };
+    }
+    return effect;
+  });
+}
+
+/**
  * Filter the effects of a modal spell down to only those produced by the
  * modes the controller chose (CR 700.2).
  *
