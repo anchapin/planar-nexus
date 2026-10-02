@@ -1,5 +1,6 @@
 import { returnToFrontFace } from "./transform";
 import { fireLandfallTriggers } from "./landfall";
+import { fireEntersTriggers } from "./enters";
 /**
  * Zone-removal keyword actions (CR 701): destroy, exile, sacrifice, regenerate, and generic zone moves.
  *
@@ -370,7 +371,8 @@ export function moveCardToZone(
   // Landfall (CR 207.2c): a land put onto the battlefield triggers its
   // controller's landfall abilities.
   if (result.success && targetZoneType === "battlefield") {
-    return { ...result, state: fireLandfallTriggers(result.state, cardId) };
+    const withLandfall = fireLandfallTriggers(result.state, cardId);
+    return { ...result, state: fireEntersTriggers(withLandfall, cardId) };
   }
   return result;
 }
@@ -457,8 +459,11 @@ function moveCardToZoneWithoutTriggers(
 
   // Handle special cases. CR 712.8a: a transformed card that leaves the
   // battlefield is its front face in every other zone.
-  let updatedCard =
-    targetZoneType === "battlefield" ? { ...card } : returnToFrontFace(card);
+  // Refresh the zone cache so isOnBattlefield and friends see the move.
+  let updatedCard: CardInstance = {
+    ...(targetZoneType === "battlefield" ? card : returnToFrontFace(card)),
+    currentZoneKey: targetZoneKey,
+  };
 
   if (targetZoneType === "graveyard" || targetZoneType === "library") {
     // Reset certain states when moving to graveyard or library
@@ -474,7 +479,7 @@ function moveCardToZoneWithoutTriggers(
   } else if (targetZoneType === "battlefield") {
     // Set summoning sickness for permanents entering battlefield
     updatedCard = {
-      ...card,
+      ...updatedCard,
       hasSummoningSickness: true,
       enteredBattlefieldTimestamp: Date.now(),
     };
