@@ -89,6 +89,13 @@ import {
   canCastSpell,
   canPlayLand,
   shouldAutoPassPriority,
+  parseTriggerTargetSpec,
+  getLegalTriggerTargets,
+  triggerNeedsTargets,
+  chooseTriggerTargets,
+  autoChooseTriggerTargets,
+  getSpellTargetSpec,
+  getLegalSpellTargets,
   type GameState,
   type Player,
   type CardInstance,
@@ -240,6 +247,7 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     attackerId?: string; // For blocking
     spellRequiresTarget?: boolean;
     targetCount?: number; // Number of targets needed
+    stackObjectId?: string; // Triggered ability choosing its targets
   } | null>(null);
 
   // Combat state
@@ -888,6 +896,48 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     }
   }, [gameState?.status, gameState?.winners, toast]);
 
+  // Triggered abilities choose their targets as they go on the stack
+  // (CR 603.3d). The AI picks for its own triggers; the human is prompted.
+  useEffect(() => {
+    if (!gameState || gameState.status !== "in_progress") return;
+    const pending = gameState.stack.find(triggerNeedsTargets);
+    if (!pending) return;
+    const human = Array.from(gameState.players.values()).find(
+      (p) => p.name === playerName,
+    );
+    if (!human || pending.controllerId !== human.id) {
+      setGameState(autoChooseTriggerTargets(gameState, pending.controllerId));
+      return;
+    }
+    if (getLegalTriggerTargets(gameState, pending).length === 0) {
+      // Nothing to target: an "up to one" ability chooses none; a mandatory
+      // one is marked chosen and resolves without a target (CR 603.3d).
+      const none = chooseTriggerTargets(gameState, pending.id, []);
+      setGameState(
+        none.success
+          ? none.state
+          : {
+              ...gameState,
+              stack: gameState.stack.map((o) =>
+                o.id === pending.id ? { ...o, targetsChosen: true } : o,
+              ),
+            },
+      );
+      return;
+    }
+    if (pendingAction?.stackObjectId === pending.id) return;
+    const optional = parseTriggerTargetSpec(pending.text)?.optional ?? false;
+    setPendingAction({
+      type: "target",
+      stackObjectId: pending.id,
+      cardId: pending.sourceCardId ?? undefined,
+    });
+    toast({
+      title: "Choose a target",
+      description: `${pending.name}: ${pending.text}${optional ? " (click the source card to choose no target)" : ""}`,
+    });
+  }, [gameState, playerName, pendingAction?.stackObjectId, toast]);
+
   // Handle card click - Main interaction handler for all card clicks
   const handleCardClick = useCallback(
     (cardId: string, zone: string) => {
@@ -911,14 +961,83 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
         pendingAction?.type === "cast" ||
         pendingAction?.type === "activate"
       ) {
-        // Check if this card is a valid target
-        const isOpponent = card.controllerId !== player.id;
+        // Triggered ability choosing its target (CR 603.3d)
+        if (pendingAction.type === "target" && pendingAction.stackObjectId) {
+          const stackObjectId = pendingAction.stackObjectId;
+          if (pendingAction.cardId === cardId) {
+            const obj = gameState.stack.find((o) => o.id === stackObjectId);
+            if (obj && parseTriggerTargetSpec(obj.text)?.optional) {
+              const none = chooseTriggerTargets(gameState, stackObjectId, []);
+              if (none.success) {
+                setGameState(none.state);
+                setPendingAction(null);
+                toast({
+                  title: "No target chosen",
+                  description: `${obj.name} will resolve without a target.`,
+                });
+              }
+            } else {
+              toast({
+                title: "Target required",
+                description: "This ability must have a target.",
+                variant: "destructive",
+              });
+            }
+            return;
+          }
+          const chosen = chooseTriggerTargets(gameState, stackObjectId, [
+            cardId,
+          ]);
+          if (chosen.success) {
+            setGameState(chosen.state);
+            setPendingAction(null);
+            toast({
+              title: "Target chosen",
+              description: `Targeting ${card.cardData.name}`,
+            });
+          } else {
+            toast({
+              title: "Not a legal target",
+              description: chosen.error,
+              variant: "destructive",
+            });
+          }
+          return;
+        }
+
+        // Check if this card is a valid target. Spells whose target
+        // requirement the engine understands are checked against it;
+        // anything else (e.g. Auras) is validated by castSpell.
         const isCreatureOnBattlefield =
           zone === "battlefield" && isCreature(card);
+        const spellSpec =
+          pendingAction.type === "cast" && pendingAction.cardId
+            ? getSpellTargetSpec(
+                gameState,
+                pendingAction.cardId as CardInstance["id"],
+              )
+            : null;
+        if (spellSpec && pendingAction.cardId !== cardId) {
+          const legal = getLegalSpellTargets(
+            gameState,
+            player.id,
+            pendingAction.cardId as CardInstance["id"],
+          );
+          if (!legal.includes(cardId)) {
+            toast({
+              title: "Not a legal target",
+              description: `${card.cardData.name} can't be targeted by that spell.`,
+              variant: "destructive",
+            });
+            return;
+          }
+        }
+        const isTargetable = spellSpec
+          ? pendingAction.cardId !== cardId
+          : zone === "battlefield" &&
+            (isCreatureOnBattlefield || pendingAction.type === "cast");
 
-        // For now, allow targeting any creature or player
-        // In a full implementation, this would check spell requirements
-        if (zone === "battlefield" && isCreatureOnBattlefield) {
+        if (isTargetable) {
           // Target selected - complete the action
           if (pendingAction.type === "cast") {
             // Cast spell with target
@@ -935,6 +1054,7 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
                   gameState,
                   player.id,
                   pendingAction.cardId!,
+                  [{ type: "card", targetId: cardId, isValid: true }],
                 );
                 if (result.success) {
                   // Auto-pass priority after casting in single-player to resolve the spell
@@ -1378,6 +1498,49 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
       ) {
         // Targeting a player by clicking their zone
         const targetPlayer = gameState.players.get(zonePlayerId);
+        if (targetPlayer && pendingAction.stackObjectId) {
+          const chosen = chooseTriggerTargets(
+            gameState,
+            pendingAction.stackObjectId,
+            [targetPlayer.id],
+          );
+          if (chosen.success) {
+            setGameState(chosen.state);
+            setPendingAction(null);
+            toast({
+              title: "Target chosen",
+              description: `Targeting ${targetPlayer.name}`,
+            });
+          } else {
+            toast({
+              title: "Not a legal target",
+              description: chosen.error,
+              variant: "destructive",
+            });
+          }
+          return;
+        }
+        if (
+          targetPlayer &&
+          pendingAction.type === "cast" &&
+          pendingAction.cardId &&
+          getSpellTargetSpec(
+            gameState,
+            pendingAction.cardId as CardInstance["id"],
+          ) &&
+          !getLegalSpellTargets(
+            gameState,
+            player.id,
+            pendingAction.cardId as CardInstance["id"],
+          ).includes(targetPlayer.id)
+        ) {
+          toast({
+            title: "Not a legal target",
+            description: `${targetPlayer.name} can't be targeted by that spell.`,
+            variant: "destructive",
+          });
+          return;
+        }
         if (targetPlayer) {
           if (pendingAction.type === "cast") {
             // Cast spell targeting player
@@ -1392,6 +1555,7 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
                   gameState,
                   player.id,
                   pendingAction.cardId!,
+                  [{ type: "player", targetId: targetPlayer.id, isValid: true }],
                 );
                 if (result.success) {
                   // Auto-pass priority after casting in single-player to resolve the spell

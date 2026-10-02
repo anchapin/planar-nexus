@@ -90,17 +90,16 @@ function battlefieldCreatures(state: GameState): CardInstance[] {
   return out;
 }
 
-/** Legal target ids (cards and players) for a triggered ability on the stack. */
-export function getLegalTriggerTargets(
+/** Legal target ids (cards and players) for a target requirement in `text`. */
+function legalTargetsFor(
   state: GameState,
-  stackObject: StackObject,
+  text: string,
+  controllerId: PlayerId,
+  sourceCardId: CardInstanceId | null,
 ): string[] {
-  const spec = parseTriggerTargetSpec(stackObject.text);
+  const spec = parseTriggerTargetSpec(text);
   if (!spec) return [];
-  const controllerId = stackObject.controllerId;
-  const source = stackObject.sourceCardId
-    ? state.cards.get(stackObject.sourceCardId)
-    : undefined;
+  const source = sourceCardId ? state.cards.get(sourceCardId) : undefined;
   const ids: string[] = [];
 
   if (spec.kind === "creature" || spec.kind === "any") {
@@ -108,7 +107,7 @@ export function getLegalTriggerTargets(
       if (spec.controller === "you" && card.controllerId !== controllerId) continue;
       if (spec.controller === "opponent" && card.controllerId === controllerId)
         continue;
-      if (spec.excludeSource && card.id === stackObject.sourceCardId) continue;
+      if (spec.excludeSource && card.id === sourceCardId) continue;
       if (source && !canTargetCard(card, source, controllerId).valid) continue;
       ids.push(card.id);
     }
@@ -120,6 +119,42 @@ export function getLegalTriggerTargets(
     }
   }
   return ids;
+}
+
+/** Legal target ids (cards and players) for a triggered ability on the stack. */
+export function getLegalTriggerTargets(
+  state: GameState,
+  stackObject: StackObject,
+): string[] {
+  return legalTargetsFor(
+    state,
+    stackObject.text,
+    stackObject.controllerId,
+    stackObject.sourceCardId,
+  );
+}
+
+/**
+ * Target requirement of a spell in hand, from its oracle text, or null when
+ * it doesn't target (or targets something this module doesn't model yet).
+ */
+export function getSpellTargetSpec(
+  state: GameState,
+  cardId: CardInstanceId,
+): TriggerTargetSpec | null {
+  const card = state.cards.get(cardId);
+  return card ? parseTriggerTargetSpec(card.cardData.oracle_text ?? "") : null;
+}
+
+/** Legal target ids (cards and players) for casting a spell. */
+export function getLegalSpellTargets(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardInstanceId,
+): string[] {
+  const card = state.cards.get(cardId);
+  if (!card) return [];
+  return legalTargetsFor(state, card.cardData.oracle_text ?? "", playerId, cardId);
 }
 
 /** True when a triggered ability on the stack still needs its targets chosen. */

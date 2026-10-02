@@ -7,6 +7,8 @@ import {
   chooseTriggerTargets,
   autoChooseTriggerTargets,
   triggerNeedsTargets,
+  getSpellTargetSpec,
+  getLegalSpellTargets,
 } from "../trigger-system";
 import { resolveTopOfStack } from "../spell-casting";
 import { createInitialGameState, startGame } from "../game-state";
@@ -181,5 +183,28 @@ describe("triggered ability targets", () => {
     st = onStack(st, "beast", p1, FIGHT);
     st = autoChooseTriggerTargets(st, p2);
     expect(triggerNeedsTargets(st.stack[0])).toBe(true);
+  });
+  it("lists legal targets for a spell from its oracle text", () => {
+    const shock = {
+      ...card("Shock", 0, 0),
+      type_line: "Instant",
+      oracle_text: "Shock deals 2 damage to any target.",
+    } as ScryfallCard;
+    const pump = {
+      ...card("Pump", 0, 0),
+      type_line: "Instant",
+      oracle_text: "Target creature you control gets +2/+2 until end of turn.",
+    } as ScryfallCard;
+    let st = put(state, p1, "mine", card("Mine", 2, 2));
+    st = put(st, p2, "bear", card("Bear", 2, 2));
+    st = put(st, p2, "elusive", card("Elusive", 1, 1, ["Hexproof"]));
+    st = put(st, p1, "shock", shock);
+    st = put(st, p1, "pump", pump);
+    expect(getSpellTargetSpec(st, id("shock"))).toMatchObject({ kind: "any" });
+    expect(getLegalSpellTargets(st, p1, id("shock")).sort()).toEqual(
+      ["bear", "mine", p1, p2].sort(),
+    );
+    expect(getLegalSpellTargets(st, p1, id("pump"))).toEqual(["mine"]);
+    expect(getSpellTargetSpec(st, id("mine"))).toBeNull();
   });
 });
