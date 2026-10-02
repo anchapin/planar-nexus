@@ -270,13 +270,15 @@ export type StackEffectType =
   | "venture_dungeon"
   | "surveil"
   | "attach"
-  | "transform";
+  | "transform"
+  | "crew";
 
 /**
  * Structured effect data for resolution
  * Each effect type carries the data needed to resolve that effect
  */
 export type StackEffect =
+  | { effectType: "crew"; vehicleId: CardInstanceId }
   | {
       effectType: "damage";
       amount: number;
