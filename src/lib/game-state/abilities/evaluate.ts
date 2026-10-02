@@ -1,6 +1,7 @@
 import type { GameState, PlayerId, CardInstance } from "../types";
 import type { TriggerContext } from "./types";
 import { isOnBattlefield } from "../types";
+import { RAID_CONDITION, hasAttackedThisTurn } from "../keyword-actions/raid";
 
 export function evaluateInterveningIfClause(
   condition: string,
@@ -12,6 +13,11 @@ export function evaluateInterveningIfClause(
   const c = condition.toLowerCase().trim();
 
   const negate = /^(you (?:do not|don't) control|you control no)\b/.test(c);
+
+  // Raid: "if you attacked this turn".
+  if (RAID_CONDITION.test(c)) {
+    return hasAttackedThisTurn(state, controllerId);
+  }
 
   let m = c.match(/you have (\d+) or less life/);
   if (m) {

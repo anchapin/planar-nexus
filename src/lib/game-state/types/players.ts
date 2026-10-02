@@ -80,6 +80,15 @@ export interface Player {
    */
   lastTurnLifeLost?: number;
 
+  // Raid tracking (ability word, issue #2300)
+  /**
+   * Whether this player has declared one or more attackers this turn. Raid
+   * cards check "if you attacked this turn". Set by `declareAttackers` and
+   * reset to false at the start of each turn. Optional so legacy Player
+   * literals default to "hasn't attacked" (read with `=== true`).
+   */
+  attackedThisTurn?: boolean;
+
   dungeonProgress?: DungeonProgress | null;
   completedDungeonIds?: DungeonId[];
 
