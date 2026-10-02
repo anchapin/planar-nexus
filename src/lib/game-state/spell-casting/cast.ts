@@ -41,6 +41,11 @@ import { detectStormTrigger, detectProwessTriggers } from "../trigger-system";
 import { applyProwessBoost } from "../evergreen-keywords";
 import { canCastAtInstantSpeed } from "../keyword-actions/flash";
 import { canCastWithMutate } from "../mutate";
+import {
+  getAuraSpellTarget,
+  isAuraCard,
+  validateAuraSpellTarget,
+} from "../keyword-actions/enchant";
 import { copySpellOnStack } from "./resolve";
 import { createEngineUncaughtException } from "../errors";
 
@@ -317,6 +322,24 @@ export function castSpell(
       sourceZone = `${playerId}-exile`;
     } else if (!handZone || !handZone.cardIds.includes(cardId)) {
       return { success: false, state, error: "Card not in hand." };
+    }
+
+    // CR 303.4a - an Aura spell targets the object it will enchant. Bestow
+    // and mutate carry their own targets and are checked on their own paths.
+    if (
+      isAuraCard(card) &&
+      alternativeCost?.type !== "bestow" &&
+      alternativeCost?.type !== "mutate"
+    ) {
+      const auraCheck = validateAuraSpellTarget(
+        state,
+        card,
+        playerId,
+        getAuraSpellTarget(targets),
+      );
+      if (!auraCheck.valid) {
+        return { success: false, state, error: auraCheck.reason };
+      }
     }
 
     // Handle modal spell mode selection requirement
