@@ -1,4 +1,5 @@
 import { returnToFrontFace } from "./transform";
+import { fireLandfallTriggers } from "./landfall";
 /**
  * Zone-removal keyword actions (CR 701): destroy, exile, sacrifice, regenerate, and generic zone moves.
  *
@@ -361,6 +362,20 @@ export function consumeRegenerationShield(
  * Move a card to a specific zone
  */
 export function moveCardToZone(
+  state: GameState,
+  cardId: CardInstanceId,
+  targetZoneType: "graveyard" | "exile" | "hand" | "library" | "battlefield",
+): KeywordActionResult {
+  const result = moveCardToZoneWithoutTriggers(state, cardId, targetZoneType);
+  // Landfall (CR 207.2c): a land put onto the battlefield triggers its
+  // controller's landfall abilities.
+  if (result.success && targetZoneType === "battlefield") {
+    return { ...result, state: fireLandfallTriggers(result.state, cardId) };
+  }
+  return result;
+}
+
+function moveCardToZoneWithoutTriggers(
   state: GameState,
   cardId: CardInstanceId,
   targetZoneType: "graveyard" | "exile" | "hand" | "library" | "battlefield",

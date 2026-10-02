@@ -1,6 +1,7 @@
 import type { CardInstanceId, PlayerId, GameState } from "../types";
 
 export type TriggerEvent =
+  | "landfall"
   | "entersBattlefield"
   | "leavesBattlefield"
   | "damageDealt"
@@ -32,6 +33,9 @@ export interface TriggerContext {
   lifeLostPlayer?: PlayerId;
   lifeLostAmount?: number;
   spellCardId?: CardInstanceId;
+  /** Landfall: the land that entered and the player who controls it. */
+  landCardId?: CardInstanceId;
+  landControllerId?: PlayerId;
 }
 
 export interface ActivateAbilityResult {
