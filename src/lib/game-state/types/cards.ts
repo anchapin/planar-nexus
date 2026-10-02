@@ -156,6 +156,13 @@ export interface CardInstance {
   prowessBoost?: number;
 
   /**
+   * Total of "gets +X/+Y until end of turn" effects on this permanent from
+   * resolved spells and abilities (CR 611.2a, layer 7c), e.g. Tragic
+   * Banshee's -1/-1. Cleared at end of turn (see `clearUntilEndOfTurnPT`).
+   */
+  untilEndOfTurnPT?: { power: number; toughness: number };
+
+  /**
    * Active threshold static bonus (power/toughness, granted keywords,
    * unblockable) while its controller has seven or more cards in their
    * graveyard. Maintained by `refreshThresholdBonuses`.

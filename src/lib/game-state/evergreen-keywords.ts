@@ -847,6 +847,8 @@ export function getEffectivePower(card: CardInstance): number {
   // CR 702.108 - Prowess: a continuous "+1/+1 until end of turn" effect applied
   // in layer 7c (power/toughness). `prowessBoost` holds the active bonus count.
   power += card.prowessBoost || 0;
+  // "Gets +X/+Y until end of turn" effects (CR 611.2a), layer 7c.
+  power += card.untilEndOfTurnPT?.power || 0;
   // Threshold static bonus (issue #2300), layer 7c.
   power += card.thresholdBonus?.power || 0;
   return Math.max(0, power);
@@ -873,6 +875,8 @@ export function getEffectiveToughness(card: CardInstance): number {
 
   // CR 702.108 - Prowess: continuous "+1/+1 until end of turn" effect (layer 7c).
   toughness += card.prowessBoost || 0;
+  // "Gets +X/+Y until end of turn" effects (CR 611.2a), layer 7c.
+  toughness += card.untilEndOfTurnPT?.toughness || 0;
   // Threshold static bonus (issue #2300), layer 7c.
   toughness += card.thresholdBonus?.toughness || 0;
 

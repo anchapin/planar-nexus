@@ -290,7 +290,8 @@ export type StackEffectType =
   | "attach"
   | "transform"
   | "crew"
-  | "fight";
+  | "fight"
+  | "pt_until_eot";
 
 /**
  * Structured effect data for resolution
@@ -298,6 +299,13 @@ export type StackEffectType =
  */
 export type StackEffect =
   | { effectType: "crew"; vehicleId: CardInstanceId }
+  | {
+      effectType: "pt_until_eot";
+      power: number;
+      toughness: number;
+      targetId?: CardInstanceId;
+      instead?: { condition: string; power: number; toughness: number };
+    }
   | {
       effectType: "fight";
       fighterId?: CardInstanceId;

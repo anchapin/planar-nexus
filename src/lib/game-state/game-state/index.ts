@@ -2,6 +2,7 @@
  * Main GameState class for managing the complete game state
  */
 
+import { clearUntilEndOfTurnPT } from "../pt-until-end-of-turn";
 import type {
   CardInstanceId,
   CardInstance,
@@ -625,6 +626,12 @@ function advanceToNextPhase(state: GameState): GameState {
 
     // CR 702.122 - Crew: a crewed Vehicle is a creature "until end of turn".
     updatedCards = clearCrewedVehicles({
+      ...resultState,
+      cards: updatedCards,
+    }).cards;
+
+    // CR 611.2a / 514.2: "gets +X/+Y until end of turn" effects end.
+    updatedCards = clearUntilEndOfTurnPT({
       ...resultState,
       cards: updatedCards,
     }).cards;
