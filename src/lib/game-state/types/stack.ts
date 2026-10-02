@@ -51,6 +51,8 @@ export interface StackObject {
    * at resolution when it carries no structured `effects`.
    */
   triggered?: boolean;
+  /** Targets were chosen for this triggered ability (possibly none, CR 603.3d). */
+  targetsChosen?: boolean;
   alternativeCostsUsed?: string[];
   /** Whether kicker was paid (CR 702.85). Backward-compat shim; prefer
    *  `timesKicked` for new code. `true` iff `timesKicked > 0`. */

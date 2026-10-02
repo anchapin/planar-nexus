@@ -5,3 +5,4 @@ export * from "./spell-triggers";
 export * from "./state-triggers";
 export * from "./stack-ops";
 export * from "./etb-triggers";
+export * from "./trigger-targets";
