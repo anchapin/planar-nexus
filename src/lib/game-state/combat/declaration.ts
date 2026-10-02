@@ -17,6 +17,7 @@ import {
 import { dealDamageToCard } from "../keyword-actions";
 import { hasVigilanceStrict } from "../keyword-actions/vigilance";
 import { markAttackedThisTurn } from "../keyword-actions/raid";
+import { applyBattleCry } from "../keyword-actions/battle-cry";
 import { checkStateBasedActions } from "../state-based-actions";
 import { dealCommanderDamage, isCommander } from "../commander-damage";
 import {
@@ -179,10 +180,16 @@ export function declareAttackers(
     attackingPlayers,
   );
 
+  // Battle cry (CR 702.91): each other attacking creature gets +1/+0.
+  const battleCryState = applyBattleCry(
+    raidState,
+    attackers.map((a) => a.cardId),
+  );
+
   return {
     success: true,
     state: {
-      ...raidState,
+      ...battleCryState,
       lastModifiedAt: Date.now(),
     },
     description: `Declared ${attackers.length} attacker${attackers.length !== 1 ? "s" : ""}`,
