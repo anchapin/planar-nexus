@@ -12,7 +12,11 @@ import {
   checkTriggeredAbilities,
   evaluateInterveningIfClause,
 } from "../abilities";
-import { destroyCard, createTokenCard } from "../keyword-actions";
+import {
+  destroyCard,
+  createTokenCard,
+  applyEntersWithCounters,
+} from "../keyword-actions";
 import { resolveCascade } from "../keyword-actions/cascade";
 import {
   resolveStackObjectEffects,
@@ -506,6 +510,17 @@ function resolveSpellCompletion(
           // Instants and sorceries don't trigger ETB abilities, and neither
           // does an Aura that never reached the battlefield.
         } else {
+          // CR 614.1c: "enters with" counters are on it before ETB triggers.
+          if (destinationZone.endsWith("-battlefield")) {
+            currentState = applyEntersWithCounters(
+              currentState,
+              stackObject.sourceCardId,
+              {
+                colorsSpent: stackObject.colorsSpent,
+                xValue: stackObject.variableValues?.get("X") ?? null,
+              },
+            );
+          }
           currentState = checkTriggeredAbilities(
             currentState,
             "entersBattlefield",
