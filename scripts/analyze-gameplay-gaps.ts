@@ -249,6 +249,7 @@ for (let changed = true; changed;) {
 // calls before allowing a cast outside the main phase.
 const ENFORCEMENT_ALIASES: Record<string, string[]> = {
   flash: ["canCastAtInstantSpeed"],
+  surveil: ["performSurveil"],
 };
 
 // Map keyword → likely enforcement function names. Camel-case on word

@@ -36,3 +36,4 @@ export * from "./keyword-actions/cycling";
 export * from "./keyword-actions/monarchy";
 export * from "./keyword-actions/tribute-renown";
 export * from "./keyword-actions/cascade";
+export * from "./keyword-actions/surveil";
