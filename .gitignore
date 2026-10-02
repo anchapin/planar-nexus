@@ -63,6 +63,10 @@ src-tauri/gen/
 # rule above would silently ignore the gate's recorded ceilings.
 !config/bundle-budget.json
 
+# Standard-legal keyword snapshot for the gap report (issue #2360): the
+# blanket *.json rule above would drop the data the report classifies by.
+!scripts/data/standard-keywords.json
+
 # Jest mock boundary allowlist must be tracked (issue #1815): the
 # blanket *.json rule above would silently ignore the guard's
 # documented exceptions.
