@@ -26,6 +26,7 @@ import {
   counterSpell,
   ventureIntoDungeon,
   performSurveil,
+  resolveEquip,
 } from "./keyword-actions";
 import { dealDamageToCard } from "./keyword-actions";
 import { hasLifelink } from "./evergreen-keywords";
@@ -720,6 +721,17 @@ export function resolveEffect(
         success: result.success,
         state: result.state,
         description: result.description,
+        error: result.error,
+      };
+    }
+
+    case "attach": {
+      const result = resolveEquip(state, effect.attachmentId, effect.targetId);
+      return {
+        success: result.success,
+        state: result.state,
+        description: result.description,
+        affectedCards: result.affectedCards,
         error: result.error,
       };
     }

@@ -268,7 +268,8 @@ export type StackEffectType =
   | "gainLife"
   | "loseLife"
   | "venture_dungeon"
-  | "surveil";
+  | "surveil"
+  | "attach";
 
 /**
  * Structured effect data for resolution
@@ -314,4 +315,9 @@ export type StackEffect =
       nextRoomId?: DungeonRoomId;
       targetId?: PlayerId;
     }
-  | { effectType: "surveil"; amount: number; targetId?: PlayerId };
+  | { effectType: "surveil"; amount: number; targetId?: PlayerId }
+  | {
+      effectType: "attach";
+      attachmentId: CardInstanceId;
+      targetId: CardInstanceId;
+    };
