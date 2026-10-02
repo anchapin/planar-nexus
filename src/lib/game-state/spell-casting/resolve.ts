@@ -22,6 +22,13 @@ import {
 import { applyWardResolution } from "../ward-system";
 import { applyMutate } from "../mutate";
 import {
+  attachAura,
+  canEnchantTarget,
+  getAuraSpellTarget,
+  isAuraCard,
+  parseEnchantRestriction,
+} from "../keyword-actions/enchant";
+import {
   destroysIndestructibleCreatures,
   executeBoardSweeper,
   isBoardSweeper,
@@ -144,131 +151,131 @@ export function resolveTopOfStack(state: GameState): GameState {
       return state;
     }
 
-  // Get the top object (last one added resolves first - LIFO)
-  const stackObject = state.stack[state.stack.length - 1];
+    // Get the top object (last one added resolves first - LIFO)
+    const stackObject = state.stack[state.stack.length - 1];
 
-  // If it's countered, just remove it
-  if (stackObject.isCountered) {
-    return removeFromStack(state, stackObject.id);
-  }
-
-  // Ward (CR 702.21): if this spell/ability targets a warded permanent an
-  // opponent controls and the ward cost was not paid, it is countered (removed
-  // from the stack with no effect). This is enforced here, before resolution.
-  const wardResult = applyWardResolution(state, stackObject);
-  if (wardResult.countered) {
-    return removeFromStack(state, stackObject.id);
-  }
-
-  // CR 603.4 — intervening "if" clause re-check at resolution. A triggered
-  // ability ("When/Whenever/At X, if Y, Z") only triggers when Y is true at the
-  // trigger event, AND when it would resolve Y is checked again: if it is no
-  // longer true the ability is removed from the stack and does nothing. The
-  // clause was carried onto the StackObject when the trigger was put on the
-  // stack; re-evaluate it against the current (resolution-time) game state.
-  if (stackObject.type === "ability" && stackObject.interveningIf) {
-    const sourceCard = stackObject.sourceCardId
-      ? state.cards.get(stackObject.sourceCardId)
-      : undefined;
-    if (
-      !evaluateInterveningIfClause(
-        stackObject.interveningIf,
-        state,
-        stackObject.controllerId,
-        sourceCard,
-      )
-    ) {
+    // If it's countered, just remove it
+    if (stackObject.isCountered) {
       return removeFromStack(state, stackObject.id);
     }
-  }
 
-  let currentState = state;
+    // Ward (CR 702.21): if this spell/ability targets a warded permanent an
+    // opponent controls and the ward cost was not paid, it is countered (removed
+    // from the stack with no effect). This is enforced here, before resolution.
+    const wardResult = applyWardResolution(state, stackObject);
+    if (wardResult.countered) {
+      return removeFromStack(state, stackObject.id);
+    }
 
-  // CR 702.85 — number of additional effects owed to the kicker / multikicker
-  // cost. Single-kicker stamps `timesKicked = 1` when paid; multikicker stamps
-  // any non-negative integer. Non-kicker spells and spells cast without paying
-  // the kicker cost leave `timesKicked` undefined / 0, so the bonus is a no-op.
-  const kickerBonus = stackObject.timesKicked ?? 0;
-
-  // Handle structured effects if present
-  if (stackObject.effects && stackObject.effects.length > 0) {
-    // Resolve each effect in order
-    const result = resolveStackObjectEffects(
-      state,
-      stackObject.effects,
-      stackObject.sourceCardId || undefined,
-      stackObject.targets,
-      kickerBonus,
-    );
-    currentState = result;
-  }
-
-  // Check if this is a board sweeper spell (legacy string-based check)
-  if (stackObject.type === "spell" && stackObject.sourceCardId) {
-    const sourceCard = currentState.cards.get(stackObject.sourceCardId);
-    if (sourceCard) {
-      const oracleText = sourceCard.cardData.oracle_text || "";
-
-      // Handle board sweeper spells
-      if (isBoardSweeper(oracleText)) {
-        const ignoreIndestructible =
-          destroysIndestructibleCreatures(oracleText);
-        const stateAfterSweeper = executeBoardSweeper(
-          currentState,
-          stackObject.sourceCardId,
-          ignoreIndestructible,
-        );
-
-        // Remove the stack object after resolution
-        const updatedStack = stateAfterSweeper.stack.filter(
-          (obj) => obj.id !== stackObject.id,
-        );
-
-        return {
-          ...stateAfterSweeper,
-          stack: updatedStack,
-          consecutivePasses: 0,
-          lastModifiedAt: Date.now(),
-        };
+    // CR 603.4 — intervening "if" clause re-check at resolution. A triggered
+    // ability ("When/Whenever/At X, if Y, Z") only triggers when Y is true at the
+    // trigger event, AND when it would resolve Y is checked again: if it is no
+    // longer true the ability is removed from the stack and does nothing. The
+    // clause was carried onto the StackObject when the trigger was put on the
+    // stack; re-evaluate it against the current (resolution-time) game state.
+    if (stackObject.type === "ability" && stackObject.interveningIf) {
+      const sourceCard = stackObject.sourceCardId
+        ? state.cards.get(stackObject.sourceCardId)
+        : undefined;
+      if (
+        !evaluateInterveningIfClause(
+          stackObject.interveningIf,
+          state,
+          stackObject.controllerId,
+          sourceCard,
+        )
+      ) {
+        return removeFromStack(state, stackObject.id);
       }
+    }
 
-      // Parse effects from oracle text if no structured effects present
-      if (!stackObject.effects || stackObject.effects.length === 0) {
-        // CR 700.2: modal spells ("Choose one —", "Choose two —",
-        // "Choose three —") resolve only the modes the controller chose.
-        // When the stack object's chosenModes is populated, restrict the
-        // parsed effects to those modes; otherwise parse the full oracle
-        // text (legacy / choose-none-yet behavior — the modal choice is
-        // expected to set chosenModes before resolution for the modal
-        // branch to fire).
-        const isModalWithChoice =
-          stackObject.chosenModes && stackObject.chosenModes.length > 0;
-        const parsedEffects = isModalWithChoice
-          ? getEffectsForChosenModes(stackObject, currentState)
-          : parseSpellEffects(oracleText, stackObject.variableValues);
+    let currentState = state;
 
-        if (parsedEffects.length > 0) {
-          // Apply effects with target information. CR 702.85 — pass the
-          // kicker bonus so each scalable base effect (damage / card_draw
-          // / token_creation) gets +N when the spell was kicked.
-          const result = resolveStackObjectEffects(
+    // CR 702.85 — number of additional effects owed to the kicker / multikicker
+    // cost. Single-kicker stamps `timesKicked = 1` when paid; multikicker stamps
+    // any non-negative integer. Non-kicker spells and spells cast without paying
+    // the kicker cost leave `timesKicked` undefined / 0, so the bonus is a no-op.
+    const kickerBonus = stackObject.timesKicked ?? 0;
+
+    // Handle structured effects if present
+    if (stackObject.effects && stackObject.effects.length > 0) {
+      // Resolve each effect in order
+      const result = resolveStackObjectEffects(
+        state,
+        stackObject.effects,
+        stackObject.sourceCardId || undefined,
+        stackObject.targets,
+        kickerBonus,
+      );
+      currentState = result;
+    }
+
+    // Check if this is a board sweeper spell (legacy string-based check)
+    if (stackObject.type === "spell" && stackObject.sourceCardId) {
+      const sourceCard = currentState.cards.get(stackObject.sourceCardId);
+      if (sourceCard) {
+        const oracleText = sourceCard.cardData.oracle_text || "";
+
+        // Handle board sweeper spells
+        if (isBoardSweeper(oracleText)) {
+          const ignoreIndestructible =
+            destroysIndestructibleCreatures(oracleText);
+          const stateAfterSweeper = executeBoardSweeper(
             currentState,
-            parsedEffects,
             stackObject.sourceCardId,
-            stackObject.targets,
-            kickerBonus,
+            ignoreIndestructible,
           );
-          currentState = result;
+
+          // Remove the stack object after resolution
+          const updatedStack = stateAfterSweeper.stack.filter(
+            (obj) => obj.id !== stackObject.id,
+          );
+
+          return {
+            ...stateAfterSweeper,
+            stack: updatedStack,
+            consecutivePasses: 0,
+            lastModifiedAt: Date.now(),
+          };
+        }
+
+        // Parse effects from oracle text if no structured effects present
+        if (!stackObject.effects || stackObject.effects.length === 0) {
+          // CR 700.2: modal spells ("Choose one —", "Choose two —",
+          // "Choose three —") resolve only the modes the controller chose.
+          // When the stack object's chosenModes is populated, restrict the
+          // parsed effects to those modes; otherwise parse the full oracle
+          // text (legacy / choose-none-yet behavior — the modal choice is
+          // expected to set chosenModes before resolution for the modal
+          // branch to fire).
+          const isModalWithChoice =
+            stackObject.chosenModes && stackObject.chosenModes.length > 0;
+          const parsedEffects = isModalWithChoice
+            ? getEffectsForChosenModes(stackObject, currentState)
+            : parseSpellEffects(oracleText, stackObject.variableValues);
+
+          if (parsedEffects.length > 0) {
+            // Apply effects with target information. CR 702.85 — pass the
+            // kicker bonus so each scalable base effect (damage / card_draw
+            // / token_creation) gets +N when the spell was kicked.
+            const result = resolveStackObjectEffects(
+              currentState,
+              parsedEffects,
+              stackObject.sourceCardId,
+              stackObject.targets,
+              kickerBonus,
+            );
+            currentState = result;
+          }
         }
       }
     }
-  }
 
-  // Move the card from stack to appropriate zone and handle post-resolution
-  return resolveSpellCompletion(currentState, stackObject);
+    // Move the card from stack to appropriate zone and handle post-resolution
+    return resolveSpellCompletion(currentState, stackObject);
   } catch (err) {
     // #1900: on uncaught exception, return original state so the engine stays consistent
-    void createEngineUncaughtException(err, 'resolveTopOfStack', originalState);
+    void createEngineUncaughtException(err, "resolveTopOfStack", originalState);
     return originalState;
   }
 }
@@ -380,6 +387,33 @@ function resolveSpellCompletion(
         destinationZone = `${card.controllerId}-battlefield`;
       }
 
+      // CR 303.4f / 608.3b - an Aura spell (not cast with bestow) enters
+      // attached to its target; if that target is now illegal the spell
+      // doesn't resolve and goes to its owner's graveyard instead.
+      let auraTargetToAttach: CardInstanceId | undefined;
+      if (
+        isAuraCard(card) &&
+        !(stackObject.alternativeCostsUsed?.includes("bestow") ?? false) &&
+        !typeLine.includes("instant") &&
+        !typeLine.includes("sorcery")
+      ) {
+        const restriction = parseEnchantRestriction(card.cardData.oracle_text);
+        if (restriction && !restriction.unsupported) {
+          const auraTarget = getAuraSpellTarget(stackObject.targets);
+          if (
+            auraTarget &&
+            canEnchantTarget(state, card, auraTarget, card.controllerId)
+              .canEnchant
+          ) {
+            auraTargetToAttach = auraTarget;
+          } else if (state.zones.has(`${card.ownerId}-graveyard`)) {
+            destinationZone = `${card.ownerId}-graveyard`;
+          }
+        }
+      }
+      const auraFizzled =
+        isAuraCard(card) && destinationZone.endsWith("-graveyard");
+
       const stackZone = state.zones.get("stack");
       const destZone = state.zones.get(destinationZone);
 
@@ -431,8 +465,21 @@ function resolveSpellCompletion(
           lastModifiedAt: Date.now(),
         };
 
-        if (typeLine.includes("instant") || typeLine.includes("sorcery")) {
-          // Instants and sorceries don't trigger ETB abilities
+        if (auraTargetToAttach) {
+          currentState = attachAura(
+            currentState,
+            stackObject.sourceCardId,
+            auraTargetToAttach,
+          );
+        }
+
+        if (
+          typeLine.includes("instant") ||
+          typeLine.includes("sorcery") ||
+          auraFizzled
+        ) {
+          // Instants and sorceries don't trigger ETB abilities, and neither
+          // does an Aura that never reached the battlefield.
         } else {
           currentState = checkTriggeredAbilities(
             currentState,

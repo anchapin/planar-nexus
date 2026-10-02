@@ -36,6 +36,7 @@ import {
 } from "./legendary-rule";
 import { processCorpseOnDeath } from "./corpse-keyword";
 import { createEngineUncaughtException } from "./errors";
+import { isAuraIllegallyAttached } from "./keyword-actions/enchant";
 
 // Helper functions to check card types
 function isAura(card: CardInstance): boolean {
@@ -296,35 +297,16 @@ export function checkStateBasedActions(
           }
         }
 
-        // SBA 704.5m: An Aura attached to an illegal object is put into its owner's graveyard
-        if (isAura(card) && card.attachedToId) {
-          const attachedTo = updatedState.cards.get(card.attachedToId);
-          // Use cached zone key for O(1) lookup, fallback to search for legacy cards
-          let attachedToOnBf = false;
-          if (attachedTo && attachedTo.currentZoneKey) {
-            const attachedZone = updatedState.zones.get(
-              attachedTo.currentZoneKey,
-            );
-            attachedToOnBf = attachedZone?.type === ZoneType.BATTLEFIELD;
-          } else if (attachedTo) {
-            // Fallback: search all zones for legacy cards
-            for (const [zk, z] of updatedState.zones) {
-              if (
-                z.cardIds.includes(attachedTo.id) &&
-                z.type === ZoneType.BATTLEFIELD
-              ) {
-                attachedToOnBf = true;
-                break;
-              }
-            }
-          }
-          if (!attachedToOnBf) {
-            // Aura's target is gone - put aura in graveyard
+        // SBA 704.5m: An Aura attached to an illegal object or to nothing is
+        // put into its owner's graveyard
+        if (isAura(card)) {
+          const auraCheck = isAuraIllegallyAttached(updatedState, card);
+          if (auraCheck.illegal) {
             if (!cardsToDestroy.includes(card.id)) {
               cardsToDestroy.push(card.id);
             }
             descriptions.push(
-              `${card.cardData.name} is destroyed (enchanting nothing)`,
+              `${card.cardData.name} is destroyed (${auraCheck.reason ?? "enchanting nothing"})`,
             );
             actionsPerformed = true;
           }
