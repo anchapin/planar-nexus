@@ -1,23 +1,23 @@
 # Gameplay Gap Analysis
 
-**Generated:** 2026-10-02T02:54:18.689Z
+**Generated:** 2026-10-02T03:15:07.350Z
 
 ## Summary
 
 - Standard scope: 5164 Standard-legal cards (Scryfall snapshot 2026-10-01)
 - **In scope (on a Standard-legal card): 38**
-  - Enforced: 24
+  - Enforced: 25
   - Partially enforced: 0
-  - Not enforced: 14
-  - **Remainder (not fully enforced): 14**
+  - Not enforced: 13
+  - **Remainder (not fully enforced): 13**
 - Accepted gaps (not on any Standard-legal card): 59
 - On Standard cards but not declared by the parser: 230
 - Unique keywords declared by the parser: 97 (105 entries, 8 declared in both arrays)
   - Evergreen keywords: 64
   - Ability words: 41
-- Keywords fully enforced: 26
+- Keywords fully enforced: 27
 - Keywords partially enforced: 1
-- Keywords not enforced: 70
+- Keywords not enforced: 69
 - Hardcoded card effects: 0
 - Forced auto-pass priority calls: 0
 - Manual tap/untap calls: 0
@@ -29,7 +29,7 @@
 
 Keywords that appear on at least one Standard-legal card. These are the epic #2300 denominator. Sorted by how many Standard cards carry them.
 
-### Enforced (24)
+### Enforced (25)
 
 | Keyword        | Standard cards | Enforced | Used in Gameplay | Tested | Function                                                                               |
 | -------------- | -------------- | -------- | ---------------- | ------ | -------------------------------------------------------------------------------------- |
@@ -51,6 +51,7 @@ Keywords that appear on at least one Standard-legal card. These are the epic #23
 | landfall       | 54             | full     | ✅               | ✅     | fireLandfallTriggers                                                                   |
 | first strike   | 39             | full     | ✅               | ✅     | hasFirstStrike, hasFirstStrikeStrict, dealsFirstStrikeDamage                           |
 | prowess        | 37             | full     | ✅               | ✅     | hasProwess, hasProwessStrict                                                           |
+| fight          | 31             | full     | ✅               | ✅     | canFight, getFightDamage                                                               |
 | double strike  | 29             | full     | ✅               | ✅     | hasDoubleStrike, hasDoubleStrikeStrict                                                 |
 | defender       | 26             | full     | ✅               | ✅     | hasDefender, hasDefenderStrict                                                         |
 | indestructible | 20             | full     | ✅               | ✅     | hasIndestructible, hasIndestructibleStrict, hasIndestructibleKeyword, isIndestructible |
@@ -58,11 +59,10 @@ Keywords that appear on at least one Standard-legal card. These are the epic #23
 | hexproof from  | 4              | full     | ✅               | ✅     | hasHexproof, hasHexproofStrict, isProtectedByHexproof, isProtectedByHexproofStrict     |
 | protection     | 3              | full     | ✅               | ✅     | hasProtectionFrom                                                                      |
 
-### Not Enforced (14)
+### Not Enforced (13)
 
 | Keyword    | Standard cards | Enforced | Used in Gameplay | Tested | Function |
 | ---------- | -------------- | -------- | ---------------- | ------ | -------- |
-| fight      | 31             | none     | ❌               | ✅     | —        |
 | threshold  | 18             | none     | ❌               | ✅     | —        |
 | raid       | 13             | none     | ❌               | ✅     | —        |
 | converge   | 9              | none     | ❌               | ✅     | —        |
@@ -217,27 +217,26 @@ _No TODO/FIXME/HACK/XXX comments found in game-state code._
 
 In-scope keywords not fully enforced, ranked by how many Standard-legal cards carry them:
 
-1. **fight** (31 Standard cards) — No enforcement function found
-2. **threshold** (18 Standard cards) — No enforcement function found
-3. **raid** (13 Standard cards) — No enforcement function found
-4. **converge** (9 Standard cards) — No enforcement function found
-5. **ferocious** (7 Standard cards) — No enforcement function found
-6. **morbid** (5 Standard cards) — No enforcement function found
-7. **improvise** (2 Standard cards) — No enforcement function found
-8. **battle cry** (1 Standard cards) — No enforcement function found
-9. **channel** (1 Standard cards) — No enforcement function found
-10. **domain** (1 Standard cards) — No enforcement function found
-11. **grandeur** (1 Standard cards) — No enforcement function found
-12. **ninjutsu** (1 Standard cards) — No enforcement function found
-13. **storm** (1 Standard cards) — No enforcement function found
-14. **wither** (1 Standard cards) — No enforcement function found
+1. **threshold** (18 Standard cards) — No enforcement function found
+2. **raid** (13 Standard cards) — No enforcement function found
+3. **converge** (9 Standard cards) — No enforcement function found
+4. **ferocious** (7 Standard cards) — No enforcement function found
+5. **morbid** (5 Standard cards) — No enforcement function found
+6. **improvise** (2 Standard cards) — No enforcement function found
+7. **battle cry** (1 Standard cards) — No enforcement function found
+8. **channel** (1 Standard cards) — No enforcement function found
+9. **domain** (1 Standard cards) — No enforcement function found
+10. **grandeur** (1 Standard cards) — No enforcement function found
+11. **ninjutsu** (1 Standard cards) — No enforcement function found
+12. **storm** (1 Standard cards) — No enforcement function found
+13. **wither** (1 Standard cards) — No enforcement function found
 
 ## Recommendations
 
 ### Immediate (This Session)
 
 1. Fix auto-pass priority (#618) — 0 locations bypass stack interaction
-2. Add mechanic stubs (#628) — 14 in-scope Standard mechanics detected but not enforced
+2. Add mechanic stubs (#628) — 13 in-scope Standard mechanics detected but not enforced
 3. Fix mana pool emptying (#619) — missing automatic phase transition cleanup
 
 ### Short Term (Next 2–3 Sessions)

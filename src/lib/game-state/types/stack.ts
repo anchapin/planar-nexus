@@ -271,7 +271,8 @@ export type StackEffectType =
   | "surveil"
   | "attach"
   | "transform"
-  | "crew";
+  | "crew"
+  | "fight";
 
 /**
  * Structured effect data for resolution
@@ -279,6 +280,11 @@ export type StackEffectType =
  */
 export type StackEffect =
   | { effectType: "crew"; vehicleId: CardInstanceId }
+  | {
+      effectType: "fight";
+      fighterId?: CardInstanceId;
+      opponentId?: CardInstanceId;
+    }
   | {
       effectType: "damage";
       amount: number;
