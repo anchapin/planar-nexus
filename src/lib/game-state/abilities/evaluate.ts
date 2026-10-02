@@ -6,6 +6,10 @@ import {
   controlsCreatureWithPowerAtLeast,
   ferociousThreshold,
 } from "../keyword-actions/ferocious";
+import {
+  MORBID_CONDITION,
+  hasCreatureDiedThisTurn,
+} from "../keyword-actions/morbid";
 
 export function evaluateInterveningIfClause(
   condition: string,
@@ -21,6 +25,11 @@ export function evaluateInterveningIfClause(
   // Raid: "if you attacked this turn".
   if (RAID_CONDITION.test(c)) {
     return hasAttackedThisTurn(state, controllerId);
+  }
+
+  // Morbid: "if a creature died this turn" (any controller's creature).
+  if (MORBID_CONDITION.test(c)) {
+    return hasCreatureDiedThisTurn(state);
   }
 
   // Ferocious: "if you control a creature with power 4 or greater". Checked

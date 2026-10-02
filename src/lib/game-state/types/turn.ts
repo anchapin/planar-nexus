@@ -4,7 +4,7 @@
  * Mechanically extracted from types.ts (issue #1725);
  * behavior pinned by the existing engine suites.
  */
-import { PlayerId } from './players';
+import { PlayerId } from "./players";
 
 /**
  * A turn phase or step
@@ -57,5 +57,11 @@ export interface Turn {
   isFirstTurn: boolean;
   /** Timestamp when turn started */
   startedAt: number;
+  /**
+   * Morbid (ability word, issue #2300): whether any creature died this turn
+   * (CR 700.4: put into a graveyard from the battlefield). `startNextTurn`
+   * builds a fresh Turn, so it resets each turn. Optional so legacy Turn
+   * literals read as "nothing died" (read with `=== true`).
+   */
+  creatureDiedThisTurn?: boolean;
 }
-
