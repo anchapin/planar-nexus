@@ -1308,6 +1308,25 @@ export function hasInfect(card: CardInstance): boolean {
   );
 }
 
+// ============== WITHER (CR 702.80) ==============
+/**
+ * Check if a card has wither (CR 702.80): damage it deals to creatures is
+ * dealt as -1/-1 counters instead of being marked (issue #2300).
+ *
+ * Same shape as `hasInfect`: the parsed `keywords` array answers first, and
+ * the oracle-text fallback rejects grant phrases, so Spinerock Tyrant's
+ * "those spells gain wither" never gives the *spells' text* wither by itself.
+ */
+export function hasWither(card: CardInstance): boolean {
+  if ((card.cardData.keywords ?? []).some((k) => /^wither$/i.test(k.trim()))) {
+    return true;
+  }
+  return oracleTextDeclaresOwnKeyword(
+    "wither",
+    card.cardData.oracle_text ?? "",
+  );
+}
+
 // ============== TOXIC (CR 702.95) ==============
 /**
  * Get the toxic level of a creature

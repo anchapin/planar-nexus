@@ -17,6 +17,7 @@ import {
   shouldPreventDamageToTarget,
   hasDeathtouch,
   hasInfect,
+  hasWither,
 } from "../evergreen-keywords";
 import { KeywordActionResult } from "./shared";
 
@@ -125,10 +126,18 @@ export function dealDamageToCard(
   // (not cards) are resolved. Damage to a planeswalker is normal damage, and
   // damage to a non-creature permanent is normal damage — neither is covered by
   // 702.90b/c.
+  //
+  // CR 702.80c: wither does the same to creatures (and only creatures; wither
+  // damage to a player or planeswalker is ordinary damage), so it shares this
+  // conversion (issue #2300).
   const sourceCard = sourceId ? state.cards.get(sourceId) : undefined;
   const sourceHasInfect = sourceCard ? hasInfect(sourceCard) : false;
+  const sourceHasWither = sourceCard ? hasWither(sourceCard) : false;
   const infectConvertsToCounters =
-    sourceHasInfect && actualDamage > 0 && isCreature(card);
+    (sourceHasInfect || sourceHasWither) &&
+    actualDamage > 0 &&
+    isCreature(card);
+  const counterDamageLabel = sourceHasInfect ? "infect" : "wither";
 
   // Apply damage, or place -1/-1 counters for an infect source
   let updatedCard = infectConvertsToCounters
@@ -193,7 +202,7 @@ export function dealDamageToCard(
     // CR 702.90c: an infect source dealt no damage at all here — it placed
     // counters — so describe it as such rather than as damage dealt.
     description: infectConvertsToCounters
-      ? `${card.cardData.name} dealt ${actualDamage} infect damage (${actualDamage} -1/-1 counters)`
+      ? `${card.cardData.name} dealt ${actualDamage} ${counterDamageLabel} damage (${actualDamage} -1/-1 counters)`
       : `${card.cardData.name} dealt ${actualDamage} ${damageType}`,
     affectedCards: [cardId],
   };
