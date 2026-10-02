@@ -69,6 +69,8 @@ import {
   playLand,
   castSpell,
   activateManaAbility,
+  activateAbility,
+  getActivatableAbilities,
   formatManaPool,
   type ManaAbilityOption,
   isLand,
@@ -280,6 +282,12 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
   } | null>(null);
 
   // Basic land type choice state (for cards like Multiversal Passage)
+  // Choosing which activated ability to activate (CR 602)
+  const [abilityChoice, setAbilityChoice] = useState<{
+    cardId: string;
+    cardName: string;
+    options: { abilityIndex: number; label: string }[];
+  } | null>(null);
   const [basicLandTypeChoice, setBasicLandTypeChoice] = useState<{
     cardId: string;
     cardName: string;
@@ -939,6 +947,40 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
   }, [gameState, playerName, pendingAction?.stackObjectId, toast]);
 
   // Handle card click - Main interaction handler for all card clicks
+  // Activate a non-mana activated ability from the board (CR 602). With no
+  // targets passed, a targeted ability waits on the stack and the target
+  // prompt below picks them up.
+  const activateFromBoard = useCallback(
+    (cardId: string, abilityIndex: number) => {
+      if (!gameState) return;
+      const player = Array.from(gameState.players.values()).find(
+        (p) => p.name === playerName,
+      );
+      if (!player) return;
+      const card = gameState.cards.get(cardId as CardInstance["id"]);
+      const result = activateAbility(
+        gameState,
+        player.id,
+        cardId as CardInstance["id"],
+        abilityIndex,
+      );
+      if (result.success) {
+        setGameState(checkStateBasedActions(result.state).state);
+        toast({
+          title: "Ability activated",
+          description: `${card?.cardData.name ?? "Ability"} is on the stack.`,
+        });
+      } else {
+        toast({
+          title: "Can't activate that",
+          description: result.error,
+          variant: "destructive",
+        });
+      }
+    },
+    [gameState, playerName, toast],
+  );
+
   const handleCardClick = useCallback(
     (cardId: string, zone: string) => {
       if (!gameState) return;
@@ -1458,6 +1500,30 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
             }
           }
 
+          // Non-mana activated abilities (CR 602)
+          if (!isLand(card)) {
+            const options = getActivatableAbilities(
+              gameState,
+              player.id,
+              cardId as CardInstance["id"],
+            );
+            if (options.length === 1) {
+              activateFromBoard(cardId, options[0].abilityIndex);
+              return;
+            }
+            if (options.length > 1) {
+              setAbilityChoice({
+                cardId,
+                cardName: card.cardData.name,
+                options: options.map((o) => ({
+                  abilityIndex: o.abilityIndex,
+                  label: o.label,
+                })),
+              });
+              return;
+            }
+          }
+
           // Default: Toggle tap/untap
           const result = card.isTapped
             ? untapCard(gameState, cardId)
@@ -1473,7 +1539,14 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
         }
       }
     },
-    [gameState, playerName, pendingAction, declaredAttackers, toast],
+    [
+      gameState,
+      playerName,
+      pendingAction,
+      declaredAttackers,
+      toast,
+      activateFromBoard,
+    ],
   );
 
   // Handle zone click - For targeting zones or zone-specific actions
@@ -3029,6 +3102,39 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
               </Button>
             </div>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Activated ability choice (CR 602) */}
+      <Dialog
+        open={!!abilityChoice}
+        onOpenChange={(open) => {
+          if (!open) setAbilityChoice(null);
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Activate an ability</DialogTitle>
+            <DialogDescription>
+              Choose an ability of {abilityChoice?.cardName}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            {abilityChoice?.options.map((o) => (
+              <Button
+                key={o.abilityIndex}
+                variant="outline"
+                className="h-auto whitespace-normal text-left"
+                onClick={() => {
+                  const choice = abilityChoice;
+                  setAbilityChoice(null);
+                  if (choice) activateFromBoard(choice.cardId, o.abilityIndex);
+                }}
+              >
+                {o.label}
+              </Button>
+            ))}
+          </div>
         </DialogContent>
       </Dialog>
 
