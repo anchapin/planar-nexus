@@ -2,6 +2,7 @@ import { returnToFrontFace } from "./transform";
 import { fireLandfallTriggers } from "./landfall";
 import { fireEntersTriggers } from "./enters";
 import { applyEntersWithCounters } from "./enters-with-counters";
+import { isCreatureOnCurrentFace, markCreatureDiedThisTurn } from "./morbid";
 /**
  * Zone-removal keyword actions (CR 701): destroy, exile, sacrifice, regenerate, and generic zone moves.
  *
@@ -518,14 +519,25 @@ function moveCardToZoneWithoutTriggers(
     battlefield: "battlefield",
   };
 
+  let movedState: GameState = {
+    ...state,
+    zones: updatedZones,
+    cards: updatedCards,
+    lastModifiedAt: Date.now(),
+  };
+  // CR 700.4: "dies" means put into a graveyard from the battlefield. Morbid
+  // (issue #2300) asks whether that happened to any creature this turn.
+  if (
+    targetZoneType === "graveyard" &&
+    currentZoneKey.endsWith("-battlefield") &&
+    isCreatureOnCurrentFace(card)
+  ) {
+    movedState = markCreatureDiedThisTurn(movedState);
+  }
+
   return {
     success: true,
-    state: {
-      ...state,
-      zones: updatedZones,
-      cards: updatedCards,
-      lastModifiedAt: Date.now(),
-    },
+    state: movedState,
     description: `Moved ${card.cardData.name} to ${zoneNames[targetZoneType]}`,
     affectedCards: [cardId],
   };
