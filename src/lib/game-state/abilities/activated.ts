@@ -1,3 +1,4 @@
+import { isSelfTransformText } from "../keyword-actions/transform";
 import type {
   GameState,
   PlayerId,
@@ -216,6 +217,11 @@ export function activateAbility(
       controllerId: playerId,
       name: `${card.cardData.name} ability`,
       text: ability.effect,
+      // CR 701.28 - "Transform <this>" resolves as a structured effect so
+      // it doesn't depend on oracle-text parsing of the whole card.
+      ...(isSelfTransformText(ability.effect ?? "", card.cardData.name)
+        ? { effects: [{ effectType: "transform" as const, targetId: cardId }] }
+        : {}),
       manaCost: card.cardData.mana_cost ?? null,
       targets: targets.map((t) => ({
         type: t.type as "card" | "player" | "zone",
