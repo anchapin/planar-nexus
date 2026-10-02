@@ -155,6 +155,18 @@ export interface CardInstance {
    */
   prowessBoost?: number;
 
+  /**
+   * Active threshold static bonus (power/toughness, granted keywords,
+   * unblockable) while its controller has seven or more cards in their
+   * graveyard. Maintained by `refreshThresholdBonuses`.
+   */
+  thresholdBonus?: {
+    power: number;
+    toughness: number;
+    keywords: string[];
+    unblockable: boolean;
+  };
+
   // Renown keyword (CR 702.100)
   /**
    * Whether this permanent has become renowned (CR 702.100b).

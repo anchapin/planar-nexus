@@ -45,6 +45,29 @@ export function evaluateInterveningIfClause(
     return player ? player.poisonCounters <= parseInt(m[1], 10) : false;
   }
 
+  // Threshold (issue #2300): "there are seven or more cards in your graveyard".
+  m = c.match(
+    /there are (\d+|one|two|three|four|five|six|seven|eight|nine|ten) or more cards in your graveyard/,
+  );
+  if (m) {
+    const words = [
+      "zero",
+      "one",
+      "two",
+      "three",
+      "four",
+      "five",
+      "six",
+      "seven",
+      "eight",
+      "nine",
+      "ten",
+    ];
+    const n = /^\d+$/.test(m[1]) ? parseInt(m[1], 10) : words.indexOf(m[1]);
+    const zone = state.zones.get(`${controllerId}-graveyard`);
+    return (zone?.cardIds.length ?? 0) >= n;
+  }
+
   m = c.match(/you have (\d+) or more cards in (?:your )?hand/);
   if (m) {
     const zone = state.zones.get(`${controllerId}-hand`);

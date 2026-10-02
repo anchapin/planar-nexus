@@ -42,4 +42,5 @@ export * from "./keyword-actions/enchant";
 export * from "./keyword-actions/transform";
 export * from "./keyword-actions/crew";
 export * from "./keyword-actions/landfall";
+export * from "./keyword-actions/threshold";
 export * from "./keyword-actions/fight";

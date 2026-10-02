@@ -34,6 +34,7 @@ import { hasDefenderStrict } from "../keyword-actions/defender";
 import { hasFlyingStrict } from "../keyword-actions/flying";
 import { hasReachStrict } from "../keyword-actions/reach";
 import { hasVigilanceStrict } from "../keyword-actions/vigilance";
+import { isThresholdUnblockable } from "../keyword-actions/threshold";
 
 /**
  * Result of a combat action
@@ -149,6 +150,10 @@ export function canBlock(
   if (attackerId) {
     const attacker = state.cards.get(attackerId);
     if (attacker && isCreature(attacker)) {
+      // Threshold "can't be blocked" (issue #2300).
+      if (isThresholdUnblockable(attacker)) {
+        return { canBlock: false, reason: "Attacker can't be blocked" };
+      }
       // CR 702.9 / 702.12 — flying evasion, with reach as the exception.
       // Issue #2324: replaces the prior substring oracle-text fallback with
       // strict parsed-keyword detection (hasFlyingStrict / hasReachStrict)
