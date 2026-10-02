@@ -4,6 +4,7 @@ import { isOnBattlefield } from "../types";
 import { getTriggeredAbilities } from "./parse";
 import { generateTriggeredAbilityId } from "./ids";
 import { evaluateInterveningIfClause } from "./evaluate";
+import { evaluateTriggerWhileCondition } from "../keyword-actions/ferocious";
 import type {
   TriggerEvent,
   TriggerContext,
@@ -124,6 +125,17 @@ export function detectTriggeredAbilities(
         case "lifeLost":
           shouldTrigger = ability.trigger.event === "lifeLost";
           break;
+      }
+
+      // CR 603.2: a "while" clause is part of the trigger event; an
+      // unrecognised one leaves the trigger ungated, as before.
+      if (shouldTrigger && ability.whileCondition) {
+        shouldTrigger =
+          evaluateTriggerWhileCondition(
+            ability.whileCondition,
+            state,
+            card.controllerId,
+          ) ?? true;
       }
 
       if (shouldTrigger && ability.interveningIf) {
