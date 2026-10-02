@@ -52,8 +52,10 @@ async function createTwoPeers(browser: Browser): Promise<{
   host: Page;
   joiner: Page;
 }> {
-  const hostContext = await browser.newContext();
-  const joinerContext = await browser.newContext();
+  // Block the app's service worker so it can't reload a page mid-test
+  // (see `use.serviceWorkers` in playwright.config.ts).
+  const hostContext = await browser.newContext({ serviceWorkers: "block" });
+  const joinerContext = await browser.newContext({ serviceWorkers: "block" });
   const host = await hostContext.newPage();
   const joiner = await joinerContext.newPage();
 

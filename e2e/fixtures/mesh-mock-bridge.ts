@@ -583,7 +583,9 @@ export async function getKnownPeers(page: Page): Promise<string[]> {
 export async function newPeerContext(
   browser: Browser,
 ): Promise<{ context: BrowserContext; page: Page }> {
-  const context = await browser.newContext();
+  // Explicit for clarity: the config's `use.serviceWorkers: "block"` is the
+  // default, and these multi-peer pages are the ones a SW reload breaks.
+  const context = await browser.newContext({ serviceWorkers: "block" });
   const page = await context.newPage();
   return { context, page };
 }
