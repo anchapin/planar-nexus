@@ -366,7 +366,10 @@ function parseEffect(
     return { effectType: tapEffectType as "tap" | "untap", targets, value };
   }
 
-  if (effect.includes("+1/+1") || effect.includes("-1/-1")) {
+  if (
+    (effect.includes("+1/+1") || effect.includes("-1/-1")) &&
+    effect.includes("counter")
+  ) {
     return { effectType: "addCounter" as const, targets, value };
   }
 

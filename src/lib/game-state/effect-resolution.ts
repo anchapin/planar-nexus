@@ -35,6 +35,11 @@ import {
 import { dealDamageToCard } from "./keyword-actions";
 import { hasLifelink } from "./evergreen-keywords";
 import { getModesForModalSpell } from "./oracle-text-parser";
+import {
+  parseTargetedPTUntilEndOfTurn,
+  addUntilEndOfTurnPT,
+} from "./pt-until-end-of-turn";
+import { evaluateInterveningIfClause } from "./abilities/evaluate";
 
 /**
  * Apply lifelink life gain for damage dealt by a source with lifelink.
@@ -659,28 +664,34 @@ export function parseTriggeredAbilityEffects(
 ): StackEffect[] {
   const lower = text.toLowerCase();
   const untargeted = !/\btarget\b/.test(lower);
-  return parseSpellEffects(text).map((effect) => {
-    if (
-      untargeted &&
-      (effect.effectType === "card_draw" ||
-        effect.effectType === "life_gain") &&
-      !effect.targetId
-    ) {
-      return { ...effect, targetId: controllerId };
-    }
-    if (
-      untargeted &&
-      effect.effectType === "life_loss" &&
-      !effect.targetId &&
-      /\byou lose\b/.test(lower)
-    ) {
-      return { ...effect, targetId: controllerId };
-    }
-    if (effect.effectType === "token_creation" && !effect.controllerId) {
-      return { ...effect, controllerId };
-    }
-    return effect;
-  });
+  const pt = parseTargetedPTUntilEndOfTurn(text);
+  const ptEffects: StackEffect[] = pt
+    ? [{ effectType: "pt_until_eot", ...pt }]
+    : [];
+  return parseSpellEffects(text)
+    .map((effect) => {
+      if (
+        untargeted &&
+        (effect.effectType === "card_draw" ||
+          effect.effectType === "life_gain") &&
+        !effect.targetId
+      ) {
+        return { ...effect, targetId: controllerId };
+      }
+      if (
+        untargeted &&
+        effect.effectType === "life_loss" &&
+        !effect.targetId &&
+        /\byou lose\b/.test(lower)
+      ) {
+        return { ...effect, targetId: controllerId };
+      }
+      if (effect.effectType === "token_creation" && !effect.controllerId) {
+        return { ...effect, controllerId };
+      }
+      return effect;
+    })
+    .concat(ptEffects);
 }
 
 /**
@@ -928,6 +939,32 @@ export function resolveEffect(
         description: "Exile effect",
       };
 
+    case "pt_until_eot": {
+      // CR 611.2a. With no chosen target, a targeted effect does nothing.
+      if (!effect.targetId || !state.cards.has(effect.targetId)) {
+        return { success: false, state, description: "", error: "No target" };
+      }
+      // "If <condition>, ... instead" is checked on resolution (CR 608.2c).
+      const controllerId = sourceId
+        ? state.cards.get(sourceId)?.controllerId
+        : undefined;
+      const useInstead =
+        effect.instead !== undefined &&
+        controllerId !== undefined &&
+        evaluateInterveningIfClause(
+          effect.instead.condition,
+          state,
+          controllerId,
+        );
+      const { power, toughness } = useInstead ? effect.instead! : effect;
+      return {
+        success: true,
+        state: addUntilEndOfTurnPT(state, effect.targetId, power, toughness),
+        description: `Target gets ${power >= 0 ? "+" : ""}${power}/${toughness >= 0 ? "+" : ""}${toughness} until end of turn`,
+        affectedCards: [effect.targetId],
+      };
+    }
+
     default:
       return {
         success: false,
@@ -1009,6 +1046,11 @@ export function resolveStackObjectEffects(
         scaledEffect.targetId = target.targetId as CardInstanceId | PlayerId;
       } else if (scaledEffect.effectType === "counter_spell") {
         scaledEffect.targetStackObjectId = target.targetId;
+      } else if (
+        scaledEffect.effectType === "pt_until_eot" &&
+        target.type !== "player"
+      ) {
+        scaledEffect.targetId = target.targetId as CardInstanceId;
       }
     }
 
