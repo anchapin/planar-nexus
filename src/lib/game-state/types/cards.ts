@@ -29,6 +29,11 @@ export interface CardInstance {
    * (CR 712). Restored when it transforms back or leaves the battlefield.
    */
   transformOriginalCardData?: ScryfallCard;
+  /**
+   * Set when a Vehicle's crew ability resolves (CR 702.122): it is an
+   * artifact creature until end of turn. Cleared when the next turn begins.
+   */
+  crewedUntilEndOfTurn?: boolean;
   /** Whether this card is face down (for morph, manifest, etc.) */
   isFaceDown: boolean;
   /** Current controller of this card */

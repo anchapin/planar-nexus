@@ -40,3 +40,4 @@ export * from "./keyword-actions/surveil";
 export * from "./keyword-actions/equip";
 export * from "./keyword-actions/enchant";
 export * from "./keyword-actions/transform";
+export * from "./keyword-actions/crew";

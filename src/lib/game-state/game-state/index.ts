@@ -41,6 +41,7 @@ import {
   type StateBasedActionResult,
 } from "../state-based-actions";
 import { hasLifelink, clearProwessBoosts } from "../evergreen-keywords";
+import { clearCrewedVehicles } from "../keyword-actions/crew";
 import { detectUntapStepTriggers, putTriggersOnStack } from "../trigger-system";
 import type { TriggeredAbilityInstance } from "../abilities";
 
@@ -618,6 +619,12 @@ function advanceToNextPhase(state: GameState): GameState {
       cards: updatedCards,
     });
     updatedCards = prowessCleared.cards;
+
+    // CR 702.122 - Crew: a crewed Vehicle is a creature "until end of turn".
+    updatedCards = clearCrewedVehicles({
+      ...resultState,
+      cards: updatedCards,
+    }).cards;
 
     return {
       ...resultState,

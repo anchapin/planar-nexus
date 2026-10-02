@@ -253,6 +253,7 @@ const ENFORCEMENT_ALIASES: Record<string, string[]> = {
   equip: ["resolveEquip"],
   enchant: ["canEnchantTarget", "isAuraIllegallyAttached"],
   transform: ["transformPermanent"],
+  crew: ["activateCrew", "resolveCrew"],
 };
 
 // Map keyword → likely enforcement function names. Camel-case on word
