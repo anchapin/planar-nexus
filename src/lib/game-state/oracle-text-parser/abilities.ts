@@ -131,6 +131,13 @@ export interface ParsedTriggeredAbility {
   targets: ParsedTarget[];
   value?: number;
   interveningIf?: string;
+  /**
+   * A "while <condition>" clause on the trigger event itself ("Whenever this
+   * creature attacks while you control a creature with power 4 or greater").
+   * Part of the trigger condition (CR 603.2): checked when the event happens,
+   * not again on resolution, unlike an intervening "if" (CR 603.4).
+   */
+  whileCondition?: string;
 }
 
 /**
@@ -437,7 +444,11 @@ export function parseTriggeredAbilities(
     const atMatch = sentence.match(/\bat\s+(?:the\s+)?(.+?),?\s*,\s*(.+)/i);
 
     if (whenMatch) {
-      const [, , triggerText, rawEffect] = whenMatch;
+      const [, , rawTriggerText, rawEffect] = whenMatch;
+      // Peel "while <condition>" off the trigger text (ferocious, issue #2300).
+      const whileMatch = rawTriggerText.match(/^(.+?)\s+while\s+(.+)$/i);
+      const triggerText = whileMatch ? whileMatch[1] : rawTriggerText;
+      const whileCondition = whileMatch ? whileMatch[2].trim() : undefined;
       const trigger = parseTriggerText(triggerText);
 
       if (trigger) {
@@ -454,6 +465,7 @@ export function parseTriggeredAbilities(
           targets: effect?.targets || [],
           value: effect?.value,
           interveningIf,
+          ...(whileCondition ? { whileCondition } : {}),
         });
       }
     } else if (atMatch) {

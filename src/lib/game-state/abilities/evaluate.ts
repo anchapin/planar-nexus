@@ -2,6 +2,10 @@ import type { GameState, PlayerId, CardInstance } from "../types";
 import type { TriggerContext } from "./types";
 import { isOnBattlefield } from "../types";
 import { RAID_CONDITION, hasAttackedThisTurn } from "../keyword-actions/raid";
+import {
+  controlsCreatureWithPowerAtLeast,
+  ferociousThreshold,
+} from "../keyword-actions/ferocious";
 
 export function evaluateInterveningIfClause(
   condition: string,
@@ -17,6 +21,14 @@ export function evaluateInterveningIfClause(
   // Raid: "if you attacked this turn".
   if (RAID_CONDITION.test(c)) {
     return hasAttackedThisTurn(state, controllerId);
+  }
+
+  // Ferocious: "if you control a creature with power 4 or greater". Checked
+  // before the generic "you control a <type>" match below, which would
+  // otherwise read it as "you control a creature" and ignore the power.
+  const ferocious = ferociousThreshold(c);
+  if (ferocious !== null) {
+    return controlsCreatureWithPowerAtLeast(state, controllerId, ferocious);
   }
 
   let m = c.match(/you have (\d+) or less life/);
