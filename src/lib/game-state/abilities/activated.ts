@@ -11,6 +11,8 @@ import { isManaAbility, spendMana, addMana } from "../mana";
 import { parseManaFromEffect } from "./mana";
 import { destroyCard, discardCards } from "../keyword-actions";
 import { getActivatedAbilities } from "./parse";
+import { isCreature } from "../card-instance";
+import { hasKeyword } from "../evergreen-keywords";
 import { generateAbilityId } from "./ids";
 import {
   parseTriggerTargetSpec,
@@ -55,11 +57,62 @@ export function canActivateAbility(
     }
   }
 
-  if (ability && !ability.costs.tap && card.hasSummoningSickness) {
-    // Some abilities can be activated despite summoning sickness
+  // CR 302.6: a creature's {T} ability can't be activated unless it's been
+  // under its controller's control since their most recent turn began
+  // (haste waives this, CR 702.10).
+  if (
+    ability &&
+    ability.costs.tap &&
+    card.hasSummoningSickness &&
+    isCreature(card) &&
+    !hasKeyword(card, "haste")
+  ) {
+    return {
+      canActivate: false,
+      reason: "This creature has summoning sickness",
+    };
   }
 
   return { canActivate: true };
+}
+
+/** A non-mana activated ability the player can activate right now. */
+export interface ActivatableAbility {
+  abilityIndex: number;
+  /** The ability's line of oracle text ("cost: effect") when found. */
+  label: string;
+  effect: string;
+}
+
+/**
+ * Non-mana activated abilities of a permanent that `playerId` can activate
+ * now (priority, timing, summoning sickness). Mana abilities are excluded;
+ * they go through the mana flow.
+ */
+export function getActivatableAbilities(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardInstanceId,
+): ActivatableAbility[] {
+  const card = state.cards.get(cardId);
+  if (!card) return [];
+  const lines = (card.cardData.oracle_text ?? "")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.includes(":"));
+  const out: ActivatableAbility[] = [];
+  getActivatedAbilities(card.cardData).forEach((ability, abilityIndex) => {
+    const effect = ability.effect ?? "";
+    if (isManaAbility(cardId, effect)) return;
+    if (!canActivateAbility(state, playerId, cardId, abilityIndex).canActivate) {
+      return;
+    }
+    const key = effect.toLowerCase().slice(0, 24);
+    const label =
+      (key && lines.find((l) => l.toLowerCase().includes(key))) || effect;
+    out.push({ abilityIndex, label, effect });
+  });
+  return out;
 }
 
 export function activateAbility(
