@@ -147,7 +147,8 @@ export function handlePersist(
     attachedToId: null,
     attachedCardIds: [],
     enteredBattlefieldTimestamp: Date.now(),
-    currentZoneKey: battlefieldKey,
+    // Clear the zone cache; readers scan zones when it is null.
+    currentZoneKey: null,
   };
 
   // Update state

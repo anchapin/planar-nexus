@@ -151,6 +151,15 @@ describe("ETB triggers outside spell resolution", () => {
     expect(fired[0].text).toBe("draw a card");
   });
 
+  it("clears a stale zone cache instead of pinning a new key", () => {
+    // Casting doesn't refresh currentZoneKey, so a key pinned on the way to
+    // hand would still say "hand" once the card is on the stack.
+    const c = put(state, SELF_ETB, p1, "graveyard");
+    const result = moveCardToZone(c.state, c.cardId, "hand");
+    expect(result.success).toBe(true);
+    expect(result.state.cards.get(c.cardId)!.currentZoneKey).toBeNull();
+  });
+
   it("fires the ETB of a creature returned by persist", () => {
     const data = card(
       "Kitchen Finks",

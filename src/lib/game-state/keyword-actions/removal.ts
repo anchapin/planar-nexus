@@ -459,10 +459,12 @@ function moveCardToZoneWithoutTriggers(
 
   // Handle special cases. CR 712.8a: a transformed card that leaves the
   // battlefield is its front face in every other zone.
-  // Refresh the zone cache so isOnBattlefield and friends see the move.
+  // Clear the zone cache rather than pin it: casting and resolution don't
+  // maintain currentZoneKey, so a key set here would go stale on the next
+  // cast. Readers fall back to scanning zones when it is null.
   let updatedCard: CardInstance = {
     ...(targetZoneType === "battlefield" ? card : returnToFrontFace(card)),
-    currentZoneKey: targetZoneKey,
+    currentZoneKey: null,
   };
 
   if (targetZoneType === "graveyard" || targetZoneType === "library") {

@@ -116,7 +116,8 @@ export function playLand(
     updatedCards.set(cardId, {
       ...movedCard,
       isTapped: entersTapped,
-      currentZoneKey: `${playerId}-battlefield`,
+      // Clear the zone cache; readers scan zones when it is null.
+      currentZoneKey: null,
     });
   }
 
