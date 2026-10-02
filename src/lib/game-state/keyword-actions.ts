@@ -44,4 +44,5 @@ export * from "./keyword-actions/crew";
 export * from "./keyword-actions/landfall";
 export * from "./keyword-actions/threshold";
 export * from "./keyword-actions/raid";
+export * from "./keyword-actions/converge";
 export * from "./keyword-actions/fight";

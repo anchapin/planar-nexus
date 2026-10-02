@@ -15,6 +15,7 @@ import { Phase, ZoneType } from "../types";
 import { moveCardBetweenZones } from "../zones";
 import { isPriorityPlayer } from "../priority-guard";
 import { spendMana, getSpellManaCost } from "../mana";
+import { countColorsSpent, isConvergeX } from "../keyword-actions/converge";
 import { ValidationService } from "../validation-service";
 import { hasSplitSecondOnStack } from "../auto-pass-priority";
 import {
@@ -984,6 +985,7 @@ export function castSpell(
     }
 
     // Spend the mana
+    const poolBeforeSpend = { ...pool };
     const spendResult = spendMana(state, playerId, {
       white: totalWhite,
       blue: totalBlue,
@@ -999,6 +1001,12 @@ export function castSpell(
 
     // Use the state with mana already spent
     let currentState = spendResult.state;
+
+    // Converge: colors of mana actually spent, generic included (CR 601.2h).
+    const poolAfterSpend = currentState.players.get(playerId)?.manaPool;
+    const colorsSpent = poolAfterSpend
+      ? countColorsSpent(poolBeforeSpend, poolAfterSpend)
+      : 0;
 
     // CR 702.93 - Convoke: now that mana is spent and the cast is committed,
     // tap each declared creature. Tapping for convoke is not the same as
@@ -1117,7 +1125,10 @@ export function castSpell(
       manaCost: card.cardData.mana_cost ?? null,
       targets,
       chosenModes,
-      variableValues: new Map([["X", xValue]]),
+      variableValues: new Map([
+        ["X", isConvergeX(card.cardData.oracle_text) ? colorsSpent : xValue],
+      ]),
+      colorsSpent,
       isCountered: false,
       timestamp: Date.now(),
       alternativeCostsUsed,
