@@ -43,11 +43,19 @@ import { hasMutateStrict } from "./keyword-actions/mutate";
 import { hasIndestructibleKeyword } from "./keyword-actions/indestructible";
 import { hasInfectStrict } from "./keyword-actions/infect";
 import { oracleTextDeclaresOwnKeyword } from "./keyword-actions/grant-negation";
+import { isThresholdOnlyKeyword } from "./keyword-actions/threshold";
 
 /**
  * Check if a card has a specific keyword
  */
 export function hasKeyword(card: CardInstance, keyword: string): boolean {
+  // A keyword granted only by a threshold clause counts only while
+  // threshold is active (issue #2300).
+  if (isThresholdOnlyKeyword(card, keyword)) {
+    return Boolean(
+      card.thresholdBonus?.keywords.includes(keyword.toLowerCase()),
+    );
+  }
   const keywords = card.cardData.keywords || [];
   const oracleText = card.cardData.oracle_text?.toLowerCase() || "";
 
@@ -839,6 +847,8 @@ export function getEffectivePower(card: CardInstance): number {
   // CR 702.108 - Prowess: a continuous "+1/+1 until end of turn" effect applied
   // in layer 7c (power/toughness). `prowessBoost` holds the active bonus count.
   power += card.prowessBoost || 0;
+  // Threshold static bonus (issue #2300), layer 7c.
+  power += card.thresholdBonus?.power || 0;
   return Math.max(0, power);
 }
 
@@ -863,6 +873,8 @@ export function getEffectiveToughness(card: CardInstance): number {
 
   // CR 702.108 - Prowess: continuous "+1/+1 until end of turn" effect (layer 7c).
   toughness += card.prowessBoost || 0;
+  // Threshold static bonus (issue #2300), layer 7c.
+  toughness += card.thresholdBonus?.toughness || 0;
 
   return Math.max(0, toughness);
 }

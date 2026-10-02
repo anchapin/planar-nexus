@@ -36,6 +36,7 @@ import {
 } from "./legendary-rule";
 import { processCorpseOnDeath } from "./corpse-keyword";
 import { createEngineUncaughtException } from "./errors";
+import { refreshThresholdBonuses } from "./keyword-actions/threshold";
 import { isAuraIllegallyAttached } from "./keyword-actions/enchant";
 
 // Helper functions to check card types
@@ -72,7 +73,11 @@ export function checkStateBasedActions(
 ): StateBasedActionResult {
   const originalState = state;
   try {
-    let updatedState = { ...state, cards: new Map(state.cards) };
+    // Threshold static bonuses depend on graveyard size (issue #2300).
+    let updatedState = refreshThresholdBonuses({
+      ...state,
+      cards: new Map(state.cards),
+    });
     const descriptions: string[] = [];
     let actionsPerformed = false;
 
