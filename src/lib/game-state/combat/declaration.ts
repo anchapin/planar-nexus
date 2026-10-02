@@ -16,6 +16,7 @@ import {
 } from "../card-instance";
 import { dealDamageToCard } from "../keyword-actions";
 import { hasVigilanceStrict } from "../keyword-actions/vigilance";
+import { markAttackedThisTurn } from "../keyword-actions/raid";
 import { checkStateBasedActions } from "../state-based-actions";
 import { dealCommanderDamage, isCommander } from "../commander-damage";
 import {
@@ -167,12 +168,21 @@ export function declareAttackers(
     remainingCombatPhases: updatedState.combat.remainingCombatPhases,
   };
 
+  // Raid: each player who declared an attacker has "attacked this turn".
+  const attackingPlayers = new Set<PlayerId>();
+  for (const attacker of attackers) {
+    const controllerId = updatedCards.get(attacker.cardId)?.controllerId;
+    if (controllerId) attackingPlayers.add(controllerId);
+  }
+  const raidState = markAttackedThisTurn(
+    { ...updatedState, cards: updatedCards, combat: updatedCombat },
+    attackingPlayers,
+  );
+
   return {
     success: true,
     state: {
-      ...updatedState,
-      cards: updatedCards,
-      combat: updatedCombat,
+      ...raidState,
       lastModifiedAt: Date.now(),
     },
     description: `Declared ${attackers.length} attacker${attackers.length !== 1 ? "s" : ""}`,

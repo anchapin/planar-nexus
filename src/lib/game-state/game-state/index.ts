@@ -85,6 +85,7 @@ function createPlayer(
     maxLandsPerTurn: 1,
     foretoldThisTurn: 0,
     spellsCastThisTurn: 0,
+    attackedThisTurn: false,
     lastTurnLifeLost: 0,
     dungeonProgress: null,
     completedDungeonIds: [],
@@ -596,6 +597,8 @@ function advanceToNextPhase(state: GameState): GameState {
         landsPlayedThisTurn: 0,
         foretoldThisTurn: 0,
         spellsCastThisTurn: 0,
+        // Raid: "if you attacked this turn" resets each turn.
+        attackedThisTurn: false,
         // CR 702.135 - Spectacle: "if an opponent has lost life THIS turn."
         // The "this turn" window resets at the start of each player's turn.
         lastTurnLifeLost: 0,
