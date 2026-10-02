@@ -48,7 +48,12 @@ import {
   canPlayLand,
   playLand,
 } from "@/lib/game-state";
-import { canCastSpell, castSpell, resolveTopOfStack } from "@/lib/game-state";
+import {
+  canCastSpell,
+  castSpell,
+  resolveTopOfStack,
+  autoChooseTriggerTargets,
+} from "@/lib/game-state";
 import {
   declareAttackers,
   declareBlockers,
@@ -406,7 +411,10 @@ function mainPhaseCast(
     if (!result.success) break;
     s = result.state;
     // Resolve immediately (no opponent responses in the harness).
-    while (s.stack.length > 0) s = resolveTopOfStack(s);
+    while (s.stack.length > 0) {
+      s = autoChooseTriggerTargets(s);
+      s = resolveTopOfStack(s);
+    }
   }
   return s;
 }

@@ -101,6 +101,18 @@ export * from "./mana";
 export * from "./spell-casting";
 export * from "./effect-resolution";
 export * from "./abilities";
+export {
+  parseTriggerTargetSpec,
+  getLegalTriggerTargets,
+  triggerNeedsTargets,
+  chooseTriggerTargets,
+  autoChooseTriggerTargets,
+} from "./trigger-system/trigger-targets";
+export type {
+  TriggerTargetKind,
+  TriggerTargetSpec,
+  ChooseTriggerTargetsResult,
+} from "./trigger-system/trigger-targets";
 export { getEffectivePower, getEffectiveToughness } from "./layer-system";
 // #1723: the example/demo modules (replacement-examples, translation-
 // integration-example) moved to src/examples/ — documentation-style code,
