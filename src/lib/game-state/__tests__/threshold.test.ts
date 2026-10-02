@@ -13,6 +13,7 @@ import {
   hasFlying,
 } from "../evergreen-keywords";
 import { evaluateInterveningIfClause } from "../abilities/evaluate";
+import { canActivateAbility } from "../abilities/activated";
 import { canBlock } from "../combat/queries";
 import { createInitialGameState, startGame } from "../game-state";
 import { createCardInstance } from "../card-instance";
@@ -230,5 +231,137 @@ describe("threshold", () => {
     expect(evaluateInterveningIfClause(cond, state, p1)).toBe(false);
     state = fillGraveyard(state, p1, 7);
     expect(evaluateInterveningIfClause(cond, state, p1)).toBe(true);
+  });
+});
+
+/** Adventure/prepare layout: creature text only on card_faces[0]. */
+function faced(
+  name: string,
+  power: number,
+  toughness: number,
+  creatureText: string,
+  layout: "adventure" | "prepare",
+) {
+  return {
+    ...(creature(name, power, toughness) as unknown as Record<string, unknown>),
+    oracle_text: undefined,
+    layout,
+    keywords: ["Threshold"],
+    card_faces: [
+      {
+        name,
+        type_line: "Creature — Bird",
+        oracle_text: creatureText,
+        mana_cost: "",
+        power: String(power),
+        toughness: String(toughness),
+      },
+      {
+        name: "Omit Variables",
+        type_line: "Sorcery",
+        oracle_text: "Mill three cards.",
+        mana_cost: "",
+      },
+    ],
+  } as unknown as ScryfallCard;
+}
+
+const OLD_BIRD =
+  "Flying\nThreshold — This creature gets +1/+1 as long as there are seven or more cards in your graveyard.";
+const VOID_EXTRAPOLATOR =
+  "This creature enters prepared.\nThreshold — This creature gets +1/+1 as long as there are seven or more cards in your graveyard.";
+const THOUGHT_SHUCKER =
+  "Threshold — {1}{U}: Put a +1/+1 counter on this creature and draw a card. Activate only if there are seven or more cards in your graveyard and only once.";
+const LOOT =
+  "If Loot's power is negative, he assigns combat damage as though his power were positive.\nThreshold — Sacrifice another creature or planeswalker: Loot gets -2/-0 until end of turn. Activate only if there are seven or more cards in your graveyard.";
+
+describe("threshold leftovers", () => {
+  let state: GameState;
+  let p1: PlayerId;
+
+  beforeEach(() => {
+    const s = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1] = Array.from(s.players.keys());
+    state = {
+      ...s,
+      turn: { ...s.turn, activePlayerId: p1 },
+      priorityPlayerId: p1,
+    };
+  });
+
+  it("applies Most Decrepit Old Bird's adventure-face bonus", () => {
+    state = put(
+      state,
+      p1,
+      "bird",
+      faced("Most Decrepit Old Bird", 1, 1, OLD_BIRD, "adventure"),
+    );
+    state = refreshThresholdBonuses(state);
+    expect(getEffectivePower(state.cards.get(id("bird"))!)).toBe(1);
+    state = refreshThresholdBonuses(fillGraveyard(state, p1, 7));
+    const bird = state.cards.get(id("bird"))!;
+    expect(getEffectivePower(bird)).toBe(2);
+    expect(getEffectiveToughness(bird)).toBe(2);
+  });
+
+  it("applies Void Extrapolator's prepare-face bonus", () => {
+    state = put(
+      state,
+      p1,
+      "void",
+      faced("Void Extrapolator", 2, 2, VOID_EXTRAPOLATOR, "prepare"),
+    );
+    state = refreshThresholdBonuses(fillGraveyard(state, p1, 7));
+    const card = state.cards.get(id("void"))!;
+    expect(getEffectivePower(card)).toBe(3);
+    expect(getEffectiveToughness(card)).toBe(3);
+  });
+
+  it("grants Theorix Metamage flying from its prepare face only at threshold", () => {
+    state = put(
+      state,
+      p1,
+      "theo",
+      faced("Theorix Metamage", 2, 3, THEORIX, "prepare"),
+    );
+    state = refreshThresholdBonuses(state);
+    expect(hasFlying(state.cards.get(id("theo"))!)).toBe(false);
+    state = refreshThresholdBonuses(fillGraveyard(state, p1, 7));
+    const theo = state.cards.get(id("theo"))!;
+    expect(hasFlying(theo)).toBe(true);
+    expect(getEffectivePower(theo)).toBe(3);
+  });
+
+  it("only lets Thought Shucker activate with seven cards in the graveyard", () => {
+    state = put(
+      state,
+      p1,
+      "shucker",
+      creature("Thought Shucker", 1, 3, THOUGHT_SHUCKER),
+    );
+    const before = canActivateAbility(state, p1, id("shucker"), 0);
+    expect(before.canActivate).toBe(false);
+    expect(before.reason).toContain("seven or more cards in your graveyard");
+    const after = fillGraveyard(state, p1, 7);
+    expect(canActivateAbility(after, p1, id("shucker"), 0).canActivate).toBe(
+      true,
+    );
+  });
+
+  it("only lets Loot, the Anomaly activate with seven cards in the graveyard", () => {
+    state = put(state, p1, "loot", creature("Loot, the Anomaly", -2, 4, LOOT));
+    expect(canActivateAbility(state, p1, id("loot"), 0).canActivate).toBe(
+      false,
+    );
+    const after = fillGraveyard(state, p1, 6);
+    expect(canActivateAbility(after, p1, id("loot"), 0).canActivate).toBe(
+      false,
+    );
+    expect(
+      canActivateAbility(fillGraveyard(state, p1, 7), p1, id("loot"), 0)
+        .canActivate,
+    ).toBe(true);
   });
 });

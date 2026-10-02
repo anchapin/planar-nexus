@@ -14,6 +14,8 @@ import { getActivatedAbilities } from "./parse";
 import { isCreature } from "../card-instance";
 import { hasKeyword } from "../evergreen-keywords";
 import { generateAbilityId } from "./ids";
+import { evaluateInterveningIfClause } from "./evaluate";
+import { getActivationCondition } from "../keyword-actions/threshold";
 import {
   parseTriggerTargetSpec,
   getLegalActivatedAbilityTargets,
@@ -73,6 +75,18 @@ export function canActivateAbility(
     };
   }
 
+  // CR 602.5b: "Activate only if <condition>" (threshold's Thought Shucker
+  // and Loot, the Anomaly, issue #2300).
+  const condition = ability
+    ? getActivationCondition(card, ability.effect ?? "")
+    : null;
+  if (condition && !evaluateInterveningIfClause(condition, state, playerId)) {
+    return {
+      canActivate: false,
+      reason: `Activate only if ${condition}`,
+    };
+  }
+
   return { canActivate: true };
 }
 
@@ -104,7 +118,9 @@ export function getActivatableAbilities(
   getActivatedAbilities(card.cardData).forEach((ability, abilityIndex) => {
     const effect = ability.effect ?? "";
     if (isManaAbility(cardId, effect)) return;
-    if (!canActivateAbility(state, playerId, cardId, abilityIndex).canActivate) {
+    if (
+      !canActivateAbility(state, playerId, cardId, abilityIndex).canActivate
+    ) {
       return;
     }
     const key = effect.toLowerCase().slice(0, 24);

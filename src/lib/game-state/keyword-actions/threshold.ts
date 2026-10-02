@@ -28,6 +28,19 @@ export interface ThresholdBonus {
   unblockable: boolean;
 }
 
+/**
+ * The oracle text of the card's current face. Adventure and prepare cards
+ * (Most Decrepit Old Bird, Theorix Metamage, Void Extrapolator) carry no
+ * top-level oracle_text; their creature text lives on `card_faces`.
+ */
+export function cardOracleText(card: CardInstance): string {
+  if (card.cardData.oracle_text) return card.cardData.oracle_text;
+  const faces = card.cardData.card_faces;
+  if (!faces || faces.length === 0) return "";
+  const face = faces[Math.min(card.currentFaceIndex ?? 0, faces.length - 1)];
+  return face?.oracle_text ?? "";
+}
+
 export function graveyardCount(state: GameState, playerId: PlayerId): number {
   return state.zones.get(`${playerId}-graveyard`)?.cardIds.length ?? 0;
 }
@@ -92,7 +105,7 @@ export function isThresholdOnlyKeyword(
   card: CardInstance,
   keyword: string,
 ): boolean {
-  const text = card.cardData.oracle_text ?? "";
+  const text = cardOracleText(card);
   const clause = getThresholdClause(text);
   const kw = keyword.toLowerCase();
   if (!clause || !clause.includes(kw)) return false;
@@ -129,7 +142,7 @@ export function refreshThresholdBonuses(state: GameState): GameState {
     for (const id of zone?.cardIds ?? []) {
       const card = state.cards.get(id);
       if (!card) continue;
-      const parsed = parseThresholdStatic(card.cardData.oracle_text);
+      const parsed = parseThresholdStatic(cardOracleText(card));
       if (!parsed && !card.thresholdBonus) continue;
       const next =
         parsed && hasThreshold(state, card.controllerId) ? parsed : undefined;
@@ -139,6 +152,28 @@ export function refreshThresholdBonuses(state: GameState): GameState {
     }
   }
   return cards ? { ...state, cards } : state;
+}
+
+/**
+ * The condition in an activated ability's "Activate only if <condition>"
+ * clause (CR 602.5b), lowercased, or null. The activated-ability parser
+ * drops this sentence, so it is read back from the ability's oracle line,
+ * matched by the start of its effect text. "and only once" is stripped;
+ * that once-per-game limit is not tracked yet.
+ */
+export function getActivationCondition(
+  card: CardInstance,
+  effect: string,
+): string | null {
+  const key = effect.toLowerCase().slice(0, 24);
+  if (!key) return null;
+  for (const raw of cardOracleText(card).split("\n")) {
+    const line = raw.trim().toLowerCase();
+    if (!line.includes(":") || !line.includes(key)) continue;
+    const m = /\bactivate only if (.+?)(?:\s+and only once)?\.?\s*$/.exec(line);
+    return m ? m[1] : null;
+  }
+  return null;
 }
 
 /** "This creature can't be blocked" from threshold being active. */
