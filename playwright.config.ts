@@ -83,6 +83,14 @@ export default defineConfig({
 
     // Browser context options
     viewport: { width: 1280, height: 720 },
+
+    // Keep the app's service worker (public/sw.js) out of E2E. It calls
+    // skipWaiting + clients.claim and intercepts fetches, so under `next dev`
+    // it can take over a page mid-test and serve stale chunks; the app router
+    // answers a failed chunk load with a full reload, which wipes injected
+    // harness state ("Execution context was destroyed" in the multiplayer
+    // specs). No spec exercises the service worker.
+    serviceWorkers: "block",
   },
 
   // Configure projects for major browsers

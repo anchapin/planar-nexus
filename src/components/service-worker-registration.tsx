@@ -76,6 +76,11 @@ export function ServiceWorkerRegistration() {
       navigator.serviceWorker
         .register("/sw.js")
         .then((registration) => {
+          // Some environments resolve register() without a registration
+          // (Playwright's `serviceWorkers: "block"` does). Nothing to set up
+          // then, and no "ready for offline" claim to make.
+          if (!registration) return;
+
           toast({
             title: "Ready for offline use",
             description:
