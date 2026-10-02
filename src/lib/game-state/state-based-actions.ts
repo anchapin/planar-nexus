@@ -37,6 +37,7 @@ import {
 import { processCorpseOnDeath } from "./corpse-keyword";
 import { createEngineUncaughtException } from "./errors";
 import { refreshThresholdBonuses } from "./keyword-actions/threshold";
+import { refreshDomainPower } from "./keyword-actions/domain";
 import { isAuraIllegallyAttached } from "./keyword-actions/enchant";
 
 // Helper functions to check card types
@@ -74,10 +75,13 @@ export function checkStateBasedActions(
   const originalState = state;
   try {
     // Threshold static bonuses depend on graveyard size (issue #2300).
-    let updatedState = refreshThresholdBonuses({
-      ...state,
-      cards: new Map(state.cards),
-    });
+    // Domain CDA power depends on the lands each player controls.
+    let updatedState = refreshDomainPower(
+      refreshThresholdBonuses({
+        ...state,
+        cards: new Map(state.cards),
+      }),
+    );
     const descriptions: string[] = [];
     let actionsPerformed = false;
 
