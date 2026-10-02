@@ -109,6 +109,8 @@ export {
   autoChooseTriggerTargets,
   getSpellTargetSpec,
   getLegalSpellTargets,
+  getActivatedAbilityTargetSpec,
+  getLegalActivatedAbilityTargets,
 } from "./trigger-system/trigger-targets";
 export type {
   TriggerTargetKind,

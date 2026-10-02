@@ -12,6 +12,10 @@ import { parseManaFromEffect } from "./mana";
 import { destroyCard, discardCards } from "../keyword-actions";
 import { getActivatedAbilities } from "./parse";
 import { generateAbilityId } from "./ids";
+import {
+  parseTriggerTargetSpec,
+  getLegalActivatedAbilityTargets,
+} from "../trigger-system/trigger-targets";
 import type { ActivateAbilityResult } from "./types";
 
 export function canActivateAbility(
@@ -95,6 +99,41 @@ export function activateAbility(
       description: "",
       error: "Ability not found",
     };
+  }
+
+  // CR 602.2b / 601.2c: targets are checked before any cost is paid.
+  const targetSpec = isManaAbility(cardId, ability.effect)
+    ? null
+    : parseTriggerTargetSpec(ability.effect ?? "");
+  if (targets.length > 0) {
+    if (!targetSpec) {
+      return {
+        success: false,
+        state,
+        description: "",
+        error: "This ability has no targets",
+      };
+    }
+    if (targets.length > 1) {
+      return {
+        success: false,
+        state,
+        description: "",
+        error: "This ability takes one target",
+      };
+    }
+    const legal = new Set(
+      getLegalActivatedAbilityTargets(state, playerId, cardId, abilityIndex),
+    );
+    const illegal = targets.find((t) => !legal.has(t.targetId));
+    if (illegal) {
+      return {
+        success: false,
+        state,
+        description: "",
+        error: `Illegal target: ${illegal.targetId}`,
+      };
+    }
   }
 
   let currentState = state;
@@ -232,6 +271,10 @@ export function activateAbility(
       variableValues: new Map(),
       isCountered: false,
       timestamp: Date.now(),
+      // CR 602: resolves from its own text; targets picked now or, when the
+      // caller passed none, chosen on the stack (see triggerNeedsTargets).
+      activated: true,
+      ...(targetSpec ? { targetsChosen: targets.length > 0 } : {}),
     };
 
     const updatedStack = [...cardMovedState.stack, stackObject];

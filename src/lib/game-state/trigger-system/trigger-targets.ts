@@ -18,6 +18,7 @@ import type {
 } from "../types";
 import { isCreature, getPower, getToughness } from "../card-instance";
 import { canTargetCard } from "../targeting-validation";
+import { getActivatedAbilities } from "../abilities/parse";
 
 export type TriggerTargetKind = "creature" | "player" | "opponent" | "any";
 
@@ -75,7 +76,9 @@ function findTrigger(
   state: GameState,
   stackObjectId: string,
 ): StackObject | undefined {
-  return state.stack.find((o) => o.id === stackObjectId && o.triggered);
+  return state.stack.find(
+    (o) => o.id === stackObjectId && (o.triggered || o.activated),
+  );
 }
 
 function battlefieldCreatures(state: GameState): CardInstance[] {
@@ -104,7 +107,8 @@ function legalTargetsFor(
 
   if (spec.kind === "creature" || spec.kind === "any") {
     for (const card of battlefieldCreatures(state)) {
-      if (spec.controller === "you" && card.controllerId !== controllerId) continue;
+      if (spec.controller === "you" && card.controllerId !== controllerId)
+        continue;
       if (spec.controller === "opponent" && card.controllerId === controllerId)
         continue;
       if (spec.excludeSource && card.id === sourceCardId) continue;
@@ -112,7 +116,11 @@ function legalTargetsFor(
       ids.push(card.id);
     }
   }
-  if (spec.kind === "player" || spec.kind === "opponent" || spec.kind === "any") {
+  if (
+    spec.kind === "player" ||
+    spec.kind === "opponent" ||
+    spec.kind === "any"
+  ) {
     for (const playerId of state.players.keys()) {
       if (spec.kind === "opponent" && playerId === controllerId) continue;
       ids.push(playerId);
@@ -154,13 +162,50 @@ export function getLegalSpellTargets(
 ): string[] {
   const card = state.cards.get(cardId);
   if (!card) return [];
-  return legalTargetsFor(state, card.cardData.oracle_text ?? "", playerId, cardId);
+  return legalTargetsFor(
+    state,
+    card.cardData.oracle_text ?? "",
+    playerId,
+    cardId,
+  );
 }
 
-/** True when a triggered ability on the stack still needs its targets chosen. */
+/**
+ * Target requirement of a permanent's activated ability (by index into
+ * `getActivatedAbilities`), or null when it doesn't target.
+ */
+export function getActivatedAbilityTargetSpec(
+  state: GameState,
+  cardId: CardInstanceId,
+  abilityIndex: number,
+): TriggerTargetSpec | null {
+  const card = state.cards.get(cardId);
+  if (!card) return null;
+  const ability = getActivatedAbilities(card.cardData)[abilityIndex];
+  return ability ? parseTriggerTargetSpec(ability.effect ?? "") : null;
+}
+
+/** Legal target ids (cards and players) for activating an ability. */
+export function getLegalActivatedAbilityTargets(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardInstanceId,
+  abilityIndex: number,
+): string[] {
+  const card = state.cards.get(cardId);
+  if (!card) return [];
+  const ability = getActivatedAbilities(card.cardData)[abilityIndex];
+  if (!ability) return [];
+  return legalTargetsFor(state, ability.effect ?? "", playerId, cardId);
+}
+
+/**
+ * True when a triggered or activated ability on the stack still needs its
+ * targets chosen.
+ */
 export function triggerNeedsTargets(stackObject: StackObject): boolean {
   return (
-    Boolean(stackObject.triggered) &&
+    Boolean(stackObject.triggered || stackObject.activated) &&
     stackObject.targets.length === 0 &&
     !stackObject.targetsChosen &&
     parseTriggerTargetSpec(stackObject.text) !== null
@@ -179,7 +224,11 @@ export function chooseTriggerTargets(
 ): ChooseTriggerTargetsResult {
   const obj = findTrigger(state, stackObjectId);
   if (!obj) {
-    return { success: false, state, error: "Triggered ability not found on the stack" };
+    return {
+      success: false,
+      state,
+      error: "Triggered ability not found on the stack",
+    };
   }
   const spec = parseTriggerTargetSpec(obj.text);
   if (!spec) {
@@ -240,14 +289,18 @@ function pickTarget(state: GameState, obj: StackObject): string | null {
     getPower(b) - getPower(a) || remainingToughness(a) - remainingToughness(b);
 
   if (!hostile) {
-    const mine = creatures.filter((c) => c.controllerId === me).sort(byPowerDesc);
+    const mine = creatures
+      .filter((c) => c.controllerId === me)
+      .sort(byPowerDesc);
     if (mine[0]) return mine[0].id;
     if (players.includes(me)) return me;
     return spec.optional ? null : legal[0];
   }
 
   const theirs = creatures.filter((c) => c.controllerId !== me);
-  const source = obj.sourceCardId ? state.cards.get(obj.sourceCardId) : undefined;
+  const source = obj.sourceCardId
+    ? state.cards.get(obj.sourceCardId)
+    : undefined;
   const power = /\bfights?\b/.test(text)
     ? source
       ? getPower(source)
