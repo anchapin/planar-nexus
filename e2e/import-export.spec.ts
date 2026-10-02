@@ -25,6 +25,14 @@ test.describe("Deck Import", () => {
   test.beforeEach(async ({ page }) => {
     // Navigate to deck builder
     await page.goto("/deck-builder");
+    // The page renders a "Loading deck builder" skeleton until saved decks
+    // hydrate from IndexedDB. The route is pre-compiled by global-setup, but
+    // IndexedDB hydration alone can outlast the 5s expect timeout on
+    // firefox/webkit CI runners. Wait for the hydrated page (a state change,
+    // not a sleep) before asserting on its controls.
+    await expect(
+      page.getByRole("status", { name: "Loading deck builder" }),
+    ).toHaveCount(0, { timeout: 20000 });
   });
 
   test("should have import button", async ({ page }) => {
