@@ -41,6 +41,11 @@ export interface StackObject {
   chosenModes: string[];
   /** Values for X, Y, etc. */
   variableValues: Map<string, number>;
+  /**
+   * Number of distinct colors of mana spent to cast this spell (converge,
+   * CR 601.2h). Set by `castSpell`; undefined for abilities and copies.
+   */
+  colorsSpent?: number;
   /** Whether this has been countered */
   isCountered: boolean;
   /** Timestamp when added to stack */

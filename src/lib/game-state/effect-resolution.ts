@@ -471,12 +471,14 @@ export function parseSpellEffects(
 
   // Card draw: "draw X cards", "draw a card", "draw two cards", "draw three cards"
   const drawMatch = lowerText.match(
-    /draw(?:s)?\s+(a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s*(?:card|cards)?/i,
+    /draw(?:s)?\s+(x|a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s*(?:card|cards)?/i,
   );
   if (drawMatch) {
     const amountStr = drawMatch[1];
     let amount: number;
-    if (/^\d+$/.test(amountStr)) {
+    if (amountStr.toLowerCase() === "x") {
+      amount = variableValues?.get("X") ?? 0;
+    } else if (/^\d+$/.test(amountStr)) {
       amount = parseInt(amountStr, 10);
     } else {
       const wordNum = wordToNumber(amountStr);
@@ -500,12 +502,14 @@ export function parseSpellEffects(
 
   // Life gain: "gain X life", "you gain Y life"
   const gainLifeMatch = lowerText.match(
-    /gain(?:s)?\s+(a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+life/i,
+    /gain(?:s)?\s+(x|a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+life/i,
   );
   if (gainLifeMatch) {
     const amountStr = gainLifeMatch[1];
     let amount: number;
-    if (/^\d+$/.test(amountStr)) {
+    if (amountStr.toLowerCase() === "x") {
+      amount = variableValues?.get("X") ?? 0;
+    } else if (/^\d+$/.test(amountStr)) {
       amount = parseInt(amountStr, 10);
     } else {
       const wordNum = wordToNumber(amountStr);
@@ -525,12 +529,14 @@ export function parseSpellEffects(
 
   // Life loss: "lose X life", "target player loses Y life"
   const loseLifeMatch = lowerText.match(
-    /(?:lose|loses)\s+(a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+life/i,
+    /(?:lose|loses)\s+(x|a|an|one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+life/i,
   );
   if (loseLifeMatch) {
     const amountStr = loseLifeMatch[1];
     let amount: number;
-    if (/^\d+$/.test(amountStr)) {
+    if (amountStr.toLowerCase() === "x") {
+      amount = variableValues?.get("X") ?? 0;
+    } else if (/^\d+$/.test(amountStr)) {
       amount = parseInt(amountStr, 10);
     } else {
       const wordNum = wordToNumber(amountStr);
@@ -631,7 +637,6 @@ export function parseSpellEffects(
     effects.push({ effectType: "surveil", amount });
   }
 
-
   // Fight (CR 701.14): "Target creature you control fights target creature
   // an opponent controls" / "Then it fights ..." / "those creatures fight
   // each other". The fighters come from the spell's targets at resolution.
@@ -657,7 +662,8 @@ export function parseTriggeredAbilityEffects(
   return parseSpellEffects(text).map((effect) => {
     if (
       untargeted &&
-      (effect.effectType === "card_draw" || effect.effectType === "life_gain") &&
+      (effect.effectType === "card_draw" ||
+        effect.effectType === "life_gain") &&
       !effect.targetId
     ) {
       return { ...effect, targetId: controllerId };
