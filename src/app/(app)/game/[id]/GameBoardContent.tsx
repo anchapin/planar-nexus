@@ -11,6 +11,7 @@ import {
   useState,
   useEffect,
   useCallback,
+  useMemo,
   Suspense,
   useRef,
   Fragment,
@@ -38,6 +39,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import { GameBoard } from "@/components/game-board";
+import { TargetHighlightContext } from "@/components/target-highlight-context";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { GameBoardErrorBoundary } from "@/components/error-boundaries";
 import type { PlayerCount, ZoneType } from "@/types/game";
@@ -98,6 +100,7 @@ import {
   autoChooseTriggerTargets,
   getSpellTargetSpec,
   getLegalSpellTargets,
+  getLegalTargetIdsForChoice,
   type GameState,
   type Player,
   type CardInstance,
@@ -947,6 +950,33 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
   }, [gameState, playerName, pendingAction?.stackObjectId, toast]);
 
   // Handle card click - Main interaction handler for all card clicks
+  // Legal targets for whatever is choosing targets, highlighted on the board.
+  const legalTargetIds = useMemo<ReadonlySet<string>>(() => {
+    if (
+      !gameState ||
+      !pendingAction ||
+      (pendingAction.type !== "target" &&
+        pendingAction.type !== "cast" &&
+        pendingAction.type !== "activate")
+    ) {
+      return new Set();
+    }
+    const player = Array.from(gameState.players.values()).find(
+      (p) => p.name === playerName,
+    );
+    if (!player) return new Set();
+    return new Set(
+      getLegalTargetIdsForChoice(gameState, player.id, {
+        stackObjectId: pendingAction.stackObjectId,
+        cardId: pendingAction.cardId,
+        abilityIndex:
+          pendingAction.type === "activate"
+            ? pendingAction.abilityIndex
+            : undefined,
+      }),
+    );
+  }, [gameState, pendingAction, playerName]);
+
   // Activate a non-mana activated ability from the board (CR 602). With no
   // targets passed, a targeted ability waits on the stack and the target
   // prompt below picks them up.
@@ -2801,6 +2831,7 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
       >
         <div className="h-full w-full">
           <GameBoardErrorBoundary>
+<TargetHighlightContext.Provider value={legalTargetIds}>
             <GameBoard
               players={sortedPlayers}
               playerCount={gameState.players.size as PlayerCount}
@@ -2812,6 +2843,7 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
               onAcceptDraw={handleAcceptDraw}
               onDeclineDraw={handleDeclineDraw}
             />
+            </TargetHighlightContext.Provider>
           </GameBoardErrorBoundary>
         </div>
       </main>

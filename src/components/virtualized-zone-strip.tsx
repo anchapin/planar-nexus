@@ -6,6 +6,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import Image from "next/image";
 import type { CardState, ZoneType } from "@/types/game";
 import { cn } from "@/lib/utils";
+import { useIsLegalTarget } from "@/components/target-highlight-context";
 
 interface BattlefieldCardProps {
   card: CardState;
@@ -28,6 +29,7 @@ export const BattlefieldCard = memo(function BattlefieldCard({
   onCardClick,
 }: BattlefieldCardProps) {
   const testId = `battlefield-card-${card.card.name.toLowerCase().replace(/\s+/g, "-")}`;
+  const isLegalTarget = useIsLegalTarget(card.id);
 
   const handleClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
@@ -41,7 +43,12 @@ export const BattlefieldCard = memo(function BattlefieldCard({
     <div
       data-testid={testId}
       onClick={handleClick}
-      className="relative w-10 h-14 sm:w-12 sm:h-16 md:w-14 md:h-20 rounded overflow-hidden border border-primary/30 hover:scale-[3] hover:z-50 hover:shadow-2xl transition-all duration-300 cursor-pointer group shrink-0"
+      data-legal-target={isLegalTarget ? "true" : undefined}
+      className={cn(
+        "relative w-10 h-14 sm:w-12 sm:h-16 md:w-14 md:h-20 rounded overflow-hidden border border-primary/30 hover:scale-[3] hover:z-50 hover:shadow-2xl transition-all duration-300 cursor-pointer group shrink-0",
+        isLegalTarget &&
+          "ring-2 ring-amber-400 ring-offset-1 ring-offset-background shadow-[0_0_8px_rgba(251,191,36,0.8)]",
+      )}
       title={card.card.name}
     >
       {card.card.image_uris?.normal ? (

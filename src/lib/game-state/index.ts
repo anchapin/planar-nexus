@@ -111,11 +111,13 @@ export {
   getLegalSpellTargets,
   getActivatedAbilityTargetSpec,
   getLegalActivatedAbilityTargets,
+  getLegalTargetIdsForChoice,
 } from "./trigger-system/trigger-targets";
 export type {
   TriggerTargetKind,
   TriggerTargetSpec,
   ChooseTriggerTargetsResult,
+  PendingTargetChoice,
 } from "./trigger-system/trigger-targets";
 export { getEffectivePower, getEffectiveToughness } from "./layer-system";
 // #1723: the example/demo modules (replacement-examples, translation-
