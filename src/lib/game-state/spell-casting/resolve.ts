@@ -272,12 +272,13 @@ export function resolveTopOfStack(state: GameState): GameState {
       }
     }
 
-    // CR 603.3 / 608.2: a triggered ability with no structured effects does
+    // CR 603.3 / 602 / 608.2: a triggered or activated ability with no
+    // structured effects does
     // what its text says. Targeted effects use the targets on the stack
     // object; with none chosen they do nothing.
     if (
       stackObject.type === "ability" &&
-      stackObject.triggered &&
+      (stackObject.triggered || stackObject.activated) &&
       (!stackObject.effects || stackObject.effects.length === 0) &&
       stackObject.text
     ) {

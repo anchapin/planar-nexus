@@ -53,6 +53,12 @@ export interface StackObject {
   triggered?: boolean;
   /** Targets were chosen for this triggered ability (possibly none, CR 603.3d). */
   targetsChosen?: boolean;
+  /**
+   * True for a non-mana activated ability (CR 602). Like a triggered ability,
+   * its effect is parsed from `text` at resolution when it carries no
+   * structured `effects`.
+   */
+  activated?: boolean;
   alternativeCostsUsed?: string[];
   /** Whether kicker was paid (CR 702.85). Backward-compat shim; prefer
    *  `timesKicked` for new code. `true` iff `timesKicked > 0`. */
