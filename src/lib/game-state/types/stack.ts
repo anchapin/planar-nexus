@@ -269,7 +269,8 @@ export type StackEffectType =
   | "loseLife"
   | "venture_dungeon"
   | "surveil"
-  | "attach";
+  | "attach"
+  | "transform";
 
 /**
  * Structured effect data for resolution
@@ -316,6 +317,7 @@ export type StackEffect =
       targetId?: PlayerId;
     }
   | { effectType: "surveil"; amount: number; targetId?: PlayerId }
+  | { effectType: "transform"; targetId?: CardInstanceId }
   | {
       effectType: "attach";
       attachmentId: CardInstanceId;

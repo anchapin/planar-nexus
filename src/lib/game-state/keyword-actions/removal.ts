@@ -1,3 +1,4 @@
+import { returnToFrontFace } from "./transform";
 /**
  * Zone-removal keyword actions (CR 701): destroy, exile, sacrifice, regenerate, and generic zone moves.
  *
@@ -439,13 +440,15 @@ export function moveCardToZone(
     };
   }
 
-  // Handle special cases
-  let updatedCard = { ...card };
+  // Handle special cases. CR 712.8a: a transformed card that leaves the
+  // battlefield is its front face in every other zone.
+  let updatedCard =
+    targetZoneType === "battlefield" ? { ...card } : returnToFrontFace(card);
 
   if (targetZoneType === "graveyard" || targetZoneType === "library") {
     // Reset certain states when moving to graveyard or library
     updatedCard = {
-      ...card,
+      ...updatedCard,
       isTapped: false,
       isFaceDown: false,
       attachedToId: null,

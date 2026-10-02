@@ -27,6 +27,7 @@ import {
   ventureIntoDungeon,
   performSurveil,
   resolveEquip,
+  transformPermanent,
 } from "./keyword-actions";
 import { dealDamageToCard } from "./keyword-actions";
 import { hasLifelink } from "./evergreen-keywords";
@@ -727,6 +728,26 @@ export function resolveEffect(
 
     case "attach": {
       const result = resolveEquip(state, effect.attachmentId, effect.targetId);
+      return {
+        success: result.success,
+        state: result.state,
+        description: result.description,
+        affectedCards: result.affectedCards,
+        error: result.error,
+      };
+    }
+
+    case "transform": {
+      const transformId = effect.targetId ?? sourceId;
+      if (!transformId) {
+        return {
+          success: false,
+          state,
+          description: "",
+          error: "Nothing to transform",
+        };
+      }
+      const result = transformPermanent(state, transformId);
       return {
         success: result.success,
         state: result.state,

@@ -4,8 +4,8 @@
  * Mechanically extracted from types.ts (issue #1725);
  * behavior pinned by the existing engine suites.
  */
-import type { ScryfallCard } from './card-data';
-import { PlayerId } from './players';
+import type { ScryfallCard } from "./card-data";
+import { PlayerId } from "./players";
 
 /**
  * Unique identifier for a card instance in the game
@@ -24,6 +24,11 @@ export interface CardInstance {
   cardData: ScryfallCard;
   /** Current face for double-faced/transform cards */
   currentFaceIndex: number;
+  /**
+   * Front-face card data, kept while a transforming DFC shows its back face
+   * (CR 712). Restored when it transforms back or leaves the battlefield.
+   */
+  transformOriginalCardData?: ScryfallCard;
   /** Whether this card is face down (for morph, manifest, etc.) */
   isFaceDown: boolean;
   /** Current controller of this card */
@@ -210,4 +215,3 @@ export interface Counter {
   /** Number of markers of this type */
   count: number;
 }
-
