@@ -142,9 +142,9 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
   test("host + 3 peers join, host broadcasts a state-sync that reaches all 3", async ({
     browser,
   }) => {
-    // #2290: WebKit needs more headroom to wire up 4 peers + cross-link 6
-    // channels before the state-sync broadcast. Chromium/Firefox finish
-    // well under 30s.
+    // #2290: 4 cold-loaded peer contexts + 6 cross-linked channels need more
+    // than the 30s default off chromium. Cross-Browser run 37026236268: this
+    // test took 25.7s (firefox), 39.7s (firefox retry), 26.3s (webkit retry).
     test.setTimeout(60_000);
     const { host, peerB, peerC, peerD, close } = await createFourPeers(browser);
     try {
@@ -506,6 +506,10 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
   test("mid-game join: peer 4 joins after 2 turns; ready-check fires for them only", async ({
     browser,
   }) => {
+    // Same 4-peer setup as the broadcast test above, plus two turns and a
+    // late link-up, so it needs the same budget. On firefox it was cut off at
+    // exactly 30.0s with no assertion failing (runs 37018205535, 37026236268).
+    test.setTimeout(60_000);
     // Setup: 3 peers (host, B, C) start a game and exchange 2 turns.
     // Peer D is loaded but not linked into the mesh (its outbound links
     // are not registered yet). After 2 turns, D "joins" by activating its
