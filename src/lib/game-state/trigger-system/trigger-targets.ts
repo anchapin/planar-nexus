@@ -355,3 +355,39 @@ export function autoChooseTriggerTargets(
   }
   return current;
 }
+
+/** What is currently choosing targets on the game screen. */
+export interface PendingTargetChoice {
+  /** A triggered or activated ability on the stack waiting for targets. */
+  stackObjectId?: string;
+  /** A spell being cast, or the source of an activated ability. */
+  cardId?: string;
+  /** With `cardId`, the activated ability choosing targets. */
+  abilityIndex?: number;
+}
+
+/**
+ * Legal target ids (cards and players) for whatever is choosing targets, so
+ * the board can highlight them. Returns [] when nothing targets.
+ */
+export function getLegalTargetIdsForChoice(
+  state: GameState,
+  playerId: PlayerId,
+  choice: PendingTargetChoice,
+): string[] {
+  if (choice.stackObjectId) {
+    const obj = state.stack.find((o) => o.id === choice.stackObjectId);
+    return obj ? getLegalTriggerTargets(state, obj) : [];
+  }
+  if (!choice.cardId) return [];
+  const cardId = choice.cardId as CardInstanceId;
+  if (choice.abilityIndex !== undefined) {
+    return getLegalActivatedAbilityTargets(
+      state,
+      playerId,
+      cardId,
+      choice.abilityIndex,
+    );
+  }
+  return getLegalSpellTargets(state, playerId, cardId);
+}
