@@ -174,6 +174,13 @@ export interface CardInstance {
     unblockable: boolean;
   };
 
+  /**
+   * Power/toughness change this creature gets from another player's active
+   * threshold static ability, e.g. Mindwhisker's "creatures your opponents
+   * control get -1/-0". Maintained by `refreshThresholdBonuses`.
+   */
+  thresholdAnthemPT?: { power: number; toughness: number };
+
   // Renown keyword (CR 702.100)
   /**
    * Whether this permanent has become renowned (CR 702.100b).

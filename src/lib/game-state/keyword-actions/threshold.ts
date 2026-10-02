@@ -130,26 +130,100 @@ function sameBonus(a?: ThresholdBonus, b?: ThresholdBonus): boolean {
   );
 }
 
+const SIGNED = "([+-]\\d+)";
+const OPPONENT_ANTHEM = new RegExp(
+  `\\bcreatures your opponents control get ${SIGNED}\\/${SIGNED}\\b`,
+);
+
 /**
- * Set or clear `thresholdBonus` on every battlefield creature with a
- * threshold static ability, based on its controller's graveyard. Returns the
- * same state object when nothing changed.
+ * The power/toughness change a threshold static ability gives creatures
+ * the card's opponents control (Mindwhisker: "As long as there are seven or
+ * more cards in your graveyard, creatures your opponents control get
+ * -1/-0."), or null.
  */
-export function refreshThresholdBonuses(state: GameState): GameState {
-  let cards: Map<CardInstanceId, CardInstance> | null = null;
+export function parseThresholdOpponentAnthem(
+  oracleText: string | undefined,
+): { power: number; toughness: number } | null {
+  const clause = getThresholdClause(oracleText);
+  if (!clause || !STATIC_CONDITION.test(clause)) return null;
+  if (/^(when|whenever|at)\b/.test(clause) || clause.includes(":")) return null;
+  const m = OPPONENT_ANTHEM.exec(clause);
+  if (!m) return null;
+  // `|| 0` turns "-0" into 0.
+  return { power: Number(m[1]) || 0, toughness: Number(m[2]) || 0 };
+}
+
+function isCreature(card: CardInstance): boolean {
+  return /\bcreature\b/i.test(card.cardData.type_line ?? "");
+}
+
+function battlefieldCards(state: GameState): CardInstance[] {
+  const out: CardInstance[] = [];
   for (const playerId of state.players.keys()) {
     const zone = state.zones.get(`${playerId}-battlefield`);
     for (const id of zone?.cardIds ?? []) {
       const card = state.cards.get(id);
-      if (!card) continue;
-      const parsed = parseThresholdStatic(cardOracleText(card));
-      if (!parsed && !card.thresholdBonus) continue;
-      const next =
-        parsed && hasThreshold(state, card.controllerId) ? parsed : undefined;
-      if (sameBonus(card.thresholdBonus, next)) continue;
-      cards ??= new Map(state.cards);
-      cards.set(id, { ...card, thresholdBonus: next });
+      if (card) out.push(card);
     }
+  }
+  return out;
+}
+
+/**
+ * Set or clear `thresholdBonus` on every battlefield creature with a
+ * threshold static ability, and `thresholdAnthemPT` on creatures affected
+ * by an opponent's active threshold anthem, based on each controller's
+ * graveyard. Returns the same state object when nothing changed.
+ */
+export function refreshThresholdBonuses(state: GameState): GameState {
+  let cards: Map<CardInstanceId, CardInstance> | null = null;
+  const onBattlefield = battlefieldCards(state);
+
+  // Active anthems, summed per controller of the threshold card.
+  const anthemByController = new Map<
+    PlayerId,
+    { power: number; toughness: number }
+  >();
+  for (const card of onBattlefield) {
+    const anthem = parseThresholdOpponentAnthem(cardOracleText(card));
+    if (!anthem || !hasThreshold(state, card.controllerId)) continue;
+    const prev = anthemByController.get(card.controllerId) ?? {
+      power: 0,
+      toughness: 0,
+    };
+    anthemByController.set(card.controllerId, {
+      power: prev.power + anthem.power,
+      toughness: prev.toughness + anthem.toughness,
+    });
+  }
+
+  for (const card of onBattlefield) {
+    const parsed = parseThresholdStatic(cardOracleText(card));
+    const nextBonus =
+      parsed && hasThreshold(state, card.controllerId) ? parsed : undefined;
+
+    let nextAnthem: { power: number; toughness: number } | undefined;
+    if (isCreature(card)) {
+      for (const [controllerId, pt] of anthemByController) {
+        if (controllerId === card.controllerId) continue;
+        nextAnthem = {
+          power: (nextAnthem?.power ?? 0) + pt.power,
+          toughness: (nextAnthem?.toughness ?? 0) + pt.toughness,
+        };
+      }
+    }
+
+    const bonusSame = sameBonus(card.thresholdBonus, nextBonus);
+    const anthemSame =
+      card.thresholdAnthemPT?.power === nextAnthem?.power &&
+      card.thresholdAnthemPT?.toughness === nextAnthem?.toughness;
+    if (bonusSame && anthemSame) continue;
+    cards ??= new Map(state.cards);
+    cards.set(card.id, {
+      ...card,
+      thresholdBonus: nextBonus,
+      thresholdAnthemPT: nextAnthem,
+    });
   }
   return cards ? { ...state, cards } : state;
 }

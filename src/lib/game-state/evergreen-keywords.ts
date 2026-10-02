@@ -851,6 +851,7 @@ export function getEffectivePower(card: CardInstance): number {
   power += card.untilEndOfTurnPT?.power || 0;
   // Threshold static bonus (issue #2300), layer 7c.
   power += card.thresholdBonus?.power || 0;
+  power += card.thresholdAnthemPT?.power || 0;
   return Math.max(0, power);
 }
 
@@ -879,6 +880,7 @@ export function getEffectiveToughness(card: CardInstance): number {
   toughness += card.untilEndOfTurnPT?.toughness || 0;
   // Threshold static bonus (issue #2300), layer 7c.
   toughness += card.thresholdBonus?.toughness || 0;
+  toughness += card.thresholdAnthemPT?.toughness || 0;
 
   return Math.max(0, toughness);
 }
