@@ -4,6 +4,7 @@ import type { ReplacementEvent } from "../replacement-effects";
 import { ValidationService } from "../validation-service";
 import { isPriorityPlayer } from "../priority-guard";
 import { moveCardBetweenZones } from "../zones";
+import { fireLandfallTriggers } from "../keyword-actions/landfall";
 
 export function canPlayLand(state: GameState, playerId: PlayerId): boolean {
   const player = state.players.get(playerId);
@@ -125,14 +126,19 @@ export function playLand(
     landsPlayedThisTurn: (player.landsPlayedThisTurn ?? 0) + 1,
   });
 
+  // Landfall (CR 207.2c): playing a land triggers its controller's
+  // landfall abilities.
   return {
     success: true,
-    state: {
-      ...state,
-      zones: updatedZones,
-      players: updatedPlayers,
-      cards: updatedCards,
-    },
+    state: fireLandfallTriggers(
+      {
+        ...state,
+        zones: updatedZones,
+        players: updatedPlayers,
+        cards: updatedCards,
+      },
+      cardId,
+    ),
   };
 }
 

@@ -72,6 +72,7 @@ export interface ParsedActivatedAbility {
  */
 export interface TriggerCondition {
   event:
+    | "landfall"
     | "entersBattlefield"
     | "leavesBattlefield"
     | "damageDealt"
@@ -472,6 +473,17 @@ export function parseTriggeredAbilities(
  */
 function parseTriggerText(triggerText: string): TriggerCondition | null {
   const text = triggerText.toLowerCase();
+
+  // Landfall (CR 207.2c ability word): "Whenever a land you control enters"
+  // (current Oracle wording) or "Whenever a land enters the battlefield
+  // under your control" (older wording). Checked before the generic
+  // enters-the-battlefield case so it only fires for your lands.
+  if (
+    /^landfall\b/.test(text) ||
+    /^(?:whenever\s+)?a land (?:you control )?enters\b/.test(text)
+  ) {
+    return { event: "landfall" };
+  }
 
   // Enter the battlefield
   if (

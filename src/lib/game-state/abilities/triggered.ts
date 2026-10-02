@@ -28,6 +28,11 @@ export function detectTriggeredAbilities(
         case "entersBattlefield":
           shouldTrigger = ability.trigger.event === "entersBattlefield";
           break;
+        case "landfall":
+          shouldTrigger =
+            ability.trigger.event === "landfall" &&
+            context?.landControllerId === card.controllerId;
+          break;
         case "leavesBattlefield":
           shouldTrigger =
             ability.trigger.event === "leavesBattlefield" ||
