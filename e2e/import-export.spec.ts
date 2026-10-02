@@ -14,6 +14,7 @@
  */
 
 import { test, expect, loadDeck } from "./test-utils";
+import type { Page } from "@playwright/test";
 
 // Register the deck-seed init script BEFORE any navigation. Top-level
 // beforeEach so it covers all four describe blocks (issue #1856).
@@ -21,18 +22,27 @@ test.beforeEach(async ({ page }) => {
   await loadDeck(page);
 });
 
+/**
+ * Navigate to the deck builder and wait until it has hydrated.
+ *
+ * The page renders a "Loading deck builder" skeleton until saved decks
+ * hydrate from IndexedDB. The route is pre-compiled by global-setup, but
+ * IndexedDB hydration alone can outlast the 5s expect timeout on
+ * firefox/webkit CI runners. Waiting for the skeleton to go is a state
+ * change, not a sleep, and every describe below needs it (#2414 covered
+ * only Deck Import; Deck Export :174 then flaked the same way).
+ */
+async function gotoHydratedDeckBuilder(page: Page) {
+  await page.goto("/deck-builder");
+  await expect(
+    page.getByRole("status", { name: "Loading deck builder" }),
+  ).toHaveCount(0, { timeout: 20000 });
+}
+
 test.describe("Deck Import", () => {
   test.beforeEach(async ({ page }) => {
     // Navigate to deck builder
-    await page.goto("/deck-builder");
-    // The page renders a "Loading deck builder" skeleton until saved decks
-    // hydrate from IndexedDB. The route is pre-compiled by global-setup, but
-    // IndexedDB hydration alone can outlast the 5s expect timeout on
-    // firefox/webkit CI runners. Wait for the hydrated page (a state change,
-    // not a sleep) before asserting on its controls.
-    await expect(
-      page.getByRole("status", { name: "Loading deck builder" }),
-    ).toHaveCount(0, { timeout: 20000 });
+    await gotoHydratedDeckBuilder(page);
   });
 
   test("should have import button", async ({ page }) => {
@@ -157,7 +167,7 @@ test.describe("Deck Import", () => {
 test.describe("Deck Export", () => {
   test.beforeEach(async ({ page }) => {
     // Navigate to deck builder
-    await page.goto("/deck-builder");
+    await gotoHydratedDeckBuilder(page);
   });
 
   test("should have export button", async ({ page }) => {
@@ -232,7 +242,7 @@ test.describe("Import/Export Round Trip", () => {
     // This test verifies that exported decks can be re-imported
     // Note: Full implementation would require actual export/import
 
-    await page.goto("/deck-builder");
+    await gotoHydratedDeckBuilder(page);
 
     // Look for export button (now unconditionally rendered — see #1856).
     const exportButton = page
@@ -263,7 +273,7 @@ test.describe("Import/Export Round Trip", () => {
 
 test.describe("Clipboard Operations", () => {
   test("should have paste from clipboard option", async ({ page }) => {
-    await page.goto("/deck-builder");
+    await gotoHydratedDeckBuilder(page);
 
     // Look for import button (now unconditionally rendered — see #1856).
     const importButton = page
