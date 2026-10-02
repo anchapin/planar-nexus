@@ -250,6 +250,7 @@ for (let changed = true; changed;) {
 const ENFORCEMENT_ALIASES: Record<string, string[]> = {
   flash: ["canCastAtInstantSpeed"],
   surveil: ["performSurveil"],
+  equip: ["resolveEquip"],
 };
 
 // Map keyword → likely enforcement function names. Camel-case on word
