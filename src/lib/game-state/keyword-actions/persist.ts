@@ -43,6 +43,7 @@ import type {
   Counter,
 } from "../types";
 import { hasPersist, canPersistTrigger } from "../evergreen-keywords";
+import { fireEntersTriggers } from "./enters";
 
 /**
  * CR 702.78 — strict check for the Persist keyword.
@@ -146,6 +147,8 @@ export function handlePersist(
     attachedToId: null,
     attachedCardIds: [],
     enteredBattlefieldTimestamp: Date.now(),
+    // Clear the zone cache; readers scan zones when it is null.
+    currentZoneKey: null,
   };
 
   // Update state
@@ -168,7 +171,12 @@ export function handlePersist(
     `${card.cardData.name} returned to battlefield with -1/-1 counter (Persist)`,
   );
 
-  return { state: updatedState, persistedCards, descriptions };
+  // Returning from the graveyard is entering the battlefield (CR 603.6a).
+  return {
+    state: fireEntersTriggers(updatedState, deadCardId),
+    persistedCards,
+    descriptions,
+  };
 }
 
 // ===========================================================================

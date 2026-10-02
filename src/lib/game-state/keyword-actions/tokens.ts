@@ -4,9 +4,15 @@
  * Mechanically extracted from keyword-actions.ts (issue #1725);
  * behavior pinned by the existing engine suites.
  */
-import type { GameState, CardInstanceId, PlayerId, ScryfallCard } from '../types';
-import { createToken } from '../card-instance';
-import { KeywordActionResult } from './shared';
+import type {
+  GameState,
+  CardInstanceId,
+  PlayerId,
+  ScryfallCard,
+} from "../types";
+import { createToken } from "../card-instance";
+import { KeywordActionResult } from "./shared";
+import { fireEntersTriggers } from "./enters";
 
 /**
  * Create a token on the battlefield
@@ -58,16 +64,21 @@ export function createTokenCard(
   const updatedZones = new Map(state.zones);
   updatedZones.set(battlefieldZoneKey, updatedBattlefield);
 
+  // Each token entering raises its own ETB triggers (CR 603.6a, 111.1).
+  let withTokens: GameState = {
+    ...state,
+    cards: updatedCards,
+    zones: updatedZones,
+    lastModifiedAt: Date.now(),
+  };
+  for (const tokenId of tokenIds) {
+    withTokens = fireEntersTriggers(withTokens, tokenId);
+  }
+
   return {
     success: true,
-    state: {
-      ...state,
-      cards: updatedCards,
-      zones: updatedZones,
-      lastModifiedAt: Date.now(),
-    },
+    state: withTokens,
     description: `Created ${count} ${tokenData.name} token${count !== 1 ? "s" : ""}`,
     affectedCards: tokenIds,
   };
 }
-

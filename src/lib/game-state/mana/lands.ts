@@ -5,6 +5,7 @@ import { ValidationService } from "../validation-service";
 import { isPriorityPlayer } from "../priority-guard";
 import { moveCardBetweenZones } from "../zones";
 import { fireLandfallTriggers } from "../keyword-actions/landfall";
+import { fireEntersTriggers } from "../keyword-actions/enters";
 
 export function canPlayLand(state: GameState, playerId: PlayerId): boolean {
   const player = state.players.get(playerId);
@@ -112,7 +113,12 @@ export function playLand(
   const updatedCards = new Map(state.cards);
   const movedCard = updatedCards.get(cardId);
   if (movedCard) {
-    updatedCards.set(cardId, { ...movedCard, isTapped: entersTapped });
+    updatedCards.set(cardId, {
+      ...movedCard,
+      isTapped: entersTapped,
+      // Clear the zone cache; readers scan zones when it is null.
+      currentZoneKey: null,
+    });
   }
 
   const player = state.players.get(playerId);
@@ -130,13 +136,16 @@ export function playLand(
   // landfall abilities.
   return {
     success: true,
-    state: fireLandfallTriggers(
-      {
-        ...state,
-        zones: updatedZones,
-        players: updatedPlayers,
-        cards: updatedCards,
-      },
+    state: fireEntersTriggers(
+      fireLandfallTriggers(
+        {
+          ...state,
+          zones: updatedZones,
+          players: updatedPlayers,
+          cards: updatedCards,
+        },
+        cardId,
+      ),
       cardId,
     ),
   };

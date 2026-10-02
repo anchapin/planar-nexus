@@ -36,6 +36,12 @@ export interface TriggerContext {
   /** Landfall: the land that entered and the player who controls it. */
   landCardId?: CardInstanceId;
   landControllerId?: PlayerId;
+  /**
+   * Enters the battlefield: the permanent that entered. When set, "this
+   * creature enters" triggers fire only for that permanent and "another ..."
+   * triggers only for the others (CR 603.6a).
+   */
+  enteringCardId?: CardInstanceId;
 }
 
 export interface ActivateAbilityResult {

@@ -101,6 +101,18 @@ export interface TriggerCondition {
     | "disturb"
     | "transform"
     | "unknown";
+  /**
+   * Enters-the-battlefield subject (CR 603.6a): "self" for "this creature" /
+   * the card's own name, "another" for "another ..." / "other ...", "any"
+   * for "a ..." / "one or more ...". Undefined on non-ETB triggers.
+   */
+  subject?: "self" | "another" | "any";
+  /** Which entering permanents an "another"/"any" ETB trigger cares about. */
+  enteringFilter?: {
+    types: string[];
+    controller?: "you" | "opponent";
+    nontoken?: boolean;
+  };
   condition?: string;
   target?: ParsedTarget;
   source?: string;
@@ -468,6 +480,54 @@ export function parseTriggeredAbilities(
   return abilities;
 }
 
+const ETB_PERMANENT_TYPES = [
+  "creature",
+  "artifact",
+  "enchantment",
+  "land",
+  "planeswalker",
+  "battle",
+] as const;
+
+/**
+ * Work out whose entry an ETB trigger watches (CR 603.6a). The subject is
+ * everything before "enters": "this creature" or the card's own name is the
+ * permanent itself, "another"/"other" excludes it, "a"/"one or more" includes it.
+ */
+function parseEntersTrigger(text: string): TriggerCondition {
+  const subjectText = text
+    .replace(/^(?:when|whenever)\s+/, "")
+    .split(/\benters?\b/)[0]
+    .trim();
+  let subject: "self" | "another" | "any";
+  if (/\b(?:another|other)\b/.test(subjectText)) {
+    subject = "another";
+  } else if (/^(?:a|an|one or more|each)\b/.test(subjectText)) {
+    subject = "any";
+  } else {
+    subject = "self";
+  }
+  if (subject === "self") {
+    return { event: "entersBattlefield", subject };
+  }
+  const types = ETB_PERMANENT_TYPES.filter((type) =>
+    new RegExp(`\\b${type}s?\\b`).test(subjectText),
+  );
+  let controller: "you" | "opponent" | undefined;
+  if (/\byou control\b/.test(subjectText)) controller = "you";
+  else if (/\b(?:an opponent|your opponents) controls?\b/.test(subjectText))
+    controller = "opponent";
+  return {
+    event: "entersBattlefield",
+    subject,
+    enteringFilter: {
+      types: [...types],
+      controller,
+      nontoken: /\bnontoken\b/.test(subjectText) || undefined,
+    },
+  };
+}
+
 /**
  * Parse trigger text to extract trigger condition
  */
@@ -485,12 +545,10 @@ function parseTriggerText(triggerText: string): TriggerCondition | null {
     return { event: "landfall" };
   }
 
-  // Enter the battlefield
-  if (
-    text.includes("enters the battlefield") ||
-    text.includes("enter the battlefield")
-  ) {
-    return { event: "entersBattlefield" };
+  // Enters the battlefield. Current Oracle wording drops "the battlefield"
+  // ("When this creature enters"); older wording keeps it.
+  if (/\benters?(?:\s+the\s+battlefield)?\b/.test(text)) {
+    return parseEntersTrigger(text);
   }
 
   // Leaves the battlefield
