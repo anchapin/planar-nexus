@@ -29,6 +29,8 @@ import {
   resolveEquip,
   resolveCrew,
   transformPermanent,
+  getFightDamage,
+  isFightText,
 } from "./keyword-actions";
 import { dealDamageToCard } from "./keyword-actions";
 import { hasLifelink } from "./evergreen-keywords";
@@ -319,6 +321,45 @@ export function resolveDamageEffect(
 }
 
 /**
+ * Resolve a fight (CR 701.14): each creature deals damage equal to its power
+ * to the other, through the normal damage path so deathtouch and lifelink
+ * apply. Powers are read before either damage event. If either creature is
+ * gone or no longer a creature, no damage is dealt (701.14b) and the effect
+ * still resolves.
+ */
+export function resolveFight(
+  state: GameState,
+  fighterId: CardInstanceId,
+  opponentId: CardInstanceId,
+): EffectResolutionResult {
+  const plan = getFightDamage(state, fighterId, opponentId);
+  let currentState = state;
+  const affected: CardInstanceId[] = [];
+  for (const hit of plan) {
+    const result = resolveDamageEffect(
+      currentState,
+      hit.sourceId,
+      hit.targetId,
+      hit.amount,
+      false,
+    );
+    if (result.success) {
+      currentState = result.state;
+      affected.push(hit.targetId);
+    }
+  }
+  const a = state.cards.get(fighterId)?.cardData.name ?? "Creature";
+  const b = state.cards.get(opponentId)?.cardData.name ?? "creature";
+  return {
+    success: true,
+    state: currentState,
+    description:
+      plan.length > 0 ? `${a} fought ${b}` : `${a} could not fight ${b}`,
+    affectedCards: affected,
+  };
+}
+
+/**
  * Resolve a damage effect to a player
  */
 export function resolvePlayerDamageEffect(
@@ -590,6 +631,13 @@ export function parseSpellEffects(
     effects.push({ effectType: "surveil", amount });
   }
 
+
+  // Fight (CR 701.14): "Target creature you control fights target creature
+  // an opponent controls" / "Then it fights ..." / "those creatures fight
+  // each other". The fighters come from the spell's targets at resolution.
+  if (isFightText(oracleText)) {
+    effects.push({ effectType: "fight" });
+  }
   return effects;
 }
 
@@ -736,6 +784,18 @@ export function resolveEffect(
         affectedCards: result.affectedCards,
         error: result.error,
       };
+    }
+
+    case "fight": {
+      if (!effect.fighterId || !effect.opponentId) {
+        return {
+          success: false,
+          state,
+          description: "",
+          error: "Fight needs two creatures",
+        };
+      }
+      return resolveFight(state, effect.fighterId, effect.opponentId);
     }
 
     case "crew": {
@@ -907,6 +967,20 @@ export function resolveStackObjectEffects(
         scaledEffect.targetId = target.targetId as CardInstanceId | PlayerId;
       } else if (scaledEffect.effectType === "counter_spell") {
         scaledEffect.targetStackObjectId = target.targetId;
+      }
+    }
+
+    // Fight (CR 701.14): with two creature targets the first fights the
+    // second; with one, the source permanent (e.g. an ETB "it fights target
+    // creature") fights it.
+    if (scaledEffect.effectType === "fight" && targets && targets.length > 0) {
+      const cardTargets = targets.filter((t) => t.type !== "player");
+      if (cardTargets.length >= 2) {
+        scaledEffect.fighterId = cardTargets[0].targetId as CardInstanceId;
+        scaledEffect.opponentId = cardTargets[1].targetId as CardInstanceId;
+      } else if (cardTargets.length === 1 && sourceId) {
+        scaledEffect.fighterId = sourceId;
+        scaledEffect.opponentId = cardTargets[0].targetId as CardInstanceId;
       }
     }
 
