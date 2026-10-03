@@ -19,8 +19,8 @@ import type { GameState, Phase, PlayerId, GameAction } from "@/lib/game-state";
 import {
   serializeGameState,
   deserializeGameState,
-} from "@/lib/game-state/serialization";
-import { ValidationService } from "@/lib/game-state/validation-service";
+} from "@/lib/game-state/lite";
+import { ValidationService } from "@/lib/game-state/lite-validation";
 import type { SerializedGameState } from "@/lib/game-state";
 import {
   LocalSignalingClient,

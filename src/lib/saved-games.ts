@@ -21,18 +21,18 @@ import type { GameState, Replay } from "@/lib/game-state";
 // touches saved games (settings, saved-games, multiplayer, replay), and the
 // engine grows with every card (#2470).
 import {
-  serializeGameState,
-  deserializeGameState,
+  serializeGameStateString as serializeGameState,
+  deserializeGameStateString as deserializeGameState,
   mapReviver,
-} from "@/lib/game-state/state-serialization";
+} from "@/lib/game-state/lite";
 import {
   compressGameStateJson,
   decompressGameStateJson,
-} from "@/lib/game-state/game-state-compression";
+} from "@/lib/game-state/lite";
 import {
   compressReplayJson,
   decompressReplayJson,
-} from "@/lib/game-state/replay-compression";
+} from "@/lib/game-state/lite";
 import {
   indexedDBStorage,
   StoredGame,

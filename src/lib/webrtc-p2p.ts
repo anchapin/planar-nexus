@@ -12,7 +12,7 @@ import {
   deserializeGameState,
   engineToAIState,
   aiToEngineState,
-} from "@/lib/game-state/serialization";
+} from "@/lib/game-state/lite";
 import type {
   SerializedGameState,
   GameState,

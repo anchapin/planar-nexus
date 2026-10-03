@@ -19,10 +19,7 @@ import type {
   Combat,
 } from "@/lib/game-state";
 import type { AIGameState, AIPlayerState, AIPermanent } from "@/lib/game-state";
-import {
-  engineToAIState,
-  aiToEngineState,
-} from "@/lib/game-state/serialization";
+import { engineToAIState, aiToEngineState } from "@/lib/game-state/lite";
 
 const PROTOTYPE_POLLUTION_KEYS = new Set([
   "__proto__",

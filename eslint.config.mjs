@@ -184,9 +184,14 @@ const eslintConfig = [
               // Barrel deep import: block `@/lib/game-state/<sub>` where <sub>
               // is a letter. Negative lookahead (?!$|[/]) permits the bare
               // barrel `@/lib/game-state` while blocking `@/lib/game-state/types` etc.
-              regex: "^@/lib/game-state/[a-zA-Z](?!$|[/])",
+              // `@/lib/game-state/lite` (+ `lite-validation`) are the sanctioned sub-paths: a
+              // leaf-only entry point (serialization, compression, hashing,
+              // format metadata) so non-game routes don't bundle the whole
+              // rules engine (issue #2470).
+              regex:
+                "^@/lib/game-state/(?!lite(-validation)?$)[a-zA-Z](?!$|[/])",
               message:
-                'Import from "@/lib/game-state" (the barrel), not from individual engine modules — the barrel is the engine\'s only public API (issue #1710).',
+                'Import from "@/lib/game-state" (the barrel), not from individual engine modules — the barrel is the engine\'s only public API (issue #1710). Exception: "@/lib/game-state/lite" or "lite-validation" for serialization/compression/hashing outside the game routes (issue #2470).',
             },
             {
               // Relative deep import: block `./game-state/<sub>` (issue #1925).

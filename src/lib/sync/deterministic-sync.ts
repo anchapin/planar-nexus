@@ -22,7 +22,7 @@ import type { GameState, GameAction } from "@/lib/game-state";
 import {
   computeStateHash,
   analyzeHashDiscrepancy,
-} from "@/lib/game-state/state-hash";
+} from "@/lib/game-state/lite";
 import type { HashComparisonResult, HashDiscrepancy } from "@/lib/game-state";
 
 // Re-export types needed by other modules

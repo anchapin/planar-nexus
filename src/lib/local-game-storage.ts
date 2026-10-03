@@ -16,7 +16,7 @@
 import {
   serializeGameState,
   deserializeGameState,
-} from "@/lib/game-state/serialization";
+} from "@/lib/game-state/lite";
 import type {
   SerializedGameState,
   GameState,
