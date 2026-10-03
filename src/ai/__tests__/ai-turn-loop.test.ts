@@ -74,7 +74,7 @@ import { canCastSpell, castSpell } from "@/lib/game-state";
 import { declareAttackers } from "@/lib/game-state";
 import { tapCardAction, untapCardAction, discardCards } from "@/lib/game-state";
 import { passPriority, drawCard } from "@/lib/game-state";
-import { advancePhase } from "@/lib/game-state";
+import { advancePhase, cardsOverHandSize } from "@/lib/game-state";
 import { engineToAIState } from "@/lib/game-state";
 import { getMaxHandSize, getMulliganRules } from "@/lib/game-rules";
 
@@ -91,6 +91,7 @@ const drawCardMock = drawCard as unknown as jest.Mock;
 const advancePhaseMock = advancePhase as unknown as jest.Mock;
 const engineToAIStateMock = engineToAIState as unknown as jest.Mock;
 const getMaxHandSizeMock = getMaxHandSize as unknown as jest.Mock;
+const cardsOverHandSizeMock = cardsOverHandSize as unknown as jest.Mock;
 const getMulliganRulesMock = getMulliganRules as unknown as jest.Mock;
 
 const AI: PlayerId = "player1";
@@ -212,6 +213,12 @@ beforeEach(() => {
   }));
   engineToAIStateMock.mockReturnValue({});
   getMaxHandSizeMock.mockReturnValue(7);
+  // Issue #2446: cleanup asks the engine how far over its limit the player is.
+  cardsOverHandSizeMock.mockImplementation(((st: any, pid: PlayerId) =>
+    Math.max(
+      0,
+      (st.zones.get(`${pid}-hand`)?.cardIds.length ?? 0) - 7,
+    )) as any);
   mockAttackPlan = { attacks: [] };
 });
 

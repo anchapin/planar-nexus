@@ -45,6 +45,7 @@ export * from "./keyword-actions/transform";
 export * from "./keyword-actions/crew";
 export * from "./keyword-actions/landfall";
 export * from "./keyword-actions/threshold";
+export * from "./keyword-actions/hand-size";
 export * from "./keyword-actions/raid";
 export * from "./keyword-actions/ferocious";
 export * from "./keyword-actions/morbid";
