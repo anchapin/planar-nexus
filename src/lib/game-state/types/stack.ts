@@ -340,6 +340,13 @@ export type StackEffect =
       amount: number;
       targetId: CardInstanceId | PlayerId;
       isCombatDamage: boolean;
+      /**
+       * Replacement amount when the spell was kicked (CR 702.33d): "If this
+       * spell was kicked, it deals N damage instead." When set, a kicked
+       * spell deals exactly this much rather than `amount` plus the default
+       * per-kick bonus.
+       */
+      kickedAmount?: number;
     }
   | { effectType: "life_gain"; amount: number; targetId: PlayerId }
   | { effectType: "life_loss"; amount: number; targetId: PlayerId }

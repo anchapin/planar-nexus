@@ -612,11 +612,25 @@ export function parseSpellEffects(
     } else {
       amount = wordToNumber(amountStr) ?? 0;
     }
+    // CR 702.33d: "If this spell was kicked, it deals N damage instead"
+    // (also "if you paid the kicker cost") replaces the base amount when the
+    // spell was kicked, rather than adding the default +1 per kick.
+    const kickedInsteadMatch = lowerText.match(
+      /if (?:this spell was kicked|you paid the kicker cost),[^.]*?deals?\s+(one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+damage[^.]*?\binstead\b/i,
+    );
+    const kickedAmount = kickedInsteadMatch
+      ? /^\d+$/.test(kickedInsteadMatch[1])
+        ? parseInt(kickedInsteadMatch[1], 10)
+        : wordToNumber(kickedInsteadMatch[1])
+      : undefined;
     effects.push({
       effectType: "damage",
       amount,
       targetId: "" as CardInstanceId | PlayerId,
       isCombatDamage: false,
+      ...(kickedAmount !== undefined && kickedAmount !== null
+        ? { kickedAmount }
+        : {}),
     });
   }
 
@@ -1111,9 +1125,9 @@ export function resolveEffect(
  * kicker / multikicker cards the additional effect scales linearly with the
  * number of times the kicker cost was paid (`timesKicked`): the bonus added
  * per kick is the engine's default `1` (e.g. +1 damage, +1 card, +1 token).
- * Cards that specify a different per-kick bonus in oracle text (e.g. "if you
- * paid the kicker cost, it deals X damage instead") are not handled here —
- * those rely on explicit effect overrides at the call site.
+ * A damage effect parsed from "if this spell was kicked, it deals N damage
+ * instead" carries `kickedAmount`, which replaces the amount outright
+ * (CR 702.33d) instead of adding the default bonus.
  *
  * Returns a new effect object with the scaled amount/count when the bonus
  * applies; returns the original effect when no kicker adjustment is made.
@@ -1124,6 +1138,10 @@ function applyKickerBonus(
 ): StackEffect {
   if (kickerBonus <= 0) return effect;
   if (effect.effectType === "damage") {
+    // CR 702.33d: an explicit "deals N damage instead" replaces the amount.
+    if (effect.kickedAmount !== undefined) {
+      return { ...effect, amount: effect.kickedAmount };
+    }
     return { ...effect, amount: effect.amount + kickerBonus };
   }
   if (effect.effectType === "card_draw") {

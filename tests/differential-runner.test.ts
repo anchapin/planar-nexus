@@ -34,8 +34,6 @@ const KNOWN_MISMATCHES: Record<string, string> = {
   "aura-ethereal-armor": "#2453",
   // Primal Might's +X/+X is not applied before the fight.
   "fight-primal-might": "#2451",
-  // Kicked Burst Lightning deals 3, not 4.
-  "kicker-burst-lightning": "#2450",
   // Created tokens are named "Token", not by creature type.
   "landfall-rampaging-baloths": "#2452",
   // "At the beginning of your end step" raid triggers never fire.
