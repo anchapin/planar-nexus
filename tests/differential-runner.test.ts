@@ -29,10 +29,7 @@ const scenarios: Scenario[] = fs
   );
 
 /** Scenario id -> the issue tracking the engine gap it exposes. */
-const KNOWN_MISMATCHES: Record<string, string> = {
-  // "At the beginning of your end step" raid triggers never fire.
-  "raid-searslicer-goblin": "#2448",
-};
+const KNOWN_MISMATCHES: Record<string, string> = {};
 
 describe("differential scenarios: planar-nexus runner", () => {
   it("has at least 8 scenarios, each with card data and an expect block", () => {

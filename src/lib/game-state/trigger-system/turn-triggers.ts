@@ -225,3 +225,72 @@ export function detectBlitzEndStepTriggers(
 
   return sortTriggersAPNAP(triggers, state, activePlayerId);
 }
+
+/**
+ * "At the beginning of your end step" / "at the beginning of each end step"
+ * printed triggers (CR 513.1a, issue #2448). Read from the card's own oracle
+ * lines so "your" (active player's permanents only) and "each" stay distinct,
+ * and so delayed "next end step" wording inside an effect never fires here.
+ * An optional ability word ("Raid — ") and intervening "if" clause are kept.
+ */
+const END_STEP_TRIGGER =
+  /^(?:[A-Z][\w' ]*\s+\u2014\s+)?at the beginning of (your|each) end step,\s*(?:if ([^,]+),\s*)?(.+)$/i;
+
+export function parseEndStepTriggers(
+  oracleText: string,
+): { scope: "your" | "each"; interveningIf?: string; effect: string }[] {
+  const out: {
+    scope: "your" | "each";
+    interveningIf?: string;
+    effect: string;
+  }[] = [];
+  for (const raw of oracleText.split("\n")) {
+    const m = raw.trim().match(END_STEP_TRIGGER);
+    if (!m) continue;
+    out.push({
+      scope: m[1].toLowerCase() as "your" | "each",
+      interveningIf: m[2]?.trim(),
+      effect: m[3].trim().replace(/\.$/, ""),
+    });
+  }
+  return out;
+}
+
+export function detectEndStepTriggers(
+  state: GameState,
+  activePlayerId: PlayerId,
+): TriggeredAbilityInstance[] {
+  const triggers: TriggeredAbilityInstance[] = [];
+
+  for (const [cardId, card] of state.cards) {
+    if (!isOnBattlefield(state, cardId)) continue;
+    for (const t of parseEndStepTriggers(card.cardData.oracle_text || "")) {
+      if (t.scope === "your" && card.controllerId !== activePlayerId) continue;
+      // CR 603.4: an intervening "if" must be true when the trigger event
+      // occurs; it is checked again on resolution.
+      if (
+        t.interveningIf &&
+        !evaluateStateCondition(t.interveningIf, state, card.controllerId)
+      ) {
+        continue;
+      }
+      const context: TriggerDetectionContext = {
+        sourceCardId: cardId,
+        triggerType: TriggerConditionType.TURN_END,
+      };
+      triggers.push({
+        id: generateTriggeredAbilityId(),
+        sourceCardId: cardId,
+        triggeringPlayerId: card.controllerId,
+        triggerCondition: "phaseEnds",
+        effect: t.effect,
+        timestamp: Date.now(),
+        sourceCardTimestamp: card.enteredBattlefieldTimestamp,
+        interveningIf: t.interveningIf,
+        context: context as any,
+      });
+    }
+  }
+
+  return sortTriggersAPNAP(triggers, state, activePlayerId);
+}

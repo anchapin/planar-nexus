@@ -43,7 +43,11 @@ import {
 } from "../state-based-actions";
 import { hasLifelink, clearProwessBoosts } from "../evergreen-keywords";
 import { clearCrewedVehicles } from "../keyword-actions/crew";
-import { detectUntapStepTriggers, putTriggersOnStack } from "../trigger-system";
+import {
+  detectEndStepTriggers,
+  detectUntapStepTriggers,
+  putTriggersOnStack,
+} from "../trigger-system";
 import type { TriggeredAbilityInstance } from "../abilities";
 import {
   processBeginningOfCombat,
@@ -669,6 +673,13 @@ function advanceToNextPhase(state: GameState): GameState {
   // CR 507.1: "at the beginning of combat on your turn" triggers.
   if (nextPhase.currentPhase === Phase.BEGIN_COMBAT) {
     return processBeginningOfCombat(advanced);
+  }
+  // CR 513.1a: "at the beginning of your/each end step" triggers (#2448).
+  if (nextPhase.currentPhase === Phase.END) {
+    const triggers = detectEndStepTriggers(advanced, state.turn.activePlayerId);
+    if (triggers.length > 0) {
+      return putTriggersOnStack(advanced, triggers).state;
+    }
   }
   return advanced;
 }
