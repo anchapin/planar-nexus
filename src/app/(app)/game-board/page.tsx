@@ -329,7 +329,12 @@ export default function GameBoardPage() {
     }
 
     const choice = engineState.waitingChoice;
-    if (choice.type !== "choose_mode") {
+    // "You may pay" offers reuse the mode dialog: pick one option.
+    const isOffer =
+      choice.type === "corpse_offer" ||
+      choice.type === "tribute_offer" ||
+      choice.type === "attack_return_offer";
+    if (choice.type !== "choose_mode" && !isOffer) {
       return;
     }
 
@@ -550,7 +555,8 @@ export default function GameBoardPage() {
     saveGameRecord(record).catch(() => {
       toast({
         title: "Failed to save game",
-        description: "Game history could not be saved. Your game is still in progress.",
+        description:
+          "Game history could not be saved. Your game is still in progress.",
         variant: "destructive",
       });
     });

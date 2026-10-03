@@ -4,8 +4,8 @@
  * Mechanically extracted from types.ts (issue #1725);
  * behavior pinned by the existing engine suites.
  */
-import { PlayerId } from './players';
-import { StackObjectId } from './stack';
+import { PlayerId } from "./players";
+import { StackObjectId } from "./stack";
 
 /**
  * Choice that needs to be made
@@ -26,7 +26,8 @@ export interface WaitingChoice {
     | "choose_legend"
     | "choose_replacement"
     | "corpse_offer"
-    | "tribute_offer";
+    | "tribute_offer"
+    | "attack_return_offer";
   /** ID of player who needs to make this choice */
   playerId: PlayerId;
   /** ID of the stack object this choice is for */
@@ -54,4 +55,3 @@ export interface ChoiceOption {
   /** Whether this option is valid */
   isValid: boolean;
 }
-

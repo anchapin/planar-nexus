@@ -18,6 +18,7 @@ import { dealDamageToCard } from "../keyword-actions";
 import { hasVigilanceStrict } from "../keyword-actions/vigilance";
 import { markAttackedThisTurn } from "../keyword-actions/raid";
 import { applyBattleCry } from "../keyword-actions/battle-cry";
+import { processAttackReturnOffers } from "../keyword-actions/attack-return";
 import { checkStateBasedActions } from "../state-based-actions";
 import { dealCommanderDamage, isCommander } from "../commander-damage";
 import {
@@ -186,10 +187,17 @@ export function declareAttackers(
     attackers.map((a) => a.cardId),
   );
 
+  // Graveyard "whenever you attack with one or more <Type>s" returns
+  // (issue #2428, Persistent Marshstalker).
+  let offerState = battleCryState;
+  for (const playerId of attackingPlayers) {
+    offerState = processAttackReturnOffers(offerState, playerId);
+  }
+
   return {
     success: true,
     state: {
-      ...battleCryState,
+      ...offerState,
       lastModifiedAt: Date.now(),
     },
     description: `Declared ${attackers.length} attacker${attackers.length !== 1 ? "s" : ""}`,

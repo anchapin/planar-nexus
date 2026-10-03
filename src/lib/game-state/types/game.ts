@@ -85,6 +85,19 @@ export interface GameState {
    * offers" (read with `?? []`).
    */
   pendingTributeOffers?: CardInstanceId[];
+
+  /**
+   * Graveyard attack-trigger queue (issue #2428, Persistent Marshstalker:
+   * "Whenever you attack with one or more Rats, if there are seven or more
+   * cards in your graveyard, you may pay {2}{B}. If you do, return this card
+   * from your graveyard to the battlefield tapped and attacking.").
+   *
+   * `processAttackReturnOffers` queues each eligible graveyard card here when
+   * attackers are declared and surfaces an `attack_return_offer`
+   * `waitingChoice`; `resolveAttackReturnChoice` pops it. Optional, read with
+   * `?? []`.
+   */
+  pendingAttackReturnOffers?: CardInstanceId[];
 }
 
 /**
