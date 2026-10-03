@@ -91,13 +91,8 @@ export function handlePersist(
     return { state, persistedCards, descriptions };
   }
 
-  // Only creatures can have persist
-  const typeLine = card.cardData.type_line?.toLowerCase() || "";
-  if (!typeLine.includes("creature")) {
-    return { state, persistedCards, descriptions };
-  }
-
-  // Check if the card has persist
+  // Check if the card has persist. hasPersist owns the creature type-line
+  // guard (#2349), so it is not re-derived here.
   if (!hasPersist(card)) {
     return { state, persistedCards, descriptions };
   }
