@@ -292,7 +292,8 @@ export type StackEffectType =
   | "crew"
   | "fight"
   | "pt_until_eot"
-  | "reveal_until_instant_sorcery";
+  | "reveal_until_instant_sorcery"
+  | "discard_unless_graveyard";
 
 /**
  * Structured effect data for resolution
@@ -300,6 +301,16 @@ export type StackEffectType =
  */
 export type StackEffect =
   | { effectType: "crew"; vehicleId: CardInstanceId }
+  | {
+      /**
+       * Threshold-style "then discard N cards unless there are M or more
+       * cards in your graveyard" (Shoreline Looter, issue #2428).
+       */
+      effectType: "discard_unless_graveyard";
+      amount: number;
+      minGraveyard: number;
+      playerId?: PlayerId;
+    }
   | {
       effectType: "pt_until_eot";
       power: number;

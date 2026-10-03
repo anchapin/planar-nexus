@@ -4,9 +4,9 @@
  * Mechanically extracted from keyword-actions.ts (issue #1725);
  * behavior pinned by the existing engine suites.
  */
-import type { GameState, CardInstanceId, PlayerId } from '../types';
-import { moveCardToZone } from './removal';
-import { KeywordActionResult } from './shared';
+import type { GameState, CardInstanceId, PlayerId } from "../types";
+import { moveCardToZone } from "./removal";
+import { KeywordActionResult } from "./shared";
 
 /**
  * Draw cards for a player
@@ -121,11 +121,21 @@ function drawSingleCard(
   updatedZones.set(libraryZoneKey, updatedLibrary);
   updatedZones.set(handZoneKey, updatedHand);
 
+  // Keep the zone-key cache in step with the move. A stale "library" key
+  // made a later discard (moveCardToZone) add the card to the graveyard
+  // while leaving it in hand, duplicating it (found via #2428).
+  let updatedCards = state.cards;
+  if (card && card.currentZoneKey !== handZoneKey) {
+    updatedCards = new Map(state.cards);
+    updatedCards.set(cardId, { ...card, currentZoneKey: handZoneKey });
+  }
+
   return {
     success: true,
     state: {
       ...state,
       zones: updatedZones,
+      cards: updatedCards,
       lastModifiedAt: Date.now(),
     },
     description: card ? `Drew ${card.cardData.name}` : "Drew a card",
@@ -230,4 +240,3 @@ export function discardCards(
     affectedCards: discardedCards,
   };
 }
-

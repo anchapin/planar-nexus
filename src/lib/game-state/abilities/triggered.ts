@@ -86,6 +86,12 @@ export function detectTriggeredAbilities(
         case "damageDealt":
           shouldTrigger = ability.trigger.event === "damageDealt";
           break;
+        case "dealsCombatDamageToPlayer":
+          // "Whenever this creature deals combat damage to a player" (#2428).
+          shouldTrigger =
+            ability.trigger.event === "dealsCombatDamageToPlayer" &&
+            context?.sourceCardId === cardId;
+          break;
         case "dies":
         case "creatureDies":
           shouldTrigger = ability.trigger.event === "dies";
