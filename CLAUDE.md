@@ -143,4 +143,4 @@ The app uses dark mode by default (see `src/app/layout.tsx`). Avoid adding dark 
 
 ### Dependency Patches
 
-The project uses `patch-package` for applying fixes to dependencies. Patches are stored in `patches/` directory.
+The project does not currently patch dependencies. `patch-package` was removed (#2437) because there was no `patches/` directory or `postinstall` hook. Re-add it as a devDependency with a `postinstall` script if a patch is ever needed.
