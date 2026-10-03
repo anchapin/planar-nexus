@@ -204,6 +204,11 @@ export interface CardInstance {
    * Armor (issue #2453). Maintained by `refreshAuraBonuses`.
    */
   auraPT?: { power: number; toughness: number };
+  /**
+   * Keywords granted by Auras attached to this creature, e.g. Ethereal
+   * Armor's first strike (issue #2464). Maintained by `refreshAuraBonuses`.
+   */
+  auraKeywords?: string[];
 
   // Renown keyword (CR 702.100)
   /**

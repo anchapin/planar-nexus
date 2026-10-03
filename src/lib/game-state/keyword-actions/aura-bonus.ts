@@ -31,6 +31,37 @@ export function parseAuraPT(oracleText: string): AuraPT[] {
   return out;
 }
 
+/**
+ * Keywords an Aura grants: "Enchanted creature ... has first strike"
+ * (Ethereal Armor, issue #2464). Only evergreen keywords are kept.
+ */
+const GRANTABLE = [
+  "first strike",
+  "double strike",
+  "flying",
+  "vigilance",
+  "trample",
+  "lifelink",
+  "deathtouch",
+  "haste",
+  "menace",
+  "reach",
+  "hexproof",
+  "indestructible",
+];
+const AURA_HAS = /\b[Ee]nchanted creature (?:gets [^.]*? and )?has ([^.]+)\./g;
+
+export function parseAuraKeywords(oracleText: string): string[] {
+  const out: string[] = [];
+  for (const m of oracleText.matchAll(AURA_HAS)) {
+    for (const part of m[1].toLowerCase().split(/,\s*(?:and\s+)?|\s+and\s+/)) {
+      const kw = part.trim();
+      if (GRANTABLE.includes(kw) && !out.includes(kw)) out.push(kw);
+    }
+  }
+  return out;
+}
+
 function isEnchantment(card: CardInstance): boolean {
   return /\bEnchantment\b/.test(card.cardData.type_line ?? "");
 }
@@ -56,11 +87,19 @@ export function refreshAuraBonuses(state: GameState): GameState {
   const onField = battlefieldCards(state);
   const onFieldIds = new Set(onField.map((c) => c.id));
   const bonus = new Map<string, { power: number; toughness: number }>();
+  const keywords = new Map<string, string[]>();
 
   for (const aura of onField) {
     const target = aura.attachedToId;
     if (!target || !onFieldIds.has(target)) continue;
-    const clauses = parseAuraPT(aura.cardData.oracle_text ?? "");
+    const text = aura.cardData.oracle_text ?? "";
+    const granted = parseAuraKeywords(text);
+    if (granted.length > 0) {
+      const kws = keywords.get(target) ?? [];
+      for (const k of granted) if (!kws.includes(k)) kws.push(k);
+      keywords.set(target, kws);
+    }
+    const clauses = parseAuraPT(text);
     if (clauses.length === 0) continue;
     const enchantments = onField.filter(
       (c) => c.controllerId === aura.controllerId && isEnchantment(c),
@@ -78,9 +117,12 @@ export function refreshAuraBonuses(state: GameState): GameState {
   for (const [cardId, card] of state.cards) {
     const next = bonus.get(cardId);
     const was = card.auraPT;
+    const nextKw = keywords.get(cardId) ?? [];
+    const wasKw = card.auraKeywords ?? [];
     if (
       (was?.power ?? 0) === (next?.power ?? 0) &&
-      (was?.toughness ?? 0) === (next?.toughness ?? 0)
+      (was?.toughness ?? 0) === (next?.toughness ?? 0) &&
+      nextKw.join("|") === wasKw.join("|")
     ) {
       continue;
     }
@@ -88,6 +130,8 @@ export function refreshAuraBonuses(state: GameState): GameState {
     const updated = { ...card };
     if (next && (next.power || next.toughness)) updated.auraPT = next;
     else delete updated.auraPT;
+    if (nextKw.length > 0) updated.auraKeywords = nextKw;
+    else delete updated.auraKeywords;
     cards.set(cardId, updated);
   }
   return cards ? { ...state, cards } : state;

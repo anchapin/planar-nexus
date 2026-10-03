@@ -49,6 +49,8 @@ import { isThresholdOnlyKeyword } from "./keyword-actions/threshold";
  * Check if a card has a specific keyword
  */
 export function hasKeyword(card: CardInstance, keyword: string): boolean {
+  // Granted by an attached Aura (issue #2464).
+  if (card.auraKeywords?.includes(keyword.toLowerCase())) return true;
   // A keyword granted only by a threshold clause counts only while
   // threshold is active (issue #2300).
   if (isThresholdOnlyKeyword(card, keyword)) {
