@@ -31,6 +31,7 @@ import { parseManaCost } from "../oracle-text-parser/mana-cost";
 import { singularSubtype } from "./tribal-anthem";
 import { moveCardToZone } from "./removal";
 import { getEffectivePower } from "../evergreen-keywords";
+import { registerOfferResolver } from "../spell-casting/choices";
 
 export const ATTACK_RETURN_CHOICE_TYPE = "attack_return_offer" as const;
 
@@ -285,3 +286,5 @@ export function resolveAttackReturnChoice(
     `${name} returned to the battlefield tapped and attacking`,
   );
 }
+
+registerOfferResolver(ATTACK_RETURN_CHOICE_TYPE, resolveAttackReturnChoice);
