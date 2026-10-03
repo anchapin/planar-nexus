@@ -4,6 +4,10 @@
  * Mechanically extracted from oracle-text-parser.ts (issue #1725);
  * behavior pinned by the existing engine suites.
  */
+import {
+  DISCARD_NAMED_PREFIX,
+  parseDiscardNamedCost,
+} from "../keyword-actions/grandeur";
 import type { ScryfallCard } from "../types";
 import { AbilityType } from "./core";
 import { ParsedManaCost, parseManaCost } from "./mana-cost";
@@ -258,6 +262,14 @@ function parseAbilityCost(
   const manaMatch = costString.match(/{[^}]+}/g);
   if (manaMatch) {
     costs.mana = parseManaCost(manaMatch.join(""));
+  }
+
+  // Grandeur-style "discard another card named X" (issue #2300): a specific
+  // card, not any card, so it's tracked apart from the generic discard flag.
+  const namedDiscard = parseDiscardNamedCost(costString);
+  if (namedDiscard) {
+    costs.discard = false;
+    costs.additionalCosts.push(`${DISCARD_NAMED_PREFIX}${namedDiscard}`);
   }
 
   // Check for additional costs like "sacrifice a creature"

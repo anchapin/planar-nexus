@@ -10,6 +10,11 @@ import { hasSplitSecondOnStack } from "../auto-pass-priority";
 import { isManaAbility, spendMana, addMana } from "../mana";
 import { parseManaFromEffect } from "./mana";
 import { destroyCard, discardCards } from "../keyword-actions";
+import {
+  findNamedCardInHand,
+  getDiscardNamedCost,
+  isRevealUntilInstantOrSorceryText,
+} from "../keyword-actions/grandeur";
 import { getActivatedAbilities } from "./parse";
 import { isCreature } from "../card-instance";
 import { hasKeyword } from "../evergreen-keywords";
@@ -84,6 +89,20 @@ export function canActivateAbility(
     return {
       canActivate: false,
       reason: `Activate only if ${condition}`,
+    };
+  }
+
+  // Grandeur (issue #2300): "discard another card named X" needs that card.
+  const namedDiscard = ability
+    ? getDiscardNamedCost(ability.costs.additionalCosts)
+    : null;
+  if (
+    namedDiscard &&
+    !findNamedCardInHand(state, playerId, namedDiscard, cardId)
+  ) {
+    return {
+      canActivate: false,
+      reason: `You need another card named ${namedDiscard} in hand`,
     };
   }
 
@@ -271,6 +290,28 @@ export function activateAbility(
     }
   }
 
+  const namedDiscardCost = getDiscardNamedCost(ability.costs.additionalCosts);
+  if (namedDiscardCost) {
+    const discardId = findNamedCardInHand(
+      currentState,
+      playerId,
+      namedDiscardCost,
+      cardId,
+    );
+    if (!discardId) {
+      return {
+        success: false,
+        state,
+        description: "",
+        error: `You need another card named ${namedDiscardCost} in hand`,
+      };
+    }
+    const result = discardCards(currentState, playerId, 1, false, [discardId]);
+    if (result.success) {
+      currentState = result.state;
+    }
+  }
+
   if (ability.costs.discard) {
     const result = discardCards(currentState, playerId, 1, false);
     if (result.success) {
@@ -329,6 +370,16 @@ export function activateAbility(
       // it doesn't depend on oracle-text parsing of the whole card.
       ...(isSelfTransformText(ability.effect ?? "", card.cardData.name)
         ? { effects: [{ effectType: "transform" as const, targetId: cardId }] }
+        : {}),
+      ...(isRevealUntilInstantOrSorceryText(ability.effect ?? "")
+        ? {
+            effects: [
+              {
+                effectType: "reveal_until_instant_sorcery" as const,
+                targetId: playerId,
+              },
+            ],
+          }
         : {}),
       manaCost: card.cardData.mana_cost ?? null,
       targets: targets.map((t) => ({

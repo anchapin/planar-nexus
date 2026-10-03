@@ -13,6 +13,7 @@
  * - Protection/shroud checking during resolution
  */
 
+import { revealUntilInstantOrSorcery } from "./keyword-actions/grandeur";
 import type {
   GameState,
   PlayerId,
@@ -859,6 +860,25 @@ export function resolveEffect(
         description: result.description,
         affectedCards: result.affectedCards,
         error: result.error,
+      };
+    }
+
+    case "reveal_until_instant_sorcery": {
+      const revealPlayerId =
+        effect.targetId ??
+        (sourceId ? state.cards.get(sourceId)?.controllerId : undefined) ??
+        state.turn.activePlayerId;
+      const result = revealUntilInstantOrSorcery(state, revealPlayerId);
+      const found = result.foundCardId
+        ? state.cards.get(result.foundCardId)?.cardData.name
+        : null;
+      return {
+        success: true,
+        state: result.state,
+        description: found
+          ? `Revealed ${result.revealed} cards and put ${found} into hand`
+          : `Revealed ${result.revealed} cards and found no instant or sorcery`,
+        affectedCards: result.foundCardId ? [result.foundCardId] : [],
       };
     }
 

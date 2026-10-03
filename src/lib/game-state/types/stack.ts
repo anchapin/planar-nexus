@@ -291,7 +291,8 @@ export type StackEffectType =
   | "transform"
   | "crew"
   | "fight"
-  | "pt_until_eot";
+  | "pt_until_eot"
+  | "reveal_until_instant_sorcery";
 
 /**
  * Structured effect data for resolution
@@ -352,6 +353,7 @@ export type StackEffect =
     }
   | { effectType: "surveil"; amount: number; targetId?: PlayerId }
   | { effectType: "transform"; targetId?: CardInstanceId }
+  | { effectType: "reveal_until_instant_sorcery"; targetId?: PlayerId }
   | {
       effectType: "attach";
       attachmentId: CardInstanceId;
