@@ -7,9 +7,14 @@ import { createCardInstance } from "../card-instance";
 import {
   getEffectivePower,
   getEffectiveToughness,
+  hasFirstStrike,
 } from "../evergreen-keywords";
 import { checkStateBasedActions } from "../state-based-actions";
-import { parseAuraPT, refreshAuraBonuses } from "../keyword-actions/aura-bonus";
+import {
+  parseAuraKeywords,
+  parseAuraPT,
+  refreshAuraBonuses,
+} from "../keyword-actions/aura-bonus";
 import type {
   GameState,
   PlayerId,
@@ -136,5 +141,40 @@ describe("aura P/T bonuses (#2453)", () => {
   it("returns the same state when nothing changes", () => {
     const s = put(state, p1, "bear", bear());
     expect(refreshAuraBonuses(s)).toBe(s);
+  });
+});
+
+describe("aura granted keywords (#2464)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+
+  beforeEach(() => {
+    state = startGame(createInitialGameState(["A", "B"], 20, false));
+    [p1] = Array.from(state.players.keys());
+  });
+
+  it("parses the keyword after a P/T clause", () => {
+    expect(parseAuraKeywords(ARMOR_TEXT)).toEqual(["first strike"]);
+    expect(
+      parseAuraKeywords("Enchanted creature has flying and lifelink."),
+    ).toEqual(["flying", "lifelink"]);
+    expect(parseAuraKeywords("Enchanted creature gets +2/+2.")).toEqual([]);
+  });
+
+  it("Ethereal Armor grants first strike only while attached", () => {
+    let s = put(state, p1, "bear", bear());
+    expect(hasFirstStrike(s.cards.get(id("bear"))!)).toBe(false);
+    s = put(s, p1, "armor", armor(), "bear");
+    s = refreshAuraBonuses(s);
+    expect(hasFirstStrike(s.cards.get(id("bear"))!)).toBe(true);
+    const zones = new Map(s.zones);
+    const bf = zones.get(`${p1}-battlefield`)!;
+    zones.set(`${p1}-battlefield`, {
+      ...bf,
+      cardIds: bf.cardIds.filter((c) => c !== id("armor")),
+    });
+    s = refreshAuraBonuses({ ...s, zones });
+    expect(hasFirstStrike(s.cards.get(id("bear"))!)).toBe(false);
+    expect(s.cards.get(id("bear"))!.auraKeywords).toBeUndefined();
   });
 });
