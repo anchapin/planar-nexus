@@ -1,0 +1,36 @@
+{
+  "id": "etb-land-scoured-barrens",
+  "refs": "#2410",
+  "description": "Scoured Barrens enters tapped and its ETB trigger gains 1 life.",
+  "players": [
+    {
+      "hand": ["Scoured Barrens"]
+    },
+    {}
+  ],
+  "actions": [
+    {
+      "do": "playLand",
+      "player": 0,
+      "card": "Scoured Barrens"
+    },
+    {
+      "do": "resolveStack"
+    }
+  ],
+  "observe": ["life", "battlefield", "hand"],
+  "expect": [
+    {
+      "life": 21,
+      "battlefield": [
+        {
+          "name": "Scoured Barrens",
+          "tapped": true
+        }
+      ]
+    },
+    {
+      "life": 20
+    }
+  ]
+}

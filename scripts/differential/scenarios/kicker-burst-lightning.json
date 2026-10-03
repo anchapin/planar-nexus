@@ -1,0 +1,53 @@
+{
+  "id": "kicker-burst-lightning",
+  "refs": "#2300",
+  "description": "Kicked Burst Lightning deals 4 to the opponent; unkicked Shock deals 2 more.",
+  "players": [
+    {
+      "hand": ["Burst Lightning", "Shock"],
+      "manaPool": {
+        "R": 6
+      }
+    },
+    {}
+  ],
+  "actions": [
+    {
+      "do": "cast",
+      "player": 0,
+      "card": "Burst Lightning",
+      "kicked": true,
+      "targets": [
+        {
+          "player": 1
+        }
+      ]
+    },
+    {
+      "do": "resolveStack"
+    },
+    {
+      "do": "cast",
+      "player": 0,
+      "card": "Shock",
+      "targets": [
+        {
+          "player": 1
+        }
+      ]
+    },
+    {
+      "do": "resolveStack"
+    }
+  ],
+  "observe": ["life", "hand", "graveyard"],
+  "expect": [
+    {
+      "life": 20,
+      "graveyard": ["Burst Lightning", "Shock"]
+    },
+    {
+      "life": 14
+    }
+  ]
+}

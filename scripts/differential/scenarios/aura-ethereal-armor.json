@@ -1,0 +1,51 @@
+{
+  "id": "aura-ethereal-armor",
+  "refs": "#2396",
+  "description": "Ethereal Armor on Searslicer Goblin with one enchantment out makes it 3/2.",
+  "players": [
+    {
+      "battlefield": [
+        {
+          "card": "Searslicer Goblin",
+          "id": "goblin"
+        }
+      ],
+      "hand": ["Ethereal Armor"],
+      "manaPool": {
+        "W": 1
+      }
+    },
+    {}
+  ],
+  "actions": [
+    {
+      "do": "cast",
+      "player": 0,
+      "card": "Ethereal Armor",
+      "targets": [
+        {
+          "card": "goblin"
+        }
+      ]
+    },
+    {
+      "do": "resolveStack"
+    }
+  ],
+  "observe": ["battlefield", "hand", "graveyard"],
+  "expect": [
+    {
+      "battlefield": [
+        {
+          "name": "Ethereal Armor"
+        },
+        {
+          "name": "Searslicer Goblin",
+          "power": 3,
+          "toughness": 2
+        }
+      ]
+    },
+    {}
+  ]
+}
