@@ -384,6 +384,9 @@ export class ValidationService {
     // castSpell after the escape cost is substituted. Skip it (same rationale
     // as foretell/convoke/delve/spectacle).
     //
+    // Improvise (CR 702.126) is a generic-only cost reduction like delve;
+    // castSpell applies it before the authoritative affordability check.
+    //
     // Mutate (CR 702.140) REPLACES the printed mana cost with the mutate cost
     // (an alternative cost). The authoritative affordability check happens in
     // castSpell after the mutate cost is substituted. Skip it (same rationale
@@ -391,6 +394,7 @@ export class ValidationService {
     if (
       altType !== "foretell" &&
       altType !== "convoke" &&
+      altType !== "improvise" &&
       altType !== "delve" &&
       altType !== "spectacle" &&
       altType !== "escape" &&

@@ -27,6 +27,8 @@ import {
   parseForetell,
   parseSpectacle,
   parseConvoke,
+  parseImprovise,
+  grantsNoncreatureImprovise,
   parseDelve,
   parseEscape,
   parseMutate,
@@ -194,6 +196,7 @@ export function castSpell(
       | "blitz"
       | "foretell"
       | "convoke"
+      | "improvise"
       | "delve"
       | "mutate";
     buybackReturnToHand?: boolean;
@@ -216,6 +219,13 @@ export function castSpell(
      * does NOT restrict it (CR 302.6 only restricts {T}/{Q} activated costs).
      */
     convokeCreatures?: CardInstanceId[];
+    /**
+     * CR 702.126 - Improvise: untapped artifacts the player chooses to tap
+     * while casting this spell. Each pays for {1} of the GENERIC portion only
+     * (CR 702.126a). Like convoke, this is not a {T} ability, so summoning
+     * sickness on an artifact creature does not restrict it.
+     */
+    improviseArtifacts?: CardInstanceId[];
     /**
      * CR 702.61 - Delve: cards in the player's graveyard chosen to be exiled
      * while casting this spell. Each exiled card reduces the GENERIC portion
@@ -423,6 +433,10 @@ export function castSpell(
     // is applied AFTER mana is spent (see `applyConvokeTaps` below) so the
     // pre-cast state used for validation is not mutated.
     const convokeTappedCreatures: CardInstanceId[] = [];
+    // CR 702.126 - Improvise: artifacts declared for tapping. Validated in the
+    // `case "improvise":` branch and tapped with the convoke taps after mana is
+    // spent.
+    const improviseTappedArtifacts: CardInstanceId[] = [];
     // CR 702.61 - Delve: graveyard cards the player declared they would exile
     // while casting. Validated inside the `case "delve":` branch; the actual
     // exile is applied AFTER mana is spent (see the delve exile block below)
@@ -753,6 +767,113 @@ export function castSpell(
           }
           break;
         }
+        case "improvise": {
+          // CR 702.126a - Improvise: "For each generic mana in this spell's
+          // total cost, you may tap an untapped artifact you control rather
+          // than pay that mana." The spell has improvise either printed
+          // (Arc Reactor) or granted to noncreature spells by a permanent the
+          // caster controls (Ironheart, Clever Champion).
+          const isCreatureSpell = (card.cardData.type_line || "")
+            .toLowerCase()
+            .includes("creature");
+          const hasImprovise =
+            parseImprovise(card.cardData.oracle_text || "").hasImprovise ||
+            (!isCreatureSpell &&
+              Array.from(state.zones.values()).some(
+                (z) =>
+                  z.type === ZoneType.BATTLEFIELD &&
+                  z.cardIds.some((id) => {
+                    const p = state.cards.get(id);
+                    return (
+                      !!p &&
+                      p.controllerId === playerId &&
+                      grantsNoncreatureImprovise(p.cardData.oracle_text || "")
+                    );
+                  }),
+              ));
+          if (!hasImprovise) {
+            return {
+              success: false,
+              state,
+              error: "Improvise: this spell doesn't have improvise.",
+            };
+          }
+          alternativeCostsUsed.push("improvise");
+          const declared = alternativeCost.improviseArtifacts ?? [];
+          const seenArtifacts = new Set<CardInstanceId>();
+          for (const artifactId of declared) {
+            if (seenArtifacts.has(artifactId)) {
+              return {
+                success: false,
+                state,
+                error:
+                  "Improvise: an artifact cannot be tapped more than once to pay for the same spell.",
+              };
+            }
+            seenArtifacts.add(artifactId);
+            const artifact = state.cards.get(artifactId);
+            if (!artifact) {
+              return {
+                success: false,
+                state,
+                error: "Improvise: artifact not found.",
+              };
+            }
+            if (artifact.controllerId !== playerId) {
+              return {
+                success: false,
+                state,
+                error:
+                  "Improvise: tapped artifact must be controlled by the spell's controller.",
+              };
+            }
+            const azKey = artifact.currentZoneKey;
+            const az = azKey ? state.zones.get(azKey) : undefined;
+            if (
+              !az ||
+              az.type !== ZoneType.BATTLEFIELD ||
+              !az.cardIds.includes(artifactId)
+            ) {
+              return {
+                success: false,
+                state,
+                error: "Improvise: tapped artifact must be on the battlefield.",
+              };
+            }
+            if (
+              !(artifact.cardData.type_line || "")
+                .toLowerCase()
+                .includes("artifact")
+            ) {
+              return {
+                success: false,
+                state,
+                error: "Improvise: tapped permanent is not an artifact.",
+              };
+            }
+            if (artifact.isTapped) {
+              return {
+                success: false,
+                state,
+                error: "Improvise: artifact is already tapped.",
+              };
+            }
+            // Improvise pays generic mana only; tapping more artifacts than
+            // there is generic mana to pay is not allowed (CR 702.126a: "for
+            // each generic mana").
+            if (totalGeneric <= 0) {
+              return {
+                success: false,
+                state,
+                error:
+                  "Improvise: more artifacts declared than generic mana in the cost.",
+              };
+            }
+            totalGeneric--;
+            improviseTappedArtifacts.push(artifactId);
+          }
+          break;
+        }
         case "delve": {
           // CR 702.61 - Delve: "For each card you exile from your graveyard
           // while casting this spell, you may pay {1} rather than pay that
@@ -1013,9 +1134,13 @@ export function castSpell(
     // activating a {T} ability (no summoning-sickness restriction), and the
     // tap persists through the spell's resolution until the controller's next
     // untap step.
-    if (convokeTappedCreatures.length > 0) {
+    const tapsForCost = [
+      ...convokeTappedCreatures,
+      ...improviseTappedArtifacts,
+    ];
+    if (tapsForCost.length > 0) {
       const updatedConvokeCards = new Map(currentState.cards);
-      for (const creatureId of convokeTappedCreatures) {
+      for (const creatureId of tapsForCost) {
         const creature = updatedConvokeCards.get(creatureId);
         if (creature) {
           updatedConvokeCards.set(creatureId, { ...creature, isTapped: true });
