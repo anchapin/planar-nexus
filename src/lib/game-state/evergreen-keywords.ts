@@ -42,6 +42,7 @@ import { hasProwessStrict } from "./keyword-actions/prowess";
 import { hasMutateStrict } from "./keyword-actions/mutate";
 import { hasIndestructibleKeyword } from "./keyword-actions/indestructible";
 import { hasInfectStrict } from "./keyword-actions/infect";
+import { hasFlashStrict } from "./keyword-actions/flash";
 import { oracleTextDeclaresOwnKeyword } from "./keyword-actions/grant-negation";
 import { isThresholdOnlyKeyword } from "./keyword-actions/threshold";
 
@@ -763,10 +764,18 @@ export function canBlockProtectedAttacker(
 
 // ============== FLASH ==============
 /**
- * Check if a card has flash
+ * Check if a card has flash (CR 702.8).
+ *
+ * Issue #2340: defers to `hasFlashStrict` (parsed keywords only), then an
+ * anchored oracle-text match for untagged cards, so "Flashback" and
+ * "flashes" no longer read as flash. Aura grants still count.
  */
 export function hasFlash(card: CardInstance): boolean {
-  return hasKeyword(card, "flash");
+  return (
+    hasFlashStrict(card) ||
+    Boolean(card.auraKeywords?.includes("flash")) ||
+    oracleTextDeclaresOwnKeyword("flash", card.cardData.oracle_text ?? "")
+  );
 }
 
 /**

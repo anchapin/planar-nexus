@@ -5,7 +5,8 @@
  *
  * "You may cast this card any time you could cast an instant."
  *
- * The canonical detection (`hasFlash`) lives in `evergreen-keywords.ts`;
+ * The strict detection is `hasFlashStrict` below; `evergreen-keywords.hasFlash`
+ * defers to it (issue #2340);
  * this module owns the **timing-permission decision** and the fix to the
  * previous substring-search bug where any card with the literal word
  * "flash" in its oracle text — e.g. a card with the *Flashback* ability —
@@ -61,7 +62,7 @@ export function canCastAtInstantSpeed(card: CardInstance): boolean {
  * `evergreen-keywords.hasKeyword` so that "flashback" / "flashes" do NOT
  * grant flash.
  */
-export function hasFlash(card: CardInstance): boolean {
+export function hasFlashStrict(card: CardInstance): boolean {
   const keywords = (card.cardData.keywords ?? []).map((k) => k.toLowerCase());
   return keywords.includes("flash");
 }
