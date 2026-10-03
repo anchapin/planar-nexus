@@ -33,6 +33,7 @@ export * from "./keyword-actions/counter-spell";
 export * from "./keyword-actions/damage-tap";
 export * from "./keyword-actions/persist";
 export * from "./keyword-actions/cycling";
+export * from "./keyword-actions/channel";
 export * from "./keyword-actions/monarchy";
 export * from "./keyword-actions/tribute-renown";
 export * from "./keyword-actions/cascade";
