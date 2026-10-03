@@ -59,7 +59,7 @@ import {
   declareBlockers,
   resolveCombatDamage,
 } from "@/lib/game-state";
-import { discardCards } from "@/lib/game-state";
+import { discardToHandSize } from "@/lib/game-state";
 import { startNextTurn } from "@/lib/game-state";
 import {
   Phase,
@@ -73,7 +73,6 @@ import {
   type DifficultyLevel,
   type DifficultyFormat,
 } from "@/ai/ai-difficulty";
-import { getMaxHandSize } from "@/lib/game-rules";
 import type { ScryfallCard } from "@/lib/card-database";
 
 // ---------------------------------------------------------------------------
@@ -674,14 +673,9 @@ function chooseBlocks(
 /** Discard down to the max hand size at end of turn. */
 function cleanupStep(state: GameState, playerId: PlayerId): GameState {
   let s = emptyManaPool(state, playerId);
-  const handKey = `${playerId}-hand`;
-  const hand = s.zones.get(handKey);
-  const max = getMaxHandSize();
-  if (hand && hand.cardIds.length > max) {
-    const excess = hand.cardIds.length - max;
-    const result = discardCards(s, playerId, excess, false);
-    if (result.success && result.state) s = result.state;
-  }
+  // Issue #2446: the player's own limit, lifted by "no maximum hand size".
+  const result = discardToHandSize(s, playerId);
+  if (result.success && result.state) s = result.state;
   return s;
 }
 

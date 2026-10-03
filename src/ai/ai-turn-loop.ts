@@ -15,7 +15,7 @@ import type {
   AIGameState,
   ManaPool,
 } from "@/lib/game-state";
-import { Phase } from "@/lib/game-state";
+import { Phase, cardsOverHandSize } from "@/lib/game-state";
 import {
   executeAIAction,
   executeOpponentMulligan,
@@ -37,7 +37,7 @@ import {
 import { advancePhase } from "@/lib/game-state";
 import { drawCard } from "@/lib/game-state";
 import { engineToAIState } from "@/lib/game-state";
-import { getMaxHandSize, getMulliganRules } from "@/lib/game-rules";
+import { getMulliganRules } from "@/lib/game-rules";
 import { discardCards } from "@/lib/game-state";
 import {
   classifyArchetypeName,
@@ -1506,12 +1506,12 @@ async function runCleanupPhase(
   // Get AI's hand
   const handZone = currentState.zones.get(`${aiPlayerId}-hand`);
   if (handZone) {
-    const maxHandSize = getMaxHandSize();
+    // Issue #2446: the player's own limit, lifted by "You have no maximum
+    // hand size" (Proft's Eidetic Memory).
     const currentHandSize = handZone.cardIds.length;
+    const cardsToDiscard = cardsOverHandSize(currentState, aiPlayerId);
 
-    if (currentHandSize > maxHandSize) {
-      const cardsToDiscard = currentHandSize - maxHandSize;
-
+    if (cardsToDiscard > 0) {
       // Issue #1414: ask the helper for the per-tier ordered candidate
       // list. Pure function; never mutates state.
       const recommendation = pickDiscardCandidates(currentState, aiPlayerId, {
