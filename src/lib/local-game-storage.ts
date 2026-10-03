@@ -11,13 +11,17 @@
  * downgrade that still opens `PlanarNexusGameDB` v1 will find no rows.
  */
 
+// Leaf module, not the "@/lib/game-state" barrel, so this storage helper does
+// not pull the rules engine into every route that imports it (#2470).
 import {
   serializeGameState,
   deserializeGameState,
-  type SerializedGameState,
-  type GameState,
-  type Phase,
-  type PlayerId,
+} from "@/lib/game-state/lite";
+import type {
+  SerializedGameState,
+  GameState,
+  Phase,
+  PlayerId,
 } from "@/lib/game-state";
 import {
   indexedDBStorage,
