@@ -695,6 +695,17 @@ export function parseSpellEffects(
     effects.push({ effectType: "surveil", amount });
   }
 
+  // "Target creature gets +N/+N until end of turn" on a spell (CR 611.2a),
+  // including "+X/+X" (Primal Might, issue #2451). Pushed before any fight so
+  // "gets +X/+X ... Then it fights" pumps first (CR 608.2c).
+  const spellPT = parseTargetedPTUntilEndOfTurn(
+    oracleText,
+    variableValues?.get("X") ?? 0,
+  );
+  if (spellPT) {
+    effects.push({ effectType: "pt_until_eot", ...spellPT });
+  }
+
   // Fight (CR 701.14): "Target creature you control fights target creature
   // an opponent controls" / "Then it fights ..." / "those creatures fight
   // each other". The fighters come from the spell's targets at resolution.
@@ -721,32 +732,36 @@ export function parseTriggeredAbilityEffects(
   const ptEffects: StackEffect[] = pt
     ? [{ effectType: "pt_until_eot", ...pt }]
     : [];
-  return parseSpellEffects(text)
-    .map((effect) => {
-      if (
-        untargeted &&
-        (effect.effectType === "card_draw" ||
-          effect.effectType === "life_gain") &&
-        !effect.targetId
-      ) {
-        return { ...effect, targetId: controllerId };
-      }
-      if (
-        untargeted &&
-        effect.effectType === "life_loss" &&
-        !effect.targetId &&
-        /\byou lose\b/.test(lower)
-      ) {
-        return { ...effect, targetId: controllerId };
-      }
-      if (effect.effectType === "token_creation" && !effect.controllerId) {
-        return { ...effect, controllerId };
-      }
-      return effect;
-    })
-    .concat(ptEffects)
-    .concat(parseDiscardUnlessGraveyard(lower, controllerId))
-    .concat(countersFromDrawsEffects(lower, controllerId));
+  return (
+    parseSpellEffects(text)
+      // The trigger's own targeted P/T change is added below (ptEffects).
+      .filter((effect): boolean => effect.effectType !== "pt_until_eot")
+      .map((effect): StackEffect => {
+        if (
+          untargeted &&
+          (effect.effectType === "card_draw" ||
+            effect.effectType === "life_gain") &&
+          !effect.targetId
+        ) {
+          return { ...effect, targetId: controllerId };
+        }
+        if (
+          untargeted &&
+          effect.effectType === "life_loss" &&
+          !effect.targetId &&
+          /\byou lose\b/.test(lower)
+        ) {
+          return { ...effect, targetId: controllerId };
+        }
+        if (effect.effectType === "token_creation" && !effect.controllerId) {
+          return { ...effect, controllerId };
+        }
+        return effect;
+      })
+      .concat(ptEffects)
+      .concat(parseDiscardUnlessGraveyard(lower, controllerId))
+      .concat(countersFromDrawsEffects(lower, controllerId))
+  );
 }
 
 function countersFromDrawsEffects(

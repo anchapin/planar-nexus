@@ -17,7 +17,8 @@ export interface PTUntilEndOfTurn {
   instead?: { condition: string; power: number; toughness: number };
 }
 
-const SIGNED = "([+-]\\d+)\\/([+-]\\d+)";
+// "+X/+X" (Primal Might, issue #2451) takes X from the spell as cast.
+const SIGNED = "([+-](?:\\d+|x))\\/([+-](?:\\d+|x))";
 const TARGETED = new RegExp(
   `\\btarget creature\\b[^.]*?\\bgets ${SIGNED} until end of turn\\b`,
 );
@@ -31,20 +32,23 @@ const INSTEAD = new RegExp(
  */
 export function parseTargetedPTUntilEndOfTurn(
   text: string,
+  x = 0,
 ): PTUntilEndOfTurn | null {
   const lower = text.toLowerCase();
   const m = TARGETED.exec(lower);
   if (!m) return null;
+  const num = (v: string) =>
+    v.endsWith("x") ? (v.startsWith("-") ? -x : x) : Number(v);
   const result: PTUntilEndOfTurn = {
-    power: Number(m[1]),
-    toughness: Number(m[2]),
+    power: num(m[1]),
+    toughness: num(m[2]),
   };
   const alt = INSTEAD.exec(lower);
   if (alt) {
     result.instead = {
       condition: alt[1].trim(),
-      power: Number(alt[2]),
-      toughness: Number(alt[3]),
+      power: num(alt[2]),
+      toughness: num(alt[3]),
     };
   }
   return result;
