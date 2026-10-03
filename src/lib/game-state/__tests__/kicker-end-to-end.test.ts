@@ -837,3 +837,45 @@ describe("Issue #1228 — Kicker effect application through cast→resolve cycle
     });
   });
 });
+
+describe('Issue #2450 — kicker "deals N damage instead" replaces the amount (CR 702.33d)', () => {
+  // Real oracle text (Scryfall): kicked Burst Lightning deals 4, not 2 + 1.
+  const BURST_LIGHTNING =
+    "Kicker {4} (You may pay an additional {4} as you cast this spell.)\n" +
+    "Burst Lightning deals 2 damage to any target. If this spell was kicked, it deals 4 damage instead.";
+
+  function castBurst(kicked: boolean): number {
+    const { state: initial, aliceId, bobId } = setupTwoPlayerGame();
+    const card = createKickerInstant(
+      "Burst Lightning",
+      BURST_LIGHTNING,
+      "{R}",
+      "{4}",
+    );
+    const { state: sWithCard, cardId } = addCardToHand(initial, card, aliceId);
+    const s = mainPhaseState(
+      addMana(sWithCard, aliceId, { red: 1, generic: 4 }),
+      aliceId,
+    );
+    const before = s.players.get(bobId)!.life;
+    const cast = castSpell(
+      s,
+      aliceId,
+      cardId,
+      [{ type: "player", targetId: bobId, isValid: true }],
+      [],
+      0,
+      kicked,
+    );
+    expect(cast.success).toBe(true);
+    return before - resolveTopOfStack(cast.state).players.get(bobId)!.life;
+  }
+
+  it("kicked Burst Lightning deals 4 damage", () => {
+    expect(castBurst(true)).toBe(4);
+  });
+
+  it("unkicked Burst Lightning deals 2 damage", () => {
+    expect(castBurst(false)).toBe(2);
+  });
+});
