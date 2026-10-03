@@ -1,0 +1,12 @@
+{
+  "$comment": "Time-boxed npm audit exceptions read by scripts/security/check-npm-audit.mjs. Each entry needs an advisory id, the package, why it is not reachable, an ISO expiry date, and a tracking issue. An expired entry fails CI so it gets re-reviewed rather than renewed on autopilot.",
+  "exceptions": [
+    {
+      "id": "GHSA-vfj7-8cjw-p6xm",
+      "package": "braces",
+      "reason": "No patched braces exists (<=3.0.3 affected, 3.0.3 is latest). Only reached via eslint-config-next -> @next/eslint-plugin-next -> fast-glob -> micromatch at lint time with repo-controlled globs; not in the client bundle or Tauri app.",
+      "expires": "2026-10-16",
+      "issue": "https://github.com/anchapin/planar-nexus/issues/2437"
+    }
+  ]
+}
