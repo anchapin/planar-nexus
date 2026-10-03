@@ -162,6 +162,12 @@ export function exileCard(
 
   if (currentZoneKey) {
     currentZone = state.zones.get(currentZoneKey) ?? null;
+    // A stale cache (the card moved without the key being updated) must not
+    // be trusted, or the card is copied into the destination and left behind.
+    if (currentZone && !currentZone.cardIds.includes(cardId)) {
+      currentZone = null;
+      currentZoneKey = null;
+    }
   }
 
   if (!currentZone) {
@@ -403,6 +409,12 @@ function moveCardToZoneWithoutTriggers(
 
   if (currentZoneKey) {
     currentZone = state.zones.get(currentZoneKey) ?? null;
+    // A stale cache (the card moved without the key being updated) must not
+    // be trusted, or the card is copied into the destination and left behind.
+    if (currentZone && !currentZone.cardIds.includes(cardId)) {
+      currentZone = null;
+      currentZoneKey = null;
+    }
   }
 
   if (!currentZone) {

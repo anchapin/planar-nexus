@@ -23,6 +23,7 @@ import type {
 } from "./types";
 import {
   drawCards,
+  discardCards,
   createTokenCard,
   counterSpell,
   ventureIntoDungeon,
@@ -692,7 +693,48 @@ export function parseTriggeredAbilityEffects(
       }
       return effect;
     })
-    .concat(ptEffects);
+    .concat(ptEffects)
+    .concat(parseDiscardUnlessGraveyard(lower, controllerId));
+}
+
+const NUMBER_WORDS: Record<string, number> = {
+  a: 1,
+  an: 1,
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+};
+
+/**
+ * "Then discard a card unless there are seven or more cards in your
+ * graveyard" (Shoreline Looter's threshold rider, issue #2428).
+ */
+function parseDiscardUnlessGraveyard(
+  lower: string,
+  controllerId: PlayerId,
+): StackEffect[] {
+  const m = lower.match(
+    /then discard (a|an|one|two|three|\d+) cards? unless there are (\w+) or more cards in your graveyard/,
+  );
+  if (!m) return [];
+  const amount = NUMBER_WORDS[m[1]] ?? parseInt(m[1], 10);
+  const minGraveyard = NUMBER_WORDS[m[2]] ?? parseInt(m[2], 10);
+  if (!Number.isFinite(amount) || !Number.isFinite(minGraveyard)) return [];
+  return [
+    {
+      effectType: "discard_unless_graveyard",
+      amount,
+      minGraveyard,
+      playerId: controllerId,
+    },
+  ];
 }
 
 /**
@@ -768,6 +810,30 @@ export function resolveEffect(
   sourceId?: CardInstanceId,
 ): EffectResolutionResult {
   switch (effect.effectType) {
+    case "discard_unless_graveyard": {
+      const playerId = effect.playerId;
+      if (!playerId) {
+        return { success: true, state, description: "No player to discard" };
+      }
+      // Checked on resolution, after the draw that precedes it (CR 608.2c).
+      const graveyardSize =
+        state.zones.get(`${playerId}-graveyard`)?.cardIds.length ?? 0;
+      if (graveyardSize >= effect.minGraveyard) {
+        return {
+          success: true,
+          state,
+          description: `No discard (${graveyardSize} cards in graveyard)`,
+        };
+      }
+      const result = discardCards(state, playerId, effect.amount);
+      return {
+        success: result.success,
+        state: result.state,
+        description: result.description ?? `Discarded ${effect.amount}`,
+        ...(result.success ? {} : { error: result.error }),
+      };
+    }
+
     case "card_draw":
       return resolveCardDrawEffect(
         state,

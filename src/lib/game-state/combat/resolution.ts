@@ -34,6 +34,9 @@ import {
  * Result of a combat action
  */
 import type { CombatActionResult } from "./declaration";
+import { detectTriggeredAbilities } from "../abilities/triggered";
+import type { TriggeredAbilityInstance } from "../abilities/types";
+import { putTriggersOnStack } from "../trigger-system/stack-ops";
 
 /**
  * Check if a creature can attack
@@ -52,6 +55,9 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
 
   let updatedState = { ...state };
   const damageEvents: string[] = [];
+  // Attackers that dealt combat damage to a player this step, for
+  // "whenever this creature deals combat damage to a player" (#2428).
+  const combatDamageToPlayerSources = new Set<CardInstanceId>();
 
   // Determine which attackers should deal damage this step
   // CR 702.4b: Double strike creatures deal damage in BOTH steps
@@ -121,6 +127,9 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
         const defender = updatedState.players.get(
           attacker.defenderId as PlayerId,
         );
+        if (defender && damage > 0) {
+          combatDamageToPlayerSources.add(attacker.cardId);
+        }
         if (defender) {
           // Check for lifelink on attacker (CR 702.15).
           // Issue #2332: defer to canonical `hasLifelink` (now strict-first,
@@ -369,6 +378,7 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
             attacker.defenderId as PlayerId,
           );
           if (defender) {
+            combatDamageToPlayerSources.add(attacker.cardId);
             // Check for infect on the attacker for trample excess
             const attackerHasInfect = hasInfect(attackerCard);
 
@@ -508,6 +518,17 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
 
   // After all combat damage is dealt, check state-based actions
   // This handles creatures with lethal damage dying, players losing, etc.
+  // CR 603.10a: detect combat-damage triggers before state-based actions so
+  // a source that died from the same damage still "looks back" and triggers.
+  const combatDamageTriggers: TriggeredAbilityInstance[] = [];
+  for (const sourceCardId of combatDamageToPlayerSources) {
+    combatDamageTriggers.push(
+      ...detectTriggeredAbilities(updatedState, "dealsCombatDamageToPlayer", {
+        sourceCardId,
+      }),
+    );
+  }
+
   const sbaResult = checkStateBasedActions(updatedState);
   updatedState = sbaResult.state;
 
@@ -536,13 +557,18 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
     };
   }
 
+  let finalState: GameState = {
+    ...updatedState,
+    combat: clearedCombat,
+    lastModifiedAt: Date.now(),
+  };
+  if (combatDamageTriggers.length > 0) {
+    finalState = putTriggersOnStack(finalState, combatDamageTriggers).state;
+  }
+
   return {
     success: true,
-    state: {
-      ...updatedState,
-      combat: clearedCombat,
-      lastModifiedAt: Date.now(),
-    },
+    state: finalState,
     description: `Combat resolved: ${damageEvents.join(", ")}`,
   };
 }

@@ -5,6 +5,7 @@ export type TriggerEvent =
   | "entersBattlefield"
   | "leavesBattlefield"
   | "damageDealt"
+  | "dealsCombatDamageToPlayer"
   | "dies"
   | "creatureDies"
   | "attacked"

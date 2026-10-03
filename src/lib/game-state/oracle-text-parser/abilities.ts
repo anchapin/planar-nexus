@@ -90,6 +90,7 @@ export interface TriggerCondition {
     | "untapStep"
     | "turnBegins"
     | "drawStep"
+    | "dealsCombatDamageToPlayer"
     | "combatDamageStepEnds"
     | "counterAdded"
     | "counterRemoved"
@@ -450,8 +451,20 @@ export function parseTriggeredAbilities(
   // Split by periods and newlines
   const sentences = oracleText.split(/\.\s*/);
 
-  for (const sentence of sentences) {
+  for (let i = 0; i < sentences.length; i++) {
+    let sentence = sentences[i];
     if (!sentence.trim()) continue;
+
+    // CR 608.2c: a follow-on "Then ..." sentence is part of the same
+    // ability's effect (Shoreline Looter: "draw a card. Then discard a card
+    // unless ..."), so fold it back in rather than dropping it (issue #2428).
+    while (
+      i + 1 < sentences.length &&
+      /^then\b/i.test(sentences[i + 1].trim())
+    ) {
+      sentence = `${sentence}. ${sentences[i + 1].trim()}`;
+      i++;
+    }
 
     // Look for triggered ability keywords
     // The trigger text is everything between "when/whenever" and the comma before the effect
@@ -688,6 +701,21 @@ function parseTriggerText(triggerText: string): TriggerCondition | null {
   // Phase ends - generic phase end trigger
   if (text.includes("phase ends")) {
     return { event: "phaseEnds" };
+  }
+
+  // "Whenever this creature deals combat damage to a player" (issue #2428).
+  // Only the self form is recognised here; "a creature you control" /
+  // "equipped creature" subjects keep falling through to the generic case.
+  const combatToPlayer = text.match(
+    /^(.*?)\s*deals combat damage to (?:a|an) (?:player|opponent)\b/,
+  );
+  if (
+    combatToPlayer &&
+    !/^(?:a|an|one or more|another|each|equipped|enchanted|target)\b/.test(
+      combatToPlayer[1].trim(),
+    )
+  ) {
+    return { event: "dealsCombatDamageToPlayer", subject: "self" };
   }
 
   // Combat damage step ends
