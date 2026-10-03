@@ -30,14 +30,18 @@ const scenarios: Scenario[] = fs
 
 /** Scenario id -> the issue tracking the engine gap it exposes. */
 const KNOWN_MISMATCHES: Record<string, string> = {
-  "aura-ethereal-armor":
-    "Ethereal Armor's per-enchantment bonus is not applied",
-  "fight-primal-might": "Primal Might's +X/+X is not applied before the fight",
-  "kicker-burst-lightning": "kicked Burst Lightning deals 3, not 4",
-  "landfall-rampaging-baloths": 'created tokens are named "Token", not by type',
-  "raid-searslicer-goblin":
-    '"at the beginning of your end step" raid triggers never fire',
-  "threshold-billowing-shriekmass": "combat P/T read ignores threshold bonuses",
+  // Ethereal Armor's per-enchantment bonus is not applied.
+  "aura-ethereal-armor": "#2453",
+  // Primal Might's +X/+X is not applied before the fight.
+  "fight-primal-might": "#2451",
+  // Kicked Burst Lightning deals 3, not 4.
+  "kicker-burst-lightning": "#2450",
+  // Created tokens are named "Token", not by creature type.
+  "landfall-rampaging-baloths": "#2452",
+  // "At the beginning of your end step" raid triggers never fire.
+  "raid-searslicer-goblin": "#2448",
+  // The combat P/T read ignores threshold bonuses.
+  "threshold-billowing-shriekmass": "#2449",
 };
 
 describe("differential scenarios: planar-nexus runner", () => {
