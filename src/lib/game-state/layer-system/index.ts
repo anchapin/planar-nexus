@@ -1021,6 +1021,14 @@ export class LayerSystem {
     let effectivePower = basePower;
     let effectiveToughness = baseToughness;
 
+    // Turn-only creature forms set base P/T (issue #2300); domain CDAs
+    // (CR 604.3) add to a "*" base. Mirrors evergreen-keywords (issue #2449).
+    if (card.turnCreatureForm) {
+      effectivePower = card.turnCreatureForm.power;
+      effectiveToughness = card.turnCreatureForm.toughness;
+    }
+    effectivePower += card.domainPower || 0;
+
     // Apply CDA values if present (CR 613.8a)
     if (overrides.powerCDA !== undefined) {
       effectivePower = overrides.powerCDA;
@@ -1053,6 +1061,21 @@ export class LayerSystem {
     const netCounterBonus = plusOneCounters - minusOneCounters;
     power += netCounterBonus;
     toughness += netCounterBonus;
+
+    // Other layer 7c modifications tracked on the card instance (issue #2449),
+    // so combat reads the same P/T as evergreen-keywords getEffectivePower.
+    const modifiers = [
+      card.untilEndOfTurnPT,
+      card.thresholdBonus,
+      card.thresholdAnthemPT,
+      card.tribalAnthemPT,
+    ];
+    for (const m of modifiers) {
+      power += m?.power || 0;
+      toughness += m?.toughness || 0;
+    }
+    power += card.prowessBoost || 0;
+    toughness += card.prowessBoost || 0;
 
     // Layer 7d: Switch power and toughness
     if (overrides.switched) {

@@ -847,6 +847,9 @@ function getToughnessValue(card: CardInstance): number {
 export function getEffectivePower(card: CardInstance): number {
   let power = getPowerValue(card);
   power += card.powerModifier || 0;
+  // +1/+1 and -1/-1 counters (CR 613.4c), matching toughness (issue #2449).
+  power += card.counters?.find((c) => c.type === "+1/+1")?.count || 0;
+  power -= card.counters?.find((c) => c.type === "-1/-1")?.count || 0;
   // CR 702.108 - Prowess: a continuous "+1/+1 until end of turn" effect applied
   // in layer 7c (power/toughness). `prowessBoost` holds the active bonus count.
   power += card.prowessBoost || 0;
