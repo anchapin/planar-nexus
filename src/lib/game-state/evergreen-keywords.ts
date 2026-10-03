@@ -804,6 +804,8 @@ export function canAttackIfNotDefender(card: CardInstance): boolean {
  * Get the base power of a creature
  */
 function getPowerValue(card: CardInstance): number {
+  // Layer 4/7b: a turn-only creature form sets base P/T (issue #2300).
+  if (card.turnCreatureForm) return card.turnCreatureForm.power;
   // Try to get power/toughness from card_data (ScryfallCard)
   const cardData = card.cardData;
   if (cardData && "power" in cardData && cardData.power) {
@@ -823,6 +825,7 @@ function getPowerValue(card: CardInstance): number {
  * Get the base toughness of a creature
  */
 function getToughnessValue(card: CardInstance): number {
+  if (card.turnCreatureForm) return card.turnCreatureForm.toughness;
   // Try to get power/toughness from card_data (ScryfallCard)
   const cardData = card.cardData;
   if (cardData && "toughness" in cardData && cardData.toughness) {

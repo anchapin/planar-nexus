@@ -45,6 +45,7 @@ import type { CardInstance, PlayerId } from "../types";
  * for cards with missing keyword tags.
  */
 export function hasHexproofStrict(card: CardInstance): boolean {
+  if (card.turnCreatureForm?.hexproof) return true;
   const keywords = card.cardData.keywords ?? [];
   return keywords.some((k) => /^hexproof\b/i.test(k.trim()));
 }

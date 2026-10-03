@@ -242,6 +242,8 @@ export function changeController(
 export function isCreature(card: CardInstance): boolean {
   // A crewed Vehicle is an artifact creature until end of turn (CR 702.122).
   if (card.crewedUntilEndOfTurn) return true;
+  // Kaito-style "during your turn ... he's a creature" static (issue #2300).
+  if (card.turnCreatureForm) return true;
   const typeLine = card.cardData.type_line?.toLowerCase() || "";
   return typeLine.includes("creature");
 }

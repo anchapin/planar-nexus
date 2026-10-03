@@ -39,6 +39,7 @@ import { createEngineUncaughtException } from "./errors";
 import { refreshThresholdBonuses } from "./keyword-actions/threshold";
 import { refreshDomainPower } from "./keyword-actions/domain";
 import { refreshTribalAnthems } from "./keyword-actions/tribal-anthem";
+import { refreshTurnCreatureForms } from "./keyword-actions/ninjutsu";
 import { isAuraIllegallyAttached } from "./keyword-actions/enchant";
 
 // Helper functions to check card types
@@ -78,12 +79,15 @@ export function checkStateBasedActions(
     // Threshold static bonuses depend on graveyard size (issue #2300).
     // Domain CDA power depends on the lands each player controls.
     // Tribal lords ("Other Dragons you control get +1/+1") depend on the board.
+    // Kaito's creature form depends on whose turn it is and his loyalty.
     let updatedState = refreshTribalAnthems(
       refreshDomainPower(
-        refreshThresholdBonuses({
-          ...state,
-          cards: new Map(state.cards),
-        }),
+        refreshThresholdBonuses(
+          refreshTurnCreatureForms({
+            ...state,
+            cards: new Map(state.cards),
+          }),
+        ),
       ),
     );
     const descriptions: string[] = [];
