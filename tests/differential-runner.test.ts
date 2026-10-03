@@ -32,8 +32,6 @@ const scenarios: Scenario[] = fs
 const KNOWN_MISMATCHES: Record<string, string> = {
   // "At the beginning of your end step" raid triggers never fire.
   "raid-searslicer-goblin": "#2448",
-  // The combat P/T read ignores threshold bonuses.
-  "threshold-billowing-shriekmass": "#2449",
 };
 
 describe("differential scenarios: planar-nexus runner", () => {
