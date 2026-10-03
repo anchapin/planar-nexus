@@ -34,8 +34,6 @@ const KNOWN_MISMATCHES: Record<string, string> = {
   "aura-ethereal-armor": "#2453",
   // Primal Might's +X/+X is not applied before the fight.
   "fight-primal-might": "#2451",
-  // Created tokens are named "Token", not by creature type.
-  "landfall-rampaging-baloths": "#2452",
   // "At the beginning of your end step" raid triggers never fire.
   "raid-searslicer-goblin": "#2448",
   // The combat P/T read ignores threshold bonuses.
