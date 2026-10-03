@@ -182,6 +182,11 @@ export interface CardInstance {
   thresholdAnthemPT?: { power: number; toughness: number };
   /** Domain CDA power (issue #2300), refreshed with state-based actions. */
   domainPower?: number;
+  /**
+   * Summed bonus from "Other <Type>s you control get +N/+N" lords (issue
+   * #2300). Maintained by `refreshTribalAnthems`.
+   */
+  tribalAnthemPT?: { power: number; toughness: number };
 
   // Renown keyword (CR 702.100)
   /**
