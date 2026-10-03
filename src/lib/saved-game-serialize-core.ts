@@ -16,7 +16,9 @@
  * Jest/jsdom realm (no `import.meta`, no Worker global references).
  */
 
-import { mapReplacer, mapReviver } from "@/lib/game-state";
+// Leaf module, not the "@/lib/game-state" barrel: the barrel pulls the whole
+// rules engine into every route that saves or loads a game (#2470).
+import { mapReplacer, mapReviver } from "@/lib/game-state/state-serialization";
 
 /**
  * Serialize a replay payload with the Map-preserving replacer — the exact

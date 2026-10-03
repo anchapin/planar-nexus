@@ -6,7 +6,7 @@
  */
 
 import type { GameState } from "@/lib/game-state";
-import { serializeGameState } from "@/lib/game-state";
+import { serializeGameState } from "@/lib/game-state/serialization";
 import { TIMEOUTS } from "./config/timeouts";
 import type { PeerRole } from "./peer-role";
 import { sanitizePlayerName } from "@/lib/security/chat-sanitize";

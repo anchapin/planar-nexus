@@ -12,10 +12,12 @@ import {
   deserializeGameState,
   engineToAIState,
   aiToEngineState,
-  type SerializedGameState,
-  type GameState,
-  type Phase,
-  type PlayerId,
+} from "@/lib/game-state/serialization";
+import type {
+  SerializedGameState,
+  GameState,
+  Phase,
+  PlayerId,
 } from "@/lib/game-state";
 import {
   computeStateDelta,

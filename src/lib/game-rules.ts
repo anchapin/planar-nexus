@@ -22,7 +22,7 @@
 // schedule, color identity, validation helpers) still lives here and
 // consumes the engine-owned data via the import below.
 
-import { gameModes } from "@/lib/game-state";
+import { gameModes } from "@/lib/game-state/format-rules";
 import type { DeckConstructionRules, Format } from "@/lib/game-state";
 
 export {
@@ -33,7 +33,7 @@ export {
   createGameMode,
   registerGameMode,
   findGameModeByName,
-} from "@/lib/game-state";
+} from "@/lib/game-state/format-rules";
 export type {
   DeckConstructionRules,
   GameModeConfig,

@@ -12,4 +12,4 @@ export {
   gzipCompress,
   gzipDecompress,
   injectGzipComment,
-} from "@/lib/game-state";
+} from "@/lib/game-state/native-gzip";

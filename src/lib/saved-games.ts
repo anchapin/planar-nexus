@@ -16,15 +16,23 @@
  */
 
 import type { GameState, Replay } from "@/lib/game-state";
+// Import the serialization leaf modules directly, not the "@/lib/game-state"
+// barrel: the barrel drags the whole rules engine into every route that
+// touches saved games (settings, saved-games, multiplayer, replay), and the
+// engine grows with every card (#2470).
 import {
-  serializeGameStateString as serializeGameState,
-  deserializeGameStateString as deserializeGameState,
+  serializeGameState,
+  deserializeGameState,
   mapReviver,
+} from "@/lib/game-state/state-serialization";
+import {
   compressGameStateJson,
   decompressGameStateJson,
+} from "@/lib/game-state/game-state-compression";
+import {
   compressReplayJson,
   decompressReplayJson,
-} from "@/lib/game-state";
+} from "@/lib/game-state/replay-compression";
 import {
   indexedDBStorage,
   StoredGame,
