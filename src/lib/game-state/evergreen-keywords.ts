@@ -852,6 +852,8 @@ export function getEffectivePower(card: CardInstance): number {
   // Threshold static bonus (issue #2300), layer 7c.
   power += card.thresholdBonus?.power || 0;
   power += card.thresholdAnthemPT?.power || 0;
+  // "Other <Type>s you control get +N/+N" lords (issue #2300), layer 7c.
+  power += card.tribalAnthemPT?.power || 0;
   // Domain characteristic-defining ability (CR 604.3), layer 7a.
   power += card.domainPower || 0;
   return Math.max(0, power);
@@ -883,6 +885,7 @@ export function getEffectiveToughness(card: CardInstance): number {
   // Threshold static bonus (issue #2300), layer 7c.
   toughness += card.thresholdBonus?.toughness || 0;
   toughness += card.thresholdAnthemPT?.toughness || 0;
+  toughness += card.tribalAnthemPT?.toughness || 0;
 
   return Math.max(0, toughness);
 }

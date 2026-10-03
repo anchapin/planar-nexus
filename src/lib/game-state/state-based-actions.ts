@@ -38,6 +38,7 @@ import { processCorpseOnDeath } from "./corpse-keyword";
 import { createEngineUncaughtException } from "./errors";
 import { refreshThresholdBonuses } from "./keyword-actions/threshold";
 import { refreshDomainPower } from "./keyword-actions/domain";
+import { refreshTribalAnthems } from "./keyword-actions/tribal-anthem";
 import { isAuraIllegallyAttached } from "./keyword-actions/enchant";
 
 // Helper functions to check card types
@@ -76,11 +77,14 @@ export function checkStateBasedActions(
   try {
     // Threshold static bonuses depend on graveyard size (issue #2300).
     // Domain CDA power depends on the lands each player controls.
-    let updatedState = refreshDomainPower(
-      refreshThresholdBonuses({
-        ...state,
-        cards: new Map(state.cards),
-      }),
+    // Tribal lords ("Other Dragons you control get +1/+1") depend on the board.
+    let updatedState = refreshTribalAnthems(
+      refreshDomainPower(
+        refreshThresholdBonuses({
+          ...state,
+          cards: new Map(state.cards),
+        }),
+      ),
     );
     const descriptions: string[] = [];
     let actionsPerformed = false;
