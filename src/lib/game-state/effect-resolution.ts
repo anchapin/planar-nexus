@@ -42,6 +42,11 @@ import {
   addUntilEndOfTurnPT,
 } from "./pt-until-end-of-turn";
 import { evaluateInterveningIfClause } from "./abilities/evaluate";
+import {
+  cardsDrawnThisTurn,
+  parseCountersFromDraws,
+} from "./keyword-actions/cards-drawn";
+import { addCounters } from "./card-instance";
 
 /**
  * Apply lifelink life gain for damage dealt by a source with lifelink.
@@ -694,7 +699,16 @@ export function parseTriggeredAbilityEffects(
       return effect;
     })
     .concat(ptEffects)
-    .concat(parseDiscardUnlessGraveyard(lower, controllerId));
+    .concat(parseDiscardUnlessGraveyard(lower, controllerId))
+    .concat(countersFromDrawsEffects(lower, controllerId));
+}
+
+function countersFromDrawsEffects(
+  lower: string,
+  controllerId: PlayerId,
+): StackEffect[] {
+  const parsed = parseCountersFromDraws(lower, controllerId);
+  return parsed ? [{ effectType: "counters_from_draws", ...parsed }] : [];
 }
 
 const NUMBER_WORDS: Record<string, number> = {
@@ -810,6 +824,34 @@ export function resolveEffect(
   sourceId?: CardInstanceId,
 ): EffectResolutionResult {
   switch (effect.effectType) {
+    case "counters_from_draws": {
+      const targetId = effect.targetId;
+      const target = targetId ? state.cards.get(targetId) : undefined;
+      const onField = targetId
+        ? (
+            state.zones.get(`${effect.playerId}-battlefield`)?.cardIds ?? []
+          ).includes(targetId)
+        : false;
+      if (!target || !targetId || !onField) {
+        // CR 608.2b: an illegal target means the ability does nothing.
+        return { success: true, state, description: "No legal target" };
+      }
+      const x = Math.max(
+        0,
+        cardsDrawnThisTurn(state, effect.playerId) + effect.offset,
+      );
+      if (x === 0) {
+        return { success: true, state, description: "X is 0" };
+      }
+      const cards = new Map(state.cards);
+      cards.set(targetId, addCounters(target, "+1/+1", x));
+      return {
+        success: true,
+        state: { ...state, cards, lastModifiedAt: Date.now() },
+        description: `Put ${x} +1/+1 counter${x === 1 ? "" : "s"} on ${target.cardData.name}`,
+      };
+    }
+
     case "discard_unless_graveyard": {
       const playerId = effect.playerId;
       if (!playerId) {
@@ -1133,7 +1175,8 @@ export function resolveStackObjectEffects(
       } else if (scaledEffect.effectType === "counter_spell") {
         scaledEffect.targetStackObjectId = target.targetId;
       } else if (
-        scaledEffect.effectType === "pt_until_eot" &&
+        (scaledEffect.effectType === "pt_until_eot" ||
+          scaledEffect.effectType === "counters_from_draws") &&
         target.type !== "player"
       ) {
         scaledEffect.targetId = target.targetId as CardInstanceId;

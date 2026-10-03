@@ -88,6 +88,7 @@ export interface TriggerCondition {
     | "phaseEnds"
     | "upkeep"
     | "untapStep"
+    | "beginningOfCombat"
     | "turnBegins"
     | "drawStep"
     | "dealsCombatDamageToPlayer"
@@ -573,6 +574,13 @@ function parseEntersTrigger(text: string): TriggerCondition {
  */
 function parseTriggerText(triggerText: string): TriggerCondition | null {
   const text = triggerText.toLowerCase();
+
+  // CR 507.1: "At the beginning of combat on your turn" (Proft's Eidetic
+  // Memory, issue #2428). Checked first so the "turn" wording below never
+  // claims it.
+  if (/beginning of combat on your turn/.test(text)) {
+    return { event: "beginningOfCombat" };
+  }
 
   // Landfall (CR 207.2c ability word): "Whenever a land you control enters"
   // (current Oracle wording) or "Whenever a land enters the battlefield

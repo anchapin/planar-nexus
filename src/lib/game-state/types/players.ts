@@ -4,7 +4,7 @@
  * Mechanically extracted from types.ts (issue #1725);
  * behavior pinned by the existing engine suites.
  */
-import { DungeonId, DungeonProgress } from './dungeon';
+import { DungeonId, DungeonProgress } from "./dungeon";
 
 /**
  * Unique identifier for a player
@@ -39,6 +39,11 @@ export interface Player {
   landsPlayedThisTurn: number;
   /** Maximum lands that can be played this turn */
   maxLandsPerTurn: number;
+  /**
+   * Cards this player has drawn this turn (issue #2428, Proft's Eidetic
+   * Memory). Reset when each turn begins. Optional so older fixtures load.
+   */
+  cardsDrawnThisTurn?: number;
 
   // Foretell tracking (CR 702.142b)
   /**
@@ -153,4 +158,3 @@ export interface ManaPool {
   /** Generic mana that can be paid with any color */
   generic: number;
 }
-

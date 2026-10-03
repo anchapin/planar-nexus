@@ -1,5 +1,6 @@
 import type { GameState, PlayerId, CardInstanceId } from "./types";
 import { ReplacementEffectManager } from "./replacement-effects";
+import { recordCardsDrawn } from "./keyword-actions/cards-drawn";
 
 /**
  * Apply damage to a player
@@ -214,11 +215,15 @@ export function drawCard(state: GameState, playerId: PlayerId): GameState {
   updatedZones.set(libraryZoneKey, updatedLibrary);
   updatedZones.set(handZoneKey, updatedHand);
 
-  return {
-    ...state,
-    zones: updatedZones,
-    lastModifiedAt: Date.now(),
-  };
+  return recordCardsDrawn(
+    {
+      ...state,
+      zones: updatedZones,
+      lastModifiedAt: Date.now(),
+    },
+    playerId,
+    1,
+  );
 }
 
 /**

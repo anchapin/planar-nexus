@@ -300,6 +300,15 @@ export function resolveTopOfStack(state: GameState): GameState {
       }
     }
 
+    // CR 608.2n / 113.7: an ability is not a card. Once its effects are
+    // applied it just leaves the stack. Without this, a triggered ability from
+    // a permanent fell into spell completion, which re-ran the source's
+    // enters-the-battlefield triggers (found building Proft's Eidetic Memory,
+    // issue #2428).
+    if (stackObject.type === "ability") {
+      return removeFromStack(currentState, stackObject.id);
+    }
+
     // Move the card from stack to appropriate zone and handle post-resolution
     return resolveSpellCompletion(currentState, stackObject);
   } catch (err) {

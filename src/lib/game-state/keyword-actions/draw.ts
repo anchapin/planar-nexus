@@ -7,6 +7,7 @@
 import type { GameState, CardInstanceId, PlayerId } from "../types";
 import { moveCardToZone } from "./removal";
 import { KeywordActionResult } from "./shared";
+import { recordCardsDrawn } from "./cards-drawn";
 
 /**
  * Draw cards for a player
@@ -62,6 +63,8 @@ export function drawCards(
       }
     }
   }
+
+  currentState = recordCardsDrawn(currentState, playerId, cardsDrawn);
 
   return {
     success: cardsDrawn > 0,

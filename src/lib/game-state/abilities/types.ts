@@ -20,6 +20,7 @@ export type TriggerEvent =
   | "spellCast"
   | "upkeep"
   | "untapStep"
+  | "beginningOfCombat"
   | "phaseEnds"
   | "turnEnds"
   | "turnBegins"

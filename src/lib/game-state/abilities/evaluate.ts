@@ -10,6 +10,10 @@ import {
   MORBID_CONDITION,
   hasCreatureDiedThisTurn,
 } from "../keyword-actions/morbid";
+import {
+  cardsDrawnThisTurn,
+  drawnMoreThanThreshold,
+} from "../keyword-actions/cards-drawn";
 
 export function evaluateInterveningIfClause(
   condition: string,
@@ -30,6 +34,12 @@ export function evaluateInterveningIfClause(
   // Morbid: "if a creature died this turn" (any controller's creature).
   if (MORBID_CONDITION.test(c)) {
     return hasCreatureDiedThisTurn(state);
+  }
+
+  // "if you've drawn more than one card this turn" (issue #2428).
+  const drawn = drawnMoreThanThreshold(c);
+  if (drawn !== null) {
+    return cardsDrawnThisTurn(state, controllerId) > drawn;
   }
 
   // Ferocious: "if you control a creature with power 4 or greater". Checked
