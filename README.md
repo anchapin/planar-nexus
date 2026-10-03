@@ -295,7 +295,7 @@ toward the 70% target as coverage improves.
 | Metric     | Target | CI-enforced floor |
 | ---------- | ------ | ----------------- |
 | Lines      | 70%    | 65%               |
-| Functions  | 70%    | 57%               |
+| Functions  | 70%    | 58%               |
 | Statements | 70%    | 64%               |
 | Branches   | 60%    | 56%               |
 
