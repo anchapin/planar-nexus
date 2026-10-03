@@ -180,6 +180,8 @@ export interface CardInstance {
    * control get -1/-0". Maintained by `refreshThresholdBonuses`.
    */
   thresholdAnthemPT?: { power: number; toughness: number };
+  /** Domain CDA power (issue #2300), refreshed with state-based actions. */
+  domainPower?: number;
 
   // Renown keyword (CR 702.100)
   /**
