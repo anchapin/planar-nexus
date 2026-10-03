@@ -199,6 +199,11 @@ export interface CardInstance {
    * #2300). Maintained by `refreshTribalAnthems`.
    */
   tribalAnthemPT?: { power: number; toughness: number };
+  /**
+   * Summed static bonus from Auras attached to this creature, e.g. Ethereal
+   * Armor (issue #2453). Maintained by `refreshAuraBonuses`.
+   */
+  auraPT?: { power: number; toughness: number };
 
   // Renown keyword (CR 702.100)
   /**
