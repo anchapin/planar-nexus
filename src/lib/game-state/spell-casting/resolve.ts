@@ -14,6 +14,7 @@ import {
 } from "../abilities";
 import {
   destroyCard,
+  sacrificeCard,
   createTokenCard,
   applyEntersWithCounters,
 } from "../keyword-actions";
@@ -297,6 +298,24 @@ export function resolveTopOfStack(state: GameState): GameState {
           stackObject.sourceCardId ?? undefined,
           stackObject.targets,
         );
+      }
+    }
+
+    // Blitz end-step trigger (CR 702.152a, #2462): sacrifice its source if
+    // that creature is still on the battlefield.
+    if (
+      stackObject.type === "ability" &&
+      stackObject.triggered &&
+      /^sacrifice this creature\.?$/i.test(stackObject.text?.trim() ?? "") &&
+      stackObject.sourceCardId
+    ) {
+      const source = currentState.cards.get(stackObject.sourceCardId);
+      const bf = source
+        ? currentState.zones.get(`${source.controllerId}-battlefield`)
+        : undefined;
+      if (source && bf?.cardIds.includes(stackObject.sourceCardId)) {
+        const sac = sacrificeCard(currentState, stackObject.sourceCardId);
+        if (sac.success) currentState = sac.state;
       }
     }
 
