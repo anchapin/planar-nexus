@@ -45,6 +45,7 @@ import { hasLifelink, clearProwessBoosts } from "../evergreen-keywords";
 import { clearCrewedVehicles } from "../keyword-actions/crew";
 import {
   detectEndStepTriggers,
+  detectBlitzEndStepTriggers,
   detectUntapStepTriggers,
   putTriggersOnStack,
 } from "../trigger-system";
@@ -676,7 +677,12 @@ function advanceToNextPhase(state: GameState): GameState {
   }
   // CR 513.1a: "at the beginning of your/each end step" triggers (#2448).
   if (nextPhase.currentPhase === Phase.END) {
-    const triggers = detectEndStepTriggers(advanced, state.turn.activePlayerId);
+    // Blitz (CR 702.152a): "sacrifice it at the beginning of the next end
+    // step" for each creature cast for its blitz cost (#2462).
+    const triggers = [
+      ...detectEndStepTriggers(advanced, state.turn.activePlayerId),
+      ...detectBlitzEndStepTriggers(advanced, state.turn.activePlayerId),
+    ];
     if (triggers.length > 0) {
       return putTriggersOnStack(advanced, triggers).state;
     }
