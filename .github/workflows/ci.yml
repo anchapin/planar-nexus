@@ -628,8 +628,11 @@ jobs:
 
       - name: Run npm audit
         # Fail on high/critical advisories. Previously `critical`, which let
-        # every high/moderate advisory pass CI silently (#1108).
-        run: npm audit --audit-level=high
+        # every high/moderate advisory pass CI silently (#1108). Advisories
+        # with no patched release can be waived only through a dated entry in
+        # scripts/security/npm-audit-exceptions.json; an expired entry fails
+        # the job again (#2437).
+        run: node scripts/security/check-npm-audit.mjs
 
   # Mirror of the `security` job for the Rust crate tree consumed by the Tauri
   # host at `src-tauri/`. Tauri 2 desktop bundles statically link Rust crates,

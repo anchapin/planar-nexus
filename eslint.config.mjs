@@ -281,6 +281,8 @@ const eslintConfig = [
       "scripts/check-test-count-docs.mjs",
       // Plain Node ESM tooling for the issue #1910 test-count ratchet.
       "scripts/ratchet-test-count.mjs",
+      // Plain Node ESM tooling for the issue #2437 npm audit exception gate.
+      "scripts/security/check-npm-audit.mjs",
       ".claude/skills/pr-automation/**",
     ],
   },
