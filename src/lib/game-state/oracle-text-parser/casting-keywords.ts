@@ -153,6 +153,52 @@ export function parseConvoke(oracleText: string): ConvokeInfo {
 }
 
 /**
+ * Result of detecting Improvise (CR 702.126).
+ */
+export interface ImproviseInfo {
+  hasImprovise: boolean;
+  description: string;
+}
+
+/**
+ * Parse the Improvise keyword from oracle text.
+ *
+ * CR 702.126a: "Improvise" is a static ability that functions while the spell
+ * with improvise is on the stack. "For each generic mana in this spell's total
+ * cost, you may tap an untapped artifact you control rather than pay that
+ * mana." Unlike Convoke, improvise can only pay GENERIC mana.
+ *
+ * The grant "Noncreature spells you cast have improvise." (Ironheart, Clever
+ * Champion) is not the keyword on the spell itself, so it is stripped before
+ * matching; use `grantsNoncreatureImprovise` for the grant.
+ *
+ * Example oracle text: "Improvise" (Arc Reactor; Ironheart, Clever Champion).
+ */
+export function parseImprovise(oracleText: string): ImproviseInfo {
+  if (!oracleText) {
+    return { hasImprovise: false, description: "" };
+  }
+  const withoutGrant = oracleText.replace(NONCREATURE_IMPROVISE_GRANT, "");
+  const hasImprovise = /\bimprovise\b/i.test(withoutGrant);
+  return {
+    hasImprovise,
+    description: hasImprovise ? "Improvise" : "",
+  };
+}
+
+const NONCREATURE_IMPROVISE_GRANT =
+  /noncreature spells you cast have improvise\.?/gi;
+
+/**
+ * True when a permanent's oracle text grants improvise to its controller's
+ * noncreature spells (Ironheart, Clever Champion).
+ */
+export function grantsNoncreatureImprovise(oracleText: string): boolean {
+  if (!oracleText) return false;
+  return /noncreature spells you cast have improvise/i.test(oracleText);
+}
+
+/**
  * Result of detecting Delve (CR 702.61).
  */
 export interface DelveInfo {
