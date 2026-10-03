@@ -4,10 +4,18 @@
  * Mechanically extracted from keyword-actions.ts (issue #1725);
  * behavior pinned by the existing engine suites.
  */
-import type { GameState, CardInstance, CardInstanceId, PlayerId, WaitingChoice, ChoiceOption } from '../types';
-import { spendMana, getTotalMana } from '../mana';
-import { parseRenown, parseTribute } from '../oracle-text-parser';
-import { addCounterToCard } from './counters';
+import type {
+  GameState,
+  CardInstance,
+  CardInstanceId,
+  PlayerId,
+  WaitingChoice,
+  ChoiceOption,
+} from "../types";
+import { spendMana, getTotalMana } from "../mana";
+import { parseRenown, parseTribute } from "../oracle-text-parser";
+import { addCounterToCard } from "./counters";
+import { registerOfferResolver } from "../spell-casting/choices";
 
 export const TRIBUTE_CHOICE_TYPE = "tribute_offer" as const;
 
@@ -428,3 +436,4 @@ function finishTributeResolution(
   return { ...result, state: surfaced };
 }
 
+registerOfferResolver(TRIBUTE_CHOICE_TYPE, resolveTributeChoice);

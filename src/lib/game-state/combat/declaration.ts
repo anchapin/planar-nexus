@@ -18,7 +18,7 @@ import { dealDamageToCard } from "../keyword-actions";
 import { hasVigilanceStrict } from "../keyword-actions/vigilance";
 import { markAttackedThisTurn } from "../keyword-actions/raid";
 import { applyBattleCry } from "../keyword-actions/battle-cry";
-import { processAttackReturnOffers } from "../keyword-actions/attack-return";
+import { processAttackReturnOffers } from "../keyword-actions/attack-return-offers";
 import { checkStateBasedActions } from "../state-based-actions";
 import { dealCommanderDamage, isCommander } from "../commander-damage";
 import {

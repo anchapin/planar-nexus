@@ -39,6 +39,7 @@ import {
 } from "./types";
 import { spendMana, getTotalMana } from "./mana";
 import { exileCard } from "./keyword-actions";
+import { registerOfferResolver } from "./spell-casting/choices";
 
 /** Waiting-choice type value used for the Corpse death-trigger offer. */
 export const CORPSE_CHOICE_TYPE = "corpse_offer" as const;
@@ -483,3 +484,5 @@ function finishCorpseResolution(
   const surfaced = surfaceNextCorpseOffer(cleared);
   return { ...result, state: surfaced };
 }
+
+registerOfferResolver(CORPSE_CHOICE_TYPE, resolveCorpseChoice);

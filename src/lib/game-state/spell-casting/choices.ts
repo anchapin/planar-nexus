@@ -11,9 +11,32 @@ import type {
   ChoiceOption,
 } from "../types";
 import { completeHandTargeting } from "../hand-targeting";
-import { resolveCorpseChoice } from "../corpse-keyword";
-import { resolveTributeChoice } from "../keyword-actions/tribute-renown";
-import { resolveAttackReturnChoice } from "../keyword-actions/attack-return";
+
+/**
+ * Resolver for a "you may pay" offer (Corpse, Tribute, graveyard attack
+ * returns): takes the chosen option value and returns the new state.
+ */
+export type OfferChoiceResolver = (
+  state: GameState,
+  playerId: PlayerId,
+  chosenValue: string,
+) => { success: boolean; state: GameState; description?: string };
+
+/**
+ * Offer resolvers register themselves from their own modules instead of being
+ * imported here. A static import pulled the whole rules engine into every
+ * client route that touches resolveWaitingChoice (issue #2470). An offer can
+ * only exist once the module that created it has loaded, so its resolver is
+ * always registered by the time the choice needs answering.
+ */
+const offerResolvers = new Map<string, OfferChoiceResolver>();
+
+export function registerOfferResolver(
+  type: string,
+  resolver: OfferChoiceResolver,
+): void {
+  offerResolvers.set(type, resolver);
+}
 
 /**
  * Create a waiting choice for choosing modes
@@ -201,12 +224,14 @@ export function resolveWaitingChoice(
     if (typeof value !== "string") {
       return { success: false, state, error: "Expected an option value" };
     }
-    const resolver =
-      type === "corpse_offer"
-        ? resolveCorpseChoice
-        : type === "tribute_offer"
-          ? resolveTributeChoice
-          : resolveAttackReturnChoice;
+    const resolver = offerResolvers.get(type);
+    if (!resolver) {
+      return {
+        success: false,
+        state,
+        error: `No resolver registered for ${type}`,
+      };
+    }
     const result = resolver(state, playerId, value);
     return result.success
       ? { success: true, state: result.state }
