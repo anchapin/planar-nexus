@@ -51,153 +51,183 @@ import {
   canAttackIfNotDefender,
   hasMutate,
   canMutateOnto,
-} from '../evergreen-keywords';
+} from "../evergreen-keywords";
 
-import type { CardInstance } from '../types';
+import type { CardInstance } from "../types";
 
-describe('Evergreen Keywords', () => {
+describe("Evergreen Keywords", () => {
   // Helper to create a mock card with specific properties
-  const createMockCard = (overrides: Partial<CardInstance> = {}): CardInstance => ({
-    id: 'test-card' as any,
-    instanceId: 'test-instance' as any,
-    cardData: {
-      id: 'card-id',
-      name: 'Test Card',
-      type_line: 'Creature — Human Warrior',
-      oracle_text: '',
-      colors: ['W'],
-      color_identity: ['W'],
-      mana_cost: '{W}',
-      cmc: 1,
-      power: '1',
-      toughness: '1',
-    },
-    controllerId: 'player1' as any,
-    ownerId: 'player1' as any,
-    isTapped: false,
-    isFlipped: false,
-    isFaceDown: false,
-    damage: 0,
-    hasSummoningSickness: true,
-    counters: [],
-    attachedTo: null,
-    attachments: [],
-    ...overrides,
-  } as any);
+  const createMockCard = (
+    overrides: Partial<CardInstance> = {},
+  ): CardInstance =>
+    ({
+      id: "test-card" as any,
+      instanceId: "test-instance" as any,
+      cardData: {
+        id: "card-id",
+        name: "Test Card",
+        type_line: "Creature — Human Warrior",
+        oracle_text: "",
+        colors: ["W"],
+        color_identity: ["W"],
+        mana_cost: "{W}",
+        cmc: 1,
+        power: "1",
+        toughness: "1",
+      },
+      controllerId: "player1" as any,
+      ownerId: "player1" as any,
+      isTapped: false,
+      isFlipped: false,
+      isFaceDown: false,
+      damage: 0,
+      hasSummoningSickness: true,
+      counters: [],
+      attachedTo: null,
+      attachments: [],
+      ...overrides,
+    }) as any;
 
-  describe('hasKeyword', () => {
-    it('should detect keywords in keywords array', () => {
+  describe("hasKeyword", () => {
+    it("should detect keywords in keywords array", () => {
       const card = createMockCard({
         cardData: {
-          id: 'card-id',
-          name: 'Test Card',
-          type_line: 'Creature — Human',
-          oracle_text: '',
+          id: "card-id",
+          name: "Test Card",
+          type_line: "Creature — Human",
+          oracle_text: "",
           colors: [],
           color_identity: [],
-          mana_cost: '',
+          mana_cost: "",
           cmc: 0,
-          keywords: ['Flying', 'Haste'],
+          keywords: ["Flying", "Haste"],
         } as any,
       });
-      expect(hasKeyword(card, 'Flying')).toBe(true);
-      expect(hasKeyword(card, 'Haste')).toBe(true);
-      expect(hasKeyword(card, 'Deathtouch')).toBe(false);
+      expect(hasKeyword(card, "Flying")).toBe(true);
+      expect(hasKeyword(card, "Haste")).toBe(true);
+      expect(hasKeyword(card, "Deathtouch")).toBe(false);
     });
 
-    it('should detect keywords in oracle text', () => {
+    it("should detect keywords in oracle text", () => {
       const card = createMockCard({
         cardData: {
-          id: 'card-id',
-          name: 'Test Card',
-          type_line: 'Creature — Human',
-          oracle_text: 'This creature has flying and deathtouch.',
+          id: "card-id",
+          name: "Test Card",
+          type_line: "Creature — Human",
+          oracle_text: "This creature has flying and deathtouch.",
           colors: [],
           color_identity: [],
-          mana_cost: '',
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
-      expect(hasKeyword(card, 'Flying')).toBe(true);
-      expect(hasKeyword(card, 'Deathtouch')).toBe(true);
+      expect(hasKeyword(card, "Flying")).toBe(true);
+      expect(hasKeyword(card, "Deathtouch")).toBe(true);
     });
 
-    it('should be case insensitive', () => {
+    it("should be case insensitive", () => {
       const card = createMockCard({
         cardData: {
-          id: 'card-id',
-          name: 'Test Card',
-          type_line: 'Creature — Human',
-          oracle_text: 'FLYING and HASTE',
+          id: "card-id",
+          name: "Test Card",
+          type_line: "Creature — Human",
+          oracle_text: "FLYING and HASTE",
           colors: [],
           color_identity: [],
-          mana_cost: '',
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
-      expect(hasKeyword(card, 'flying')).toBe(true);
-      expect(hasKeyword(card, 'haste')).toBe(true);
+      expect(hasKeyword(card, "flying")).toBe(true);
+      expect(hasKeyword(card, "haste")).toBe(true);
     });
   });
 
-  describe('Flying', () => {
-    it('should detect flying keyword', () => {
+  describe("Flying", () => {
+    it("should detect flying keyword", () => {
       const card = createMockCard({
         cardData: {
-          id: 'card-id',
-          name: 'Test Card',
-          type_line: 'Creature — Bird',
-          oracle_text: 'Flying',
-          colors: ['W'],
-          color_identity: ['W'],
-          mana_cost: '{W}',
+          id: "card-id",
+          name: "Test Card",
+          type_line: "Creature — Bird",
+          oracle_text: "Flying",
+          colors: ["W"],
+          color_identity: ["W"],
+          mana_cost: "{W}",
           cmc: 1,
-          keywords: ['Flying'],
+          keywords: ["Flying"],
         } as any,
       });
       expect(hasFlying(card)).toBe(true);
     });
 
-    it('should allow flying creatures to block other flying creatures', () => {
+    it("should allow flying creatures to block other flying creatures", () => {
       const flyingCard = createMockCard({
         cardData: {
-          id: 'flying-id',
-          name: 'Flying Creature',
-          type_line: 'Creature — Bird',
-          oracle_text: 'Flying',
-          colors: ['W'],
-          color_identity: ['W'],
-          mana_cost: '{W}',
+          id: "flying-id",
+          name: "Flying Creature",
+          type_line: "Creature — Bird",
+          oracle_text: "Flying",
+          colors: ["W"],
+          color_identity: ["W"],
+          mana_cost: "{W}",
           cmc: 1,
-          keywords: ['Flying'],
+          keywords: ["Flying"],
         } as any,
       });
       const nonFlyingCard = createMockCard({
         cardData: {
-          id: 'ground-id',
-          name: 'Ground Creature',
-          type_line: 'Creature — Soldier',
-          oracle_text: '',
-          colors: ['W'],
-          color_identity: ['W'],
-          mana_cost: '{W}',
+          id: "ground-id",
+          name: "Ground Creature",
+          type_line: "Creature — Soldier",
+          oracle_text: "",
+          colors: ["W"],
+          color_identity: ["W"],
+          mana_cost: "{W}",
           cmc: 1,
         } as any,
       });
-      
+
       expect(canBlockFlying(flyingCard)).toBe(true);
       expect(canBlockFlying(nonFlyingCard)).toBe(false);
     });
 
-    it('should allow flying or reach to block flying', () => {
+    it("should allow flying or reach to block flying", () => {
       const flyingCard = createMockCard({
-        cardData: { id: 'f', name: 'F', type_line: 'Creature', oracle_text: 'Flying', colors: [], color_identity: [], mana_cost: '', cmc: 0 } as any,
+        cardData: {
+          id: "f",
+          name: "F",
+          type_line: "Creature",
+          oracle_text: "Flying",
+          colors: [],
+          color_identity: [],
+          mana_cost: "",
+          cmc: 0,
+        } as any,
       });
       const reachCard = createMockCard({
-        cardData: { id: 'r', name: 'R', type_line: 'Creature', oracle_text: 'Reach', colors: [], color_identity: [], mana_cost: '', cmc: 0 } as any,
+        cardData: {
+          id: "r",
+          name: "R",
+          type_line: "Creature",
+          oracle_text: "Reach",
+          colors: [],
+          color_identity: [],
+          mana_cost: "",
+          cmc: 0,
+        } as any,
       });
       const normalCard = createMockCard({
-        cardData: { id: 'n', name: 'N', type_line: 'Creature', oracle_text: '', colors: [], color_identity: [], mana_cost: '', cmc: 0 } as any,
+        cardData: {
+          id: "n",
+          name: "N",
+          type_line: "Creature",
+          oracle_text: "",
+          colors: [],
+          color_identity: [],
+          mana_cost: "",
+          cmc: 0,
+        } as any,
       });
 
       expect(canBlockFlying(flyingCard)).toBe(true);
@@ -206,165 +236,242 @@ describe('Evergreen Keywords', () => {
     });
   });
 
-  describe('Reach', () => {
-    it('should detect reach keyword', () => {
+  describe("Reach", () => {
+    it("should detect reach keyword", () => {
       const card = createMockCard({
         cardData: {
-          id: 'reach-id',
-          name: 'Spider',
-          type_line: 'Creature — Spider',
-          oracle_text: 'Reach',
-          colors: ['G'],
-          color_identity: ['G'],
-          mana_cost: '{1}{G}',
+          id: "reach-id",
+          name: "Spider",
+          type_line: "Creature — Spider",
+          oracle_text: "Reach",
+          colors: ["G"],
+          color_identity: ["G"],
+          mana_cost: "{1}{G}",
           cmc: 2,
-          keywords: ['Reach'],
+          keywords: ["Reach"],
         } as any,
       });
       expect(hasReach(card)).toBe(true);
     });
 
-    it('should allow reach creatures to block flying', () => {
+    it("should allow reach creatures to block flying", () => {
       const reachCard = createMockCard({
         cardData: {
-          id: 'spider-id',
-          name: 'Giant Spider',
-          type_line: 'Creature — Spider',
-          oracle_text: 'Reach',
-          colors: ['G'],
-          color_identity: ['G'],
-          mana_cost: '{2}{G}',
+          id: "spider-id",
+          name: "Giant Spider",
+          type_line: "Creature — Spider",
+          oracle_text: "Reach",
+          colors: ["G"],
+          color_identity: ["G"],
+          mana_cost: "{2}{G}",
           cmc: 3,
-          keywords: ['Reach'],
+          keywords: ["Reach"],
         } as any,
       });
       expect(hasReach(reachCard)).toBe(true);
     });
   });
 
-  describe('First Strike', () => {
-    it('should detect first strike keyword', () => {
+  describe("First Strike", () => {
+    it("should detect first strike keyword", () => {
       const card = createMockCard({
         cardData: {
-          id: 'fs-id',
-          name: 'Knight',
-          type_line: 'Creature — Human Knight',
-          oracle_text: 'First strike',
-          colors: ['W'],
-          color_identity: ['W'],
-          mana_cost: '{W}{W}',
+          id: "fs-id",
+          name: "Knight",
+          type_line: "Creature — Human Knight",
+          oracle_text: "First strike",
+          colors: ["W"],
+          color_identity: ["W"],
+          mana_cost: "{W}{W}",
           cmc: 2,
-          keywords: ['First strike'],
+          keywords: ["First strike"],
         } as any,
       });
       expect(hasFirstStrike(card)).toBe(true);
     });
 
-    it('should deal first strike damage in first strike combat phase', () => {
+    it("should deal first strike damage in first strike combat phase", () => {
       const fsCard = createMockCard({
-        cardData: { id: 'fs', name: 'FS', type_line: 'Creature', oracle_text: 'First strike', colors: [], color_identity: [], mana_cost: '', cmc: 0 } as any,
+        cardData: {
+          id: "fs",
+          name: "FS",
+          type_line: "Creature",
+          oracle_text: "First strike",
+          colors: [],
+          color_identity: [],
+          mana_cost: "",
+          cmc: 0,
+        } as any,
       });
       expect(dealsFirstStrikeDamage(fsCard)).toBe(true);
     });
 
-    it('double strike should also deal first strike damage', () => {
+    it("double strike should also deal first strike damage", () => {
       const dsCard = createMockCard({
-        cardData: { id: 'ds', name: 'DS', type_line: 'Creature', oracle_text: 'Double strike', colors: [], color_identity: [], mana_cost: '', cmc: 0, keywords: ['Double strike'] } as any,
+        cardData: {
+          id: "ds",
+          name: "DS",
+          type_line: "Creature",
+          oracle_text: "Double strike",
+          colors: [],
+          color_identity: [],
+          mana_cost: "",
+          cmc: 0,
+          keywords: ["Double strike"],
+        } as any,
       });
       expect(dealsFirstStrikeDamage(dsCard)).toBe(true);
     });
   });
 
-  describe('Double Strike', () => {
-    it('should detect double strike keyword', () => {
+  describe("Double Strike", () => {
+    it("should detect double strike keyword", () => {
       const card = createMockCard({
         cardData: {
-          id: 'ds-id',
-          name: 'Berserker',
-          type_line: 'Creature — Human Berserker',
-          oracle_text: 'Double strike',
-          colors: ['R'],
-          color_identity: ['R'],
-          mana_cost: '{1}{R}',
+          id: "ds-id",
+          name: "Berserker",
+          type_line: "Creature — Human Berserker",
+          oracle_text: "Double strike",
+          colors: ["R"],
+          color_identity: ["R"],
+          mana_cost: "{1}{R}",
           cmc: 2,
-          keywords: ['Double strike'],
+          keywords: ["Double strike"],
         } as any,
       });
       expect(hasDoubleStrike(card)).toBe(true);
     });
   });
 
-  describe('Trample', () => {
-    it('should detect trample keyword', () => {
+  describe("Trample", () => {
+    it("should detect trample keyword", () => {
       const card = createMockCard({
         cardData: {
-          id: 'trample-id',
-          name: 'Elephant',
-          type_line: 'Creature — Elephant',
-          oracle_text: 'Trample',
-          colors: ['G'],
-          color_identity: ['G'],
-          mana_cost: '{2}{G}',
+          id: "trample-id",
+          name: "Elephant",
+          type_line: "Creature — Elephant",
+          oracle_text: "Trample",
+          colors: ["G"],
+          color_identity: ["G"],
+          mana_cost: "{2}{G}",
           cmc: 3,
-          keywords: ['Trample'],
+          keywords: ["Trample"],
         } as any,
       });
       expect(hasTrample(card)).toBe(true);
     });
 
-    it('should calculate excess trample damage', () => {
+    it("should calculate excess trample damage", () => {
       const trampler = createMockCard({
-        cardData: { id: 't', name: 'T', type_line: 'Creature', oracle_text: 'Trample', colors: [], color_identity: [], mana_cost: '', cmc: 0, power: '6', toughness: '6' } as any,
+        cardData: {
+          id: "t",
+          name: "T",
+          type_line: "Creature",
+          oracle_text: "Trample",
+          colors: [],
+          color_identity: [],
+          mana_cost: "",
+          cmc: 0,
+          power: "6",
+          toughness: "6",
+        } as any,
       });
       const blocker = createMockCard({
-        cardData: { id: 'b', name: 'B', type_line: 'Creature', oracle_text: '', colors: [], color_identity: [], mana_cost: '', cmc: 0, power: '2', toughness: '2' } as any,
+        cardData: {
+          id: "b",
+          name: "B",
+          type_line: "Creature",
+          oracle_text: "",
+          colors: [],
+          color_identity: [],
+          mana_cost: "",
+          cmc: 0,
+          power: "2",
+          toughness: "2",
+        } as any,
       });
 
       // 6 damage, 2 blocked = 4 excess
       expect(getExcessTrampleDamage(6, 2, blocker, trampler)).toBe(4);
-      
+
       // 6 damage, 6 blocked = 0 excess
       expect(getExcessTrampleDamage(6, 6, blocker, trampler)).toBe(0);
-      
+
       // 6 damage, 10 blocked = 0 excess
       expect(getExcessTrampleDamage(6, 10, blocker, trampler)).toBe(0);
     });
 
-    it('should return 0 for non-tramplers', () => {
+    it("should return 0 for non-tramplers", () => {
       const normal = createMockCard({
-        cardData: { id: 'n', name: 'N', type_line: 'Creature', oracle_text: '', colors: [], color_identity: [], mana_cost: '', cmc: 0 } as any,
+        cardData: {
+          id: "n",
+          name: "N",
+          type_line: "Creature",
+          oracle_text: "",
+          colors: [],
+          color_identity: [],
+          mana_cost: "",
+          cmc: 0,
+        } as any,
       });
       const blocker = createMockCard({
-        cardData: { id: 'b', name: 'B', type_line: 'Creature', oracle_text: '', colors: [], color_identity: [], mana_cost: '', cmc: 0 } as any,
+        cardData: {
+          id: "b",
+          name: "B",
+          type_line: "Creature",
+          oracle_text: "",
+          colors: [],
+          color_identity: [],
+          mana_cost: "",
+          cmc: 0,
+        } as any,
       });
       expect(getExcessTrampleDamage(6, 2, blocker, normal)).toBe(0);
     });
   });
 
-  describe('Vigilance', () => {
-    it('should detect vigilance keyword', () => {
+  describe("Vigilance", () => {
+    it("should detect vigilance keyword", () => {
       const card = createMockCard({
         cardData: {
-          id: 'vig-id',
-          name: 'Sentinel',
-          type_line: 'Creature — Human Soldier',
-          oracle_text: 'Vigilance',
-          colors: ['W'],
-          color_identity: ['W'],
-          mana_cost: '{1}{W}',
+          id: "vig-id",
+          name: "Sentinel",
+          type_line: "Creature — Human Soldier",
+          oracle_text: "Vigilance",
+          colors: ["W"],
+          color_identity: ["W"],
+          mana_cost: "{1}{W}",
           cmc: 2,
-          keywords: ['Vigilance'],
+          keywords: ["Vigilance"],
         } as any,
       });
       expect(hasVigilance(card)).toBe(true);
     });
 
-    it('should not tap when attacking with vigilance', () => {
+    it("should not tap when attacking with vigilance", () => {
       const vigilCard = createMockCard({
-        cardData: { id: 'v', name: 'V', type_line: 'Creature', oracle_text: 'Vigilance', colors: [], color_identity: [], mana_cost: '', cmc: 0 } as any,
+        cardData: {
+          id: "v",
+          name: "V",
+          type_line: "Creature",
+          oracle_text: "Vigilance",
+          colors: [],
+          color_identity: [],
+          mana_cost: "",
+          cmc: 0,
+        } as any,
       });
       const normalCard = createMockCard({
-        cardData: { id: 'n', name: 'N', type_line: 'Creature', oracle_text: '', colors: [], color_identity: [], mana_cost: '', cmc: 0 } as any,
+        cardData: {
+          id: "n",
+          name: "N",
+          type_line: "Creature",
+          oracle_text: "",
+          colors: [],
+          color_identity: [],
+          mana_cost: "",
+          cmc: 0,
+        } as any,
       });
 
       expect(tapsWhenAttacking(vigilCard)).toBe(false);
@@ -372,31 +479,50 @@ describe('Evergreen Keywords', () => {
     });
   });
 
-  describe('Haste', () => {
-    it('should detect haste keyword', () => {
+  describe("Haste", () => {
+    it("should detect haste keyword", () => {
       const card = createMockCard({
         cardData: {
-          id: 'haste-id',
-          name: 'Goblin',
-          type_line: 'Creature — Goblin Warrior',
-          oracle_text: 'Haste',
-          colors: ['R'],
-          color_identity: ['R'],
-          mana_cost: '{R}',
+          id: "haste-id",
+          name: "Goblin",
+          type_line: "Creature — Goblin Warrior",
+          oracle_text: "Haste",
+          colors: ["R"],
+          color_identity: ["R"],
+          mana_cost: "{R}",
           cmc: 1,
-          keywords: ['Haste'],
+          keywords: ["Haste"],
         } as any,
       });
       expect(hasHaste(card)).toBe(true);
     });
 
-    it('should allow attacking with summoning sickness if has haste', () => {
+    it("should allow attacking with summoning sickness if has haste", () => {
       const hasteCard = createMockCard({
-        cardData: { id: 'h', name: 'H', type_line: 'Creature', oracle_text: 'Haste', colors: [], color_identity: [], mana_cost: '', cmc: 0, keywords: ['Haste'] } as any,
+        cardData: {
+          id: "h",
+          name: "H",
+          type_line: "Creature",
+          oracle_text: "Haste",
+          colors: [],
+          color_identity: [],
+          mana_cost: "",
+          cmc: 0,
+          keywords: ["Haste"],
+        } as any,
         hasSummoningSickness: true,
       });
       const normalCard = createMockCard({
-        cardData: { id: 'n', name: 'N', type_line: 'Creature', oracle_text: '', colors: [], color_identity: [], mana_cost: '', cmc: 0 } as any,
+        cardData: {
+          id: "n",
+          name: "N",
+          type_line: "Creature",
+          oracle_text: "",
+          colors: [],
+          color_identity: [],
+          mana_cost: "",
+          cmc: 0,
+        } as any,
         hasSummoningSickness: true,
       });
 
@@ -404,13 +530,32 @@ describe('Evergreen Keywords', () => {
       expect(canAttackThisTurn(normalCard)).toBe(false);
     });
 
-    it('should allow non-sick creatures to attack regardless of haste', () => {
+    it("should allow non-sick creatures to attack regardless of haste", () => {
       const hasteCard = createMockCard({
-        cardData: { id: 'h', name: 'H', type_line: 'Creature', oracle_text: 'Haste', colors: [], color_identity: [], mana_cost: '', cmc: 0, keywords: ['Haste'] } as any,
+        cardData: {
+          id: "h",
+          name: "H",
+          type_line: "Creature",
+          oracle_text: "Haste",
+          colors: [],
+          color_identity: [],
+          mana_cost: "",
+          cmc: 0,
+          keywords: ["Haste"],
+        } as any,
         hasSummoningSickness: false,
       });
       const normalCard = createMockCard({
-        cardData: { id: 'n', name: 'N', type_line: 'Creature', oracle_text: '', colors: [], color_identity: [], mana_cost: '', cmc: 0 } as any,
+        cardData: {
+          id: "n",
+          name: "N",
+          type_line: "Creature",
+          oracle_text: "",
+          colors: [],
+          color_identity: [],
+          mana_cost: "",
+          cmc: 0,
+        } as any,
         hasSummoningSickness: false,
       });
 
@@ -419,111 +564,125 @@ describe('Evergreen Keywords', () => {
     });
   });
 
-  describe('Protection', () => {
-    it('should detect protection from color in oracle text', () => {
+  describe("Protection", () => {
+    it("should detect protection from color in oracle text", () => {
       const card = createMockCard({
         cardData: {
-          id: 'prot-id',
-          name: 'Holy Guardian',
-          type_line: 'Creature — Angel',
-          oracle_text: 'Protection from black',
-          colors: ['W'],
-          color_identity: ['W'],
-          mana_cost: '{2}{W}{W}',
+          id: "prot-id",
+          name: "Holy Guardian",
+          type_line: "Creature — Angel",
+          oracle_text: "Protection from black",
+          colors: ["W"],
+          color_identity: ["W"],
+          mana_cost: "{2}{W}{W}",
           cmc: 3,
         } as any,
       });
-      expect(hasProtectionFrom(card, 'black')).toBe(true);
-      expect(hasProtectionFrom(card, 'red')).toBe(false);
+      expect(hasProtectionFrom(card, "black")).toBe(true);
+      expect(hasProtectionFrom(card, "red")).toBe(false);
     });
 
-    it('should prevent targeting by protected color', () => {
+    it("should prevent targeting by protected color", () => {
       const protCard = createMockCard({
         cardData: {
-          id: 'p', name: 'P', type_line: 'Creature', oracle_text: 'Protection from red', colors: [], color_identity: [], mana_cost: '', cmc: 0
+          id: "p",
+          name: "P",
+          type_line: "Creature",
+          oracle_text: "Protection from red",
+          colors: [],
+          color_identity: [],
+          mana_cost: "",
+          cmc: 0,
         } as any,
       });
       const normalCard = createMockCard({
         cardData: {
-          id: 'n', name: 'N', type_line: 'Creature', oracle_text: '', colors: [], color_identity: [], mana_cost: '', cmc: 0
+          id: "n",
+          name: "N",
+          type_line: "Creature",
+          oracle_text: "",
+          colors: [],
+          color_identity: [],
+          mana_cost: "",
+          cmc: 0,
         } as any,
       });
 
-      expect(canBeTargetedByColor(protCard, 'red')).toBe(false);
-      expect(canBeTargetedByColor(protCard, 'blue')).toBe(true);
-      expect(canBeTargetedByColor(normalCard, 'red')).toBe(true);
+      expect(canBeTargetedByColor(protCard, "red")).toBe(false);
+      expect(canBeTargetedByColor(protCard, "blue")).toBe(true);
+      expect(canBeTargetedByColor(normalCard, "red")).toBe(true);
     });
 
-    it('should get protection qualities from oracle text', () => {
+    it("should get protection qualities from oracle text", () => {
       const card = createMockCard({
         cardData: {
-          id: 'prot-id',
-          name: 'Holy Guardian',
-          type_line: 'Creature — Angel',
-          oracle_text: 'Protection from black',
-          colors: ['W'],
-          color_identity: ['W'],
-          mana_cost: '',
+          id: "prot-id",
+          name: "Holy Guardian",
+          type_line: "Creature — Angel",
+          oracle_text: "Protection from black",
+          colors: ["W"],
+          color_identity: ["W"],
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
       const qualities = getProtectionQualities(card);
-      expect(qualities).toContain('black');
-      expect(qualities).not.toContain('red');
+      expect(qualities).toContain("black");
+      expect(qualities).not.toContain("red");
     });
 
-    it('should detect protection from multiple colors', () => {
+    it("should detect protection from multiple colors", () => {
       const card = createMockCard({
         cardData: {
-          id: 'multi-prot',
-          name: 'Multi Protector',
-          type_line: 'Creature',
-          oracle_text: 'Protection from red and blue',
-          colors: ['W'],
-          color_identity: ['W'],
-          mana_cost: '',
+          id: "multi-prot",
+          name: "Multi Protector",
+          type_line: "Creature",
+          oracle_text: "Protection from red and blue",
+          colors: ["W"],
+          color_identity: ["W"],
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
-      expect(hasProtectionFrom(card, 'red')).toBe(true);
-      expect(hasProtectionFrom(card, 'blue')).toBe(true);
-      expect(hasProtectionFrom(card, 'black')).toBe(false);
+      expect(hasProtectionFrom(card, "red")).toBe(true);
+      expect(hasProtectionFrom(card, "blue")).toBe(true);
+      expect(hasProtectionFrom(card, "black")).toBe(false);
     });
 
-    it('should check protection from source card colors', () => {
+    it("should check protection from source card colors", () => {
       const protCard = createMockCard({
         cardData: {
-          id: 'prot',
-          name: 'Fire Guardian',
-          type_line: 'Creature — Elemental',
-          oracle_text: 'Protection from red',
-          colors: ['R'],
-          color_identity: ['R'],
-          mana_cost: '',
+          id: "prot",
+          name: "Fire Guardian",
+          type_line: "Creature — Elemental",
+          oracle_text: "Protection from red",
+          colors: ["R"],
+          color_identity: ["R"],
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
       const redSource = createMockCard({
         cardData: {
-          id: 'red-src',
-          name: 'Fire Bolt',
-          type_line: 'Sorcery',
-          oracle_text: '',
-          colors: ['R'],
-          color_identity: ['R'],
-          mana_cost: '',
+          id: "red-src",
+          name: "Fire Bolt",
+          type_line: "Sorcery",
+          oracle_text: "",
+          colors: ["R"],
+          color_identity: ["R"],
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
       const blueSource = createMockCard({
         cardData: {
-          id: 'blue-src',
-          name: 'Water Blast',
-          type_line: 'Instant',
-          oracle_text: '',
-          colors: ['U'],
-          color_identity: ['U'],
-          mana_cost: '',
+          id: "blue-src",
+          name: "Water Blast",
+          type_line: "Instant",
+          oracle_text: "",
+          colors: ["U"],
+          color_identity: ["U"],
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
@@ -532,40 +691,40 @@ describe('Evergreen Keywords', () => {
       expect(isProtectedFromSource(protCard, blueSource)).toBe(false);
     });
 
-    it('should prevent targeting by source with matching protection', () => {
+    it("should prevent targeting by source with matching protection", () => {
       const protCard = createMockCard({
         cardData: {
-          id: 'prot',
-          name: 'Angel Protector',
-          type_line: 'Creature — Angel',
-          oracle_text: 'Protection from black',
-          colors: ['W'],
-          color_identity: ['W'],
-          mana_cost: '',
+          id: "prot",
+          name: "Angel Protector",
+          type_line: "Creature — Angel",
+          oracle_text: "Protection from black",
+          colors: ["W"],
+          color_identity: ["W"],
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
       const blackSpell = createMockCard({
         cardData: {
-          id: 'black-spell',
-          name: 'Dark Ritual',
-          type_line: 'Sorcery',
-          oracle_text: '',
-          colors: ['B'],
-          color_identity: ['B'],
-          mana_cost: '',
+          id: "black-spell",
+          name: "Dark Ritual",
+          type_line: "Sorcery",
+          oracle_text: "",
+          colors: ["B"],
+          color_identity: ["B"],
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
       const whiteSpell = createMockCard({
         cardData: {
-          id: 'white-spell',
-          name: 'Heal',
-          type_line: 'Instant',
-          oracle_text: '',
-          colors: ['W'],
-          color_identity: ['W'],
-          mana_cost: '',
+          id: "white-spell",
+          name: "Heal",
+          type_line: "Instant",
+          oracle_text: "",
+          colors: ["W"],
+          color_identity: ["W"],
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
@@ -574,40 +733,40 @@ describe('Evergreen Keywords', () => {
       expect(canBeTargetedBySource(protCard, whiteSpell)).toBe(true);
     });
 
-    it('should check enchantment restrictions for auras', () => {
+    it("should check enchantment restrictions for auras", () => {
       const protCard = createMockCard({
         cardData: {
-          id: 'prot',
-          name: 'Holy Guardian',
-          type_line: 'Creature — Angel',
-          oracle_text: 'Protection from red',
-          colors: ['W'],
-          color_identity: ['W'],
-          mana_cost: '',
+          id: "prot",
+          name: "Holy Guardian",
+          type_line: "Creature — Angel",
+          oracle_text: "Protection from red",
+          colors: ["W"],
+          color_identity: ["W"],
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
       const redAura = createMockCard({
         cardData: {
-          id: 'red-aura',
-          name: 'Red Aura',
-          type_line: 'Enchantment — Aura',
-          oracle_text: '',
-          colors: ['R'],
-          color_identity: ['R'],
-          mana_cost: '',
+          id: "red-aura",
+          name: "Red Aura",
+          type_line: "Enchantment — Aura",
+          oracle_text: "",
+          colors: ["R"],
+          color_identity: ["R"],
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
       const whiteAura = createMockCard({
         cardData: {
-          id: 'white-aura',
-          name: 'White Aura',
-          type_line: 'Enchantment — Aura',
-          oracle_text: '',
-          colors: ['W'],
-          color_identity: ['W'],
-          mana_cost: '',
+          id: "white-aura",
+          name: "White Aura",
+          type_line: "Enchantment — Aura",
+          oracle_text: "",
+          colors: ["W"],
+          color_identity: ["W"],
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
@@ -616,40 +775,40 @@ describe('Evergreen Keywords', () => {
       expect(canBeEnchantedBy(protCard, whiteAura)).toBe(true);
     });
 
-    it('should check equipment restrictions', () => {
+    it("should check equipment restrictions", () => {
       const protCard = createMockCard({
         cardData: {
-          id: 'prot',
-          name: 'Fire Guardian',
-          type_line: 'Creature — Elemental',
-          oracle_text: 'Protection from red',
+          id: "prot",
+          name: "Fire Guardian",
+          type_line: "Creature — Elemental",
+          oracle_text: "Protection from red",
           colors: [],
           color_identity: [],
-          mana_cost: '',
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
       const redEquipment = createMockCard({
         cardData: {
-          id: 'red-equip',
-          name: 'Red Sword',
-          type_line: 'Artifact — Equipment',
-          oracle_text: '',
-          colors: ['R'],
-          color_identity: ['R'],
-          mana_cost: '',
+          id: "red-equip",
+          name: "Red Sword",
+          type_line: "Artifact — Equipment",
+          oracle_text: "",
+          colors: ["R"],
+          color_identity: ["R"],
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
       const greenEquipment = createMockCard({
         cardData: {
-          id: 'green-equip',
-          name: 'Green Sword',
-          type_line: 'Artifact — Equipment',
-          oracle_text: '',
-          colors: ['G'],
-          color_identity: ['G'],
-          mana_cost: '',
+          id: "green-equip",
+          name: "Green Sword",
+          type_line: "Artifact — Equipment",
+          oracle_text: "",
+          colors: ["G"],
+          color_identity: ["G"],
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
@@ -658,40 +817,40 @@ describe('Evergreen Keywords', () => {
       expect(canBeEquippedBy(protCard, greenEquipment)).toBe(true);
     });
 
-    it('should prevent damage from protected sources', () => {
+    it("should prevent damage from protected sources", () => {
       const protCard = createMockCard({
         cardData: {
-          id: 'prot',
-          name: 'Holy Guardian',
-          type_line: 'Creature — Angel',
-          oracle_text: 'Protection from black',
-          colors: ['W'],
-          color_identity: ['W'],
-          mana_cost: '',
+          id: "prot",
+          name: "Holy Guardian",
+          type_line: "Creature — Angel",
+          oracle_text: "Protection from black",
+          colors: ["W"],
+          color_identity: ["W"],
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
       const blackSource = createMockCard({
         cardData: {
-          id: 'black-source',
-          name: 'Dark Revenant',
-          type_line: 'Creature — Spirit',
-          oracle_text: '',
-          colors: ['B'],
-          color_identity: ['B'],
-          mana_cost: '',
+          id: "black-source",
+          name: "Dark Revenant",
+          type_line: "Creature — Spirit",
+          oracle_text: "",
+          colors: ["B"],
+          color_identity: ["B"],
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
       const whiteSource = createMockCard({
         cardData: {
-          id: 'white-source',
-          name: 'Silver Knight',
-          type_line: 'Creature — Knight',
-          oracle_text: '',
-          colors: ['W'],
-          color_identity: ['W'],
-          mana_cost: '',
+          id: "white-source",
+          name: "Silver Knight",
+          type_line: "Creature — Knight",
+          oracle_text: "",
+          colors: ["W"],
+          color_identity: ["W"],
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
@@ -700,28 +859,28 @@ describe('Evergreen Keywords', () => {
       expect(shouldPreventDamageToTarget(protCard, whiteSource)).toBe(false);
     });
 
-    it('should handle protection with color abbreviations (W, U, B, R, G)', () => {
+    it("should handle protection with color abbreviations (W, U, B, R, G)", () => {
       const protCard = createMockCard({
         cardData: {
-          id: 'prot',
-          name: 'Guardian',
-          type_line: 'Creature',
-          oracle_text: 'Protection from red',
+          id: "prot",
+          name: "Guardian",
+          type_line: "Creature",
+          oracle_text: "Protection from red",
           colors: [],
           color_identity: [],
-          mana_cost: '',
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
       const redSource = createMockCard({
         cardData: {
-          id: 'red',
-          name: 'Fire',
-          type_line: '',
-          oracle_text: '',
-          colors: ['R'],
+          id: "red",
+          name: "Fire",
+          type_line: "",
+          oracle_text: "",
+          colors: ["R"],
           color_identity: [],
-          mana_cost: '',
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
@@ -731,38 +890,60 @@ describe('Evergreen Keywords', () => {
     });
   });
 
-  describe('Flash', () => {
-    it('should detect flash keyword', () => {
+  describe("Flash", () => {
+    it("should detect flash keyword", () => {
       const card = createMockCard({
         cardData: {
-          id: 'flash-id',
-          name: 'Quickling',
-          type_line: 'Creature — Faerie Rogue',
-          oracle_text: 'Flash',
-          colors: ['U'],
-          color_identity: ['U'],
-          mana_cost: '{1}{U}',
+          id: "flash-id",
+          name: "Quickling",
+          type_line: "Creature — Faerie Rogue",
+          oracle_text: "Flash",
+          colors: ["U"],
+          color_identity: ["U"],
+          mana_cost: "{1}{U}",
           cmc: 2,
-          keywords: ['Flash'],
+          keywords: ["Flash"],
         } as any,
       });
       expect(hasFlash(card)).toBe(true);
     });
 
-    it('should allow playing at instant speed', () => {
+    it("should allow playing at instant speed", () => {
       const flashCard = createMockCard({
         cardData: {
-          id: 'f', name: 'F', type_line: 'Creature', oracle_text: 'Flash', colors: [], color_identity: [], mana_cost: '', cmc: 0, keywords: ['Flash']
+          id: "f",
+          name: "F",
+          type_line: "Creature",
+          oracle_text: "Flash",
+          colors: [],
+          color_identity: [],
+          mana_cost: "",
+          cmc: 0,
+          keywords: ["Flash"],
         } as any,
       });
       const instantCard = createMockCard({
         cardData: {
-          id: 'i', name: 'I', type_line: 'Instant', oracle_text: '', colors: [], color_identity: [], mana_cost: '', cmc: 0
+          id: "i",
+          name: "I",
+          type_line: "Instant",
+          oracle_text: "",
+          colors: [],
+          color_identity: [],
+          mana_cost: "",
+          cmc: 0,
         } as any,
       });
       const sorceryCard = createMockCard({
         cardData: {
-          id: 's', name: 'S', type_line: 'Sorcery', oracle_text: '', colors: [], color_identity: [], mana_cost: '', cmc: 0
+          id: "s",
+          name: "S",
+          type_line: "Sorcery",
+          oracle_text: "",
+          colors: [],
+          color_identity: [],
+          mana_cost: "",
+          cmc: 0,
         } as any,
       });
 
@@ -772,34 +953,35 @@ describe('Evergreen Keywords', () => {
     });
   });
 
-  describe('Deathtouch', () => {
-    it('should detect deathtouch keyword', () => {
+  describe("Deathtouch", () => {
+    it("should detect deathtouch keyword", () => {
       const card = createMockCard({
         cardData: {
-          id: 'dt-id',
-          name: 'Venom',
-          type_line: 'Creature — Snake',
-          oracle_text: 'Deathtouch',
-          colors: ['B'],
-          color_identity: ['B'],
-          mana_cost: '{B}',
+          id: "dt-id",
+          name: "Venom",
+          type_line: "Creature — Snake",
+          oracle_text: "Deathtouch",
+          colors: ["B"],
+          color_identity: ["B"],
+          mana_cost: "{B}",
           cmc: 1,
-          keywords: ['Deathtouch'],
+          keywords: ["Deathtouch"],
         } as any,
       });
       expect(hasDeathtouch(card)).toBe(true);
     });
 
-    it('should detect deathtouch in oracle text', () => {
+    it("should detect deathtouch in oracle text", () => {
       const card = createMockCard({
         cardData: {
-          id: 'dt2-id',
-          name: 'Toxic',
-          type_line: 'Creature — Insect',
-          oracle_text: 'Lethal damage can be dealt to creatures by deathtouch creatures.',
-          colors: ['B'],
-          color_identity: ['B'],
-          mana_cost: '{B}',
+          id: "dt2-id",
+          name: "Toxic",
+          type_line: "Creature — Insect",
+          oracle_text:
+            "Lethal damage can be dealt to creatures by deathtouch creatures.",
+          colors: ["B"],
+          color_identity: ["B"],
+          mana_cost: "{B}",
           cmc: 1,
         } as any,
       });
@@ -807,50 +989,50 @@ describe('Evergreen Keywords', () => {
     });
   });
 
-  describe('Lifelink', () => {
-    it('should detect lifelink keyword', () => {
+  describe("Lifelink", () => {
+    it("should detect lifelink keyword", () => {
       const card = createMockCard({
         cardData: {
-          id: 'll-id',
-          name: 'Soul Sentinel',
-          type_line: 'Creature — Spirit Soldier',
-          oracle_text: 'Lifelink',
-          colors: ['W'],
-          color_identity: ['W'],
-          mana_cost: '{2}{W}',
+          id: "ll-id",
+          name: "Soul Sentinel",
+          type_line: "Creature — Spirit Soldier",
+          oracle_text: "Lifelink",
+          colors: ["W"],
+          color_identity: ["W"],
+          mana_cost: "{2}{W}",
           cmc: 3,
-          keywords: ['Lifelink'],
+          keywords: ["Lifelink"],
         } as any,
       });
       expect(hasLifelink(card)).toBe(true);
     });
   });
 
-  describe('Combat Creatures', () => {
-    it('should identify combat creatures', () => {
+  describe("Combat Creatures", () => {
+    it("should identify combat creatures", () => {
       const creature = createMockCard({
         cardData: {
-          id: 'c-id',
-          name: 'Soldier',
-          type_line: 'Creature — Human Soldier',
-          oracle_text: '',
-          colors: ['W'],
-          color_identity: ['W'],
-          mana_cost: '{W}',
+          id: "c-id",
+          name: "Soldier",
+          type_line: "Creature — Human Soldier",
+          oracle_text: "",
+          colors: ["W"],
+          color_identity: ["W"],
+          mana_cost: "{W}",
           cmc: 1,
-          power: '1',
-          toughness: '1',
+          power: "1",
+          toughness: "1",
         } as any,
       });
       const nonCreature = createMockCard({
         cardData: {
-          id: 'i-id',
-          name: 'Bolt',
-          type_line: 'Instant',
-          oracle_text: '',
-          colors: ['R'],
-          color_identity: ['R'],
-          mana_cost: '{R}',
+          id: "i-id",
+          name: "Bolt",
+          type_line: "Instant",
+          oracle_text: "",
+          colors: ["R"],
+          color_identity: ["R"],
+          mana_cost: "{R}",
           cmc: 1,
         } as any,
       });
@@ -859,78 +1041,78 @@ describe('Evergreen Keywords', () => {
     });
   });
 
-  describe('Effective Power/Toughness', () => {
-    it('should get effective power', () => {
+  describe("Effective Power/Toughness", () => {
+    it("should get effective power", () => {
       const card = createMockCard({
         cardData: {
-          id: 'p-id',
-          name: 'Power',
-          type_line: 'Creature',
-          oracle_text: '',
+          id: "p-id",
+          name: "Power",
+          type_line: "Creature",
+          oracle_text: "",
           colors: [],
           color_identity: [],
-          mana_cost: '',
+          mana_cost: "",
           cmc: 0,
-          power: '3',
-          toughness: '3',
+          power: "3",
+          toughness: "3",
         } as any,
       });
       expect(getEffectivePower(card)).toBe(3);
     });
 
-    it('should get effective toughness', () => {
+    it("should get effective toughness", () => {
       const card = createMockCard({
         cardData: {
-          id: 't-id',
-          name: 'Tough',
-          type_line: 'Creature',
-          oracle_text: '',
+          id: "t-id",
+          name: "Tough",
+          type_line: "Creature",
+          oracle_text: "",
           colors: [],
           color_identity: [],
-          mana_cost: '',
+          mana_cost: "",
           cmc: 0,
-          power: '2',
-          toughness: '4',
+          power: "2",
+          toughness: "4",
         } as any,
       });
       expect(getEffectiveToughness(card)).toBe(4);
     });
   });
 
-  describe('Get All Keywords', () => {
-    it('should get all keywords from a card', () => {
+  describe("Get All Keywords", () => {
+    it("should get all keywords from a card", () => {
       const card = createMockCard({
         cardData: {
-          id: 'k-id',
-          name: 'Keyword',
-          type_line: 'Creature',
-          oracle_text: 'Flying and deathtouch',
+          id: "k-id",
+          name: "Keyword",
+          type_line: "Creature",
+          oracle_text: "Flying and deathtouch",
           colors: [],
           color_identity: [],
-          mana_cost: '',
+          mana_cost: "",
           cmc: 0,
-          keywords: ['Flying', 'Deathtouch'],
+          keywords: ["Flying", "Deathtouch"],
         } as any,
       });
       const keywords = getAllKeywords(card);
-      expect(keywords).toContain('Flying');
-      expect(keywords).toContain('Deathtouch');
+      expect(keywords).toContain("Flying");
+      expect(keywords).toContain("Deathtouch");
     });
   });
 
-  describe('Keyword Descriptions', () => {
-    it('should get keyword descriptions', () => {
+  describe("Keyword Descriptions", () => {
+    it("should get keyword descriptions", () => {
       const card = createMockCard({
         cardData: {
-          id: 'd-id',
-          name: 'Desc',
-          type_line: 'Creature',
-          oracle_text: 'Flying',
+          id: "d-id",
+          name: "Desc",
+          type_line: "Creature",
+          oracle_text: "Flying",
           colors: [],
           color_identity: [],
-          mana_cost: '',
+          mana_cost: "",
           cmc: 0,
-          keywords: ['Flying'],
+          keywords: ["Flying"],
         } as any,
       });
       const descriptions = getKeywordDescriptions(card);
@@ -938,21 +1120,21 @@ describe('Evergreen Keywords', () => {
     });
   });
 
-  describe('Lethal Damage', () => {
-    it('should check for lethal damage on a creature with damage marked', () => {
+  describe("Lethal Damage", () => {
+    it("should check for lethal damage on a creature with damage marked", () => {
       const card = createMockCard({
         damage: 2,
         cardData: {
-          id: 'l-id',
-          name: 'Lethal',
-          type_line: 'Creature',
-          oracle_text: '',
+          id: "l-id",
+          name: "Lethal",
+          type_line: "Creature",
+          oracle_text: "",
           colors: [],
           color_identity: [],
-          mana_cost: '',
+          mana_cost: "",
           cmc: 0,
-          power: '1',
-          toughness: '1',
+          power: "1",
+          toughness: "1",
         } as any,
       });
       // With 2 damage marked on a 1/1, lethal damage is marked
@@ -960,29 +1142,29 @@ describe('Evergreen Keywords', () => {
     });
   });
 
-  describe('Indestructible', () => {
-    it('should check if card is indestructible', () => {
+  describe("Indestructible", () => {
+    it("should check if card is indestructible", () => {
       const indestructibleCard = createMockCard({
         cardData: {
-          id: 'ind-id',
-          name: 'Indestructible',
-          type_line: 'Creature',
-          oracle_text: 'Indestructible',
+          id: "ind-id",
+          name: "Indestructible",
+          type_line: "Creature",
+          oracle_text: "Indestructible",
           colors: [],
           color_identity: [],
-          mana_cost: '',
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
       const normalCard = createMockCard({
         cardData: {
-          id: 'n-id',
-          name: 'Normal',
-          type_line: 'Creature',
-          oracle_text: '',
+          id: "n-id",
+          name: "Normal",
+          type_line: "Creature",
+          oracle_text: "",
           colors: [],
           color_identity: [],
-          mana_cost: '',
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
@@ -990,16 +1172,16 @@ describe('Evergreen Keywords', () => {
       expect(isIndestructible(normalCard)).toBe(false);
     });
 
-    it('should check if card can be destroyed', () => {
+    it("should check if card can be destroyed", () => {
       const indestructibleCard = createMockCard({
         cardData: {
-          id: 'cd-id',
-          name: 'CanDestroy',
-          type_line: 'Creature',
-          oracle_text: 'Indestructible',
+          id: "cd-id",
+          name: "CanDestroy",
+          type_line: "Creature",
+          oracle_text: "Indestructible",
           colors: [],
           color_identity: [],
-          mana_cost: '',
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
@@ -1007,34 +1189,34 @@ describe('Evergreen Keywords', () => {
     });
   });
 
-  describe('Menace', () => {
-    it('should detect menace keyword', () => {
+  describe("Menace", () => {
+    it("should detect menace keyword", () => {
       const card = createMockCard({
         cardData: {
-          id: 'men-id',
-          name: 'Rogue',
-          type_line: 'Creature — Human Rogue',
-          oracle_text: 'Menace',
-          colors: ['B'],
-          color_identity: ['B'],
-          mana_cost: '{1}{B}',
+          id: "men-id",
+          name: "Rogue",
+          type_line: "Creature — Human Rogue",
+          oracle_text: "Menace",
+          colors: ["B"],
+          color_identity: ["B"],
+          mana_cost: "{1}{B}",
           cmc: 2,
-          keywords: ['Menace'],
+          keywords: ["Menace"],
         } as any,
       });
       expect(hasMenace(card)).toBe(true);
     });
 
-    it('should get minimum blockers for menace', () => {
+    it("should get minimum blockers for menace", () => {
       const card = createMockCard({
         cardData: {
-          id: 'men2-id',
-          name: 'Rogue2',
-          type_line: 'Creature',
-          oracle_text: 'Menace',
+          id: "men2-id",
+          name: "Rogue2",
+          type_line: "Creature",
+          oracle_text: "Menace",
           colors: [],
           color_identity: [],
-          mana_cost: '',
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
@@ -1042,213 +1224,253 @@ describe('Evergreen Keywords', () => {
     });
   });
 
-  describe('Ward', () => {
-    it('should detect ward keyword', () => {
+  describe("Ward", () => {
+    it("should detect ward keyword", () => {
       const card = createMockCard({
         cardData: {
-          id: 'ward-id',
-          name: 'Warded Creature',
-          type_line: 'Creature — Wizard',
-          oracle_text: 'Ward {2}',
-          colors: ['U'],
-          color_identity: ['U'],
-          mana_cost: '{1}{U}',
+          id: "ward-id",
+          name: "Warded Creature",
+          type_line: "Creature — Wizard",
+          oracle_text: "Ward {2}",
+          colors: ["U"],
+          color_identity: ["U"],
+          mana_cost: "{1}{U}",
           cmc: 2,
-          keywords: ['Ward'],
+          keywords: ["Ward"],
         } as any,
       });
       expect(hasWard(card)).toBe(true);
     });
 
-    it('should detect ward in oracle text without keywords array', () => {
+    it("should detect ward in oracle text without keywords array", () => {
       const card = createMockCard({
         cardData: {
-          id: 'ward2-id',
-          name: 'Warded Beast',
-          type_line: 'Creature — Beast',
-          oracle_text: 'Ward {1}',
-          colors: ['G'],
-          color_identity: ['G'],
-          mana_cost: '{1}{G}',
+          id: "ward2-id",
+          name: "Warded Beast",
+          type_line: "Creature — Beast",
+          oracle_text: "Ward {1}",
+          colors: ["G"],
+          color_identity: ["G"],
+          mana_cost: "{1}{G}",
           cmc: 2,
         } as any,
       });
       expect(hasWard(card)).toBe(true);
     });
 
-    it('should parse mana ward cost', () => {
+    it("should parse mana ward cost", () => {
       const card = createMockCard({
         cardData: {
-          id: 'ward3-id',
-          name: 'Expensive Ward',
-          type_line: 'Creature',
-          oracle_text: 'Ward {3}',
+          id: "ward3-id",
+          name: "Expensive Ward",
+          type_line: "Creature",
+          oracle_text: "Ward {3}",
           colors: [],
           color_identity: [],
-          mana_cost: '',
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
-      expect(getWardCost(card)).toBe('{3}');
+      expect(getWardCost(card)).toBe("{3}");
     });
 
-    it('should parse life payment ward cost', () => {
+    it("should parse life payment ward cost", () => {
       const card = createMockCard({
         cardData: {
-          id: 'ward4-id',
-          name: 'Life Ward',
-          type_line: 'Creature',
-          oracle_text: 'Ward—Pay 3 life.',
+          id: "ward4-id",
+          name: "Life Ward",
+          type_line: "Creature",
+          oracle_text: "Ward—Pay 3 life.",
           colors: [],
           color_identity: [],
-          mana_cost: '',
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
-      expect(getWardCost(card)).toBe('3');
+      expect(getWardCost(card)).toBe("3");
     });
 
-    it('should return default ward cost for plain ward', () => {
+    it("should return default ward cost for plain ward", () => {
       const card = createMockCard({
         cardData: {
-          id: 'ward5-id',
-          name: 'Basic Ward',
-          type_line: 'Creature',
-          oracle_text: 'Ward',
+          id: "ward5-id",
+          name: "Basic Ward",
+          type_line: "Creature",
+          oracle_text: "Ward",
           colors: [],
           color_identity: [],
-          mana_cost: '',
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
-      expect(getWardCost(card)).toBe('{2}');
+      expect(getWardCost(card)).toBe("{2}");
     });
 
-    it('should return null ward cost for non-ward card', () => {
+    it("should return null ward cost for non-ward card", () => {
       const card = createMockCard({
         cardData: {
-          id: 'no-ward-id',
-          name: 'No Ward',
-          type_line: 'Creature',
-          oracle_text: 'Flying',
+          id: "no-ward-id",
+          name: "No Ward",
+          type_line: "Creature",
+          oracle_text: "Flying",
           colors: [],
           color_identity: [],
-          mana_cost: '',
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
       expect(getWardCost(card)).toBeNull();
     });
 
-    it('should protect from opponent targeting with ward', () => {
+    it("should protect from opponent targeting with ward", () => {
       const card = createMockCard({
         cardData: {
-          id: 'ward-prot-id',
-          name: 'Protected',
-          type_line: 'Creature',
-          oracle_text: 'Ward {2}',
+          id: "ward-prot-id",
+          name: "Protected",
+          type_line: "Creature",
+          oracle_text: "Ward {2}",
           colors: [],
           color_identity: [],
-          mana_cost: '',
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
       // Controller targeting their own card
-      expect(isProtectedByWard(card, 'player1' as any)).toBe(false);
+      expect(isProtectedByWard(card, "player1" as any)).toBe(false);
       // Opponent targeting
-      expect(isProtectedByWard(card, 'player2' as any)).toBe(true);
+      expect(isProtectedByWard(card, "player2" as any)).toBe(true);
     });
 
-    it('should not protect non-ward cards', () => {
+    it("should not protect non-ward cards", () => {
       const card = createMockCard({
         cardData: {
-          id: 'no-ward-prot-id',
-          name: 'Unprotected',
-          type_line: 'Creature',
-          oracle_text: 'Flying',
+          id: "no-ward-prot-id",
+          name: "Unprotected",
+          type_line: "Creature",
+          oracle_text: "Flying",
           colors: [],
           color_identity: [],
-          mana_cost: '',
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
-      expect(isProtectedByWard(card, 'player2' as any)).toBe(false);
+      expect(isProtectedByWard(card, "player2" as any)).toBe(false);
     });
 
-    it('should include ward in keyword descriptions', () => {
+    it("should include ward in keyword descriptions", () => {
       const card = createMockCard({
         cardData: {
-          id: 'ward-desc-id',
-          name: 'Described Ward',
-          type_line: 'Creature',
-          oracle_text: 'Ward {2}',
+          id: "ward-desc-id",
+          name: "Described Ward",
+          type_line: "Creature",
+          oracle_text: "Ward {2}",
           colors: [],
           color_identity: [],
-          mana_cost: '',
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
       const descriptions = getKeywordDescriptions(card);
-      expect(descriptions).toContain('Ward {2}');
+      expect(descriptions).toContain("Ward {2}");
     });
 
-    it('should include ward in all keywords', () => {
+    it("should include ward in all keywords", () => {
       const card = createMockCard({
         cardData: {
-          id: 'ward-all-id',
-          name: 'All Ward',
-          type_line: 'Creature',
-          oracle_text: 'Ward {1}',
+          id: "ward-all-id",
+          name: "All Ward",
+          type_line: "Creature",
+          oracle_text: "Ward {1}",
           colors: [],
           color_identity: [],
-          mana_cost: '',
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
       const keywords = getAllKeywords(card);
-      expect(keywords).toContain('ward');
+      expect(keywords).toContain("ward");
     });
   });
 
-  describe('Defender', () => {
-    it('should detect defender keyword', () => {
+  describe("Defender", () => {
+    it("should detect defender keyword", () => {
       const card = createMockCard({
         cardData: {
-          id: 'def-id',
-          name: 'Wall',
-          type_line: 'Creature — Wall',
-          oracle_text: 'Defender',
-          colors: ['U'],
-          color_identity: ['U'],
-          mana_cost: '{1}{U}',
+          id: "def-id",
+          name: "Wall",
+          type_line: "Creature — Wall",
+          oracle_text: "Defender",
+          keywords: ["Defender"],
+          colors: ["U"],
+          color_identity: ["U"],
+          mana_cost: "{1}{U}",
           cmc: 2,
         } as any,
       });
       expect(hasDefender(card)).toBe(true);
     });
 
-    it('should check if defender can attack', () => {
+    it("does not read a defender grant in oracle text as defender (#2341)", () => {
+      const granter = createMockCard({
+        cardData: {
+          id: "grant-def-id",
+          name: "Grant Defender",
+          type_line: "Creature — Spirit",
+          oracle_text: "Creatures your opponents control gain defender.",
+          keywords: [],
+          colors: ["W"],
+          color_identity: ["W"],
+          mana_cost: "{2}{W}",
+          cmc: 3,
+        } as any,
+      });
+      expect(hasDefender(granter)).toBe(false);
+      expect(canAttackIfNotDefender(granter)).toBe(true);
+      expect(getKeywordDescriptions(granter)).not.toContain("Defender");
+    });
+
+    it("reads defender from the keywords array (#2341)", () => {
+      const wall = createMockCard({
+        cardData: {
+          id: "kw-def-id",
+          name: "Keyword Wall",
+          type_line: "Creature — Wall",
+          oracle_text: "Defender",
+          keywords: ["Defender"],
+          colors: ["U"],
+          color_identity: ["U"],
+          mana_cost: "{1}{U}",
+          cmc: 2,
+        } as any,
+      });
+      expect(hasDefender(wall)).toBe(true);
+      expect(canAttackIfNotDefender(wall)).toBe(false);
+      expect(getKeywordDescriptions(wall)).toContain("Defender");
+    });
+
+    it("should check if defender can attack", () => {
       const defender = createMockCard({
         cardData: {
-          id: 'def2-id',
-          name: 'Wall2',
-          type_line: 'Creature',
-          oracle_text: 'Defender',
+          id: "def2-id",
+          name: "Wall2",
+          type_line: "Creature",
+          oracle_text: "Defender",
+          keywords: ["Defender"],
           colors: [],
           color_identity: [],
-          mana_cost: '',
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
       const attacker = createMockCard({
         cardData: {
-          id: 'att-id',
-          name: 'Attacker',
-          type_line: 'Creature',
-          oracle_text: '',
+          id: "att-id",
+          name: "Attacker",
+          type_line: "Creature",
+          oracle_text: "",
           colors: [],
           color_identity: [],
-          mana_cost: '',
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
@@ -1257,191 +1479,196 @@ describe('Evergreen Keywords', () => {
     });
   });
 
-  describe('canBlockThisTurn', () => {
-    it('should always allow blocking on the turn entered', () => {
+  describe("canBlockThisTurn", () => {
+    it("should always allow blocking on the turn entered", () => {
       const card = createMockCard({ hasSummoningSickness: true });
       expect(canBlockThisTurn(card)).toBe(true);
     });
   });
 
-  describe('Hexproof', () => {
-    it('should detect hexproof keyword', () => {
+  describe("Hexproof", () => {
+    it("should detect hexproof keyword", () => {
       const card = createMockCard({
         cardData: {
-          id: 'hex-id',
-          name: 'Hexproof Bear',
-          type_line: 'Creature — Bear',
-          oracle_text: 'Hexproof',
-          colors: ['G'],
-          color_identity: ['G'],
-          mana_cost: '{1}{G}',
+          id: "hex-id",
+          name: "Hexproof Bear",
+          type_line: "Creature — Bear",
+          oracle_text: "Hexproof",
+          colors: ["G"],
+          color_identity: ["G"],
+          mana_cost: "{1}{G}",
           cmc: 2,
-          keywords: ['Hexproof'],
+          keywords: ["Hexproof"],
         } as any,
       });
       expect(hasHexproof(card)).toBe(true);
     });
 
-    it('should protect from opponent targeting', () => {
+    it("should protect from opponent targeting", () => {
       const card = createMockCard({
-        controllerId: 'player-1',
+        controllerId: "player-1",
         cardData: {
-          id: 'hex2-id',
-          name: 'Hexproof Bear',
-          type_line: 'Creature',
-          oracle_text: 'Hexproof',
-          keywords: ['Hexproof'],
+          id: "hex2-id",
+          name: "Hexproof Bear",
+          type_line: "Creature",
+          oracle_text: "Hexproof",
+          keywords: ["Hexproof"],
         } as any,
       });
-      expect(isProtectedByHexproof(card, 'player-2')).toBe(true);
-      expect(isProtectedByHexproof(card, 'player-1')).toBe(false);
+      expect(isProtectedByHexproof(card, "player-2")).toBe(true);
+      expect(isProtectedByHexproof(card, "player-1")).toBe(false);
     });
 
-    it('should not protect creatures without hexproof', () => {
+    it("should not protect creatures without hexproof", () => {
       const card = createMockCard({
-        controllerId: 'player-1',
+        controllerId: "player-1",
         cardData: {
-          id: 'nohex-id',
-          name: 'Normal Bear',
-          type_line: 'Creature',
-          oracle_text: '',
+          id: "nohex-id",
+          name: "Normal Bear",
+          type_line: "Creature",
+          oracle_text: "",
         } as any,
       });
-      expect(isProtectedByHexproof(card, 'player-2')).toBe(false);
+      expect(isProtectedByHexproof(card, "player-2")).toBe(false);
     });
   });
 
-  describe('Mutate', () => {
-    it('should detect mutate keyword', () => {
+  describe("Mutate", () => {
+    it("should detect mutate keyword", () => {
       const card = createMockCard({
         cardData: {
-          id: 'mutate-id',
-          name: 'Brallin',
-          type_line: 'Creature — Rabbit',
-          oracle_text: 'Mutate {3}{R} (If you cast this spell, you may merge it with target creature you control.)',
-          colors: ['R'],
-          color_identity: ['R'],
-          mana_cost: '{2}{R}',
+          id: "mutate-id",
+          name: "Brallin",
+          type_line: "Creature — Rabbit",
+          oracle_text:
+            "Mutate {3}{R} (If you cast this spell, you may merge it with target creature you control.)",
+          colors: ["R"],
+          color_identity: ["R"],
+          mana_cost: "{2}{R}",
           cmc: 3,
-          keywords: ['Mutate'],
+          keywords: ["Mutate"],
         } as any,
       });
       expect(hasMutate(card)).toBe(true);
     });
 
-    it('should detect mutate in oracle text', () => {
+    it("should detect mutate in oracle text", () => {
       const card = createMockCard({
         cardData: {
-          id: 'mutate2-id',
-          name: 'Mutate Creature',
-          type_line: 'Creature',
-          oracle_text: 'Mutate {2}{U}',
-          colors: ['U'],
-          color_identity: ['U'],
-          mana_cost: '',
+          id: "mutate2-id",
+          name: "Mutate Creature",
+          type_line: "Creature",
+          oracle_text: "Mutate {2}{U}",
+          colors: ["U"],
+          color_identity: ["U"],
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
       expect(hasMutate(card)).toBe(true);
     });
 
-    it('should not detect mutate on non-mutate cards', () => {
+    it("should not detect mutate on non-mutate cards", () => {
       const card = createMockCard({
         cardData: {
-          id: 'normal-id',
-          name: 'Normal Creature',
-          type_line: 'Creature',
-          oracle_text: 'Flying',
+          id: "normal-id",
+          name: "Normal Creature",
+          type_line: "Creature",
+          oracle_text: "Flying",
           colors: [],
           color_identity: [],
-          mana_cost: '',
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
       expect(hasMutate(card)).toBe(false);
     });
 
-    it('should check if mutate card can be cast onto target creature', () => {
+    it("should check if mutate card can be cast onto target creature", () => {
       const mutateCard = createMockCard({
-        id: 'mutate-card',
+        id: "mutate-card",
         cardData: {
-          id: 'mutate-card-data',
-          name: 'Brallin',
-          type_line: 'Creature — Rabbit',
-          oracle_text: 'Mutate {3}{R}',
-          colors: ['R'],
-          color_identity: ['R'],
-          mana_cost: '{2}{R}',
+          id: "mutate-card-data",
+          name: "Brallin",
+          type_line: "Creature — Rabbit",
+          oracle_text: "Mutate {3}{R}",
+          colors: ["R"],
+          color_identity: ["R"],
+          mana_cost: "{2}{R}",
           cmc: 3,
-          keywords: ['Mutate'],
+          keywords: ["Mutate"],
         } as any,
       });
 
       const targetCreature = createMockCard({
-        id: 'target-creature',
-        controllerId: 'player1' as any,
+        id: "target-creature",
+        controllerId: "player1" as any,
         cardData: {
-          id: 'target-data',
-          name: 'Companion',
-          type_line: 'Creature — Dog',
-          oracle_text: '',
-          colors: ['R'],
-          color_identity: ['R'],
-          mana_cost: '',
+          id: "target-data",
+          name: "Companion",
+          type_line: "Creature — Dog",
+          oracle_text: "",
+          colors: ["R"],
+          color_identity: ["R"],
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
 
       const opponentCreature = createMockCard({
-        id: 'opponent-creature',
-        controllerId: 'player2' as any,
+        id: "opponent-creature",
+        controllerId: "player2" as any,
         cardData: {
-          id: 'opp-data',
-          name: 'Opponent Creature',
-          type_line: 'Creature',
-          oracle_text: '',
+          id: "opp-data",
+          name: "Opponent Creature",
+          type_line: "Creature",
+          oracle_text: "",
           colors: [],
           color_identity: [],
-          mana_cost: '',
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
 
       // Can mutate onto own creature
-      expect(canMutateOnto(mutateCard, targetCreature, 'player1' as any)).toBe(true);
+      expect(canMutateOnto(mutateCard, targetCreature, "player1" as any)).toBe(
+        true,
+      );
 
       // Cannot mutate onto opponent's creature
-      expect(canMutateOnto(mutateCard, opponentCreature, 'player1' as any)).toBe(false);
+      expect(
+        canMutateOnto(mutateCard, opponentCreature, "player1" as any),
+      ).toBe(false);
     });
 
-    it('should not allow mutate onto non-creature', () => {
+    it("should not allow mutate onto non-creature", () => {
       const mutateCard = createMockCard({
         cardData: {
-          id: 'mutate3-id',
-          name: 'Mutate Card',
-          type_line: 'Creature',
-          oracle_text: 'Mutate {2}',
+          id: "mutate3-id",
+          name: "Mutate Card",
+          type_line: "Creature",
+          oracle_text: "Mutate {2}",
           colors: [],
           color_identity: [],
-          mana_cost: '',
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
 
       const landCard = createMockCard({
         cardData: {
-          id: 'land-id',
-          name: 'Forest',
-          type_line: 'Basic Land — Forest',
-          oracle_text: '',
-          colors: ['G'],
-          color_identity: ['G'],
-          mana_cost: '',
+          id: "land-id",
+          name: "Forest",
+          type_line: "Basic Land — Forest",
+          oracle_text: "",
+          colors: ["G"],
+          color_identity: ["G"],
+          mana_cost: "",
           cmc: 0,
         } as any,
       });
 
-      expect(canMutateOnto(mutateCard, landCard, 'player1' as any)).toBe(false);
+      expect(canMutateOnto(mutateCard, landCard, "player1" as any)).toBe(false);
     });
   });
 });

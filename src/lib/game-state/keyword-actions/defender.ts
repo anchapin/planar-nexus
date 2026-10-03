@@ -5,13 +5,11 @@
  *
  * "This creature can't attack."
  *
- * The canonical detection (`hasDefender`) lives in `evergreen-keywords.ts`,
- * but it still consults the substring oracle-text fallback via `hasKeyword`,
- * which can false-positive on any card whose oracle text mentions the word
- * "defender" (e.g. cards that give other creatures defender, or cards with
- * flavor text containing the word). This module owns the **strict** check
- * that consults ONLY the parsed `keywords` array, mirroring the pattern used
- * by `flash.ts` for the same reason.
+ * This module owns the **strict** check that consults ONLY the parsed
+ * `keywords` array, mirroring the pattern used by `flash.ts`. The canonical
+ * `evergreen-keywords.hasDefender` delegates to it (#2341), so a card whose
+ * oracle text merely mentions "defender" (a grant to other creatures, flavor
+ * text) no longer reads as a defender anywhere.
  *
  * This decision function is wired into `combat/queries.ts::canAttack` and
  * `getAvailableAttackers` so that any creature with the defender keyword is

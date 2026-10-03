@@ -44,6 +44,7 @@ import { hasMutateStrict } from "./keyword-actions/mutate";
 import { hasIndestructibleKeyword } from "./keyword-actions/indestructible";
 import { hasInfectStrict } from "./keyword-actions/infect";
 import { hasFlashStrict } from "./keyword-actions/flash";
+import { hasDefenderStrict } from "./keyword-actions/defender";
 import { oracleTextDeclaresOwnKeyword } from "./keyword-actions/grant-negation";
 import { isThresholdOnlyKeyword } from "./keyword-actions/threshold";
 
@@ -796,10 +797,15 @@ export function canBePlayedAtInstantSpeed(card: CardInstance): boolean {
 
 // ============== DEFENDER ==============
 /**
- * Check if a card has defender
+ * Check if a card has defender (CR 702.13).
+ *
+ * Delegates to the strict keyword-list check (#2341), the same predicate the
+ * combat gate in `combat/queries.ts` uses, so the canonical name can no longer
+ * read a card as a defender just because its oracle text mentions the word
+ * (e.g. "creatures your opponents control gain defender").
  */
 export function hasDefender(card: CardInstance): boolean {
-  return hasKeyword(card, "defender");
+  return hasDefenderStrict(card);
 }
 
 /**
