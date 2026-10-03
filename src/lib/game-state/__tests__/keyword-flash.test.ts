@@ -11,7 +11,11 @@
  *   - sorcery-speed restrictions still apply to non-flash non-instant cards.
  */
 
-import { canCastAtInstantSpeed, hasFlash } from "../keyword-actions/flash";
+import {
+  canCastAtInstantSpeed,
+  hasFlashStrict as hasFlash,
+} from "../keyword-actions/flash";
+import { hasFlash as hasFlashCanonical } from "../evergreen-keywords";
 import { canCastSpell } from "../spell-casting";
 import { createInitialGameState, startGame } from "../game-state";
 import { createCardInstance } from "../card-instance";
@@ -252,5 +256,40 @@ describe("canCastSpell integration (CR 702.8 + 117)", () => {
     const result = canCastSpell(state, aliceId, flashCardId);
     expect(result.canCast).toBe(false);
     expect(result.reason).toMatch(/split second/i);
+  });
+});
+
+describe("evergreen-keywords.hasFlash defers to the strict check (#2340)", () => {
+  it("does not read Flashback as flash", () => {
+    const card = makeInstance(
+      makeCardData({
+        keywords: ["Flashback"],
+        oracle_text:
+          "Flashback {1}{W} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+      }),
+      "p1",
+    );
+    expect(hasFlashCanonical(card)).toBe(false);
+  });
+
+  it("does not read a card that 'flashes' as flash", () => {
+    const card = makeInstance(
+      makeCardData({ oracle_text: "Whenever this flashes, draw a card." }),
+      "p1",
+    );
+    expect(hasFlashCanonical(card)).toBe(false);
+  });
+
+  it("detects a tagged Flash card and an untagged one", () => {
+    const tagged = makeInstance(
+      makeCardData({ keywords: ["Flash"], oracle_text: "Flash" }),
+      "p1",
+    );
+    const untagged = makeInstance(
+      makeCardData({ keywords: [], oracle_text: "Flash\nFlying" }),
+      "p1",
+    );
+    expect(hasFlashCanonical(tagged)).toBe(true);
+    expect(hasFlashCanonical(untagged)).toBe(true);
   });
 });
