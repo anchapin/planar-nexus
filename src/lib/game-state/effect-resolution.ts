@@ -471,6 +471,36 @@ function wordToNumber(word: string): number | null {
 }
 
 /**
+ * Creature subtypes from a token description such as "4/4 green beast
+ * creature" or "1/1 red goblin" (the text before "token"), capitalized as
+ * printed. Power/toughness, colors, "and", "colorless" and the card types
+ * are dropped; whatever remains before "creature" is the subtype list.
+ */
+export function parseTokenSubtypes(tokenDesc: string): string[] {
+  const NON_SUBTYPE = new Set([
+    "white",
+    "blue",
+    "black",
+    "red",
+    "green",
+    "colorless",
+    "and",
+    "legendary",
+    "artifact",
+    "enchantment",
+    "snow",
+    "tapped",
+    "untapped",
+  ]);
+  const beforeCreature = tokenDesc.split(/\bcreature\b/i)[0];
+  return beforeCreature
+    .split(/\s+/)
+    .map((w) => w.replace(/[^a-z'-]/gi, ""))
+    .filter((w) => w.length > 0 && !NON_SUBTYPE.has(w.toLowerCase()))
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+}
+
+/**
  * Parse oracle text to extract effect information
  * Used to determine what effects a spell creates
  */
@@ -583,6 +613,7 @@ export function parseSpellEffects(
     // Examples: "1/1 white soldier", "2/2 green beast"
     const powerToughnessMatch = tokenDesc.match(/(\d+)\/(\d+)/);
     const colorMatch = tokenDesc.match(/(white|blue|black|red|green)/i);
+    const subtypes = parseTokenSubtypes(tokenDesc);
 
     effects.push({
       effectType: "token_creation",
@@ -591,6 +622,7 @@ export function parseSpellEffects(
       color: colorMatch ? colorMatch[1].toLowerCase() : "white",
       count,
       controllerId: "" as PlayerId,
+      ...(subtypes.length > 0 ? { subtypes } : {}),
     });
   }
 
@@ -919,8 +951,12 @@ export function resolveEffect(
         state,
         sourceId,
         {
-          name: "Token",
-          type_line: "Creature — Token",
+          // CR 111.4: a token's name is its subtype(s); "Token" only when the
+          // oracle text named none.
+          name: effect.subtypes?.length ? effect.subtypes.join(" ") : "Token",
+          type_line: effect.subtypes?.length
+            ? `Token Creature — ${effect.subtypes.join(" ")}`
+            : "Creature — Token",
           power: effect.power.toString(),
           toughness: effect.toughness.toString(),
           colors: [effect.color],

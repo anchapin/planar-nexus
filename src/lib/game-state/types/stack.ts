@@ -358,6 +358,11 @@ export type StackEffect =
       color: string;
       count: number;
       controllerId: PlayerId;
+      /**
+       * Creature subtypes from the oracle text ("a 4/4 green Beast creature
+       * token" gives ["Beast"]). The token's name is its subtypes (CR 111.4).
+       */
+      subtypes?: string[];
     }
   | { effectType: "counter_spell"; targetStackObjectId: string }
   | {
