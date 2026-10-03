@@ -293,7 +293,8 @@ export type StackEffectType =
   | "fight"
   | "pt_until_eot"
   | "reveal_until_instant_sorcery"
-  | "discard_unless_graveyard";
+  | "discard_unless_graveyard"
+  | "counters_from_draws";
 
 /**
  * Structured effect data for resolution
@@ -301,6 +302,17 @@ export type StackEffectType =
  */
 export type StackEffect =
   | { effectType: "crew"; vehicleId: CardInstanceId }
+  | {
+      /**
+       * "Put X +1/+1 counters on target creature you control, where X is the
+       * number of cards you've drawn this turn minus one" (Proft's Eidetic
+       * Memory, issue #2428). X is read on resolution.
+       */
+      effectType: "counters_from_draws";
+      offset: number;
+      playerId: PlayerId;
+      targetId?: CardInstanceId;
+    }
   | {
       /**
        * Threshold-style "then discard N cards unless there are M or more

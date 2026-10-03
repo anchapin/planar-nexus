@@ -45,6 +45,10 @@ import { hasLifelink, clearProwessBoosts } from "../evergreen-keywords";
 import { clearCrewedVehicles } from "../keyword-actions/crew";
 import { detectUntapStepTriggers, putTriggersOnStack } from "../trigger-system";
 import type { TriggeredAbilityInstance } from "../abilities";
+import {
+  processBeginningOfCombat,
+  recordCardsDrawn,
+} from "../keyword-actions/cards-drawn";
 
 export { castSpell, resolveTopOfStack };
 
@@ -316,11 +320,15 @@ export function drawCard(state: GameState, playerId: PlayerId): GameState {
   updatedZones.set(libraryZoneKey, updatedLibrary);
   updatedZones.set(handZoneKey, updatedHand);
 
-  return {
-    ...state,
-    zones: updatedZones,
-    lastModifiedAt: Date.now(),
-  };
+  return recordCardsDrawn(
+    {
+      ...state,
+      zones: updatedZones,
+      lastModifiedAt: Date.now(),
+    },
+    playerId,
+    1,
+  );
 }
 
 /**
@@ -598,6 +606,8 @@ function advanceToNextPhase(state: GameState): GameState {
         landsPlayedThisTurn: 0,
         foretoldThisTurn: 0,
         spellsCastThisTurn: 0,
+        // Proft's Eidetic Memory (#2428): "cards you've drawn this turn".
+        cardsDrawnThisTurn: 0,
         // Raid: "if you attacked this turn" resets each turn.
         attackedThisTurn: false,
         // CR 702.135 - Spectacle: "if an opponent has lost life THIS turn."
@@ -649,12 +659,18 @@ function advanceToNextPhase(state: GameState): GameState {
     updatedPlayers = new Map(newState.players);
   }
 
-  return {
+  const advanced: GameState = {
     ...newState,
     turn: nextPhase,
     players: updatedPlayers,
     priorityPlayerId: state.turn.activePlayerId,
   };
+
+  // CR 507.1: "at the beginning of combat on your turn" triggers.
+  if (nextPhase.currentPhase === Phase.BEGIN_COMBAT) {
+    return processBeginningOfCombat(advanced);
+  }
+  return advanced;
 }
 
 function resolveStackTop(state: GameState): GameState {
