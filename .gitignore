@@ -67,6 +67,10 @@ src-tauri/gen/
 # blanket *.json rule above would drop the data the report classifies by.
 !scripts/data/standard-keywords.json
 
+# npm audit exception list must be tracked (issue #2437): the blanket *.json
+# rule above would silently drop it and the audit gate would fail to load it.
+!scripts/security/npm-audit-exceptions.json
+
 # Jest mock boundary allowlist must be tracked (issue #1815): the
 # blanket *.json rule above would silently ignore the guard's
 # documented exceptions.
