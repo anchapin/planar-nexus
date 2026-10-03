@@ -1062,6 +1062,9 @@ export class LayerSystem {
     // Layer 7e: P/T modifications
     power += modified.powerModifier || 0;
     toughness += modified.toughnessModifier || 0;
+    // Aura statics ("Enchanted creature gets +N/+N", issue #2453).
+    power += card.auraPT?.power || 0;
+    toughness += card.auraPT?.toughness || 0;
 
     return { power, toughness };
   }

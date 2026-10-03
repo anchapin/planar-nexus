@@ -30,8 +30,6 @@ const scenarios: Scenario[] = fs
 
 /** Scenario id -> the issue tracking the engine gap it exposes. */
 const KNOWN_MISMATCHES: Record<string, string> = {
-  // Ethereal Armor's per-enchantment bonus is not applied.
-  "aura-ethereal-armor": "#2453",
   // Primal Might's +X/+X is not applied before the fight.
   "fight-primal-might": "#2451",
   // "At the beginning of your end step" raid triggers never fire.
