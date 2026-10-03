@@ -30,7 +30,7 @@
  * creature-type-line guard in `hasPersist` is still a plain
  * `typeLine.includes("creature")` substring test, not a parsed type-line check.
  * It is pre-existing and untouched here, and it is rules-correct for the case
- * that matters (an "Artifact — Creature" IS a creature and persist does apply).
+ * that matters (an "Artifact Creature" IS a creature and persist does apply).
  * Tightening it to a parsed type-line read is a separate follow-up, the same
  * shape as the negation-aware oracle parse tracked for `"hexproof from"` in
  * `keyword-actions/hexproof.ts`.
@@ -241,13 +241,12 @@ describe("hasPersist (CR 702.78) — canonical gate", () => {
   });
 
   it("CR 702.78: an Artifact Creature IS a creature, so persist applies", () => {
-    // Pins the pre-existing, deliberately unchanged type-line guard. The guard is
-    // a plain `typeLine.includes("creature")`, and an "Artifact — Creature" is a
-    // creature under the CR, so `true` is rules-correct. See the KNOWN LIMIT note
-    // in the file header about the type-line substring being out of scope here.
+    // Pins the creature type-line guard. The guard is the shared type-line
+    // parse (#2349), and an "Artifact Creature" is a creature under the CR,
+    // so `true` is rules-correct.
     const card = makeInstance(
       makeCardData({
-        type_line: "Artifact — Creature",
+        type_line: "Artifact Creature — Equipment",
         keywords: ["Persist"],
         oracle_text: "",
       }),

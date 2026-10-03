@@ -6,7 +6,11 @@
  * enters tapped" ETB choice) and is exported via the game-state barrel.
  */
 
-import { hasShocklandChoice, createCardInstance } from "../card-instance";
+import {
+  hasShocklandChoice,
+  createCardInstance,
+  typeLineHasCreatureType,
+} from "../card-instance";
 import type { ScryfallCard } from "../types";
 import type { PlayerId } from "../types";
 
@@ -141,5 +145,35 @@ describe("hasShocklandChoice", () => {
     expect(hasShocklandChoice(payOnly)).toBe(false);
     expect(hasShocklandChoice(entersOnly)).toBe(false);
     expect(hasShocklandChoice(tappedOnly)).toBe(false);
+  });
+});
+
+describe("typeLineHasCreatureType (#2349)", () => {
+  it.each([
+    ["Creature \u2014 Bear", true],
+    ["Legendary Creature \u2014 Bird", true],
+    ["Artifact Creature \u2014 Equipment", true],
+    ["Enchantment Creature \u2014 God", true],
+    ["Creature - Human Wizard", true],
+    ["Artifact", false],
+    ["Instant", false],
+    ["Artifact \u2014 Vehicle", false],
+    ["Sorcery // Creature \u2014 Elf", true],
+    ["", false],
+  ])("%s -> %s", (typeLine, expected) => {
+    expect(typeLineHasCreatureType(typeLine)).toBe(expected);
+  });
+
+  it("fails closed on a missing type line", () => {
+    expect(typeLineHasCreatureType(undefined)).toBe(false);
+    expect(typeLineHasCreatureType(null)).toBe(false);
+  });
+
+  it("only searches the card-type half, not subtypes", () => {
+    // A subtype word that merely contains the substring is not the type.
+    expect(typeLineHasCreatureType("Artifact \u2014 Creatureling")).toBe(false);
+    expect(typeLineHasCreatureType("Tribal Instant \u2014 Creatures")).toBe(
+      false,
+    );
   });
 });

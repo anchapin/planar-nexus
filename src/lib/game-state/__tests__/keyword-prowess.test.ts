@@ -262,13 +262,12 @@ describe("hasProwess — canonical gate (CR 702.108a)", () => {
   });
 
   it("CR 702.108a: an Artifact Creature IS a creature, so prowess applies", () => {
-    // Pins the pre-existing, deliberately unchanged type-line guard. The guard is
-    // a plain `typeLine.includes("creature")`, and an "Artifact — Creature" is a
-    // creature under the CR, so `true` is rules-correct. See the KNOWN LIMIT note
-    // in the file header about the type-line substring being out of scope here.
+    // Pins the creature type-line guard. The guard is the shared type-line
+    // parse (#2349), and an "Artifact Creature" is a creature under the CR,
+    // so `true` is rules-correct.
     const card = makeInstance(
       makeCardData({
-        type_line: "Artifact — Creature",
+        type_line: "Artifact Creature — Equipment",
         keywords: ["Prowess"],
         oracle_text: "",
       }),

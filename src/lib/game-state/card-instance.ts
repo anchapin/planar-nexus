@@ -237,6 +237,25 @@ export function changeController(
 }
 
 /**
+ * Does a printed type line carry the Creature card type? (CR 205.2a)
+ *
+ * Parses rather than substring-matches (#2349): each face of a `//` type line
+ * is cut at the subtype dash, and only the card-type half is searched for
+ * "creature" as a whole word. A missing type line fails closed. Any face
+ * counts, matching the previous `includes("creature")` behaviour for
+ * double-faced cards.
+ */
+export function typeLineHasCreatureType(
+  typeLine: string | undefined | null,
+): boolean {
+  if (!typeLine) return false;
+  return typeLine.split("//").some((face) => {
+    const cardTypes = face.split(/\s*[\u2014\u2013]\s*|\s+-\s+/)[0] ?? "";
+    return /\bcreature\b/i.test(cardTypes);
+  });
+}
+
+/**
  * Check if a card is a creature
  */
 export function isCreature(card: CardInstance): boolean {
@@ -244,8 +263,7 @@ export function isCreature(card: CardInstance): boolean {
   if (card.crewedUntilEndOfTurn) return true;
   // Kaito-style "during your turn ... he's a creature" static (issue #2300).
   if (card.turnCreatureForm) return true;
-  const typeLine = card.cardData.type_line?.toLowerCase() || "";
-  return typeLine.includes("creature");
+  return typeLineHasCreatureType(card.cardData.type_line);
 }
 
 /**
