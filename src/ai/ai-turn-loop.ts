@@ -39,6 +39,7 @@ import { drawCard } from "@/lib/game-state";
 import { engineToAIState } from "@/lib/game-state";
 import { getMulliganRules } from "@/lib/game-rules";
 import { discardCards } from "@/lib/game-state";
+import { answerAIOfferChoices } from "./offer-choices";
 import {
   classifyArchetypeName,
   BoardSwingTracker,
@@ -726,21 +727,30 @@ export async function runAITurn(
     const untapResult = await runUntapPhase(currentState, aiPlayerId, config);
     if (untapResult.success) {
       actionsTaken.push(...untapResult.actions);
-      currentState = untapResult.newState || currentState;
+      currentState = answerAIOfferChoices(
+        untapResult.newState || currentState,
+        aiPlayerId,
+      ).state;
     }
 
     // Phase 2: Upkeep
     const upkeepResult = await runUpkeepPhase(currentState, aiPlayerId, config);
     if (upkeepResult.success) {
       actionsTaken.push(...upkeepResult.actions);
-      currentState = upkeepResult.newState || currentState;
+      currentState = answerAIOfferChoices(
+        upkeepResult.newState || currentState,
+        aiPlayerId,
+      ).state;
     }
 
     // Phase 3: Draw
     const drawResult = await runDrawPhase(currentState, aiPlayerId, config);
     if (drawResult.success) {
       actionsTaken.push(...drawResult.actions);
-      currentState = drawResult.newState || currentState;
+      currentState = answerAIOfferChoices(
+        drawResult.newState || currentState,
+        aiPlayerId,
+      ).state;
     }
 
     // Advance from Draw to Pre-Combat Main
@@ -756,7 +766,10 @@ export async function runAITurn(
     );
     if (main1Result.success) {
       actionsTaken.push(...main1Result.actions);
-      currentState = main1Result.newState || currentState;
+      currentState = answerAIOfferChoices(
+        main1Result.newState || currentState,
+        aiPlayerId,
+      ).state;
     }
 
     // Advance to Combat
@@ -771,7 +784,10 @@ export async function runAITurn(
     );
     if (combatResult.success) {
       actionsTaken.push(...combatResult.actions);
-      currentState = combatResult.newState || currentState;
+      currentState = answerAIOfferChoices(
+        combatResult.newState || currentState,
+        aiPlayerId,
+      ).state;
     }
 
     // Advance to Post-Combat Main
@@ -787,7 +803,10 @@ export async function runAITurn(
     );
     if (main2Result.success) {
       actionsTaken.push(...main2Result.actions);
-      currentState = main2Result.newState || currentState;
+      currentState = answerAIOfferChoices(
+        main2Result.newState || currentState,
+        aiPlayerId,
+      ).state;
     }
 
     // Advance to End Phase
@@ -797,7 +816,10 @@ export async function runAITurn(
     const endResult = await runEndPhase(currentState, aiPlayerId, config);
     if (endResult.success) {
       actionsTaken.push(...endResult.actions);
-      currentState = endResult.newState || currentState;
+      currentState = answerAIOfferChoices(
+        endResult.newState || currentState,
+        aiPlayerId,
+      ).state;
     }
 
     // Advance to Cleanup Phase
@@ -811,7 +833,10 @@ export async function runAITurn(
     );
     if (cleanupResult.success) {
       actionsTaken.push(...cleanupResult.actions);
-      currentState = cleanupResult.newState || currentState;
+      currentState = answerAIOfferChoices(
+        cleanupResult.newState || currentState,
+        aiPlayerId,
+      ).state;
     }
 
     // Issue #1230: thread the opponent-bluff accumulator through. The AI's
