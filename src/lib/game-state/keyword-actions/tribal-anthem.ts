@@ -34,6 +34,26 @@ export function singularSubtype(plural: string): string {
   return plural.endsWith("s") ? plural.slice(0, -1) : plural;
 }
 
+const SELF_PER_OTHER_TYPE =
+  /\b[Tt]his creature gets \+(\d+)\/\+(\d+) for each other ([A-Z][a-z]+) you control\b/g;
+
+/**
+ * Every "This creature gets +N/+N for each other <Type> you control" clause
+ * (issue #2428, Persistent Marshstalker). `subtype` is the counted type.
+ */
+export function parseSelfPerOtherType(oracleText: string): TribalAnthem[] {
+  const out: TribalAnthem[] = [];
+  for (const m of oracleText.matchAll(SELF_PER_OTHER_TYPE)) {
+    if (m[3].toLowerCase() === "creature") continue;
+    out.push({
+      subtype: singularSubtype(m[3]),
+      power: parseInt(m[1], 10),
+      toughness: parseInt(m[2], 10),
+    });
+  }
+  return out;
+}
+
 /** Every "Other <Type>s you control get +N/+N" clause in the text. */
 export function parseOtherTypeAnthems(oracleText: string): TribalAnthem[] {
   const out: TribalAnthem[] = [];
@@ -98,6 +118,20 @@ export function refreshTribalAnthems(state: GameState): GameState {
           toughness += a.toughness;
         }
       }
+    }
+    // "This creature gets +N/+N for each other <Type> you control."
+    for (const self of parseSelfPerOtherType(
+      target.cardData.oracle_text ?? "",
+    )) {
+      const count = onField.filter(
+        (c) =>
+          c.id !== target.id &&
+          c.controllerId === target.controllerId &&
+          isCreature(c) &&
+          subtypesOf(c).includes(self.subtype),
+      ).length;
+      power += self.power * count;
+      toughness += self.toughness * count;
     }
     if (power || toughness) bonus.set(target.id, { power, toughness });
   }

@@ -4,8 +4,16 @@
  * Mechanically extracted from spell-casting.ts (issue #1725);
  * behavior pinned by the existing engine suites.
  */
-import type { GameState, PlayerId, WaitingChoice, ChoiceOption } from '../types';
-import { completeHandTargeting } from '../hand-targeting';
+import type {
+  GameState,
+  PlayerId,
+  WaitingChoice,
+  ChoiceOption,
+} from "../types";
+import { completeHandTargeting } from "../hand-targeting";
+import { resolveCorpseChoice } from "../corpse-keyword";
+import { resolveTributeChoice } from "../keyword-actions/tribute-renown";
+import { resolveAttackReturnChoice } from "../keyword-actions/attack-return";
 
 /**
  * Create a waiting choice for choosing modes
@@ -178,6 +186,33 @@ export function resolveWaitingChoice(
 
   const { type, stackObjectId, minChoices, maxChoices } = state.waitingChoice;
 
+  // "You may pay" offers (Corpse, Tribute, graveyard attack returns) answer
+  // with a single option value. Before issue #2428 these could only be
+  // resolved by calling their module directly, so the game board's choice
+  // dialog had no way to answer them.
+  if (
+    type === "corpse_offer" ||
+    type === "tribute_offer" ||
+    type === "attack_return_offer"
+  ) {
+    const value = Array.isArray(selectedValue)
+      ? selectedValue[0]
+      : selectedValue;
+    if (typeof value !== "string") {
+      return { success: false, state, error: "Expected an option value" };
+    }
+    const resolver =
+      type === "corpse_offer"
+        ? resolveCorpseChoice
+        : type === "tribute_offer"
+          ? resolveTributeChoice
+          : resolveAttackReturnChoice;
+    const result = resolver(state, playerId, value);
+    return result.success
+      ? { success: true, state: result.state }
+      : { success: false, state, error: result.description };
+  }
+
   if (type === "choose_value" && typeof selectedValue === "number") {
     const stackObj = state.stack.find((s) => s.id === stackObjectId);
 
@@ -271,4 +306,3 @@ export function resolveWaitingChoice(
     error: `Unsupported waiting choice type: ${type}`,
   };
 }
-
