@@ -108,6 +108,7 @@ import {
 } from "@/lib/game-state";
 
 import { ValidationService } from "@/lib/validation-service";
+import { answerAIOfferChoices, isOfferChoice } from "@/ai/offer-choices";
 import {
   parseModes,
   parseXCost,
@@ -605,6 +606,32 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
       }
     };
   }, [autoSaveEnabled, gameState, gameId]);
+
+  // Issue #2443: answer "you may pay" offers (Corpse, Tribute, attack
+  // returns) that surface for the AI player. Offers can land on either
+  // player's turn and do not hand the AI priority, so the priority-driven AI
+  // loop below never sees them.
+  useEffect(() => {
+    if (!gameState || mode !== "ai") return;
+    const choice = gameState.waitingChoice;
+    if (!isOfferChoice(choice)) return;
+    const aiPlayer = Array.from(gameState.players.values()).find((p) =>
+      p.name.includes("AI"),
+    );
+    if (!aiPlayer || choice.playerId !== aiPlayer.id) return;
+    const { state: answeredState, answered } = answerAIOfferChoices(
+      gameState,
+      aiPlayer.id,
+    );
+    if (answered.length === 0) return;
+    setGameState(answeredState);
+    toast({
+      title: "AI Action",
+      description: answered.some((a) => !a.value.startsWith("decline:"))
+        ? "AI opponent paid an optional cost"
+        : "AI opponent declined an optional cost",
+    });
+  }, [gameState, mode, toast]);
 
   // Execute AI action when it has priority
   useEffect(() => {
