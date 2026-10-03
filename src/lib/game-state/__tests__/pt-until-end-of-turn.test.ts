@@ -7,6 +7,7 @@ import {
   clearUntilEndOfTurnPT,
 } from "../pt-until-end-of-turn";
 import {
+  parseSpellEffects,
   parseTriggeredAbilityEffects,
   resolveStackObjectEffects,
 } from "../effect-resolution";
@@ -23,6 +24,9 @@ import type {
   CardInstanceId,
   ScryfallCard,
 } from "../types";
+
+const PRIMAL_MIGHT =
+  "Target creature you control gets +X/+X until end of turn. Then it fights up to one target creature you don't control. (Each deals damage equal to its power to the other.)";
 
 const BANSHEE_EFFECT =
   "target creature an opponent controls gets -1/-1 until end of turn. If a creature died this turn, that creature gets -13/-13 until end of turn instead.";
@@ -140,5 +144,57 @@ describe("until-end-of-turn P/T effects", () => {
     const ogre = cleared.cards.get(id("ogre"))!;
     expect(ogre.untilEndOfTurnPT).toBeUndefined();
     expect(getEffectiveToughness(ogre)).toBe(3);
+  });
+
+  describe("Primal Might's +X/+X before the fight (#2451)", () => {
+    it("parses +X/+X with the spell's X", () => {
+      expect(parseTargetedPTUntilEndOfTurn(PRIMAL_MIGHT, 3)).toEqual({
+        power: 3,
+        toughness: 3,
+      });
+      expect(parseTargetedPTUntilEndOfTurn(PRIMAL_MIGHT)).toEqual({
+        power: 0,
+        toughness: 0,
+      });
+    });
+
+    it("puts the pump ahead of the fight in the spell's effects", () => {
+      const effects = parseSpellEffects(PRIMAL_MIGHT, new Map([["X", 2]]));
+      const types = effects.map((e) => e.effectType);
+      expect(types.indexOf("pt_until_eot")).toBeGreaterThanOrEqual(0);
+      expect(types.indexOf("pt_until_eot")).toBeLessThan(
+        types.indexOf("fight"),
+      );
+      expect(effects.find((e) => e.effectType === "pt_until_eot")).toEqual(
+        expect.objectContaining({ power: 2, toughness: 2 }),
+      );
+    });
+
+    it("the pumped creature deals its new power in the fight", () => {
+      const after = resolveStackObjectEffects(
+        state,
+        parseSpellEffects(PRIMAL_MIGHT, new Map([["X", 2]])),
+        undefined,
+        [
+          { type: "card", targetId: "banshee" },
+          { type: "card", targetId: "ogre" },
+        ],
+      );
+      const banshee = after.cards.get(id("banshee"))!;
+      expect(banshee.untilEndOfTurnPT).toEqual({ power: 2, toughness: 2 });
+      expect(getEffectivePower(banshee)).toBe(7);
+      expect(after.cards.get(id("ogre"))!.damage).toBe(7);
+      expect(banshee.damage).toBe(3);
+    });
+
+    it("does not pump twice when parsed as a triggered ability", () => {
+      const effects = parseTriggeredAbilityEffects(
+        "Target creature gets +2/+0 until end of turn.",
+        p1,
+      );
+      expect(
+        effects.filter((e) => e.effectType === "pt_until_eot"),
+      ).toHaveLength(1);
+    });
   });
 });

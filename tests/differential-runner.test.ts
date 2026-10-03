@@ -30,8 +30,6 @@ const scenarios: Scenario[] = fs
 
 /** Scenario id -> the issue tracking the engine gap it exposes. */
 const KNOWN_MISMATCHES: Record<string, string> = {
-  // Primal Might's +X/+X is not applied before the fight.
-  "fight-primal-might": "#2451",
   // "At the beginning of your end step" raid triggers never fire.
   "raid-searslicer-goblin": "#2448",
   // The combat P/T read ignores threshold bonuses.
