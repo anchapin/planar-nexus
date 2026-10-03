@@ -1,0 +1,38 @@
+{
+  "id": "threshold-billowing-shriekmass",
+  "refs": "#2300",
+  "description": "Billowing Shriekmass with seven cards in its controller's graveyard is 4/4 (threshold +2/+1).",
+  "players": [
+    {
+      "battlefield": [
+        {
+          "card": "Billowing Shriekmass"
+        }
+      ],
+      "graveyard": [
+        "Forest",
+        "Forest",
+        "Forest",
+        "Forest",
+        "Forest",
+        "Forest",
+        "Forest"
+      ]
+    },
+    {}
+  ],
+  "actions": [],
+  "observe": ["battlefield"],
+  "expect": [
+    {
+      "battlefield": [
+        {
+          "name": "Billowing Shriekmass",
+          "power": 4,
+          "toughness": 4
+        }
+      ]
+    },
+    {}
+  ]
+}

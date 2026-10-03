@@ -1,0 +1,49 @@
+{
+  "id": "landfall-rampaging-baloths",
+  "refs": "#2399",
+  "description": "Playing a Forest with Rampaging Baloths out creates a 4/4 green Beast token.",
+  "players": [
+    {
+      "battlefield": [
+        {
+          "card": "Rampaging Baloths"
+        }
+      ],
+      "hand": ["Forest"]
+    },
+    {}
+  ],
+  "actions": [
+    {
+      "do": "playLand",
+      "player": 0,
+      "card": "Forest"
+    },
+    {
+      "do": "resolveStack"
+    }
+  ],
+  "observe": ["battlefield", "hand"],
+  "expect": [
+    {
+      "battlefield": [
+        {
+          "name": "Beast",
+          "power": 4,
+          "toughness": 4,
+          "token": true
+        },
+        {
+          "name": "Forest"
+        },
+        {
+          "name": "Rampaging Baloths",
+          "power": 6,
+          "toughness": 6
+        }
+      ],
+      "hand": []
+    },
+    {}
+  ]
+}

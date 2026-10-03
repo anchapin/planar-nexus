@@ -1,0 +1,57 @@
+{
+  "id": "fight-primal-might",
+  "refs": "#2400",
+  "description": "Primal Might X=1 makes Searslicer Goblin 3/2 and it fights Billowing Shriekmass (2/3): both die.",
+  "players": [
+    {
+      "battlefield": [
+        {
+          "card": "Searslicer Goblin",
+          "id": "mine"
+        }
+      ],
+      "hand": ["Primal Might"],
+      "manaPool": {
+        "G": 2
+      }
+    },
+    {
+      "battlefield": [
+        {
+          "card": "Billowing Shriekmass",
+          "id": "theirs"
+        }
+      ]
+    }
+  ],
+  "actions": [
+    {
+      "do": "cast",
+      "player": 0,
+      "card": "Primal Might",
+      "x": 1,
+      "targets": [
+        {
+          "card": "mine"
+        },
+        {
+          "card": "theirs"
+        }
+      ]
+    },
+    {
+      "do": "resolveStack"
+    }
+  ],
+  "observe": ["battlefield", "graveyard"],
+  "expect": [
+    {
+      "battlefield": [],
+      "graveyard": ["Primal Might", "Searslicer Goblin"]
+    },
+    {
+      "battlefield": [],
+      "graveyard": ["Billowing Shriekmass"]
+    }
+  ]
+}

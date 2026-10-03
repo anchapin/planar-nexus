@@ -52,6 +52,9 @@ src-tauri/gen/
 *.json
 # i18n message catalogs must be tracked
 !src/messages/*.json
+# Differential rules scenarios and their card-data snapshot (#2411)
+!scripts/differential/scenarios/*.json
+!scripts/differential/cards.snapshot.json
 
 # Tauri config + platform overlays must be tracked (tauri.conf.json
 # predates the blanket *.json rule; overlays added by #1729 need the

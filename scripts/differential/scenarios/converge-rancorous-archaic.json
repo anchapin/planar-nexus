@@ -1,0 +1,46 @@
+{
+  "id": "converge-rancorous-archaic",
+  "refs": "#2409",
+  "description": "Rancorous Archaic cast with four colours plus one colourless enters with four +1/+1 counters (CR 702.119).",
+  "players": [
+    {
+      "hand": ["Rancorous Archaic"],
+      "manaPool": {
+        "W": 1,
+        "U": 1,
+        "B": 1,
+        "R": 1,
+        "C": 1
+      }
+    },
+    {}
+  ],
+  "actions": [
+    {
+      "do": "cast",
+      "player": 0,
+      "card": "Rancorous Archaic"
+    },
+    {
+      "do": "resolveStack"
+    }
+  ],
+  "observe": ["battlefield", "hand", "graveyard"],
+  "expect": [
+    {
+      "battlefield": [
+        {
+          "name": "Rancorous Archaic",
+          "power": 6,
+          "toughness": 6,
+          "counters": {
+            "+1/+1": 4
+          }
+        }
+      ],
+      "hand": [],
+      "graveyard": []
+    },
+    {}
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "id": "raid-searslicer-goblin",
+  "refs": "#2408",
+  "description": "Searslicer Goblin attacks; at the beginning of the end step raid creates a 1/1 Goblin token and the defender took 2.",
+  "players": [
+    {
+      "battlefield": [
+        {
+          "card": "Searslicer Goblin",
+          "id": "goblin"
+        }
+      ],
+      "library": 5
+    },
+    {
+      "library": 5
+    }
+  ],
+  "actions": [
+    {
+      "do": "attack",
+      "player": 0,
+      "attackers": ["goblin"]
+    },
+    {
+      "do": "advanceTo",
+      "phase": "end"
+    },
+    {
+      "do": "resolveStack"
+    }
+  ],
+  "observe": ["life", "battlefield"],
+  "expect": [
+    {
+      "life": 20,
+      "battlefield": [
+        {
+          "name": "Goblin",
+          "power": 1,
+          "toughness": 1,
+          "token": true
+        },
+        {
+          "name": "Searslicer Goblin",
+          "tapped": true
+        }
+      ]
+    },
+    {
+      "life": 18
+    }
+  ]
+}
