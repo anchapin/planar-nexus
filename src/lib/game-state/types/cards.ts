@@ -34,6 +34,18 @@ export interface CardInstance {
    * artifact creature until end of turn. Cleared when the next turn begins.
    */
   crewedUntilEndOfTurn?: boolean;
+  /**
+   * Set while a "During your turn, as long as ~ has one or more loyalty
+   * counters on him, he's a 3/4 Ninja creature and has hexproof" static is
+   * active (Kaito, Bane of Nightmares; issue #2300). Maintained by
+   * `refreshTurnCreatureForms`.
+   */
+  turnCreatureForm?: {
+    power: number;
+    toughness: number;
+    subtype: string;
+    hexproof: boolean;
+  };
   /** Whether this card is face down (for morph, manifest, etc.) */
   isFaceDown: boolean;
   /** Current controller of this card */
