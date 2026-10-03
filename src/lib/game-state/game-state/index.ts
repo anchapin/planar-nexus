@@ -13,12 +13,7 @@ import type {
 } from "../types";
 import { Phase } from "../types";
 import type { ScryfallCard } from "../types";
-import {
-  createCardInstance,
-  isCreature,
-  hasLethalDamage,
-  untapCard,
-} from "../card-instance";
+import { createCardInstance, untapCard } from "../card-instance";
 import { createPlayerZones, createSharedZones } from "../zones";
 import { isPriorityPlayer } from "../priority-guard";
 import {
@@ -715,69 +710,17 @@ function resolveStackTop(state: GameState): GameState {
 }
 
 /**
- * Check state-based actions
- * (creatures with lethal damage, 0 life, etc.)
+ * Check state-based actions (CR 704) and then the win condition.
+ *
+ * Issue #2466: this used to be a placeholder that flagged lethal damage but
+ * never destroyed anything. It now delegates to the full SBA pass in
+ * `state-based-actions.ts` (lethal damage, 0 toughness, legend rule,
+ * unattached auras, life/poison losses, ...) so the game UI hook and the AI
+ * simulator see the same rules as `passPriority`.
  */
 export function checkStateBasedActions(state: GameState): GameState {
-  let updatedState = { ...state };
-  let hasChanges = false;
-
-  // Check each player
-  updatedState.players.forEach((player, playerId) => {
-    if (player.hasLost) {
-      return;
-    }
-
-    // Check for 0 or less life
-    if (player.life <= 0) {
-      const updatedPlayer = {
-        ...player,
-        hasLost: true,
-        lossReason: "Life total reached 0 or less",
-      };
-      updatedState.players.set(playerId, updatedPlayer);
-      hasChanges = true;
-    }
-
-    // Check for 10 or more poison counters
-    if (player.poisonCounters >= 10) {
-      const updatedPlayer = {
-        ...player,
-        hasLost: true,
-        lossReason: "Accumulated 10 poison counters",
-      };
-      updatedState.players.set(playerId, updatedPlayer);
-      hasChanges = true;
-    }
-
-    // Check for empty library when trying to draw
-    // (This is a simplification - real implementation would track draw attempts)
-    const libraryZoneKey = `${playerId}-library`;
-    const library = updatedState.zones.get(libraryZoneKey);
-    if (library && library.cardIds.length === 0) {
-      // In a real implementation, we'd track whether they attempted to draw
-      // For now, this is a placeholder
-    }
-  });
-
-  // Check creatures with lethal damage
-  updatedState.cards.forEach((card) => {
-    if (!isCreature(card)) {
-      return;
-    }
-
-    if (hasLethalDamage(card)) {
-      // Creature should be destroyed
-      // This would normally trigger a "destroy" event
-      hasChanges = true;
-    }
-  });
-
-  if (hasChanges) {
-    updatedState = checkWinCondition(updatedState);
-  }
-
-  return updatedState;
+  const after = checkSBAs(state).state;
+  return after.status === "completed" ? after : checkWinCondition(after);
 }
 
 /**
