@@ -1,0 +1,18 @@
+{
+  "name": "Herald of Faith",
+  "oracle": "Flying\nWhenever this creature attacks, you gain 2 life.",
+  "triggers": [
+    {
+      "text": "Whenever this creature attacks, you gain 2 life.",
+      "event": "attacks",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "GainLife",
+          "amount": 2,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}

@@ -15,6 +15,10 @@ import {
   getTriggeredAbilities,
 } from "../../abilities/parse";
 import { detectLandfallTriggers } from "../../keyword-actions/landfall";
+import { destroyCard } from "../../keyword-actions/removal";
+import { declareAttackers } from "../../combat/declaration";
+import { passPriority } from "../../game-state";
+import { Phase } from "../../types";
 import { createInitialGameState, startGame } from "../../game-state";
 import { createCardInstance } from "../../card-instance";
 import {
@@ -130,7 +134,9 @@ describe("resolveScriptedSpell", () => {
   let p2: PlayerId;
 
   beforeEach(() => {
-    state = startGame(createInitialGameState(["Player1", "Player2"], 20, false));
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
     [p1, p2] = Array.from(state.players.keys());
   });
 
@@ -242,7 +248,9 @@ describe("scripted permanents (#2490)", () => {
   let p2: PlayerId;
 
   beforeEach(() => {
-    state = startGame(createInitialGameState(["Player1", "Player2"], 20, false));
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
     [p1, p2] = Array.from(state.players.keys());
   });
 
@@ -293,21 +301,39 @@ describe("scripted permanents (#2490)", () => {
   });
 
   it("Vampire Spawn's ETB drains each opponent for 2", () => {
-    const s0 = put(state, p1, "spawn", card("Vampire Spawn", "Creature — Vampire", [2, 3]));
+    const s0 = put(
+      state,
+      p1,
+      "spawn",
+      card("Vampire Spawn", "Creature — Vampire", [2, 3]),
+    );
     const s = resolveScriptedAbility(
       s0,
-      ability("spawn", "When this creature enters, each opponent loses 2 life and you gain 2 life.", "triggered"),
+      ability(
+        "spawn",
+        "When this creature enters, each opponent loses 2 life and you gain 2 life.",
+        "triggered",
+      ),
     )!;
     expect(s.players.get(p2)!.life).toBe(18);
     expect(s.players.get(p1)!.life).toBe(22);
   });
 
   it("Guarded Heir's ETB creates two 3/3 white Knights", () => {
-    const s0 = put(state, p1, "heir", card("Guarded Heir", "Creature — Human Noble", [1, 1]));
+    const s0 = put(
+      state,
+      p1,
+      "heir",
+      card("Guarded Heir", "Creature — Human Noble", [1, 1]),
+    );
     const before = battlefield(s0, p1).length;
     const s = resolveScriptedAbility(
       s0,
-      ability("heir", "When this creature enters, create two 3/3 white Knight creature tokens.", "triggered"),
+      ability(
+        "heir",
+        "When this creature enters, create two 3/3 white Knight creature tokens.",
+        "triggered",
+      ),
     )!;
     const created = battlefield(s, p1).slice(before);
     expect(created).toHaveLength(2);
@@ -315,28 +341,52 @@ describe("scripted permanents (#2490)", () => {
   });
 
   it("Ironpaw Aspirant's ETB puts a +1/+1 counter on the target", () => {
-    let s0 = put(state, p1, "aspirant", card("Ironpaw Aspirant", "Creature — Cat Warrior", [1, 2]));
+    let s0 = put(
+      state,
+      p1,
+      "aspirant",
+      card("Ironpaw Aspirant", "Creature — Cat Warrior", [1, 2]),
+    );
     s0 = put(s0, p1, "bear", card("Bear", "Creature — Bear", [2, 2]));
     const s = resolveScriptedAbility(
       s0,
-      ability("aspirant", "When this creature enters, put a +1/+1 counter on target creature.", "triggered", [cardTarget("bear")]),
+      ability(
+        "aspirant",
+        "When this creature enters, put a +1/+1 counter on target creature.",
+        "triggered",
+        [cardTarget("bear")],
+      ),
     )!;
     expect(getEffectivePower(s.cards.get(id("bear"))!)).toBe(3);
     expect(getEffectiveToughness(s.cards.get(id("bear"))!)).toBe(3);
   });
 
   it("Shivan Dragon's firebreathing pumps itself", () => {
-    const s0 = put(state, p1, "shivan", card("Shivan Dragon", "Creature — Dragon", [5, 5]));
+    const s0 = put(
+      state,
+      p1,
+      "shivan",
+      card("Shivan Dragon", "Creature — Dragon", [5, 5]),
+    );
     const s = resolveScriptedAbility(
       s0,
-      ability("shivan", "This creature gets +1/+0 until end of turn.", "activated"),
+      ability(
+        "shivan",
+        "This creature gets +1/+0 until end of turn.",
+        "activated",
+      ),
     )!;
     expect(getEffectivePower(s.cards.get(id("shivan"))!)).toBe(6);
     expect(getEffectiveToughness(s.cards.get(id("shivan"))!)).toBe(5);
   });
 
   it("Engine Rat's ability makes each opponent lose 2", () => {
-    const s0 = put(state, p1, "rat", card("Engine Rat", "Creature — Zombie Rat", [1, 1]));
+    const s0 = put(
+      state,
+      p1,
+      "rat",
+      card("Engine Rat", "Creature — Zombie Rat", [1, 1]),
+    );
     const s = resolveScriptedAbility(
       s0,
       ability("rat", "Each opponent loses 2 life.", "activated"),
@@ -357,16 +407,29 @@ describe("scripted landfall triggers (#2496)", () => {
   let state: GameState;
   let p1: PlayerId;
   let p2: PlayerId;
-  const TEXT = "Landfall — Whenever a land you control enters, you gain 1 life.";
+  const TEXT =
+    "Landfall — Whenever a land you control enters, you gain 1 life.";
 
   beforeEach(() => {
-    state = startGame(createInitialGameState(["Player1", "Player2"], 20, false));
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
     [p1, p2] = Array.from(state.players.keys());
-    state = put(state, p1, "terra", card("Eumidian Terrabotanist", "Creature — Insect Druid", [2, 3]));
+    state = put(
+      state,
+      p1,
+      "terra",
+      card("Eumidian Terrabotanist", "Creature — Insect Druid", [2, 3]),
+    );
   });
 
   it("fires for a land you control and resolves from the script", () => {
-    const s0 = put(state, p1, "forest", card("Forest", "Basic Land — Forest", [0, 0]));
+    const s0 = put(
+      state,
+      p1,
+      "forest",
+      card("Forest", "Basic Land — Forest", [0, 0]),
+    );
     const triggers = detectLandfallTriggers(s0, id("forest"));
     expect(triggers).toHaveLength(1);
     expect(triggers[0].sourceCardId).toBe(id("terra"));
@@ -384,7 +447,110 @@ describe("scripted landfall triggers (#2496)", () => {
   });
 
   it("ignores an opponent's land", () => {
-    const s0 = put(state, p2, "swamp", card("Swamp", "Basic Land — Swamp", [0, 0]));
+    const s0 = put(
+      state,
+      p2,
+      "swamp",
+      card("Swamp", "Basic Land — Swamp", [0, 0]),
+    );
     expect(detectLandfallTriggers(s0, id("swamp"))).toHaveLength(0);
+  });
+});
+
+describe("scripted dies, attacks and upkeep triggers (#2496)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+  const sources = (s: GameState) => s.stack.map((o) => o.sourceCardId);
+  const bothPass = (s: GameState) => passPriority(passPriority(s, p1), p2);
+  const ready = (s: GameState, cardId: string): GameState => {
+    const cards = new Map(s.cards);
+    cards.set(id(cardId), {
+      ...cards.get(id(cardId))!,
+      hasSummoningSickness: false,
+    });
+    return { ...s, cards };
+  };
+  const at = (s: GameState, phase: Phase): GameState => ({
+    ...s,
+    stack: [],
+    priorityPlayerId: p1,
+    turn: { ...s.turn, activePlayerId: p1, currentPhase: phase },
+  });
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+  });
+
+  it("Summit Sentinel's dies trigger resolves from its script after it died", () => {
+    state = at(
+      put(
+        state,
+        p1,
+        "sentinel",
+        card("Summit Sentinel", "Creature — Construct", [2, 1]),
+      ),
+      Phase.PRECOMBAT_MAIN,
+    );
+    const [ability] = getTriggeredAbilities(
+      state.cards.get(id("sentinel"))!.cardData,
+    );
+    expect(ability.trigger).toEqual({ event: "dies", subject: "self" });
+    const hand = (s: GameState) => s.zones.get(`${p1}-hand`)!.cardIds.length;
+    const died = destroyCard(state, id("sentinel")).state;
+    expect(sources(died)).toEqual([id("sentinel")]);
+    expect(hand(bothPass(died))).toBe(hand(died) + 1);
+  });
+
+  it("Sanguine Syphoner drains only when it attacks, from its script", () => {
+    state = put(
+      state,
+      p1,
+      "syphoner",
+      card("Sanguine Syphoner", "Creature — Vampire Warlock", [1, 3]),
+    );
+    state = put(state, p1, "bear", card("Bear", "Creature — Bear", [2, 2]));
+    state = at(
+      ready(ready(state, "syphoner"), "bear"),
+      Phase.DECLARE_ATTACKERS,
+    );
+    const bearOnly = declareAttackers(state, [
+      { cardId: id("bear"), defenderId: p2 },
+    ]).state;
+    expect(sources(bearOnly)).toEqual([]);
+    const both = declareAttackers(state, [
+      { cardId: id("syphoner"), defenderId: p2 },
+      { cardId: id("bear"), defenderId: p2 },
+    ]).state;
+    expect(sources(both)).toEqual([id("syphoner")]);
+    const resolved = bothPass(both);
+    expect(resolved.players.get(p2)!.life).toBe(19);
+    expect(resolved.players.get(p1)!.life).toBe(21);
+  });
+
+  it("validates subject, controller, once and whose", () => {
+    const trig = (extra: object) =>
+      CardScriptSchema.safeParse({
+        name: "X",
+        oracle: "X",
+        triggers: [
+          { text: "X", effects: [{ op: "Draw", amount: 1 }], ...extra },
+        ],
+      }).success;
+    expect(trig({ event: "dies", subject: "another", controller: "you" })).toBe(
+      true,
+    );
+    expect(
+      trig({ event: "attacks", subject: "any", controller: "you", once: true }),
+    ).toBe(true);
+    expect(trig({ event: "upkeep", whose: "each" })).toBe(true);
+    expect(trig({ event: "dies", whose: "each" })).toBe(false);
+    expect(trig({ event: "upkeep", once: true })).toBe(false);
+    expect(trig({ event: "dies", subject: "self", controller: "you" })).toBe(
+      false,
+    );
   });
 });

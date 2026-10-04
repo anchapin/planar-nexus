@@ -114,23 +114,44 @@ const effects = z.array(EffectSchema).min(1);
 /**
  * A triggered ability. `text` is the ability's oracle sentence: it is what
  * the stack shows and how a resolving ability is matched back to its script.
- * Only enters-the-battlefield triggers so far; other events need the
- * engine's per-event subject checks first (see #2490).
  */
 export const TriggerSchema = z
   .object({
     text: z.string().min(1),
     /**
-     * etb: enters the battlefield. landfall: a land you control enters
-     * (#2496). The engine now fires dies, attacks and upkeep in real games
-     * (#2498); adding them here is the rest of #2496.
+     * etb: enters the battlefield. landfall: a land you control enters.
+     * dies: a creature goes to the graveyard from the battlefield (CR 700.4).
+     * attacks: attackers are declared (CR 508.1m). upkeep: the upkeep step
+     * begins (CR 503.1a). The engine fires all five in real games (#2498).
      */
-    event: z.enum(["etb", "landfall"]),
-    /** ETB only: whose entry it watches (CR 603.6a). */
+    event: z.enum(["etb", "landfall", "dies", "attacks", "upkeep"]),
+    /**
+     * etb, dies, attacks: whose entry, death or attack it watches
+     * (CR 603.6a). "self" is this permanent; "another" / "any" are
+     * creatures, narrowed by `controller`.
+     */
     subject: z.enum(["self", "another", "any"]).default("self"),
+    /** With subject another/any: only creatures you or an opponent control. */
+    controller: z.enum(["you", "opponent"]).optional(),
+    /** attacks only: "whenever you attack", once per combat, not per attacker. */
+    once: z.boolean().optional(),
+    /** upkeep only: whose upkeep (CR 503.1a). */
+    whose: z.enum(["you", "each", "opponent"]).optional(),
     effects,
   })
-  .strict();
+  .strict()
+  .refine((t) => t.event === "upkeep" || t.whose === undefined, {
+    message: "whose is only for upkeep triggers",
+  })
+  .refine((t) => t.event === "attacks" || t.once === undefined, {
+    message: "once is only for attacks triggers",
+  })
+  .refine(
+    (t) =>
+      t.controller === undefined ||
+      (t.subject !== "self" && ["etb", "dies", "attacks"].includes(t.event)),
+    { message: "controller needs subject another/any on etb, dies or attacks" },
+  );
 
 /** An activated ability (CR 602). `text` is the part after the colon. */
 export const ActivatedSchema = z

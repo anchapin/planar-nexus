@@ -3,6 +3,7 @@ import s_a_i_m_synthoids from "./a_i_m_synthoids.json";
 import s_attercop from "./attercop.json";
 import s_bilbos_deadly_slice from "./bilbos_deadly_slice.json";
 import s_burrog_banemaker from "./burrog_banemaker.json";
+import s_buzz_bots from "./buzz_bots.json";
 import s_cancel from "./cancel.json";
 import s_cloudblazer from "./cloudblazer.json";
 import s_dragon_fodder from "./dragon_fodder.json";
@@ -16,9 +17,11 @@ import s_friendly_ghost from "./friendly_ghost.json";
 import s_gallant_citizen from "./gallant_citizen.json";
 import s_giant_growth from "./giant_growth.json";
 import s_glidedive_duo from "./glidedive_duo.json";
+import s_grasping_longneck from "./grasping_longneck.json";
 import s_guarded_heir from "./guarded_heir.json";
 import s_head_of_the_homestead from "./head_of_the_homestead.json";
 import s_helpful_hunter from "./helpful_hunter.json";
+import s_herald_of_faith from "./herald_of_faith.json";
 import s_hop_to_it from "./hop_to_it.json";
 import s_icecave_crasher from "./icecave_crasher.json";
 import s_imperious_inkmage from "./imperious_inkmage.json";
@@ -28,11 +31,14 @@ import s_ironpaw_aspirant from "./ironpaw_aspirant.json";
 import s_jeong_jeong_s_deserters from "./jeong_jeong_s_deserters.json";
 import s_kyoshi_warriors from "./kyoshi_warriors.json";
 import s_lightning_strike from "./lightning_strike.json";
+import s_moonrise_cleric from "./moonrise_cleric.json";
 import s_mystic_archaeologist from "./mystic_archaeologist.json";
 import s_oscorp_research_team from "./oscorp_research_team.json";
+import s_outlaw_medic from "./outlaw_medic.json";
 import s_pond_prophet from "./pond_prophet.json";
 import s_prideful_parent from "./prideful_parent.json";
 import s_primordial_pachyderm from "./primordial_pachyderm.json";
+import s_pulse_tracker from "./pulse_tracker.json";
 import s_rampaging_baloths from "./rampaging_baloths.json";
 import s_ravine_raider from "./ravine_raider.json";
 import s_remnant_elemental from "./remnant_elemental.json";
@@ -40,15 +46,18 @@ import s_resolute_reinforcements from "./resolute_reinforcements.json";
 import s_rune_sealed_wall from "./rune_sealed_wall.json";
 import s_s_h_i_e_l_d_deployment_drone from "./s_h_i_e_l_d_deployment_drone.json";
 import s_sabotender from "./sabotender.json";
+import s_sanguine_syphoner from "./sanguine_syphoner.json";
 import s_sanitation_automaton from "./sanitation_automaton.json";
 import s_sazh_s_chocobo from "./sazh_s_chocobo.json";
 import s_shivan_dragon from "./shivan_dragon.json";
+import s_shopkeeper_s_bane from "./shopkeeper_s_bane.json";
 import s_shore_lurker from "./shore_lurker.json";
 import s_skirmish_rhino from "./skirmish_rhino.json";
 import s_sneering_shadewriter from "./sneering_shadewriter.json";
 import s_spectral_sailor from "./spectral_sailor.json";
 import s_spitfire_lagac from "./spitfire_lagac.json";
 import s_sterling_hound from "./sterling_hound.json";
+import s_summit_sentinel from "./summit_sentinel.json";
 import s_sunshower_druid from "./sunshower_druid.json";
 import s_tatyova_benthic_druid from "./tatyova_benthic_druid.json";
 import s_treetop_freedom_fighters from "./treetop_freedom_fighters.json";
@@ -63,6 +72,7 @@ export const RAW_CARD_SCRIPTS: unknown[] = [
   s_attercop,
   s_bilbos_deadly_slice,
   s_burrog_banemaker,
+  s_buzz_bots,
   s_cancel,
   s_cloudblazer,
   s_dragon_fodder,
@@ -76,9 +86,11 @@ export const RAW_CARD_SCRIPTS: unknown[] = [
   s_gallant_citizen,
   s_giant_growth,
   s_glidedive_duo,
+  s_grasping_longneck,
   s_guarded_heir,
   s_head_of_the_homestead,
   s_helpful_hunter,
+  s_herald_of_faith,
   s_hop_to_it,
   s_icecave_crasher,
   s_imperious_inkmage,
@@ -88,11 +100,14 @@ export const RAW_CARD_SCRIPTS: unknown[] = [
   s_jeong_jeong_s_deserters,
   s_kyoshi_warriors,
   s_lightning_strike,
+  s_moonrise_cleric,
   s_mystic_archaeologist,
   s_oscorp_research_team,
+  s_outlaw_medic,
   s_pond_prophet,
   s_prideful_parent,
   s_primordial_pachyderm,
+  s_pulse_tracker,
   s_rampaging_baloths,
   s_ravine_raider,
   s_remnant_elemental,
@@ -100,15 +115,18 @@ export const RAW_CARD_SCRIPTS: unknown[] = [
   s_rune_sealed_wall,
   s_s_h_i_e_l_d_deployment_drone,
   s_sabotender,
+  s_sanguine_syphoner,
   s_sanitation_automaton,
   s_sazh_s_chocobo,
   s_shivan_dragon,
+  s_shopkeeper_s_bane,
   s_shore_lurker,
   s_skirmish_rhino,
   s_sneering_shadewriter,
   s_spectral_sailor,
   s_spitfire_lagac,
   s_sterling_hound,
+  s_summit_sentinel,
   s_sunshower_druid,
   s_tatyova_benthic_druid,
   s_treetop_freedom_fighters,

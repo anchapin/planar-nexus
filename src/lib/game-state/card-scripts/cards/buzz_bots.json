@@ -1,0 +1,18 @@
+{
+  "name": "Buzz Bots",
+  "oracle": "Flying, vigilance\nWhen this creature dies, draw a card.",
+  "triggers": [
+    {
+      "text": "When this creature dies, draw a card.",
+      "event": "dies",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "Draw",
+          "amount": 1,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}
