@@ -27,7 +27,8 @@ export interface WaitingChoice {
     | "choose_replacement"
     | "corpse_offer"
     | "tribute_offer"
-    | "attack_return_offer";
+    | "attack_return_offer"
+    | "discard_to_hand_size";
   /** ID of player who needs to make this choice */
   playerId: PlayerId;
   /** ID of the stack object this choice is for */

@@ -16,6 +16,8 @@
  */
 import type { GameState, PlayerId, WaitingChoice } from "@/lib/game-state";
 import { resolveWaitingChoice } from "@/lib/game-state";
+import { pickDiscardCandidates } from "./cleanup-discard";
+import type { DifficultyLevel } from "./ai-difficulty";
 
 export const AI_OFFER_CHOICE_TYPES: ReadonlySet<WaitingChoice["type"]> =
   new Set<WaitingChoice["type"]>([
@@ -23,6 +25,16 @@ export const AI_OFFER_CHOICE_TYPES: ReadonlySet<WaitingChoice["type"]> =
     "tribute_offer",
     "attack_return_offer",
   ]);
+
+/**
+ * True when `choice` is the cleanup discard to maximum hand size (#2446),
+ * which `answerAIOfferChoices` also answers for the AI.
+ */
+export function isHandSizeDiscardChoice(
+  choice: WaitingChoice | null | undefined,
+): choice is WaitingChoice {
+  return choice?.type === "discard_to_hand_size";
+}
 
 /** True when `choice` is one of the "you may pay" offers this module answers. */
 export function isOfferChoice(
@@ -54,6 +66,35 @@ export function decideOfferChoice(choice: WaitingChoice): string | null {
   return optionValue(choice, ["pay:", "accept:"]) ?? declineValue(choice);
 }
 
+/**
+ * Pick the AI's cleanup discard (CR 514.1, issue #2446): the per-difficulty
+ * ranked candidates from `pickDiscardCandidates`, topped up from the end of
+ * the hand when the helper endorses fewer cards than must go.
+ */
+export function decideHandSizeDiscard(
+  state: GameState,
+  choice: WaitingChoice,
+  difficulty: DifficultyLevel = "medium",
+): string[] {
+  const need = choice.minChoices;
+  const hand = choice.choices
+    .filter((o) => o.isValid && typeof o.value === "string")
+    .map((o) => o.value as string);
+  const inHand = new Set(hand);
+  const picked: string[] = [];
+  const ranked = pickDiscardCandidates(state, choice.playerId, {
+    difficulty,
+  }).candidates;
+  for (const id of ranked) {
+    if (picked.length >= need) break;
+    if (inHand.has(id) && !picked.includes(id)) picked.push(id);
+  }
+  for (let i = hand.length - 1; i >= 0 && picked.length < need; i--) {
+    if (!picked.includes(hand[i])) picked.push(hand[i]);
+  }
+  return picked;
+}
+
 export interface AIOfferAnswer {
   type: WaitingChoice["type"];
   value: string;
@@ -69,13 +110,27 @@ export function answerAIOfferChoices(
   state: GameState,
   aiPlayerId: PlayerId,
   maxSteps = 16,
+  difficulty: DifficultyLevel = "medium",
 ): { state: GameState; answered: AIOfferAnswer[] } {
   let current = state;
   const answered: AIOfferAnswer[] = [];
 
   for (let step = 0; step < maxSteps; step++) {
     const choice = current.waitingChoice;
-    if (!isOfferChoice(choice) || choice.playerId !== aiPlayerId) break;
+    if (!choice || choice.playerId !== aiPlayerId) break;
+
+    // Issue #2446: the cleanup discard also waits on the AI before its
+    // turn can end.
+    if (choice.type === "discard_to_hand_size") {
+      const cards = decideHandSizeDiscard(current, choice, difficulty);
+      const result = resolveWaitingChoice(current, aiPlayerId, cards);
+      if (!result.success) break;
+      answered.push({ type: choice.type, value: `discard:${cards.join(",")}` });
+      current = result.state;
+      continue;
+    }
+
+    if (!isOfferChoice(choice)) break;
 
     const value = decideOfferChoice(choice);
     if (!value) break;

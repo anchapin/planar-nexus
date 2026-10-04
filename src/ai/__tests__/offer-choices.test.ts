@@ -17,9 +17,12 @@ import type {
 } from "@/lib/game-state";
 import {
   answerAIOfferChoices,
+  decideHandSizeDiscard,
   decideOfferChoice,
+  isHandSizeDiscardChoice,
   isOfferChoice,
 } from "../offer-choices";
+import { passPriority } from "@/lib/game-state";
 
 function offer(
   type: WaitingChoice["type"],
@@ -151,5 +154,81 @@ describe("answerAIOfferChoices (tribute offer owned by the AI)", () => {
     const { state, answered } = answerAIOfferChoices(f.state, f.humanId);
     expect(answered).toHaveLength(0);
     expect(state).toBe(f.state);
+  });
+});
+
+describe("AI cleanup discard to hand size (#2446)", () => {
+  function overLimit(n: number): { state: GameState; ai: PlayerId } {
+    let state = startGame(createInitialGameState(["Human", "AI"], 20, false));
+    const ai = state.turn.activePlayerId;
+    const other = Array.from(state.players.keys()).find((id) => id !== ai)!;
+    const cards = new Map(state.cards);
+    const zones = new Map(state.zones);
+    const key = `${ai}-hand`;
+    const ids: string[] = [];
+    for (let i = 0; i < n; i++) {
+      const id = `ai-h${i}`;
+      const card = {
+        id: `mock-${i}`,
+        name: i % 2 ? `Forest ${i}` : `Bear ${i}`,
+        type_line: i % 2 ? "Basic Land — Forest" : "Creature — Bear",
+        oracle_text: "",
+        mana_cost: i % 2 ? "" : "{1}{G}",
+        cmc: i % 2 ? 0 : 2,
+        colors: [],
+        color_identity: [],
+        keywords: [],
+        legalities: { standard: "legal" },
+        layout: "normal",
+      } as unknown as ScryfallCard;
+      cards.set(
+        id,
+        createCardInstance(card, ai, ai, { id, currentZoneKey: key }),
+      );
+      ids.push(id);
+    }
+    zones.set(key, { ...zones.get(key)!, cardIds: ids });
+    state = {
+      ...state,
+      cards,
+      zones,
+      turn: { ...state.turn, currentPhase: Phase.CLEANUP },
+      priorityPlayerId: ai,
+    };
+    state = passPriority(passPriority(state, ai), other);
+    return { state, ai };
+  }
+
+  it("recognises the discard choice", () => {
+    const { state } = overLimit(9);
+    expect(isHandSizeDiscardChoice(state.waitingChoice)).toBe(true);
+    expect(isOfferChoice(state.waitingChoice)).toBe(false);
+  });
+
+  it("picks exactly the required number of distinct cards from hand", () => {
+    const { state } = overLimit(10);
+    const picked = decideHandSizeDiscard(state, state.waitingChoice!);
+    expect(picked).toHaveLength(3);
+    expect(new Set(picked).size).toBe(3);
+    const hand = state.waitingChoice!.choices.map((c) => c.value);
+    for (const id of picked) expect(hand).toContain(id);
+  });
+
+  it("answers the discard and lets the turn end", () => {
+    const { state, ai } = overLimit(9);
+    const { state: after, answered } = answerAIOfferChoices(state, ai);
+    expect(answered).toHaveLength(1);
+    expect(answered[0].type).toBe("discard_to_hand_size");
+    expect(after.waitingChoice).toBeNull();
+    expect(after.zones.get(`${ai}-hand`)!.cardIds).toHaveLength(7);
+    expect(after.turn.activePlayerId).not.toBe(ai);
+  });
+
+  it("leaves a human's discard alone", () => {
+    const { state, ai } = overLimit(9);
+    const human = Array.from(state.players.keys()).find((id) => id !== ai)!;
+    const { state: after, answered } = answerAIOfferChoices(state, human);
+    expect(answered).toHaveLength(0);
+    expect(after).toBe(state);
   });
 });

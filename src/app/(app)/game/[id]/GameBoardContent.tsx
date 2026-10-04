@@ -105,10 +105,16 @@ import {
   type Player,
   type CardInstance,
   type Phase,
+  resolveWaitingChoice,
 } from "@/lib/game-state";
 
 import { ValidationService } from "@/lib/validation-service";
-import { answerAIOfferChoices, isOfferChoice } from "@/ai/offer-choices";
+import {
+  answerAIOfferChoices,
+  isHandSizeDiscardChoice,
+  isOfferChoice,
+} from "@/ai/offer-choices";
+import { HandSizeDiscardDialog } from "@/components/choice-dialog";
 import {
   parseModes,
   parseXCost,
@@ -614,7 +620,8 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
   useEffect(() => {
     if (!gameState || mode !== "ai") return;
     const choice = gameState.waitingChoice;
-    if (!isOfferChoice(choice)) return;
+    // Issue #2446: the cleanup discard to hand size also waits on the AI.
+    if (!isOfferChoice(choice) && !isHandSizeDiscardChoice(choice)) return;
     const aiPlayer = Array.from(gameState.players.values()).find((p) =>
       p.name.includes("AI"),
     );
@@ -622,16 +629,53 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     const { state: answeredState, answered } = answerAIOfferChoices(
       gameState,
       aiPlayer.id,
+      16,
+      difficulty,
     );
     if (answered.length === 0) return;
     setGameState(answeredState);
+    const discarded = answered.filter(
+      (a) => a.type === "discard_to_hand_size",
+    );
     toast({
       title: "AI Action",
-      description: answered.some((a) => !a.value.startsWith("decline:"))
-        ? "AI opponent paid an optional cost"
-        : "AI opponent declined an optional cost",
+      description:
+        discarded.length > 0
+          ? "AI opponent discarded down to its maximum hand size"
+          : answered.some((a) => !a.value.startsWith("decline:"))
+            ? "AI opponent paid an optional cost"
+            : "AI opponent declined an optional cost",
     });
-  }, [gameState, mode, toast]);
+  }, [gameState, mode, toast, difficulty]);
+
+  // Issue #2446: the human's cleanup discard to maximum hand size. The turn
+  // cannot end until it is answered, so the dialog cannot be dismissed.
+  const humanDiscardChoice =
+    gameState &&
+    isHandSizeDiscardChoice(gameState.waitingChoice) &&
+    gameState.players.get(gameState.waitingChoice.playerId)?.name ===
+      playerName
+      ? gameState.waitingChoice
+      : null;
+
+  const handleHandSizeDiscard = useCallback(
+    (cardIds: string[]) => {
+      const latest = gameStateRef.current;
+      const choice = latest?.waitingChoice;
+      if (!latest || !isHandSizeDiscardChoice(choice)) return;
+      const result = resolveWaitingChoice(latest, choice.playerId, cardIds);
+      if (!result.success) {
+        toast({
+          title: "Discard failed",
+          description: result.error,
+          variant: "destructive",
+        });
+        return;
+      }
+      setGameState(checkStateBasedActions(result.state).state);
+    },
+    [toast],
+  );
 
   // Execute AI action when it has priority
   useEffect(() => {
@@ -3586,6 +3630,18 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
 
       {/* Tutorial */}
       {isGameStarted && <GameTutorial />}
+      {humanDiscardChoice && (
+        <HandSizeDiscardDialog
+          open
+          prompt={humanDiscardChoice.prompt}
+          count={humanDiscardChoice.minChoices}
+          cards={humanDiscardChoice.choices.map((c) => ({
+            id: String(c.value),
+            name: c.label,
+          }))}
+          onConfirm={handleHandSizeDiscard}
+        />
+      )}
       {confirmDialog}
     </div>
   );
