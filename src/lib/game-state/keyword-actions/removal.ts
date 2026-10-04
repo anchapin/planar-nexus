@@ -481,6 +481,8 @@ function moveCardToZoneWithoutTriggers(
   let updatedCard: CardInstance = {
     ...(targetZoneType === "battlefield" ? card : returnToFrontFace(card)),
     currentZoneKey: null,
+    // CR 400.7: a card that changes zones is a new object.
+    activatedOnceAbilities: undefined,
   };
 
   if (targetZoneType === "graveyard" || targetZoneType === "library") {

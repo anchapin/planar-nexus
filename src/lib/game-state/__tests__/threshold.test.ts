@@ -13,7 +13,8 @@ import {
   hasFlying,
 } from "../evergreen-keywords";
 import { evaluateInterveningIfClause } from "../abilities/evaluate";
-import { canActivateAbility } from "../abilities/activated";
+import { activateAbility, canActivateAbility } from "../abilities/activated";
+import { moveCardToZone } from "../keyword-actions/removal";
 import { canBlock } from "../combat/queries";
 import { createInitialGameState, startGame } from "../game-state";
 import { createCardInstance } from "../card-instance";
@@ -348,6 +349,88 @@ describe("threshold leftovers", () => {
     expect(canActivateAbility(after, p1, id("shucker"), 0).canActivate).toBe(
       true,
     );
+  });
+
+  it("lets Thought Shucker activate only once (issue #2482)", () => {
+    state = fillGraveyard(
+      put(
+        state,
+        p1,
+        "shucker",
+        creature("Thought Shucker", 1, 3, THOUGHT_SHUCKER),
+      ),
+      p1,
+      7,
+    );
+    const withMana = (s: GameState): GameState => {
+      const players = new Map(s.players);
+      const p = players.get(p1)!;
+      players.set(p1, {
+        ...p,
+        manaPool: { ...p.manaPool, blue: 4, colorless: 4 },
+      });
+      return { ...s, players, priorityPlayerId: p1 };
+    };
+    const first = activateAbility(withMana(state), p1, id("shucker"), 0);
+    expect(first.success).toBe(true);
+    expect(
+      first.state.cards.get(id("shucker"))!.activatedOnceAbilities,
+    ).toEqual([0]);
+    const again = canActivateAbility(
+      withMana(first.state),
+      p1,
+      id("shucker"),
+      0,
+    );
+    expect(again.canActivate).toBe(false);
+    expect(again.reason).toContain("only once");
+    const second = activateAbility(withMana(first.state), p1, id("shucker"), 0);
+    expect(second.success).toBe(false);
+  });
+
+  it("forgets Thought Shucker's activation once it changes zones (CR 400.7)", () => {
+    state = fillGraveyard(
+      put(
+        state,
+        p1,
+        "shucker",
+        creature("Thought Shucker", 1, 3, THOUGHT_SHUCKER),
+      ),
+      p1,
+      7,
+    );
+    const cards = new Map(state.cards);
+    cards.set(id("shucker"), {
+      ...cards.get(id("shucker"))!,
+      activatedOnceAbilities: [0],
+    });
+    state = { ...state, cards };
+    expect(canActivateAbility(state, p1, id("shucker"), 0).canActivate).toBe(
+      false,
+    );
+    const toHand = moveCardToZone(state, id("shucker"), "hand");
+    const back = moveCardToZone(toHand.state, id("shucker"), "battlefield");
+    const card = back.state.cards.get(id("shucker"))!;
+    expect(card.activatedOnceAbilities).toBeUndefined();
+    expect(
+      canActivateAbility(
+        { ...back.state, priorityPlayerId: p1 },
+        p1,
+        id("shucker"),
+        0,
+      ).canActivate,
+    ).toBe(true);
+  });
+
+  it("doesn't limit Loot, the Anomaly to one activation", () => {
+    state = put(state, p1, "loot", creature("Loot, the Anomaly", -2, 4, LOOT));
+    const cards = new Map(state.cards);
+    cards.set(id("loot"), {
+      ...cards.get(id("loot"))!,
+      activatedOnceAbilities: [0],
+    });
+    state = fillGraveyard({ ...state, cards }, p1, 7);
+    expect(canActivateAbility(state, p1, id("loot"), 0).canActivate).toBe(true);
   });
 
   it("only lets Loot, the Anomaly activate with seven cards in the graveyard", () => {
