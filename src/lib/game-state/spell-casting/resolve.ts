@@ -40,6 +40,8 @@ import {
   isBoardSweeper,
 } from "./board-sweepers";
 import { generateStackObjectId } from "./cast";
+import { getCardScript } from "../card-scripts/registry";
+import { resolveScriptedSpell } from "../card-scripts/interpret";
 import { createEngineUncaughtException } from "../errors";
 
 /**
@@ -256,7 +258,20 @@ export function resolveTopOfStack(state: GameState): GameState {
           // branch to fire).
           const isModalWithChoice =
             stackObject.chosenModes && stackObject.chosenModes.length > 0;
-          const parsedEffects = isModalWithChoice
+          // Card scripts (src/lib/game-state/card-scripts): a scripted card resolves
+          // from its script instead of from parsed oracle text.
+          const script = getCardScript(sourceCard.cardData.name);
+          if (script) {
+            currentState = resolveScriptedSpell(
+              currentState,
+              script,
+              stackObject,
+              kickerBonus,
+            );
+          }
+          const parsedEffects = script
+            ? []
+            : isModalWithChoice
             ? getEffectsForChosenModes(stackObject, currentState)
             : parseSpellEffects(oracleText, stackObject.variableValues);
 

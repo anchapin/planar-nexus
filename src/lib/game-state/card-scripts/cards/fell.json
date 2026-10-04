@@ -1,0 +1,10 @@
+{
+  "name": "Fell",
+  "oracle": "Destroy target creature.",
+  "spell": [
+    {
+      "op": "Destroy",
+      "target": "creature"
+    }
+  ]
+}

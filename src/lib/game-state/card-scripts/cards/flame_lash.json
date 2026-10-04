@@ -1,0 +1,11 @@
+{
+  "name": "Flame Lash",
+  "oracle": "Flame Lash deals 4 damage to any target.",
+  "spell": [
+    {
+      "op": "DealDamage",
+      "amount": 4,
+      "target": "any"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "Wander Off",
+  "oracle": "Exile target creature.",
+  "spell": [
+    {
+      "op": "Exile",
+      "target": "creature"
+    }
+  ]
+}

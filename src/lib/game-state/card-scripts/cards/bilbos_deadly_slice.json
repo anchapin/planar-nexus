@@ -1,0 +1,10 @@
+{
+  "name": "Bilbo's Deadly Slice",
+  "oracle": "Destroy target creature.",
+  "spell": [
+    {
+      "op": "Destroy",
+      "target": "creature"
+    }
+  ]
+}
