@@ -38,6 +38,7 @@ import {
 } from "../state-based-actions";
 import { hasLifelink, clearProwessBoosts } from "../evergreen-keywords";
 import { clearCrewedVehicles } from "../keyword-actions/crew";
+import { fireUpkeepTriggers } from "../keyword-actions/upkeep";
 import {
   HAND_SIZE_DISCARD_CHOICE_TYPE,
   createHandSizeDiscardChoice,
@@ -694,6 +695,10 @@ function advanceToNextPhase(state: GameState): GameState {
     priorityPlayerId: state.turn.activePlayerId,
   };
 
+  // CR 503.1a: "at the beginning of your/each upkeep" triggers (#2498).
+  if (nextPhase.currentPhase === Phase.UPKEEP) {
+    return fireUpkeepTriggers(advanced, state.turn.activePlayerId);
+  }
   // CR 507.1: "at the beginning of combat on your turn" triggers.
   if (nextPhase.currentPhase === Phase.BEGIN_COMBAT) {
     return processBeginningOfCombat(advanced);

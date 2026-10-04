@@ -23,7 +23,21 @@ function entersTriggerMatches(
   trigger: TriggerCondition,
   context?: TriggerContext,
 ): boolean {
-  const enteringId = context?.enteringCardId;
+  return subjectMatches(state, cardId, card, trigger, context?.enteringCardId);
+}
+
+/**
+ * Does the permanent an enters/dies/attack trigger watches match its subject
+ * ("this creature", "another creature you control", "a creature")? Without a
+ * subject id (older callers) every such trigger fires, as before.
+ */
+function subjectMatches(
+  state: GameState,
+  cardId: CardInstanceId,
+  card: CardInstance,
+  trigger: TriggerCondition,
+  enteringId: CardInstanceId | undefined,
+): boolean {
   if (!enteringId || !trigger.subject) return true;
   if (trigger.subject === "self") return enteringId === cardId;
   if (trigger.subject === "another" && enteringId === cardId) return false;
@@ -49,6 +63,26 @@ function entersTriggerMatches(
   )
     return false;
   if (filter.nontoken && entering.isToken) return false;
+  return true;
+}
+
+/** CR 508.1m: does an attack trigger care about this attacker? */
+function attackTriggerMatches(
+  state: GameState,
+  cardId: CardInstanceId,
+  card: CardInstance,
+  trigger: TriggerCondition,
+  context?: TriggerContext,
+): boolean {
+  const attackerId = context?.attackerId;
+  if (!attackerId) return true;
+  // "this creature attacks" with no subject parsed is about itself.
+  if (!trigger.subject && attackerId !== cardId) return false;
+  if (!subjectMatches(state, cardId, card, trigger, attackerId)) return false;
+  const filter = trigger.attackFilter;
+  if (filter?.alone && context?.attackerCount !== 1) return false;
+  if (filter?.defenderIsYou && context?.attackDefenderId !== card.controllerId)
+    return false;
   return true;
 }
 
@@ -94,11 +128,36 @@ export function detectTriggeredAbilities(
           break;
         case "dies":
         case "creatureDies":
-          shouldTrigger = ability.trigger.event === "dies";
+          // CR 603.10a: a self dies trigger with no subject parsed ("when ~
+          // is put into a graveyard from the battlefield") is about itself.
+          shouldTrigger =
+            ability.trigger.event === "dies" &&
+            (context?.dyingCardId && !ability.trigger.subject
+              ? context.dyingCardId === cardId
+              : subjectMatches(
+                  state,
+                  cardId,
+                  card,
+                  ability.trigger,
+                  context?.dyingCardId,
+                ));
           break;
         case "attacked":
-          shouldTrigger = ability.trigger.event === "attacked";
+          shouldTrigger =
+            ability.trigger.event === "attacked" &&
+            attackTriggerMatches(state, cardId, card, ability.trigger, context);
           break;
+        case "upkeep": {
+          const whose = context?.upkeepPlayerId;
+          const of = ability.trigger.upkeepOf ?? "you";
+          shouldTrigger =
+            ability.trigger.event === "upkeep" &&
+            (!whose ||
+              of === "each" ||
+              (of === "you" && whose === card.controllerId) ||
+              (of === "opponent" && whose !== card.controllerId));
+          break;
+        }
         case "phaseChange":
         case "beginningOfTurn":
           shouldTrigger =

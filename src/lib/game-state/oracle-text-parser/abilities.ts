@@ -108,17 +108,29 @@ export interface TriggerCondition {
     | "transform"
     | "unknown";
   /**
-   * Enters-the-battlefield subject (CR 603.6a): "self" for "this creature" /
-   * the card's own name, "another" for "another ..." / "other ...", "any"
-   * for "a ..." / "one or more ...". Undefined on non-ETB triggers.
+   * Whose event the trigger watches (CR 603.6a, 603.10a, 508.1m): "self" for
+   * "this creature" / the card's own name, "another" for "another ..." /
+   * "other ...", "any" for "a ..." / "one or more ...". Set on enters, dies
+   * and attack triggers; undefined elsewhere.
    */
   subject?: "self" | "another" | "any";
-  /** Which entering permanents an "another"/"any" ETB trigger cares about. */
+  /**
+   * Which permanents an "another"/"any" trigger cares about: the one that
+   * entered (ETB), died (dies) or attacked (attacks).
+   */
   enteringFilter?: {
     types: string[];
     controller?: "you" | "opponent";
     nontoken?: boolean;
   };
+  /**
+   * Attack triggers (CR 508.1m): "once" for "whenever you attack" / "one or
+   * more creatures ... attack" (one trigger per combat, not per attacker),
+   * "alone" for "attacks alone", "defenderIsYou" for "attacks you".
+   */
+  attackFilter?: { once?: boolean; alone?: boolean; defenderIsYou?: boolean };
+  /** Upkeep triggers (CR 503.1a): whose upkeep. "you" when unstated. */
+  upkeepOf?: "you" | "each" | "opponent";
   condition?: string;
   target?: ParsedTarget;
   source?: string;
@@ -536,9 +548,21 @@ const ETB_PERMANENT_TYPES = [
  * permanent itself, "another"/"other" excludes it, "a"/"one or more" includes it.
  */
 function parseEntersTrigger(text: string): TriggerCondition {
+  return parseSubjectTrigger(text, "entersBattlefield", /\benters?\b/);
+}
+
+/**
+ * Shared subject parse for enters, dies and attack triggers: the subject is
+ * everything before the verb.
+ */
+function parseSubjectTrigger(
+  text: string,
+  event: "entersBattlefield" | "dies" | "attacked",
+  verb: RegExp,
+): TriggerCondition {
   const subjectText = text
     .replace(/^(?:when|whenever)\s+/, "")
-    .split(/\benters?\b/)[0]
+    .split(verb)[0]
     .trim();
   let subject: "self" | "another" | "any";
   if (/\b(?:another|other)\b/.test(subjectText)) {
@@ -549,7 +573,7 @@ function parseEntersTrigger(text: string): TriggerCondition {
     subject = "self";
   }
   if (subject === "self") {
-    return { event: "entersBattlefield", subject };
+    return { event, subject };
   }
   const types = ETB_PERMANENT_TYPES.filter((type) =>
     new RegExp(`\\b${type}s?\\b`).test(subjectText),
@@ -559,7 +583,7 @@ function parseEntersTrigger(text: string): TriggerCondition {
   else if (/\b(?:an opponent|your opponents) controls?\b/.test(subjectText))
     controller = "opponent";
   return {
-    event: "entersBattlefield",
+    event,
     subject,
     enteringFilter: {
       types: [...types],
@@ -567,6 +591,32 @@ function parseEntersTrigger(text: string): TriggerCondition {
       nontoken: /\bnontoken\b/.test(subjectText) || undefined,
     },
   };
+}
+
+/**
+ * Attack triggers (CR 508.1m). "Whenever you attack" and "whenever one or
+ * more creatures you control attack" trigger once per combat; "this
+ * creature attacks" only for itself; "a creature you control attacks" once
+ * per matching attacker.
+ */
+function parseAttackTrigger(text: string): TriggerCondition {
+  const body = text.replace(/^(?:when|whenever)\s+/, "");
+  if (/^you attack\b/.test(body)) {
+    return {
+      event: "attacked",
+      subject: "any",
+      enteringFilter: { types: [], controller: "you" },
+      attackFilter: { once: true },
+    };
+  }
+  const parsed = parseSubjectTrigger(text, "attacked", /\battacks?\b/);
+  const attackFilter: NonNullable<TriggerCondition["attackFilter"]> = {};
+  if (/^one or more\b/.test(body)) attackFilter.once = true;
+  if (/\battacks? alone\b/.test(body)) attackFilter.alone = true;
+  if (/\battacks? you\b/.test(body)) attackFilter.defenderIsYou = true;
+  return Object.keys(attackFilter).length > 0
+    ? { ...parsed, attackFilter }
+    : parsed;
 }
 
 /**
@@ -604,9 +654,10 @@ function parseTriggerText(triggerText: string): TriggerCondition | null {
     return { event: "leavesBattlefield" };
   }
 
-  // Dies
-  if (text.includes("dies")) {
-    return { event: "dies" };
+  // Dies (CR 700.4): "when this creature dies", "whenever another creature
+  // you control dies", "whenever a creature dies".
+  if (/\bdies\b/.test(text)) {
+    return parseSubjectTrigger(text, "dies", /\bdies\b/);
   }
 
   // Deals damage
@@ -616,7 +667,7 @@ function parseTriggerText(triggerText: string): TriggerCondition | null {
 
   // Attacks (covers "attacks", "you attack", "a creature attacks")
   if (text.includes("attack")) {
-    return { event: "attacked" };
+    return parseAttackTrigger(text);
   }
 
   // Becomes blocked
@@ -657,9 +708,13 @@ function parseTriggerText(triggerText: string): TriggerCondition | null {
     return { event: "untapStep" };
   }
 
-  // Upkeep
+  // Upkeep (CR 503.1a): "your upkeep" (the default), "each upkeep" /
+  // "each player's upkeep", "each opponent's upkeep".
   if (text.includes("upkeep")) {
-    return { event: "upkeep" };
+    let upkeepOf: "you" | "each" | "opponent" = "you";
+    if (/\beach opponent'?s upkeep\b/.test(text)) upkeepOf = "opponent";
+    else if (/\beach (?:player'?s )?upkeep\b/.test(text)) upkeepOf = "each";
+    return { event: "upkeep", upkeepOf };
   }
 
   // Draw step

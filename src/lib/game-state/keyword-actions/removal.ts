@@ -1,6 +1,8 @@
 import { returnToFrontFace } from "./transform";
 import { fireLandfallTriggers } from "./landfall";
 import { fireEntersTriggers } from "./enters";
+import { detectDiesTriggers } from "./dies";
+import { putTriggersOnStack } from "../trigger-system/stack-ops";
 import { applyEntersWithCounters } from "./enters-with-counters";
 import { isCreatureOnCurrentFace, markCreatureDiedThisTurn } from "./morbid";
 /**
@@ -375,7 +377,16 @@ export function moveCardToZone(
   cardId: CardInstanceId,
   targetZoneType: "graveyard" | "exile" | "hand" | "library" | "battlefield",
 ): KeywordActionResult {
+  // CR 603.10a: dies triggers look back at the battlefield before the move.
+  const diesTriggers =
+    targetZoneType === "graveyard" ? detectDiesTriggers(state, cardId) : [];
   const result = moveCardToZoneWithoutTriggers(state, cardId, targetZoneType);
+  if (result.success && diesTriggers.length > 0) {
+    return {
+      ...result,
+      state: putTriggersOnStack(result.state, diesTriggers).state,
+    };
+  }
   // Landfall (CR 207.2c): a land put onto the battlefield triggers its
   // controller's landfall abilities.
   if (result.success && targetZoneType === "battlefield") {
