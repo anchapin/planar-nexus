@@ -19,8 +19,8 @@ import type {
 import { isCreature, getPower, getToughness } from "../card-instance";
 import { canTargetCard } from "../targeting-validation";
 import { getActivatedAbilities } from "../abilities/parse";
-import { getCardScript } from "../../card-scripts/registry";
-import { isTargetedEffect } from "../../card-scripts/schema";
+import { getCardScript } from "../card-scripts/registry";
+import { isTargetedEffect } from "../card-scripts/schema";
 
 export type TriggerTargetKind = "creature" | "player" | "opponent" | "any";
 
