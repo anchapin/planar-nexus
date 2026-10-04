@@ -19,6 +19,7 @@ import { hasVigilanceStrict } from "../keyword-actions/vigilance";
 import { markAttackedThisTurn } from "../keyword-actions/raid";
 import { applyBattleCry } from "../keyword-actions/battle-cry";
 import { processAttackReturnOffers } from "../keyword-actions/attack-return-offers";
+import { fireAttackTriggers } from "../keyword-actions/attacks";
 import { checkStateBasedActions } from "../state-based-actions";
 import { dealCommanderDamage, isCommander } from "../commander-damage";
 import {
@@ -193,6 +194,9 @@ export function declareAttackers(
   for (const playerId of attackingPlayers) {
     offerState = processAttackReturnOffers(offerState, playerId);
   }
+
+  // CR 508.1m: "whenever ... attacks" triggers (#2498).
+  offerState = fireAttackTriggers(offerState, attackers);
 
   return {
     success: true,

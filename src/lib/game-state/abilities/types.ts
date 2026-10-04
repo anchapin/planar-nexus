@@ -44,6 +44,17 @@ export interface TriggerContext {
    * triggers only for the others (CR 603.6a).
    */
   enteringCardId?: CardInstanceId;
+  /**
+   * Dies (CR 603.10a): the creature that died. Detection runs on the state
+   * just before it left the battlefield, so "this creature dies" still sees it.
+   */
+  dyingCardId?: CardInstanceId;
+  /** Attacks (CR 508.1m): one declared attacker, whom it attacks, and how many attacked. */
+  attackerId?: CardInstanceId;
+  attackDefenderId?: PlayerId | CardInstanceId;
+  attackerCount?: number;
+  /** Upkeep (CR 503.1a): whose upkeep it is. */
+  upkeepPlayerId?: PlayerId;
 }
 
 export interface ActivateAbilityResult {

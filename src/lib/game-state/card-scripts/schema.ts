@@ -122,8 +122,8 @@ export const TriggerSchema = z
     text: z.string().min(1),
     /**
      * etb: enters the battlefield. landfall: a land you control enters
-     * (#2496). Dies, attacks and upkeep need the engine to fire those events
-     * first.
+     * (#2496). The engine now fires dies, attacks and upkeep in real games
+     * (#2498); adding them here is the rest of #2496.
      */
     event: z.enum(["etb", "landfall"]),
     /** ETB only: whose entry it watches (CR 603.6a). */
