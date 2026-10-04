@@ -262,6 +262,19 @@ export async function deleteLegacyDatabase(
 }
 
 /**
+ * Issue #2369: on a torn schema the consolidation is skipped on every
+ * open until the self-heal lands, which fired one `console.warn` per
+ * open and flooded the E2E logs. The first skip in a page context
+ * still warns, so the signal is kept; later skips are silent.
+ */
+let hasWarnedTornSchema = false;
+
+/** Test-only: reset the once-per-page torn-schema warning state. */
+export function resetV4ConsolidationWarningsForTests(): void {
+  hasWarnedTornSchema = false;
+}
+
+/**
  * Fold every row of every legacy single-store database into the new
  * v4 stores on `PlanarNexusStorage`. Runs lazily, after the v3 → v4
  * schema upgrade has committed, gated by a marker row in `preferences`
@@ -288,9 +301,12 @@ export async function ensureLegacyV4Consolidation(
   // `IndexedDBStorage.initialize()` rebuilds the store and the next
   // open retries the migration.
   if (!storage.hasStore("preferences")) {
-    console.warn(
-      "[indexeddb-storage] v4 consolidation skipped: 'preferences' store is missing (torn schema; retrying after self-heal)",
-    );
+    if (!hasWarnedTornSchema) {
+      hasWarnedTornSchema = true;
+      console.warn(
+        "[indexeddb-storage] v4 consolidation skipped: 'preferences' store is missing (torn schema; retrying after self-heal; logged once per page)",
+      );
+    }
     return;
   }
 

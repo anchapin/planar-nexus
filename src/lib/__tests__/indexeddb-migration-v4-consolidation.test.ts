@@ -39,7 +39,10 @@ import {
   SEARCH_PRESETS_STORE,
   type StorageConfig,
 } from "../indexeddb-storage";
-import { ensureLegacyV4Consolidation } from "../migrations/indexeddb-v4-consolidation";
+import {
+  ensureLegacyV4Consolidation,
+  resetV4ConsolidationWarningsForTests,
+} from "../migrations/indexeddb-v4-consolidation";
 
 const DB_NAME = "TestPlanarNexusMigrationV4";
 
@@ -527,6 +530,7 @@ describe("IndexedDB schema migration (v3 to v4, issue #1811 consolidation)", () 
 
 describe("v4 consolidation + torn schema (issue #1937)", () => {
   it("skips without NotFoundError when the 'preferences' marker store is missing", async () => {
+    resetV4ConsolidationWarningsForTests();
     const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
 
     // Minimal stand-in exposing only the surface the migration uses.
@@ -545,6 +549,34 @@ describe("v4 consolidation + torn schema (issue #1937)", () => {
 
     expect(warn).toHaveBeenCalledTimes(1);
     expect(String(warn.mock.calls[0][0])).toContain("preferences");
+  });
+
+  it("warns only once per page context on repeated torn-schema skips (issue #2369)", async () => {
+    resetV4ConsolidationWarningsForTests();
+    const warn = jest.spyOn(console, "warn").mockImplementation(() => {});
+
+    const tornStorage = {
+      hasStore: (name: string) => name !== "preferences",
+      get: async () => null,
+      set: async () => undefined,
+    } as unknown as IndexedDBStorage;
+
+    for (let i = 0; i < 5; i++) {
+      await expect(
+        ensureLegacyV4Consolidation(tornStorage),
+      ).resolves.toBeUndefined();
+    }
+
+    // The signal still surfaces once; the four repeats stay silent.
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain("torn schema");
+
+    // A fresh page context (simulated by the reset) warns again.
+    resetV4ConsolidationWarningsForTests();
+    await ensureLegacyV4Consolidation(tornStorage);
+    expect(warn).toHaveBeenCalledTimes(2);
+
+    warn.mockRestore();
   });
 
   it("initialize() self-heals a torn v4 schema and the migration completes", async () => {

@@ -40,6 +40,14 @@
 const MODULE_URL = new URL(import.meta.url);
 
 /**
+ * Issue #2369: the "not a bundled asset" fallback is static for the
+ * life of the page (the worker URL never changes), so it is logged once
+ * per page context. Repeating it on every search call flooded the E2E
+ * logs and buried the Playwright reporter output.
+ */
+let hasWarnedNotBundled = false;
+
+/**
  * Constructs the Orama card-search worker. Returns `null` in
  * environments without the `Worker` global (SSR, Jest/jsdom) or if
  * construction throws, so callers can degrade gracefully instead of
@@ -63,10 +71,13 @@ export function createSearchWorker(): Worker | null {
     // Degrade to the existing main-thread fallback in dev instead of
     // spawning a worker that can never load.
     if (!workerUrl.href.includes("/_next/")) {
-      console.warn(
-        "[search-worker-factory] worker URL is not a bundled asset (dev build?) — falling back to main-thread search:",
-        workerUrl.href,
-      );
+      if (!hasWarnedNotBundled) {
+        hasWarnedNotBundled = true;
+        console.warn(
+          "[search-worker-factory] worker URL is not a bundled asset (dev build?) — falling back to main-thread search (logged once per page):",
+          workerUrl.href,
+        );
+      }
       return null;
     }
 
