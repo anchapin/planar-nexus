@@ -1,0 +1,23 @@
+{
+  "name": "Sanguine Syphoner",
+  "oracle": "Whenever this creature attacks, each opponent loses 1 life and you gain 1 life.",
+  "triggers": [
+    {
+      "text": "Whenever this creature attacks, each opponent loses 1 life and you gain 1 life.",
+      "event": "attacks",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "LoseLife",
+          "amount": 1,
+          "who": "each_opponent"
+        },
+        {
+          "op": "GainLife",
+          "amount": 1,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}

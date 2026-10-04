@@ -13,6 +13,7 @@ import type {
   ParsedActivatedAbility,
   ParsedTriggeredAbility,
 } from "../oracle-text-parser";
+import type { TriggerCondition } from "../oracle-text-parser/abilities";
 
 export function hasActivatedAbilities(card: { oracle_text?: string }): boolean {
   if (!card.oracle_text) return false;
@@ -43,13 +44,34 @@ function scriptedActivated(a: ScriptedActivated): ParsedActivatedAbility {
   };
 }
 
+const SUBJECT_EVENT = {
+  etb: "entersBattlefield",
+  dies: "dies",
+  attacks: "attacked",
+} as const;
+
+function scriptedCondition(t: ScriptedTrigger): TriggerCondition {
+  if (t.event === "landfall") return { event: "landfall" };
+  if (t.event === "upkeep") return { event: "upkeep", upkeepOf: t.whose ?? "you" };
+  const condition: TriggerCondition = {
+    event: SUBJECT_EVENT[t.event],
+    subject: t.subject,
+  };
+  if (t.subject !== "self") {
+    // Script subjects are creatures (CR 603.6a); ETB keeps its old any-permanent reading.
+    condition.enteringFilter = {
+      types: t.event === "etb" ? [] : ["creature"],
+      ...(t.controller ? { controller: t.controller } : {}),
+    };
+  }
+  if (t.event === "attacks" && t.once) condition.attackFilter = { once: true };
+  return condition;
+}
+
 function scriptedTrigger(t: ScriptedTrigger): ParsedTriggeredAbility {
   return {
     type: AbilityType.TRIGGERED,
-    trigger:
-      t.event === "landfall"
-        ? { event: "landfall" }
-        : { event: "entersBattlefield", subject: t.subject },
+    trigger: scriptedCondition(t),
     effect: t.text,
     effectType: "generic",
     targets: [],
