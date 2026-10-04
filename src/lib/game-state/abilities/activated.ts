@@ -20,7 +20,10 @@ import { isCreature } from "../card-instance";
 import { hasKeyword } from "../evergreen-keywords";
 import { generateAbilityId } from "./ids";
 import { evaluateInterveningIfClause } from "./evaluate";
-import { getActivationCondition } from "../keyword-actions/threshold";
+import {
+  getActivationCondition,
+  isActivateOnlyOnce,
+} from "../keyword-actions/threshold";
 import {
   parseTriggerTargetSpec,
   getLegalActivatedAbilityTargets,
@@ -89,6 +92,18 @@ export function canActivateAbility(
     return {
       canActivate: false,
       reason: `Activate only if ${condition}`,
+    };
+  }
+
+  // CR 602.5b: "Activate only once" (Thought Shucker, issue #2482).
+  if (
+    ability &&
+    card.activatedOnceAbilities?.includes(abilityIndex) &&
+    isActivateOnlyOnce(card, ability.effect ?? "")
+  ) {
+    return {
+      canActivate: false,
+      reason: "This ability can be activated only once",
     };
   }
 
@@ -316,6 +331,22 @@ export function activateAbility(
     const result = discardCards(currentState, playerId, 1, false);
     if (result.success) {
       currentState = result.state;
+    }
+  }
+
+  // CR 602.5b: record a once-only activation on the permanent (issue #2482).
+  if (isActivateOnlyOnce(card, ability.effect ?? "")) {
+    const source = currentState.cards.get(cardId);
+    if (source) {
+      const cards = new Map(currentState.cards);
+      cards.set(cardId, {
+        ...source,
+        activatedOnceAbilities: [
+          ...(source.activatedOnceAbilities ?? []),
+          abilityIndex,
+        ],
+      });
+      currentState = { ...currentState, cards };
     }
   }
 

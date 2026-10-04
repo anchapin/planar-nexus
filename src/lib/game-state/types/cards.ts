@@ -195,6 +195,12 @@ export interface CardInstance {
   /** Domain CDA power (issue #2300), refreshed with state-based actions. */
   domainPower?: number;
   /**
+   * Indexes of this permanent's "activate only once" abilities that have
+   * been activated (CR 602.5b, issue #2482). A permanent that changes zones
+   * is a new object (CR 400.7), so this is cleared on every zone move.
+   */
+  activatedOnceAbilities?: number[];
+  /**
    * Summed bonus from "Other <Type>s you control get +N/+N" lords (issue
    * #2300). Maintained by `refreshTribalAnthems`.
    */

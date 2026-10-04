@@ -232,8 +232,8 @@ export function refreshThresholdBonuses(state: GameState): GameState {
  * The condition in an activated ability's "Activate only if <condition>"
  * clause (CR 602.5b), lowercased, or null. The activated-ability parser
  * drops this sentence, so it is read back from the ability's oracle line,
- * matched by the start of its effect text. "and only once" is stripped;
- * that once-per-game limit is not tracked yet.
+ * matched by the start of its effect text. "and only once" is stripped
+ * here; see `isActivateOnlyOnce` for that limit (issue #2482).
  */
 export function getActivationCondition(
   card: CardInstance,
@@ -248,6 +248,25 @@ export function getActivationCondition(
     return m ? m[1] : null;
   }
   return null;
+}
+
+/**
+ * Whether an activated ability's oracle line limits it to one activation
+ * ("Activate only once." or "... and only once."), CR 602.5b. Matched the
+ * same way as `getActivationCondition` (issue #2482).
+ */
+export function isActivateOnlyOnce(
+  card: CardInstance,
+  effect: string,
+): boolean {
+  const key = effect.toLowerCase().slice(0, 24);
+  if (!key) return false;
+  for (const raw of cardOracleText(card).split("\n")) {
+    const line = raw.trim().toLowerCase();
+    if (!line.includes(":") || !line.includes(key)) continue;
+    return /\b(?:activate|and) only once\b/.test(line);
+  }
+  return false;
 }
 
 /** "This creature can't be blocked" from threshold being active. */
