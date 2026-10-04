@@ -39,6 +39,13 @@ import {
 import { hasLifelink, clearProwessBoosts } from "../evergreen-keywords";
 import { clearCrewedVehicles } from "../keyword-actions/crew";
 import {
+  HAND_SIZE_DISCARD_CHOICE_TYPE,
+  createHandSizeDiscardChoice,
+  discardToHandSize,
+  validateHandSizeDiscard,
+} from "../keyword-actions/hand-size";
+import { registerCardListResolver } from "../spell-casting/choices";
+import {
   detectEndStepTriggers,
   detectBlitzEndStepTriggers,
   detectUntapStepTriggers,
@@ -401,6 +408,12 @@ function getNextAPNAPPlayer(state: GameState): PlayerId | null {
  * Pass priority
  */
 export function passPriority(state: GameState, playerId: PlayerId): GameState {
+  // Issue #2446: the turn cannot end until the cleanup discard is answered.
+  // Passing is a no-op while it is pending, so pass loops cannot skip it.
+  if (state.waitingChoice?.type === HAND_SIZE_DISCARD_CHOICE_TYPE) {
+    return state;
+  }
+
   const player = state.players.get(playerId);
 
   if (!player) {
@@ -577,6 +590,21 @@ function advanceToNextPhase(state: GameState): GameState {
 
   // Check if turn is ending
   if (nextPhase.currentPhase === state.turn.currentPhase) {
+    // CR 514.1 (issue #2446): before the turn ends, the active player
+    // discards down to maximum hand size. The player picks the cards, so
+    // the turn pauses on a waiting choice; answering it finishes the turn.
+    const discardChoice = createHandSizeDiscardChoice(
+      newState,
+      state.turn.activePlayerId,
+    );
+    if (discardChoice) {
+      return {
+        ...newState,
+        waitingChoice: discardChoice,
+        priorityPlayerId: state.turn.activePlayerId,
+      };
+    }
+
     // Need to advance to next player's turn
     const currentPlayerIndex = Array.from(state.players.keys()).indexOf(
       state.turn.activePlayerId,
@@ -684,6 +712,43 @@ function advanceToNextPhase(state: GameState): GameState {
   }
   return advanced;
 }
+
+/**
+ * Answer the cleanup discard (CR 514.1, issue #2446): discard the chosen
+ * cards, then finish the turn.
+ */
+function resolveHandSizeDiscard(
+  state: GameState,
+  playerId: PlayerId,
+  chosen: readonly string[],
+): { success: boolean; state: GameState; description?: string } {
+  const choice = state.waitingChoice;
+  if (
+    choice?.type !== HAND_SIZE_DISCARD_CHOICE_TYPE ||
+    choice.playerId !== playerId
+  ) {
+    return { success: false, state, description: "No discard to answer" };
+  }
+  const error = validateHandSizeDiscard(state, playerId, chosen);
+  if (error) {
+    return { success: false, state, description: error };
+  }
+  const discarded = discardToHandSize(
+    { ...state, waitingChoice: null },
+    playerId,
+    [...chosen],
+  );
+  if (!discarded.success) {
+    return { success: false, state, description: discarded.description };
+  }
+  return {
+    success: true,
+    state: advanceToNextPhase(discarded.state),
+    description: discarded.description,
+  };
+}
+
+registerCardListResolver(HAND_SIZE_DISCARD_CHOICE_TYPE, resolveHandSizeDiscard);
 
 function resolveStackTop(state: GameState): GameState {
   if (state.stack.length === 0) {

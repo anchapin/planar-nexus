@@ -39,6 +39,26 @@ export function registerOfferResolver(
 }
 
 /**
+ * Resolver for a choice answered with a list of cards (cleanup discard to
+ * maximum hand size, issue #2446). Registered by the module that creates the
+ * choice, for the same bundle reason as `registerOfferResolver`.
+ */
+export type CardListChoiceResolver = (
+  state: GameState,
+  playerId: PlayerId,
+  chosenCardIds: readonly string[],
+) => { success: boolean; state: GameState; description?: string };
+
+const cardListResolvers = new Map<string, CardListChoiceResolver>();
+
+export function registerCardListResolver(
+  type: string,
+  resolver: CardListChoiceResolver,
+): void {
+  cardListResolvers.set(type, resolver);
+}
+
+/**
  * Create a waiting choice for choosing modes
  * For modal spells like "Choose one" or "Choose two"
  * CR 700.2: Modal spells have multiple modes
@@ -233,6 +253,31 @@ export function resolveWaitingChoice(
       };
     }
     const result = resolver(state, playerId, value);
+    return result.success
+      ? { success: true, state: result.state }
+      : { success: false, state, error: result.description };
+  }
+
+  // Issue #2446: cleanup discard to maximum hand size. Accepts the chosen
+  // card ids as an array, or a single id when only one card is discarded.
+  if (type === "discard_to_hand_size") {
+    const ids = Array.isArray(selectedValue)
+      ? (selectedValue as readonly string[])
+      : typeof selectedValue === "string"
+        ? [selectedValue]
+        : null;
+    if (!ids) {
+      return { success: false, state, error: "Expected a list of cards" };
+    }
+    const resolver = cardListResolvers.get(type);
+    if (!resolver) {
+      return {
+        success: false,
+        state,
+        error: `No resolver registered for ${type}`,
+      };
+    }
+    const result = resolver(state, playerId, ids);
     return result.success
       ? { success: true, state: result.state }
       : { success: false, state, error: result.description };

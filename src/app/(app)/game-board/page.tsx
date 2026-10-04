@@ -62,6 +62,7 @@ import {
 import {
   XValueChoiceDialog,
   ModeChoiceDialog,
+  HandSizeDiscardDialog,
 } from "@/components/choice-dialog";
 import { useAchievementTracking } from "@/hooks/use-achievement-tracking";
 import { evaluateGameState, quickScore } from "@/ai/game-state-evaluator";
@@ -1178,6 +1179,23 @@ export default function GameBoardPage() {
           }}
         />
       )}
+
+      {/* Cleanup discard to maximum hand size (issue #2446) */}
+      {engineState?.waitingChoice?.type === "discard_to_hand_size" &&
+        engineState.waitingChoice.playerId === currentPlayerId && (
+          <HandSizeDiscardDialog
+            open
+            prompt={engineState.waitingChoice.prompt}
+            count={engineState.waitingChoice.minChoices}
+            cards={engineState.waitingChoice.choices.map((c) => ({
+              id: String(c.value),
+              name: c.label,
+            }))}
+            onConfirm={(cardIds) => {
+              resolveWaitingChoice(cardIds);
+            }}
+          />
+        )}
 
       {/* Mode Choice Dialog for modal spells */}
       {modeChoiceData && (

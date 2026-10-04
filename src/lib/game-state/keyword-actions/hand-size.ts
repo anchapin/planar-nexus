@@ -5,7 +5,12 @@
  * "You have no maximum hand size" (Proft's Eidetic Memory) lifts it while a
  * permanent with that text is on the battlefield under that player's control.
  */
-import type { CardInstanceId, GameState, PlayerId } from "../types";
+import type {
+  CardInstanceId,
+  GameState,
+  PlayerId,
+  WaitingChoice,
+} from "../types";
 import { discardCards } from "./draw";
 import type { KeywordActionResult } from "./shared";
 
@@ -64,4 +69,60 @@ export function discardToHandSize(
     return { success: true, state, description: "" };
   }
   return discardCards(state, playerId, excess, false, chosen);
+}
+
+/** Waiting-choice type for the cleanup discard (CR 514.1). */
+export const HAND_SIZE_DISCARD_CHOICE_TYPE = "discard_to_hand_size" as const;
+
+/**
+ * The choice a player makes in cleanup when over maximum hand size: pick
+ * exactly as many cards from hand as they must discard. Null when no discard
+ * is needed.
+ */
+export function createHandSizeDiscardChoice(
+  state: GameState,
+  playerId: PlayerId,
+): WaitingChoice | null {
+  const excess = cardsOverHandSize(state, playerId);
+  if (excess === 0) return null;
+  const hand = state.zones.get(`${playerId}-hand`)?.cardIds ?? [];
+  const max = getPlayerMaxHandSize(state, playerId);
+  return {
+    type: HAND_SIZE_DISCARD_CHOICE_TYPE,
+    playerId,
+    stackObjectId: null,
+    prompt: `Discard ${excess} card${excess === 1 ? "" : "s"} down to your maximum hand size of ${max}.`,
+    choices: hand.map((cardId) => ({
+      label: state.cards.get(cardId)?.cardData.name ?? cardId,
+      value: cardId,
+      isValid: true,
+    })),
+    minChoices: excess,
+    maxChoices: excess,
+    presentedAt: Date.now(),
+  };
+}
+
+/**
+ * Check a cleanup-discard answer: exactly the required number of distinct
+ * cards, all in the player's hand. Returns an error message, or null when
+ * the pick is legal.
+ */
+export function validateHandSizeDiscard(
+  state: GameState,
+  playerId: PlayerId,
+  chosen: readonly string[],
+): string | null {
+  const excess = cardsOverHandSize(state, playerId);
+  if (chosen.length !== excess) {
+    return `Choose exactly ${excess} card${excess === 1 ? "" : "s"} to discard`;
+  }
+  if (new Set(chosen).size !== chosen.length) {
+    return "Each card can only be discarded once";
+  }
+  const hand = new Set(state.zones.get(`${playerId}-hand`)?.cardIds ?? []);
+  if (chosen.some((id) => !hand.has(id))) {
+    return "You can only discard cards in your hand";
+  }
+  return null;
 }

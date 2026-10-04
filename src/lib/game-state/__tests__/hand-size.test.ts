@@ -2,7 +2,13 @@
  * Maximum hand size (issue #2446, CR 402.2 / CR 514.1) and "You have no
  * maximum hand size" (Proft's Eidetic Memory, #2428).
  */
-import { createInitialGameState, startGame } from "../game-state";
+import {
+  createInitialGameState,
+  passPriority,
+  startGame,
+} from "../game-state";
+import { resolveWaitingChoice } from "../spell-casting";
+import { Phase } from "../types";
 import { createCardInstance } from "../card-instance";
 import {
   cardsOverHandSize,
@@ -132,5 +138,105 @@ describe("maximum hand size (#2446)", () => {
       data("Proft's Eidetic Memory", PROFT),
     );
     expect(hasNoMaximumHandSize(state, p1)).toBe(false);
+  });
+});
+
+describe("cleanup discard choice (#2446, CR 514.1)", () => {
+  let state: GameState;
+  let active: PlayerId;
+  let other: PlayerId;
+
+  /** Put the game in the active player's cleanup step with `n` cards in hand. */
+  function atCleanup(n: number, extra?: (s: GameState) => GameState): GameState {
+    let s = startGame(createInitialGameState(["Alice", "Bob"], 20, false));
+    active = s.turn.activePlayerId;
+    other = Array.from(s.players.keys()).find((id) => id !== active)!;
+    s = handOf(s, active, n);
+    if (extra) s = extra(s);
+    return {
+      ...s,
+      turn: { ...s.turn, currentPhase: Phase.CLEANUP },
+      priorityPlayerId: active,
+    };
+  }
+
+  const endTurn = (s: GameState) => passPriority(passPriority(s, active), other);
+
+  it("ends the turn with no choice when the hand is at the limit", () => {
+    state = endTurn(atCleanup(7));
+    expect(state.waitingChoice).toBeNull();
+    expect(state.turn.activePlayerId).toBe(other);
+    expect(handSize(state, active)).toBe(7);
+  });
+
+  it("pauses the turn on a discard choice when over the limit", () => {
+    const before = atCleanup(9);
+    state = endTurn(before);
+    expect(state.turn.activePlayerId).toBe(active);
+    expect(state.turn.currentPhase).toBe(Phase.CLEANUP);
+    expect(state.priorityPlayerId).toBe(active);
+    const choice = state.waitingChoice!;
+    expect(choice.type).toBe("discard_to_hand_size");
+    expect(choice.playerId).toBe(active);
+    expect(choice.minChoices).toBe(2);
+    expect(choice.maxChoices).toBe(2);
+    expect(choice.choices.map((c) => c.value)).toEqual(
+      before.zones.get(`${active}-hand`)!.cardIds,
+    );
+  });
+
+  it("does not let passing skip the pending discard", () => {
+    state = endTurn(atCleanup(9));
+    expect(passPriority(state, active)).toBe(state);
+    expect(passPriority(state, other)).toBe(state);
+  });
+
+  it("rejects the wrong number of cards, duplicates, and cards not in hand", () => {
+    state = endTurn(atCleanup(9));
+    expect(resolveWaitingChoice(state, active, ["h0"]).success).toBe(false);
+    expect(resolveWaitingChoice(state, active, ["h0", "h0"]).success).toBe(
+      false,
+    );
+    expect(resolveWaitingChoice(state, active, ["h0", "nope"]).success).toBe(
+      false,
+    );
+    expect(resolveWaitingChoice(state, other, ["h0", "h1"]).success).toBe(
+      false,
+    );
+  });
+
+  it("discards the chosen cards and finishes the turn", () => {
+    state = endTurn(atCleanup(9));
+    const result = resolveWaitingChoice(state, active, ["h2", "h5"]);
+    expect(result.success).toBe(true);
+    const after = result.state;
+    expect(after.waitingChoice).toBeNull();
+    expect(handSize(after, active)).toBe(7);
+    const hand = after.zones.get(`${active}-hand`)!.cardIds;
+    expect(hand).not.toContain("h2");
+    expect(hand).not.toContain("h5");
+    const graveyard = after.zones.get(`${active}-graveyard`)!.cardIds;
+    expect(graveyard).toEqual(expect.arrayContaining(["h2", "h5"]));
+    expect(after.turn.activePlayerId).toBe(other);
+  });
+
+  it("accepts a single card id when one discard is needed", () => {
+    state = endTurn(atCleanup(8));
+    expect(state.waitingChoice!.minChoices).toBe(1);
+    const result = resolveWaitingChoice(state, active, "h3");
+    expect(result.success).toBe(true);
+    expect(handSize(result.state, active)).toBe(7);
+    expect(result.state.turn.activePlayerId).toBe(other);
+  });
+
+  it("asks for nothing with no maximum hand size (Proft's Eidetic Memory)", () => {
+    state = endTurn(
+      atCleanup(10, (s) =>
+        put(s, active, "battlefield", "proft", data("Proft's Eidetic Memory", PROFT)),
+      ),
+    );
+    expect(state.waitingChoice).toBeNull();
+    expect(handSize(state, active)).toBe(10);
+    expect(state.turn.activePlayerId).toBe(other);
   });
 });

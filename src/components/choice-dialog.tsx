@@ -792,3 +792,116 @@ export function useModeChoiceDialog() {
     ) : null,
   };
 }
+
+/**
+ * Cleanup discard to maximum hand size (CR 514.1, issue #2446).
+ *
+ * The turn cannot end until the player picks exactly `count` cards, so the
+ * dialog has no cancel button and cannot be dismissed.
+ */
+export interface HandSizeDiscardDialogProps {
+  open: boolean;
+  prompt: string;
+  cards: { id: string; name: string }[];
+  count: number;
+  onConfirm: (cardIds: string[]) => void;
+}
+
+export function HandSizeDiscardDialog({
+  open,
+  prompt,
+  cards,
+  count,
+  onConfirm,
+}: HandSizeDiscardDialogProps) {
+  const [selected, setSelected] = React.useState<string[]>([]);
+
+  React.useEffect(() => {
+    if (open) setSelected([]);
+  }, [open, cards]);
+
+  const toggle = (id: string) => {
+    setSelected((prev) =>
+      prev.includes(id)
+        ? prev.filter((x) => x !== id)
+        : prev.length < count
+          ? [...prev, id]
+          : prev,
+    );
+  };
+
+  const canConfirm = selected.length === count;
+
+  return (
+    <Dialog open={open} onOpenChange={() => {}}>
+      <DialogContent
+        className="max-w-md"
+        data-testid="hand-size-discard-dialog"
+        onEscapeKeyDown={(e) => e.preventDefault()}
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+      >
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Hand className="h-5 w-5" />
+            Discard to hand size
+          </DialogTitle>
+          <DialogDescription className="text-base">{prompt}</DialogDescription>
+        </DialogHeader>
+
+        <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+          <AlertCircle className="h-4 w-4" />
+          <span>
+            Selected {selected.length} of {count}
+          </span>
+        </div>
+
+        <ScrollArea className="max-h-80 pr-2">
+          <div className="space-y-2 py-2">
+            {cards.map((card) => {
+              const isSelected = selected.includes(card.id);
+              return (
+                <button
+                  key={card.id}
+                  type="button"
+                  aria-pressed={isSelected}
+                  onClick={() => toggle(card.id)}
+                  className={cn(
+                    "w-full p-3 rounded-lg text-left transition-all border-2",
+                    isSelected
+                      ? "border-primary bg-primary/10"
+                      : "border-border hover:border-primary/70 hover:bg-primary/5",
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={cn(
+                        "w-5 h-5 rounded border-2 flex items-center justify-center shrink-0",
+                        isSelected
+                          ? "bg-primary border-primary text-primary-foreground"
+                          : "border-muted-foreground/30",
+                      )}
+                    >
+                      {isSelected && <Check className="h-3 w-3" />}
+                    </div>
+                    <span className="text-sm">{card.name}</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </ScrollArea>
+
+        <DialogFooter>
+          <Button
+            onClick={() => canConfirm && onConfirm(selected)}
+            disabled={!canConfirm}
+          >
+            <Check className="h-4 w-4 mr-1" />
+            Discard
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

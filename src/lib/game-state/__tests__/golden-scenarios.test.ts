@@ -13,14 +13,31 @@ import {
 } from "../game-state";
 import { createCardInstance } from "../card-instance";
 import { playLand, activateManaAbility } from "../mana";
-import { castSpell } from "../spell-casting";
+import { castSpell, resolveWaitingChoice } from "../spell-casting";
 import { resolveCombatDamage } from "../combat";
 import { Phase, PlayerId } from "../types";
 import {
   serializeGameState,
   deserializeGameState,
 } from "../state-serialization";
-import type { ScryfallCard } from "../types";
+import type { GameState, ScryfallCard } from "../types";
+
+/**
+ * Pass priority, or answer the cleanup discard to hand size (CR 514.1,
+ * issue #2446) when it is pending: passing cannot end the turn until then.
+ */
+function step(state: GameState): GameState {
+  const choice = state.waitingChoice;
+  if (choice?.type === "discard_to_hand_size") {
+    const ids = choice.choices
+      .slice(0, choice.minChoices)
+      .map((c) => String(c.value));
+    const result = resolveWaitingChoice(state, choice.playerId, ids);
+    if (!result.success) throw new Error(result.error);
+    return result.state;
+  }
+  return passPriority(state, state.priorityPlayerId!);
+}
 
 // Mock cards
 const MOUNTAIN: ScryfallCard = {
@@ -145,12 +162,12 @@ describe("Golden Scenarios", () => {
 
     // End Alice's turn
     while (state.turn.activePlayerId === aliceId) {
-      state = passPriority(state, state.priorityPlayerId!);
+      state = step(state);
     }
 
     // Bob's turn 1 (just pass)
     while (state.turn.activePlayerId === bobId) {
-      state = passPriority(state, state.priorityPlayerId!);
+      state = step(state);
     }
 
     // Alice's turn 2

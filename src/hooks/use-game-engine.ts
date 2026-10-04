@@ -265,7 +265,9 @@ export interface UseGameEngineReturn {
   drawCard: (playerId: PlayerId) => void;
   canPlayLand: (playerId: PlayerId) => boolean;
   canCastSpell: (playerId: PlayerId, cardId: CardInstanceId) => boolean;
-  resolveWaitingChoice: (selectedValue: string | number | boolean) => {
+  resolveWaitingChoice: (
+    selectedValue: string | readonly string[] | number | boolean,
+  ) => {
     success: boolean;
     state?: EngineGameState;
     error?: string;
@@ -745,7 +747,9 @@ export function useGameEngine(
     drawCard: drawCardAction,
     canPlayLand: canPlayLandCheck,
     canCastSpell: canCastSpellCheck,
-    resolveWaitingChoice: (selectedValue: string | number | boolean) => {
+    resolveWaitingChoice: (
+    selectedValue: string | readonly string[] | number | boolean,
+  ) => {
       if (!engineStateRef.current)
         return { success: false, error: "Game not initialized" };
       const result = engineResolveWaitingChoice(
