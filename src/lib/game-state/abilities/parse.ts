@@ -46,7 +46,10 @@ function scriptedActivated(a: ScriptedActivated): ParsedActivatedAbility {
 function scriptedTrigger(t: ScriptedTrigger): ParsedTriggeredAbility {
   return {
     type: AbilityType.TRIGGERED,
-    trigger: { event: "entersBattlefield", subject: t.subject },
+    trigger:
+      t.event === "landfall"
+        ? { event: "landfall" }
+        : { event: "entersBattlefield", subject: t.subject },
     effect: t.text,
     effectType: "generic",
     targets: [],

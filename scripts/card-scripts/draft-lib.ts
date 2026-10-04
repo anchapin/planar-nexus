@@ -122,9 +122,9 @@ Never approximate, drop, or simplify an ability. A partial script is wrong: the 
 
 Abilities:
 - Instants and sorceries: "spell": [effects], applied in order. Targeted effects use the spell's targets in order.
-- Permanents: "triggers": [{"text": <ability sentence as printed>, "event": "etb", "subject": "self"|"another"|"any", "effects": [...]}] and/or
+- Permanents: "triggers": [{"text": <ability sentence as printed>, "event": "etb"|"landfall", "subject": "self"|"another"|"any", "effects": [...]}] and/or
   "activated": [{"text": <the part after the colon>, "cost": {"mana": "{1}{B}", "tap": bool, "sacrifice": bool}, "effects": [...]}].
-  Only enters-the-battlefield triggers exist. Dies/attacks/upkeep/landfall triggers, static abilities, activation timing limits, X costs, hybrid or Phyrexian mana in an activation cost, and other costs all need new ops.
+  Trigger events: "etb" (enters the battlefield) and "landfall" (a land you control enters; "subject" is ignored). Dies/attacks/upkeep triggers, static abilities, activation timing limits, X costs, hybrid or Phyrexian mana in an activation cost, and other costs all need new ops.
 - Keywords (flying, deathtouch, ...) need nothing: the engine reads them from the card.
 
 Ops:

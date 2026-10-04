@@ -1,0 +1,17 @@
+{
+  "name": "Eumidian Terrabotanist",
+  "oracle": "Landfall — Whenever a land you control enters, you gain 1 life.",
+  "triggers": [
+    {
+      "text": "Landfall — Whenever a land you control enters, you gain 1 life.",
+      "event": "landfall",
+      "effects": [
+        {
+          "op": "GainLife",
+          "amount": 1,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}

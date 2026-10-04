@@ -1,0 +1,17 @@
+{
+  "name": "Spitfire Lagac",
+  "oracle": "Landfall — Whenever a land you control enters, this creature deals 1 damage to each opponent.",
+  "triggers": [
+    {
+      "text": "Landfall — Whenever a land you control enters, this creature deals 1 damage to each opponent.",
+      "event": "landfall",
+      "effects": [
+        {
+          "op": "DealDamage",
+          "amount": 1,
+          "target": "each_opponent"
+        }
+      ]
+    }
+  ]
+}

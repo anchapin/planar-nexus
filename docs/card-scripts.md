@@ -25,7 +25,7 @@ is MIT). Every script here is written for this project.
 
 Ops today: `DealDamage`, `Draw`, `GainLife`, `LoseLife`, `CreateToken`,
 `Destroy`, `Exile`, `Counter`, `Pump`, `PutCounters`, `Surveil`. Permanents use
-`triggers` (enters-the-battlefield only so far) and `activated`. See
+`triggers` (`etb` and `landfall` so far) and `activated`. See
 `src/lib/game-state/card-scripts/schema.ts`.
 
 ## Adding a card
