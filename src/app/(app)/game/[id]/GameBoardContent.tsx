@@ -106,6 +106,10 @@ import {
   type CardInstance,
   type Phase,
   resolveWaitingChoice,
+  getHandActivations,
+  activateFromHand,
+  applyAIHandActivation,
+  type HandActivation,
 } from "@/lib/game-state";
 
 import { ValidationService } from "@/lib/validation-service";
@@ -297,7 +301,13 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     cardId: string;
     cardName: string;
     options: { abilityIndex: number; label: string }[];
+    /** Set when the card is in hand: index -1 casts/plays it normally,
+     * any other index picks that channel/ninjutsu option (#2479). */
+    handActivations?: HandActivation[];
   } | null>(null);
+  // Lets the "cast normally" choice re-enter handleCardClick without
+  // re-offering the hand activations.
+  const skipHandActivationsRef = useRef(false);
   const [basicLandTypeChoice, setBasicLandTypeChoice] = useState<{
     cardId: string;
     cardName: string;
@@ -634,9 +644,7 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     );
     if (answered.length === 0) return;
     setGameState(answeredState);
-    const discarded = answered.filter(
-      (a) => a.type === "discard_to_hand_size",
-    );
+    const discarded = answered.filter((a) => a.type === "discard_to_hand_size");
     toast({
       title: "AI Action",
       description:
@@ -653,8 +661,7 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
   const humanDiscardChoice =
     gameState &&
     isHandSizeDiscardChoice(gameState.waitingChoice) &&
-    gameState.players.get(gameState.waitingChoice.playerId)?.name ===
-      playerName
+    gameState.players.get(gameState.waitingChoice.playerId)?.name === playerName
       ? gameState.waitingChoice
       : null;
 
@@ -728,7 +735,26 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
       // Execute the decision on latest state
       let newState = { ...latestState };
 
-      switch (decision.action) {
+      // Channel / ninjutsu from hand (#2479) take priority over the
+      // normal decision when the AI finds a worthwhile one it can pay for.
+      const handPlay = applyAIHandActivation(latestState, currentAIPlayer.id);
+      if (handPlay) {
+        newState = handPlay.state;
+        const handName =
+          latestState.cards.get(handPlay.option.cardId)?.cardData.name ??
+          "a card";
+        toast({
+          title: "AI Action",
+          description:
+            handPlay.option.kind === "channel"
+              ? `AI channeled ${handName}.`
+              : `AI used ninjutsu with ${handName}.`,
+        });
+      }
+
+      switch (handPlay ? "hand_activation" : decision.action) {
+        case "hand_activation":
+          break;
         case "pass":
           // Auto-resolve combat if entering damage phase
           if (newState.turn.currentPhase === "combat_damage") {
@@ -1082,6 +1108,35 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     [gameState, playerName, toast],
   );
 
+  const applyHandActivation = useCallback(
+    (option: HandActivation) => {
+      if (!gameState) return;
+      const player = Array.from(gameState.players.values()).find(
+        (p) => p.name === playerName,
+      );
+      if (!player) return;
+      const name = gameState.cards.get(option.cardId)?.cardData.name ?? "Card";
+      const result = activateFromHand(gameState, player.id, option);
+      if (result.success) {
+        setGameState(checkStateBasedActions(result.state).state);
+        toast({
+          title: option.kind === "channel" ? "Channeled" : "Ninjutsu",
+          description:
+            option.kind === "channel"
+              ? `${name} was discarded for its channel ability.`
+              : `${name} entered tapped and attacking.`,
+        });
+      } else {
+        toast({
+          title: "Can't do that",
+          description: result.error,
+          variant: "destructive",
+        });
+      }
+    },
+    [gameState, playerName, toast],
+  );
+
   const handleCardClick = useCallback(
     (cardId: string, zone: string) => {
       if (!gameState) return;
@@ -1262,6 +1317,35 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
       // HAND ZONE: Play lands or cast spells
       // ==========================================
       if (zone === "hand" && card.controllerId === player.id && hasPriority) {
+        // Channel / ninjutsu (CR 702.130, 702.49): offer them alongside
+        // casting the card normally.
+        const skipHand = skipHandActivationsRef.current;
+        skipHandActivationsRef.current = false;
+        if (!skipHand) {
+          const handOptions = getHandActivations(
+            gameState,
+            player.id,
+            cardId as CardInstance["id"],
+          );
+          if (handOptions.length > 0) {
+            setAbilityChoice({
+              cardId,
+              cardName: card.cardData.name,
+              options: [
+                {
+                  abilityIndex: -1,
+                  label: isLand(card) ? "Play it as a land" : "Cast it",
+                },
+                ...handOptions.map((o, i) => ({
+                  abilityIndex: i,
+                  label: o.label,
+                })),
+              ],
+              handActivations: handOptions,
+            });
+            return;
+          }
+        }
         if (isLand(card)) {
           // Check for basic land type choice FIRST (e.g., Multiversal Passage)
           // This must happen before shockland choice because some lands have both
@@ -1729,7 +1813,13 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
                   gameState,
                   player.id,
                   pendingAction.cardId!,
-                  [{ type: "player", targetId: targetPlayer.id, isValid: true }],
+                  [
+                    {
+                      type: "player",
+                      targetId: targetPlayer.id,
+                      isValid: true,
+                    },
+                  ],
                 );
                 if (result.success) {
                   // Auto-pass priority after casting in single-player to resolve the spell
@@ -2902,18 +2992,18 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
       >
         <div className="h-full w-full">
           <GameBoardErrorBoundary>
-<TargetHighlightContext.Provider value={legalTargetIds}>
-            <GameBoard
-              players={sortedPlayers}
-              playerCount={gameState.players.size as PlayerCount}
-              currentTurnIndex={currentTurnIndex}
-              onCardClick={handleCardClick}
-              onZoneClick={handleZoneClick}
-              onConcede={handleConcede}
-              onOfferDraw={handleOfferDraw}
-              onAcceptDraw={handleAcceptDraw}
-              onDeclineDraw={handleDeclineDraw}
-            />
+            <TargetHighlightContext.Provider value={legalTargetIds}>
+              <GameBoard
+                players={sortedPlayers}
+                playerCount={gameState.players.size as PlayerCount}
+                currentTurnIndex={currentTurnIndex}
+                onCardClick={handleCardClick}
+                onZoneClick={handleZoneClick}
+                onConcede={handleConcede}
+                onOfferDraw={handleOfferDraw}
+                onAcceptDraw={handleAcceptDraw}
+                onDeclineDraw={handleDeclineDraw}
+              />
             </TargetHighlightContext.Provider>
           </GameBoardErrorBoundary>
         </div>
@@ -3217,9 +3307,15 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
       >
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Activate an ability</DialogTitle>
+            <DialogTitle>
+              {abilityChoice?.handActivations
+                ? "Use a card from your hand"
+                : "Activate an ability"}
+            </DialogTitle>
             <DialogDescription>
-              Choose an ability of {abilityChoice?.cardName}.
+              {abilityChoice?.handActivations
+                ? `Choose what to do with ${abilityChoice?.cardName}.`
+                : `Choose an ability of ${abilityChoice?.cardName}.`}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-2">
@@ -3231,7 +3327,19 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
                 onClick={() => {
                   const choice = abilityChoice;
                   setAbilityChoice(null);
-                  if (choice) activateFromBoard(choice.cardId, o.abilityIndex);
+                  if (!choice) return;
+                  if (choice.handActivations) {
+                    if (o.abilityIndex < 0) {
+                      skipHandActivationsRef.current = true;
+                      handleCardClick(choice.cardId, "hand");
+                    } else {
+                      applyHandActivation(
+                        choice.handActivations[o.abilityIndex],
+                      );
+                    }
+                    return;
+                  }
+                  activateFromBoard(choice.cardId, o.abilityIndex);
                 }}
               >
                 {o.label}
