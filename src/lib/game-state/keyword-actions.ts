@@ -35,6 +35,7 @@ export * from "./keyword-actions/persist";
 export * from "./keyword-actions/cycling";
 export * from "./keyword-actions/channel";
 export * from "./keyword-actions/ninjutsu";
+export * from "./keyword-actions/hand-activations";
 export * from "./keyword-actions/monarchy";
 export * from "./keyword-actions/tribute-renown";
 export * from "./keyword-actions/cascade";
