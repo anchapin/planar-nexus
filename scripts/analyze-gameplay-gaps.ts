@@ -204,7 +204,21 @@ function collectGameplaySources(dir: string): string[] {
     })
     .sort();
 }
-const gameplayCode = collectGameplaySources(GAME_STATE_DIR)
+// The game board is gameplay too: it is where a human's hand activations
+// (channel, ninjutsu) and the AI's priority actions reach the engine (#2479).
+const GAME_BOARD_FILE = path.join(
+  ROOT,
+  "src",
+  "app",
+  "(app)",
+  "game",
+  "[id]",
+  "GameBoardContent.tsx",
+);
+const gameplayCode = [
+  ...collectGameplaySources(GAME_STATE_DIR),
+  ...(fs.existsSync(GAME_BOARD_FILE) ? [GAME_BOARD_FILE] : []),
+]
   .map(readFile)
   .join("\n");
 
@@ -276,8 +290,8 @@ const ENFORCEMENT_ALIASES: Record<string, string[]> = {
   domain: ["refreshDomainPower", "countBasicLandTypes"],
   storm: ["detectStormTrigger"],
   grandeur: ["getDiscardNamedCost", "revealUntilInstantOrSorcery"],
-  // Channel and ninjutsu have engine entry points, but only tests call them:
-  // no game action reaches them yet, so they correctly report as partial.
+  // Channel and ninjutsu are reached from the game board through
+  // activateFromHand / applyAIHandActivation (#2479), which call these.
   channel: ["channelCard"],
   ninjutsu: ["activateNinjutsu"],
 };

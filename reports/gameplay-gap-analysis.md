@@ -1,22 +1,22 @@
 # Gameplay Gap Analysis
 
-**Generated:** 2026-10-04T04:23:09.640Z
+**Generated:** 2026-10-04T06:38:39.161Z
 
 ## Summary
 
 - Standard scope: 5164 Standard-legal cards (Scryfall snapshot 2026-10-01)
 - **In scope (on a Standard-legal card): 38**
-  - Enforced: 36
-  - Partially enforced: 2
+  - Enforced: 38
+  - Partially enforced: 0
   - Not enforced: 0
-  - **Remainder (not fully enforced): 2**
+  - **Remainder (not fully enforced): 0**
 - Accepted gaps (not on any Standard-legal card): 59
 - On Standard cards but not declared by the parser: 230
 - Unique keywords declared by the parser: 97 (105 entries, 8 declared in both arrays)
   - Evergreen keywords: 64
   - Ability words: 41
-- Keywords fully enforced: 38
-- Keywords partially enforced: 3
+- Keywords fully enforced: 40
+- Keywords partially enforced: 1
 - Keywords not enforced: 56
 - Hardcoded card effects: 0
 - Forced auto-pass priority calls: 0
@@ -29,7 +29,7 @@
 
 Keywords that appear on at least one Standard-legal card. These are the epic #2300 denominator. Sorted by how many Standard cards carry them.
 
-### Enforced (36)
+### Enforced (38)
 
 | Keyword        | Standard cards | Enforced | Used in Gameplay | Tested | Function                                                                               |
 | -------------- | -------------- | -------- | ---------------- | ------ | -------------------------------------------------------------------------------------- |
@@ -65,17 +65,12 @@ Keywords that appear on at least one Standard-legal card. These are the epic #23
 | protection     | 3              | full     | ✅               | ✅     | hasProtectionFrom                                                                      |
 | improvise      | 2              | full     | ✅               | ✅     | parseImprovise, grantsNoncreatureImprovise                                             |
 | battle cry     | 1              | full     | ✅               | ✅     | hasBattleCry                                                                           |
+| channel        | 1              | full     | ✅               | ✅     | hasChannel, channelCard                                                                |
 | domain         | 1              | full     | ✅               | ✅     | refreshDomainPower, countBasicLandTypes                                                |
 | grandeur       | 1              | full     | ✅               | ✅     | hasGrandeur, getDiscardNamedCost, revealUntilInstantOrSorcery                          |
+| ninjutsu       | 1              | full     | ✅               | ✅     | hasNinjutsu, activateNinjutsu                                                          |
 | storm          | 1              | full     | ✅               | ✅     | detectStormTrigger                                                                     |
 | wither         | 1              | full     | ✅               | ✅     | hasWither                                                                              |
-
-### Partially Enforced (2)
-
-| Keyword  | Standard cards | Enforced | Used in Gameplay | Tested | Function                      |
-| -------- | -------------- | -------- | ---------------- | ------ | ----------------------------- |
-| channel  | 1              | partial  | ❌               | ✅     | hasChannel, channelCard       |
-| ninjutsu | 1              | partial  | ❌               | ✅     | hasNinjutsu, activateNinjutsu |
 
 ## Accepted Gaps (59)
 
@@ -216,9 +211,6 @@ _No TODO/FIXME/HACK/XXX comments found in game-state code._
 ## Top Priority Gaps
 
 In-scope keywords not fully enforced, ranked by how many Standard-legal cards carry them:
-
-1. **channel** (1 Standard cards) — Partial enforcement — function exists but not wired to gameplay
-2. **ninjutsu** (1 Standard cards) — Partial enforcement — function exists but not wired to gameplay
 
 ## Recommendations
 

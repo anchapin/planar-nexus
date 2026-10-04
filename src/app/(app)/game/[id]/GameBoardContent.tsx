@@ -108,6 +108,7 @@ import {
   resolveWaitingChoice,
   getHandActivations,
   activateFromHand,
+  applyAIHandActivation,
   type HandActivation,
 } from "@/lib/game-state";
 
@@ -734,7 +735,26 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
       // Execute the decision on latest state
       let newState = { ...latestState };
 
-      switch (decision.action) {
+      // Channel / ninjutsu from hand (#2479) take priority over the
+      // normal decision when the AI finds a worthwhile one it can pay for.
+      const handPlay = applyAIHandActivation(latestState, currentAIPlayer.id);
+      if (handPlay) {
+        newState = handPlay.state;
+        const handName =
+          latestState.cards.get(handPlay.option.cardId)?.cardData.name ??
+          "a card";
+        toast({
+          title: "AI Action",
+          description:
+            handPlay.option.kind === "channel"
+              ? `AI channeled ${handName}.`
+              : `AI used ninjutsu with ${handName}.`,
+        });
+      }
+
+      switch (handPlay ? "hand_activation" : decision.action) {
+        case "hand_activation":
+          break;
         case "pass":
           // Auto-resolve combat if entering damage phase
           if (newState.turn.currentPhase === "combat_damage") {

@@ -8,8 +8,10 @@ import { createCardInstance } from "../card-instance";
 import { addMana } from "../mana";
 import {
   activateFromHand,
+  applyAIHandActivation,
   chooseAIHandActivation,
   getHandActivations,
+  tapLandsForCost,
 } from "../keyword-actions";
 import { Phase } from "../types";
 import type {
@@ -306,6 +308,95 @@ describe("chooseAIHandActivation", () => {
     putOnBattlefield(fx.state, fx.aliceId, land("plains-1"));
     const id = putInHand(fx.state, fx.aliceId, actionNewsCrew());
     expect(chooseAIHandActivation(fx.state, fx.aliceId)).toEqual(
+      expect.objectContaining({ kind: "channel", cardId: id }),
+    );
+  });
+});
+
+const basic = (id: string, name: string, symbol: string): ScryfallCard =>
+  makeCard({
+    id,
+    name,
+    type_line: `Basic Land \u2014 ${name}`,
+    oracle_text: `({T}: Add {${symbol}}.)`,
+    mana_cost: "",
+    cmc: 0,
+    power: undefined,
+    toughness: undefined,
+  } as Partial<ScryfallCard> & { id: string });
+
+describe("tapLandsForCost", () => {
+  it("taps the lands that cover the colored symbols", () => {
+    const fx = makeFixture();
+    const island = putOnBattlefield(
+      fx.state,
+      fx.aliceId,
+      basic("i1", "Island", "U"),
+    );
+    const swamp = putOnBattlefield(
+      fx.state,
+      fx.aliceId,
+      basic("s1", "Swamp", "B"),
+    );
+    const island2 = putOnBattlefield(
+      fx.state,
+      fx.aliceId,
+      basic("i2", "Island", "U"),
+    );
+    const paid = tapLandsForCost(fx.state, fx.aliceId, "{1}{U}{B}");
+    expect(paid).not.toBeNull();
+    for (const id of [island.id, swamp.id, island2.id]) {
+      expect(paid!.cards.get(id)?.isTapped).toBe(true);
+    }
+  });
+
+  it("returns null when the lands can't make the colors", () => {
+    const fx = makeFixture();
+    putOnBattlefield(fx.state, fx.aliceId, basic("i1", "Island", "U"));
+    putOnBattlefield(fx.state, fx.aliceId, basic("i2", "Island", "U"));
+    putOnBattlefield(fx.state, fx.aliceId, basic("i3", "Island", "U"));
+    expect(tapLandsForCost(fx.state, fx.aliceId, "{1}{U}{B}")).toBeNull();
+  });
+});
+
+describe("applyAIHandActivation", () => {
+  it("taps lands and ninjutsus Kaito in for the unblocked bear", () => {
+    const fx = makeFixture();
+    const { attacker, kaitoId } = inBlockersStep(fx);
+    putOnBattlefield(fx.state, fx.aliceId, basic("i1", "Island", "U"));
+    putOnBattlefield(fx.state, fx.aliceId, basic("s1", "Swamp", "B"));
+    putOnBattlefield(fx.state, fx.aliceId, basic("i2", "Island", "U"));
+    const played = applyAIHandActivation(fx.state, fx.aliceId);
+    expect(played?.option.kind).toBe("ninjutsu");
+    const after = played!.state;
+    expect(after.combat.attackers.map((a) => a.cardId)).toEqual([kaitoId]);
+    expect(after.zones.get(`${fx.aliceId}-hand`)?.cardIds).toContain(
+      attacker.id,
+    );
+  });
+
+  it("does nothing when the AI can't pay", () => {
+    const fx = makeFixture();
+    inBlockersStep(fx);
+    putOnBattlefield(fx.state, fx.aliceId, basic("i1", "Island", "U"));
+    expect(applyAIHandActivation(fx.state, fx.aliceId)).toBeNull();
+  });
+
+  it("only channels in its own main phase", () => {
+    const fx = makeFixture();
+    for (let i = 0; i < 6; i++) {
+      putOnBattlefield(fx.state, fx.aliceId, basic(`w${i}`, "Plains", "W"));
+    }
+    // Six lands make the 2-drop castable, so pick a pricier channel card.
+    const id = putInHand(fx.state, fx.aliceId, {
+      ...actionNewsCrew(),
+      cmc: 7,
+    } as ScryfallCard);
+    fx.state.turn.currentPhase = Phase.END;
+    expect(applyAIHandActivation(fx.state, fx.aliceId)).toBeNull();
+    fx.state.turn.currentPhase = Phase.PRECOMBAT_MAIN;
+    const played = applyAIHandActivation(fx.state, fx.aliceId);
+    expect(played?.option).toEqual(
       expect.objectContaining({ kind: "channel", cardId: id }),
     );
   });

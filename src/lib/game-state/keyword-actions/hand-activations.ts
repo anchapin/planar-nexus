@@ -18,6 +18,8 @@ import {
   parseTurnCreatureForm,
 } from "./ninjutsu";
 import { KeywordActionResult } from "./shared";
+import { activateManaAbility, canAffordMana, parseManaAbility } from "../mana";
+import { parseManaCost } from "../oracle-text-parser/mana-cost";
 
 export type HandActivation =
   | { kind: "channel"; cardId: CardInstanceId; label: string }
@@ -148,4 +150,102 @@ export function chooseAIHandActivation(
     if (channel && card && (card.cardData.cmc ?? 0) > lands) return channel;
   }
   return null;
+}
+
+const COLORS = ["white", "blue", "black", "red", "green", "colorless"] as const;
+
+function costOf(state: GameState, option: HandActivation): string | null {
+  const text = state.cards.get(option.cardId)?.cardData.oracle_text || "";
+  return option.kind === "channel"
+    ? (parseChannel(text)?.cost ?? null)
+    : parseNinjutsu(text);
+}
+
+/**
+ * Tap `playerId`'s untapped lands until their pool covers `cost`, colored
+ * symbols first. Returns null (and no partial taps) when the lands can't.
+ */
+export function tapLandsForCost(
+  state: GameState,
+  playerId: PlayerId,
+  cost: string,
+): GameState | null {
+  const need = parseManaCost(cost);
+  if (!need) return state;
+  const want = {
+    generic: need.generic,
+    colorless: need.colorless,
+    white: need.white,
+    blue: need.blue,
+    black: need.black,
+    red: need.red,
+    green: need.green,
+  };
+  let working = state;
+  if (canAffordMana(working, playerId, want)) return working;
+
+  const landIds = (
+    state.zones.get(`${playerId}-battlefield`)?.cardIds ?? []
+  ).filter((id) => {
+    const c = state.cards.get(id);
+    return (
+      !!c &&
+      c.controllerId === playerId &&
+      /\bland\b/i.test(c.cardData.type_line || "")
+    );
+  });
+
+  const tapOne = (color?: (typeof COLORS)[number]): boolean => {
+    for (const id of landIds) {
+      const land = working.cards.get(id);
+      if (!land || land.isTapped) continue;
+      const options = parseManaAbility(land.cardData.oracle_text || "");
+      const pick = color
+        ? options.find((o) => (o.mana[color] ?? 0) > 0)
+        : options[0];
+      if (!pick) continue;
+      const r = activateManaAbility(working, playerId, id, 0, pick);
+      if (!r.success) continue;
+      working = r.state;
+      return true;
+    }
+    return false;
+  };
+
+  for (const color of COLORS) {
+    while (
+      (working.players.get(playerId)?.manaPool[color] ?? 0) < want[color]
+    ) {
+      if (!tapOne(color)) return null;
+    }
+  }
+  while (!canAffordMana(working, playerId, want)) {
+    if (!tapOne()) return null;
+  }
+  return working;
+}
+
+/**
+ * The AI's hand activation for this priority window, paid for by tapping its
+ * lands. Channel is sorcery-timed for the AI (its own main phase) so it
+ * doesn't burn lands it needs on the opponent's turn.
+ */
+export function applyAIHandActivation(
+  state: GameState,
+  playerId: PlayerId,
+): { state: GameState; option: HandActivation } | null {
+  const option = chooseAIHandActivation(state, playerId);
+  if (!option) return null;
+  if (option.kind === "channel") {
+    const phase = state.turn.currentPhase;
+    const ownMain =
+      state.turn.activePlayerId === playerId &&
+      (phase === Phase.PRECOMBAT_MAIN || phase === Phase.POSTCOMBAT_MAIN);
+    if (!ownMain || state.stack.length > 0) return null;
+  }
+  const cost = costOf(state, option);
+  const paid = cost ? tapLandsForCost(state, playerId, cost) : state;
+  if (!paid) return null;
+  const result = activateFromHand(paid, playerId, option);
+  return result.success ? { state: result.state, option } : null;
 }
