@@ -1,0 +1,11 @@
+{
+  "name": "Lightning Strike",
+  "oracle": "Lightning Strike deals 3 damage to any target.",
+  "spell": [
+    {
+      "op": "DealDamage",
+      "amount": 3,
+      "target": "any"
+    }
+  ]
+}

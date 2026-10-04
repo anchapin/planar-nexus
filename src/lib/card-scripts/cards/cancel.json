@@ -1,0 +1,10 @@
+{
+  "name": "Cancel",
+  "oracle": "Counter target spell.",
+  "spell": [
+    {
+      "op": "Counter",
+      "target": "spell"
+    }
+  ]
+}

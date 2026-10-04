@@ -1,0 +1,16 @@
+{
+  "name": "Hop to It",
+  "oracle": "Create three 1/1 white Rabbit creature tokens.",
+  "spell": [
+    {
+      "op": "CreateToken",
+      "count": 3,
+      "power": 1,
+      "toughness": 1,
+      "color": "white",
+      "subtypes": [
+        "Rabbit"
+      ]
+    }
+  ]
+}

@@ -11,6 +11,10 @@ import {
 } from "../index";
 import { createInitialGameState, startGame } from "../../game-state/game-state";
 import { createCardInstance } from "../../game-state/card-instance";
+import {
+  getEffectivePower,
+  getEffectiveToughness,
+} from "../../game-state/evergreen-keywords";
 import type {
   CardInstanceId,
   GameState,
@@ -196,7 +200,32 @@ describe("resolveScriptedSpell", () => {
       getCardScript("Giant Growth")!,
       spell(p1, [cardTarget("bear")]),
     );
-    expect(s).not.toBe(s0);
-    expect(s.cards.get(id("bear"))).toBeDefined();
+    const bear = s.cards.get(id("bear"))!;
+    expect(getEffectivePower(bear)).toBe(5);
+    expect(getEffectiveToughness(bear)).toBe(5);
+  });
+
+  it("Cancel counters the target spell", () => {
+    const victim = {
+      id: "stack-victim",
+      type: "spell",
+      sourceCardId: null,
+      controllerId: p2,
+      name: "Victim",
+      text: "",
+      manaCost: "",
+      targets: [],
+      chosenModes: [],
+      variableValues: new Map(),
+      isCopy: false,
+      timestamp: 0,
+    } as unknown as StackObject;
+    const s0 = { ...state, stack: [victim] };
+    const s = resolveScriptedSpell(
+      s0,
+      getCardScript("Cancel")!,
+      spell(p1, [{ type: "stack", targetId: "stack-victim", isValid: true }]),
+    );
+    expect(s.stack.some((o) => o.id === "stack-victim")).toBe(false);
   });
 });

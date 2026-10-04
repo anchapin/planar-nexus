@@ -1,0 +1,16 @@
+{
+  "name": "Dragon Fodder",
+  "oracle": "Create two 1/1 red Goblin creature tokens.",
+  "spell": [
+    {
+      "op": "CreateToken",
+      "count": 2,
+      "power": 1,
+      "toughness": 1,
+      "color": "red",
+      "subtypes": [
+        "Goblin"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+{
+  "name": "Giant Growth",
+  "oracle": "Target creature gets +3/+3 until end of turn.",
+  "spell": [
+    {
+      "op": "Pump",
+      "power": 3,
+      "toughness": 3,
+      "target": "creature"
+    }
+  ]
+}
