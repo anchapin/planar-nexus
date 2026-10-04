@@ -158,6 +158,13 @@ const enforcementSources = [
         .sort()
         .map((f) => path.join(KEYWORD_ACTIONS_DIR, f))
     : []),
+  // Gates that live outside the keyword modules (epic #2300 slices): storm's
+  // copy trigger is detected in the spell-trigger system, and improvise is
+  // parsed in the casting-keyword parser and paid for in spell-casting/cast.ts.
+  ...[
+    path.join(GAME_STATE_DIR, "trigger-system", "spell-triggers.ts"),
+    path.join(GAME_STATE_DIR, "oracle-text-parser", "casting-keywords.ts"),
+  ].filter((f) => fs.existsSync(f)),
 ];
 const enforcementFnNames = new Set(
   enforcementSources.flatMap((file) =>
@@ -257,6 +264,22 @@ const ENFORCEMENT_ALIASES: Record<string, string[]> = {
   landfall: ["fireLandfallTriggers"],
   fight: ["resolveFight", "getFightDamage"],
   threshold: ["refreshThresholdBonuses", "hasThreshold"],
+  // Epic #2300 slices #2408-#2439, whose gates aren't named after the keyword.
+  raid: ["hasAttackedThisTurn", "markAttackedThisTurn"],
+  converge: ["countColorsSpent", "isConvergeX"],
+  ferocious: [
+    "controlsCreatureWithPowerAtLeast",
+    "evaluateTriggerWhileCondition",
+  ],
+  morbid: ["hasCreatureDiedThisTurn", "markCreatureDiedThisTurn"],
+  improvise: ["parseImprovise", "grantsNoncreatureImprovise"],
+  domain: ["refreshDomainPower", "countBasicLandTypes"],
+  storm: ["detectStormTrigger"],
+  grandeur: ["getDiscardNamedCost", "revealUntilInstantOrSorcery"],
+  // Channel and ninjutsu have engine entry points, but only tests call them:
+  // no game action reaches them yet, so they correctly report as partial.
+  channel: ["channelCard"],
+  ninjutsu: ["activateNinjutsu"],
 };
 
 // Map keyword → likely enforcement function names. Camel-case on word
