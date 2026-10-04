@@ -120,8 +120,13 @@ const effects = z.array(EffectSchema).min(1);
 export const TriggerSchema = z
   .object({
     text: z.string().min(1),
-    event: z.enum(["etb"]),
-    /** Whose entry it watches (CR 603.6a). */
+    /**
+     * etb: enters the battlefield. landfall: a land you control enters
+     * (#2496). Dies, attacks and upkeep need the engine to fire those events
+     * first.
+     */
+    event: z.enum(["etb", "landfall"]),
+    /** ETB only: whose entry it watches (CR 603.6a). */
     subject: z.enum(["self", "another", "any"]).default("self"),
     effects,
   })

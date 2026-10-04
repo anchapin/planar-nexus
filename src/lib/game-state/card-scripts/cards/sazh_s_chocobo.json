@@ -1,0 +1,18 @@
+{
+  "name": "Sazh's Chocobo",
+  "oracle": "Landfall — Whenever a land you control enters, put a +1/+1 counter on this creature.",
+  "triggers": [
+    {
+      "text": "Landfall — Whenever a land you control enters, put a +1/+1 counter on this creature.",
+      "event": "landfall",
+      "effects": [
+        {
+          "op": "PutCounters",
+          "counter": "+1/+1",
+          "amount": 1,
+          "target": "self"
+        }
+      ]
+    }
+  ]
+}

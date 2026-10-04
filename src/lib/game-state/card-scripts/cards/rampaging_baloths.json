@@ -1,0 +1,22 @@
+{
+  "name": "Rampaging Baloths",
+  "oracle": "Trample\nLandfall — Whenever a land you control enters, create a 4/4 green Beast creature token.",
+  "triggers": [
+    {
+      "text": "Landfall — Whenever a land you control enters, create a 4/4 green Beast creature token.",
+      "event": "landfall",
+      "effects": [
+        {
+          "op": "CreateToken",
+          "count": 1,
+          "power": 4,
+          "toughness": 4,
+          "color": "green",
+          "subtypes": [
+            "Beast"
+          ]
+        }
+      ]
+    }
+  ]
+}

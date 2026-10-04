@@ -1,0 +1,22 @@
+{
+  "name": "Tatyova, Benthic Druid",
+  "oracle": "Landfall — Whenever a land you control enters, you gain 1 life and draw a card.",
+  "triggers": [
+    {
+      "text": "Landfall — Whenever a land you control enters, you gain 1 life and draw a card.",
+      "event": "landfall",
+      "effects": [
+        {
+          "op": "GainLife",
+          "amount": 1,
+          "who": "you"
+        },
+        {
+          "op": "Draw",
+          "amount": 1,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}

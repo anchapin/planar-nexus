@@ -1,0 +1,23 @@
+{
+  "name": "Elfsworn Giant",
+  "oracle": "Reach (This creature can block creatures with flying.)\nLandfall — Whenever a land you control enters, create a 1/1 green Elf Warrior creature token.",
+  "triggers": [
+    {
+      "text": "Landfall — Whenever a land you control enters, create a 1/1 green Elf Warrior creature token.",
+      "event": "landfall",
+      "effects": [
+        {
+          "op": "CreateToken",
+          "count": 1,
+          "power": 1,
+          "toughness": 1,
+          "color": "green",
+          "subtypes": [
+            "Elf",
+            "Warrior"
+          ]
+        }
+      ]
+    }
+  ]
+}
