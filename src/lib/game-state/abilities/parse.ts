@@ -3,11 +3,11 @@ import { parseOracleText } from "../oracle-text-parser";
 import { AbilityType } from "../oracle-text-parser/core";
 import { parseManaCost } from "../oracle-text-parser/mana-cost";
 import { getCardScript } from "../card-scripts/registry";
-import {
-  isPermanentScript,
-  type CardScript,
-  type ScriptedActivated,
-  type ScriptedTrigger,
+import { isPermanentScript } from "../card-scripts/script-guards";
+import type {
+  CardScript,
+  ScriptedActivated,
+  ScriptedTrigger,
 } from "../card-scripts/schema";
 import type {
   ParsedActivatedAbility,

@@ -24,12 +24,8 @@ import {
 import { destroyCard, exileCard } from "../keyword-actions/removal";
 import { addCounters } from "../card-instance";
 import { getCardScript } from "./registry";
-import {
-  isPermanentScript,
-  isTargetedEffect,
-  type CardEffect,
-  type CardScript,
-} from "./schema";
+import { isPermanentScript, isTargetedEffect } from "./script-guards";
+import type { CardEffect, CardScript } from "./schema";
 
 interface EffectContext {
   controllerId: PlayerId;

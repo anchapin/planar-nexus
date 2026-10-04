@@ -1,4 +1,4 @@
-import { CardScriptSchema, type CardScript } from "./schema";
+import type { CardScript } from "./schema";
 import { RAW_CARD_SCRIPTS } from "./cards/index.generated";
 
 let byName: Map<string, CardScript> | null = null;
@@ -9,12 +9,11 @@ export function normalizeCardName(name: string): string {
 
 function build(): Map<string, CardScript> {
   const map = new Map<string, CardScript>();
-  for (const raw of RAW_CARD_SCRIPTS) {
-    // Scripts are validated by the card-scripts test suite; parse again here
-    // so a malformed file can never reach the engine.
-    const parsed = CardScriptSchema.safeParse(raw);
-    if (!parsed.success) continue;
-    map.set(normalizeCardName(parsed.data.name), parsed.data);
+  // No zod parse here: it would ship zod in the game page bundle (#1814).
+  // Every script file is validated against CardScriptSchema by the
+  // card-scripts test suite, so a malformed file fails CI instead.
+  for (const script of RAW_CARD_SCRIPTS as readonly CardScript[]) {
+    map.set(normalizeCardName(script.name), script);
   }
   return map;
 }
