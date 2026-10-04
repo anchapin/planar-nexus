@@ -1,0 +1,19 @@
+{
+  "name": "Firebrand Archer",
+  "oracle": "Whenever you cast a noncreature spell, this creature deals 1 damage to each opponent.",
+  "triggers": [
+    {
+      "text": "Whenever you cast a noncreature spell, this creature deals 1 damage to each opponent.",
+      "event": "cast",
+      "caster": "you",
+      "spell": "noncreature",
+      "effects": [
+        {
+          "op": "DealDamage",
+          "amount": 1,
+          "target": "each_opponent"
+        }
+      ]
+    }
+  ]
+}

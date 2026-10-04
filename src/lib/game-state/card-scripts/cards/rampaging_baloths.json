@@ -12,9 +12,7 @@
           "power": 4,
           "toughness": 4,
           "color": "green",
-          "subtypes": [
-            "Beast"
-          ]
+          "subtypes": ["Beast"]
         }
       ]
     }

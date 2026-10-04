@@ -1,0 +1,20 @@
+{
+  "name": "Mage Tower Referee",
+  "oracle": "Whenever you cast a multicolored spell, put a +1/+1 counter on this creature.",
+  "triggers": [
+    {
+      "text": "Whenever you cast a multicolored spell, put a +1/+1 counter on this creature.",
+      "event": "cast",
+      "caster": "you",
+      "spell": "multicolored",
+      "effects": [
+        {
+          "op": "PutCounters",
+          "counter": "+1/+1",
+          "amount": 1,
+          "target": "self"
+        }
+      ]
+    }
+  ]
+}

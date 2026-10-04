@@ -1,0 +1,19 @@
+{
+  "name": "Black Waltz No. 3",
+  "oracle": "Flying, deathtouch\nWhenever you cast a noncreature spell, Black Waltz No. 3 deals 2 damage to each opponent.",
+  "triggers": [
+    {
+      "text": "Whenever you cast a noncreature spell, Black Waltz No. 3 deals 2 damage to each opponent.",
+      "event": "cast",
+      "caster": "you",
+      "spell": "noncreature",
+      "effects": [
+        {
+          "op": "DealDamage",
+          "amount": 2,
+          "target": "each_opponent"
+        }
+      ]
+    }
+  ]
+}

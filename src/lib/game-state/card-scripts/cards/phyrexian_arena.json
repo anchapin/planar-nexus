@@ -1,0 +1,23 @@
+{
+  "name": "Phyrexian Arena",
+  "oracle": "At the beginning of your upkeep, you draw a card and lose 1 life.",
+  "triggers": [
+    {
+      "text": "At the beginning of your upkeep, you draw a card and lose 1 life.",
+      "event": "upkeep",
+      "whose": "you",
+      "effects": [
+        {
+          "op": "Draw",
+          "amount": 1,
+          "who": "you"
+        },
+        {
+          "op": "LoseLife",
+          "amount": 1,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}

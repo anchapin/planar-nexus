@@ -55,6 +55,8 @@ export interface TriggerContext {
   attackerCount?: number;
   /** Upkeep (CR 503.1a): whose upkeep it is. */
   upkeepPlayerId?: PlayerId;
+  /** Cast (CR 601.2i): who cast the spell (the spell is `spellCardId`). */
+  castingPlayerId?: PlayerId;
 }
 
 export interface ActivateAbilityResult {

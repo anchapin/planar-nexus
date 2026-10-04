@@ -2,16 +2,21 @@
 import s_a_i_m_synthoids from "./a_i_m_synthoids.json";
 import s_attercop from "./attercop.json";
 import s_bilbos_deadly_slice from "./bilbos_deadly_slice.json";
+import s_black_waltz_no_3 from "./black_waltz_no_3.json";
+import s_boar_q_pine from "./boar_q_pine.json";
 import s_burrog_banemaker from "./burrog_banemaker.json";
 import s_buzz_bots from "./buzz_bots.json";
 import s_cancel from "./cancel.json";
+import s_chandras_emberling from "./chandras_emberling.json";
 import s_cloudblazer from "./cloudblazer.json";
+import s_crackling_cyclops from "./crackling_cyclops.json";
 import s_dragon_fodder from "./dragon_fodder.json";
 import s_dragoon_s_wyvern from "./dragoon_s_wyvern.json";
 import s_elfsworn_giant from "./elfsworn_giant.json";
 import s_engine_rat from "./engine_rat.json";
 import s_eumidian_terrabotanist from "./eumidian_terrabotanist.json";
 import s_fell from "./fell.json";
+import s_firebrand_archer from "./firebrand_archer.json";
 import s_flame_lash from "./flame_lash.json";
 import s_friendly_ghost from "./friendly_ghost.json";
 import s_gallant_citizen from "./gallant_citizen.json";
@@ -19,6 +24,7 @@ import s_giant_growth from "./giant_growth.json";
 import s_glidedive_duo from "./glidedive_duo.json";
 import s_grasping_longneck from "./grasping_longneck.json";
 import s_guarded_heir from "./guarded_heir.json";
+import s_guttersnipe from "./guttersnipe.json";
 import s_head_of_the_homestead from "./head_of_the_homestead.json";
 import s_helpful_hunter from "./helpful_hunter.json";
 import s_herald_of_faith from "./herald_of_faith.json";
@@ -33,10 +39,12 @@ import s_jeong_jeong_s_deserters from "./jeong_jeong_s_deserters.json";
 import s_kravens_cats from "./kravens_cats.json";
 import s_kyoshi_warriors from "./kyoshi_warriors.json";
 import s_lightning_strike from "./lightning_strike.json";
+import s_mage_tower_referee from "./mage_tower_referee.json";
 import s_moonrise_cleric from "./moonrise_cleric.json";
 import s_mystic_archaeologist from "./mystic_archaeologist.json";
 import s_oscorp_research_team from "./oscorp_research_team.json";
 import s_outlaw_medic from "./outlaw_medic.json";
+import s_phyrexian_arena from "./phyrexian_arena.json";
 import s_pond_prophet from "./pond_prophet.json";
 import s_prideful_parent from "./prideful_parent.json";
 import s_primordial_pachyderm from "./primordial_pachyderm.json";
@@ -62,6 +70,7 @@ import s_sterling_hound from "./sterling_hound.json";
 import s_summit_sentinel from "./summit_sentinel.json";
 import s_sunshower_druid from "./sunshower_druid.json";
 import s_tatyova_benthic_druid from "./tatyova_benthic_druid.json";
+import s_tempest_angler from "./tempest_angler.json";
 import s_treetop_freedom_fighters from "./treetop_freedom_fighters.json";
 import s_vampire_neonate from "./vampire_neonate.json";
 import s_vampire_spawn from "./vampire_spawn.json";
@@ -73,16 +82,21 @@ export const RAW_CARD_SCRIPTS: unknown[] = [
   s_a_i_m_synthoids,
   s_attercop,
   s_bilbos_deadly_slice,
+  s_black_waltz_no_3,
+  s_boar_q_pine,
   s_burrog_banemaker,
   s_buzz_bots,
   s_cancel,
+  s_chandras_emberling,
   s_cloudblazer,
+  s_crackling_cyclops,
   s_dragon_fodder,
   s_dragoon_s_wyvern,
   s_elfsworn_giant,
   s_engine_rat,
   s_eumidian_terrabotanist,
   s_fell,
+  s_firebrand_archer,
   s_flame_lash,
   s_friendly_ghost,
   s_gallant_citizen,
@@ -90,6 +104,7 @@ export const RAW_CARD_SCRIPTS: unknown[] = [
   s_glidedive_duo,
   s_grasping_longneck,
   s_guarded_heir,
+  s_guttersnipe,
   s_head_of_the_homestead,
   s_helpful_hunter,
   s_herald_of_faith,
@@ -104,10 +119,12 @@ export const RAW_CARD_SCRIPTS: unknown[] = [
   s_kravens_cats,
   s_kyoshi_warriors,
   s_lightning_strike,
+  s_mage_tower_referee,
   s_moonrise_cleric,
   s_mystic_archaeologist,
   s_oscorp_research_team,
   s_outlaw_medic,
+  s_phyrexian_arena,
   s_pond_prophet,
   s_prideful_parent,
   s_primordial_pachyderm,
@@ -133,6 +150,7 @@ export const RAW_CARD_SCRIPTS: unknown[] = [
   s_summit_sentinel,
   s_sunshower_druid,
   s_tatyova_benthic_druid,
+  s_tempest_angler,
   s_treetop_freedom_fighters,
   s_vampire_neonate,
   s_vampire_spawn,

@@ -122,9 +122,11 @@ export const TriggerSchema = z
      * etb: enters the battlefield. landfall: a land you control enters.
      * dies: a creature goes to the graveyard from the battlefield (CR 700.4).
      * attacks: attackers are declared (CR 508.1m). upkeep: the upkeep step
-     * begins (CR 503.1a). The engine fires all five in real games (#2498).
+     * begins (CR 503.1a). cast: a spell is cast (CR 601.2i), the trigger
+     * goes on the stack above it. The engine fires all six in real games
+     * (#2498, #2496).
      */
-    event: z.enum(["etb", "landfall", "dies", "attacks", "upkeep"]),
+    event: z.enum(["etb", "landfall", "dies", "attacks", "upkeep", "cast"]),
     /**
      * etb, dies, attacks: whose entry, death or attack it watches
      * (CR 603.6a). "self" is this permanent; "another" / "any" are
@@ -137,6 +139,20 @@ export const TriggerSchema = z
     once: z.boolean().optional(),
     /** upkeep only: whose upkeep (CR 503.1a). */
     whose: z.enum(["you", "each", "opponent"]).optional(),
+    /** cast only: who casts the spell. "you" when unstated. */
+    caster: z.enum(["you", "opponent", "any"]).optional(),
+    /** cast only: which spells count. "any" when unstated. */
+    spell: z
+      .enum([
+        "any",
+        "creature",
+        "noncreature",
+        "instant_or_sorcery",
+        "artifact",
+        "enchantment",
+        "multicolored",
+      ])
+      .optional(),
     effects,
   })
   .strict()
@@ -146,6 +162,11 @@ export const TriggerSchema = z
   .refine((t) => t.event === "attacks" || t.once === undefined, {
     message: "once is only for attacks triggers",
   })
+  .refine(
+    (t) =>
+      t.event === "cast" || (t.caster === undefined && t.spell === undefined),
+    { message: "caster and spell are only for cast triggers" },
+  )
   .refine(
     (t) =>
       t.controller === undefined ||

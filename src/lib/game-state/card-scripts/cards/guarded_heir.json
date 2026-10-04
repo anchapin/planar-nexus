@@ -13,9 +13,7 @@
           "power": 3,
           "toughness": 3,
           "color": "white",
-          "subtypes": [
-            "Knight"
-          ]
+          "subtypes": ["Knight"]
         }
       ]
     }

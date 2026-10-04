@@ -138,11 +138,84 @@ export interface TriggerCondition {
   attackFilter?: { once?: boolean; alone?: boolean; defenderIsYou?: boolean };
   /** Upkeep triggers (CR 503.1a): whose upkeep. "you" when unstated. */
   upkeepOf?: "you" | "each" | "opponent";
+  /**
+   * Cast triggers (CR 601.2i, 603.2): who has to cast it and what kind of
+   * spell. `types` is any-of on the spell's type line, `excludeTypes` none-of
+   * ("noncreature"). `self` is "when you cast this spell", which triggers from
+   * the stack, not the battlefield. `unsupported` marks qualifiers the parser
+   * doesn't model yet ("your second spell each turn", "with mana value 5 or
+   * greater"): such a trigger never fires rather than firing on every spell.
+   */
+  castFilter?: CastFilter;
   condition?: string;
   target?: ParsedTarget;
   source?: string;
   amount?: number;
   comparison?: "greaterThan" | "lessThan" | "equalTo";
+}
+
+export interface CastFilter {
+  caster: "you" | "opponent" | "any";
+  types?: string[];
+  excludeTypes?: string[];
+  multicolored?: boolean;
+  self?: boolean;
+  unsupported?: boolean;
+}
+
+const CAST_SPELL_TYPES = new Set([
+  "creature",
+  "instant",
+  "sorcery",
+  "artifact",
+  "enchantment",
+  "planeswalker",
+  "battle",
+  "kindred",
+  "legendary",
+  "land",
+]);
+
+/**
+ * "Whenever you cast a noncreature spell", "Whenever an opponent casts a
+ * creature spell", "Whenever you cast an instant or sorcery spell",
+ * "Whenever you cast or copy ..." (CR 601.2i). Null when the text isn't a
+ * cast trigger this recognises.
+ */
+export function parseCastTrigger(text: string): TriggerCondition | null {
+  if (/\byou cast this spell\b/.test(text)) {
+    return { event: "cast", castFilter: { caster: "you", self: true } };
+  }
+  const match =
+    /\b(you|an opponent|a player|each player|another player)\s+casts?(?:\s+or\s+cop(?:y|ies))?\s+(?:a|an|one or more)\s+(.*?)\bspells?\b(.*)$/.exec(
+      text,
+    );
+  if (!match) return null;
+  const caster: CastFilter["caster"] =
+    match[1] === "you"
+      ? "you"
+      : match[1] === "an opponent"
+        ? "opponent"
+        : "any";
+  const filter: CastFilter = { caster };
+  const rest = match[3].replace(/[.,;:]+$/, "").trim();
+  if (rest !== "") filter.unsupported = true;
+  const words = match[2]
+    .replace(/,/g, " ")
+    .split(/\s+/)
+    .filter((w) => w !== "" && w !== "or" && w !== "and");
+  for (const word of words) {
+    if (CAST_SPELL_TYPES.has(word)) {
+      filter.types = [...(filter.types ?? []), word];
+    } else if (word.startsWith("non") && CAST_SPELL_TYPES.has(word.slice(3))) {
+      filter.excludeTypes = [...(filter.excludeTypes ?? []), word.slice(3)];
+    } else if (word === "multicolored") {
+      filter.multicolored = true;
+    } else {
+      filter.unsupported = true;
+    }
+  }
+  return { event: "spellCast", castFilter: filter };
 }
 
 /**
@@ -703,6 +776,10 @@ function parseTriggerText(triggerText: string): TriggerCondition | null {
   if (text.includes("becomes blocked")) {
     return { event: "blocked" };
   }
+
+  // Cast triggers with who-casts and spell-type filters (#2496).
+  const castTrigger = parseCastTrigger(text);
+  if (castTrigger) return castTrigger;
 
   // Spell cast triggers - "you cast a spell" returns spellCast event
   if (
