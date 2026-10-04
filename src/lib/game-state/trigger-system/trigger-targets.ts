@@ -19,6 +19,8 @@ import type {
 import { isCreature, getPower, getToughness } from "../card-instance";
 import { canTargetCard } from "../targeting-validation";
 import { getActivatedAbilities } from "../abilities/parse";
+import { getCardScript } from "../../card-scripts/registry";
+import { isTargetedEffect } from "../../card-scripts/schema";
 
 export type TriggerTargetKind = "creature" | "player" | "opponent" | "any";
 
@@ -100,7 +102,21 @@ function legalTargetsFor(
   controllerId: PlayerId,
   sourceCardId: CardInstanceId | null,
 ): string[] {
-  const spec = parseTriggerTargetSpec(text);
+  return legalTargetsForSpec(
+    state,
+    parseTriggerTargetSpec(text),
+    controllerId,
+    sourceCardId,
+  );
+}
+
+/** Legal target ids (cards and players) for a parsed target requirement. */
+function legalTargetsForSpec(
+  state: GameState,
+  spec: TriggerTargetSpec | null,
+  controllerId: PlayerId,
+  sourceCardId: CardInstanceId | null,
+): string[] {
   if (!spec) return [];
   const source = sourceCardId ? state.cards.get(sourceCardId) : undefined;
   const ids: string[] = [];
@@ -151,7 +167,38 @@ export function getSpellTargetSpec(
   cardId: CardInstanceId,
 ): TriggerTargetSpec | null {
   const card = state.cards.get(cardId);
-  return card ? parseTriggerTargetSpec(card.cardData.oracle_text ?? "") : null;
+  if (!card) return null;
+  const scripted = scriptedSpellTargetSpec(card.cardData.name);
+  if (scripted !== undefined) return scripted;
+  return parseTriggerTargetSpec(card.cardData.oracle_text ?? "");
+}
+
+/**
+ * Target requirement from a card's script (#2489): the first targeted effect
+ * decides it. Returns undefined when the card has no script, so callers fall
+ * back to oracle text, and null when the script targets nothing this module
+ * models (a spell on the stack, for example).
+ */
+export function scriptedSpellTargetSpec(
+  cardName: string | undefined,
+): TriggerTargetSpec | null | undefined {
+  const script = getCardScript(cardName);
+  if (!script) return undefined;
+  for (const effect of script.spell) {
+    if (!isTargetedEffect(effect)) continue;
+    const base = { controller: "any" as const, optional: false, excludeSource: false };
+    if (effect.op === "DealDamage") {
+      return { ...base, kind: effect.target };
+    }
+    if (effect.op === "Destroy" || effect.op === "Exile" || effect.op === "Pump") {
+      return { ...base, kind: "creature" };
+    }
+    if (effect.op === "Draw" || effect.op === "GainLife" || effect.op === "LoseLife") {
+      return { ...base, kind: "player" };
+    }
+    return null;
+  }
+  return null;
 }
 
 /** Legal target ids (cards and players) for casting a spell. */
@@ -160,11 +207,10 @@ export function getLegalSpellTargets(
   playerId: PlayerId,
   cardId: CardInstanceId,
 ): string[] {
-  const card = state.cards.get(cardId);
-  if (!card) return [];
-  return legalTargetsFor(
+  if (!state.cards.has(cardId)) return [];
+  return legalTargetsForSpec(
     state,
-    card.cardData.oracle_text ?? "",
+    getSpellTargetSpec(state, cardId),
     playerId,
     cardId,
   );
