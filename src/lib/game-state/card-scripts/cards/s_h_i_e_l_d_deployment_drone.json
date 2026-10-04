@@ -1,0 +1,23 @@
+{
+  "name": "S.H.I.E.L.D. Deployment Drone",
+  "oracle": "Flying\nWhen this creature enters, create a 1/1 white Soldier creature token.",
+  "triggers": [
+    {
+      "text": "When this creature enters, create a 1/1 white Soldier creature token.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "CreateToken",
+          "count": 1,
+          "power": 1,
+          "toughness": 1,
+          "color": "white",
+          "subtypes": [
+            "Soldier"
+          ]
+        }
+      ]
+    }
+  ]
+}

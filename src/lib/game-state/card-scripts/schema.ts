@@ -17,7 +17,8 @@ export const DealDamageSchema = z
   .object({
     op: z.literal("DealDamage"),
     amount,
-    target: z.enum(["any", "creature", "player"]),
+    /** each_opponent is untargeted: damage to every opponent. */
+    target: z.enum(["any", "creature", "player", "each_opponent"]),
   })
   .strict();
 
@@ -41,7 +42,9 @@ export const LoseLifeSchema = z
   .object({
     op: z.literal("LoseLife"),
     amount,
-    who: z.enum(["you", "target_player"]).default("target_player"),
+    who: z
+      .enum(["you", "target_player", "each_opponent"])
+      .default("target_player"),
   })
   .strict();
 
@@ -73,7 +76,18 @@ export const PumpSchema = z
     op: z.literal("Pump"),
     power: z.number().int(),
     toughness: z.number().int(),
-    target: z.enum(["creature"]),
+    /** self: the permanent the ability belongs to (untargeted). */
+    target: z.enum(["creature", "self"]),
+  })
+  .strict();
+
+export const PutCountersSchema = z
+  .object({
+    op: z.literal("PutCounters"),
+    /** Only +1/+1 counters for now. */
+    counter: z.literal("+1/+1"),
+    amount: z.number().int().min(1),
+    target: z.enum(["creature", "self"]),
   })
   .strict();
 
@@ -91,8 +105,45 @@ export const EffectSchema = z.discriminatedUnion("op", [
   ExileSchema,
   CounterSchema,
   PumpSchema,
+  PutCountersSchema,
   SurveilSchema,
 ]);
+
+const effects = z.array(EffectSchema).min(1);
+
+/**
+ * A triggered ability. `text` is the ability's oracle sentence: it is what
+ * the stack shows and how a resolving ability is matched back to its script.
+ * Only enters-the-battlefield triggers so far; other events need the
+ * engine's per-event subject checks first (see #2490).
+ */
+export const TriggerSchema = z
+  .object({
+    text: z.string().min(1),
+    event: z.enum(["etb"]),
+    /** Whose entry it watches (CR 603.6a). */
+    subject: z.enum(["self", "another", "any"]).default("self"),
+    effects,
+  })
+  .strict();
+
+/** An activated ability (CR 602). `text` is the part after the colon. */
+export const ActivatedSchema = z
+  .object({
+    text: z.string().min(1),
+    cost: z
+      .object({
+        mana: z
+          .string()
+          .regex(/^(\{(?:[0-9]+|[WUBRGC])\})+$/)
+          .optional(),
+        tap: z.boolean().default(false),
+        sacrifice: z.boolean().default(false),
+      })
+      .strict(),
+    effects,
+  })
+  .strict();
 
 export const CardScriptSchema = z
   .object({
@@ -101,21 +152,44 @@ export const CardScriptSchema = z
     /** Oracle text the script was written against, for review and drift checks. */
     oracle: z.string().min(1),
     /** Effects of an instant or sorcery, applied in order on resolution. */
-    spell: z.array(EffectSchema).min(1),
+    spell: effects.optional(),
+    /** A permanent's triggered abilities (the full list when present). */
+    triggers: z.array(TriggerSchema).min(1).optional(),
+    /** A permanent's activated abilities (the full list when present). */
+    activated: z.array(ActivatedSchema).min(1).optional(),
   })
-  .strict();
+  .strict()
+  .refine((s) => s.spell || s.triggers || s.activated, {
+    message: "a card script needs spell, triggers, or activated",
+  })
+  .refine((s) => !(s.spell && (s.triggers || s.activated)), {
+    message: "a spell script can't also have permanent abilities",
+  });
 
 export type CardEffect = z.infer<typeof EffectSchema>;
 export type CardScript = z.infer<typeof CardScriptSchema>;
+export type ScriptedTrigger = z.infer<typeof TriggerSchema>;
+export type ScriptedActivated = z.infer<typeof ActivatedSchema>;
+
+/**
+ * A permanent's script: its abilities come only from the script, never from
+ * oracle text (keywords still come from the card's keyword list).
+ */
+export function isPermanentScript(script: CardScript): boolean {
+  return !script.spell;
+}
 
 /** True when the effect uses one of the spell's chosen targets. */
 export function isTargetedEffect(effect: CardEffect): boolean {
   switch (effect.op) {
     case "DealDamage":
+      return effect.target !== "each_opponent";
+    case "Pump":
+    case "PutCounters":
+      return effect.target === "creature";
     case "Destroy":
     case "Exile":
     case "Counter":
-    case "Pump":
       return true;
     case "Draw":
     case "GainLife":

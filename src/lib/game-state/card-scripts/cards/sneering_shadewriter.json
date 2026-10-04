@@ -1,0 +1,23 @@
+{
+  "name": "Sneering Shadewriter",
+  "oracle": "Flying\nWhen this creature enters, each opponent loses 2 life and you gain 2 life.",
+  "triggers": [
+    {
+      "text": "When this creature enters, each opponent loses 2 life and you gain 2 life.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "LoseLife",
+          "amount": 2,
+          "who": "each_opponent"
+        },
+        {
+          "op": "GainLife",
+          "amount": 2,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}

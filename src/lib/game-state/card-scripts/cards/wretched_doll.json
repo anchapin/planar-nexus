@@ -1,0 +1,20 @@
+{
+  "name": "Wretched Doll",
+  "oracle": "{B}, {T}: Surveil 1. (Look at the top card of your library. You may put that card into your graveyard.)",
+  "activated": [
+    {
+      "text": "Surveil 1.",
+      "cost": {
+        "mana": "{B}",
+        "tap": true,
+        "sacrifice": false
+      },
+      "effects": [
+        {
+          "op": "Surveil",
+          "amount": 1
+        }
+      ]
+    }
+  ]
+}

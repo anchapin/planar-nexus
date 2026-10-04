@@ -1,0 +1,21 @@
+{
+  "name": "Engine Rat",
+  "oracle": "Deathtouch\n{5}{B}: Each opponent loses 2 life.",
+  "activated": [
+    {
+      "text": "Each opponent loses 2 life.",
+      "cost": {
+        "mana": "{5}{B}",
+        "tap": false,
+        "sacrifice": false
+      },
+      "effects": [
+        {
+          "op": "LoseLife",
+          "amount": 2,
+          "who": "each_opponent"
+        }
+      ]
+    }
+  ]
+}

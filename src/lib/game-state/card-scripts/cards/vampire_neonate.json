@@ -1,0 +1,26 @@
+{
+  "name": "Vampire Neonate",
+  "oracle": "{2}, {T}: Each opponent loses 1 life and you gain 1 life.",
+  "activated": [
+    {
+      "text": "Each opponent loses 1 life and you gain 1 life.",
+      "cost": {
+        "mana": "{2}",
+        "tap": true,
+        "sacrifice": false
+      },
+      "effects": [
+        {
+          "op": "LoseLife",
+          "amount": 1,
+          "who": "each_opponent"
+        },
+        {
+          "op": "GainLife",
+          "amount": 1,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}

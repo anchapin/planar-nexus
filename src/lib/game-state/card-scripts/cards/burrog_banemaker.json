@@ -1,0 +1,22 @@
+{
+  "name": "Burrog Banemaker",
+  "oracle": "Deathtouch\n{1}{B}: This creature gets +1/+1 until end of turn.",
+  "activated": [
+    {
+      "text": "This creature gets +1/+1 until end of turn.",
+      "cost": {
+        "mana": "{1}{B}",
+        "tap": false,
+        "sacrifice": false
+      },
+      "effects": [
+        {
+          "op": "Pump",
+          "power": 1,
+          "toughness": 1,
+          "target": "self"
+        }
+      ]
+    }
+  ]
+}
