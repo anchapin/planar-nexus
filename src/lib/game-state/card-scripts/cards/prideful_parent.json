@@ -1,0 +1,23 @@
+{
+  "name": "Prideful Parent",
+  "oracle": "Vigilance (Attacking doesn't cause this creature to tap.)\nWhen this creature enters, create a 1/1 white Cat creature token.",
+  "triggers": [
+    {
+      "text": "When this creature enters, create a 1/1 white Cat creature token.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "CreateToken",
+          "count": 1,
+          "power": 1,
+          "toughness": 1,
+          "color": "white",
+          "subtypes": [
+            "Cat"
+          ]
+        }
+      ]
+    }
+  ]
+}

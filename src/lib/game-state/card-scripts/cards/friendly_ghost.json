@@ -1,0 +1,19 @@
+{
+  "name": "Friendly Ghost",
+  "oracle": "Flying\nWhen this creature enters, target creature gets +2/+4 until end of turn.",
+  "triggers": [
+    {
+      "text": "When this creature enters, target creature gets +2/+4 until end of turn.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "Pump",
+          "power": 2,
+          "toughness": 4,
+          "target": "creature"
+        }
+      ]
+    }
+  ]
+}

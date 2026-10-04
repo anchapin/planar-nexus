@@ -1,0 +1,21 @@
+{
+  "name": "Mystic Archaeologist",
+  "oracle": "{3}{U}{U}: Draw two cards.",
+  "activated": [
+    {
+      "text": "Draw two cards.",
+      "cost": {
+        "mana": "{3}{U}{U}",
+        "tap": false,
+        "sacrifice": false
+      },
+      "effects": [
+        {
+          "op": "Draw",
+          "amount": 2,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "name": "Spectral Sailor",
+  "oracle": "Flash (You may cast this spell any time you could cast an instant.)\nFlying\n{3}{U}: Draw a card.",
+  "activated": [
+    {
+      "text": "Draw a card.",
+      "cost": {
+        "mana": "{3}{U}",
+        "tap": false,
+        "sacrifice": false
+      },
+      "effects": [
+        {
+          "op": "Draw",
+          "amount": 1,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}

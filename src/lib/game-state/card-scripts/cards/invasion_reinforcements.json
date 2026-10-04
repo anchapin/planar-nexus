@@ -1,0 +1,23 @@
+{
+  "name": "Invasion Reinforcements",
+  "oracle": "Flash\nWhen this creature enters, create a 1/1 white Ally creature token.",
+  "triggers": [
+    {
+      "text": "When this creature enters, create a 1/1 white Ally creature token.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "CreateToken",
+          "count": 1,
+          "power": 1,
+          "toughness": 1,
+          "color": "white",
+          "subtypes": [
+            "Ally"
+          ]
+        }
+      ]
+    }
+  ]
+}

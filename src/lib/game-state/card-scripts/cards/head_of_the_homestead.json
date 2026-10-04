@@ -1,0 +1,23 @@
+{
+  "name": "Head of the Homestead",
+  "oracle": "When this creature enters, create two 1/1 white Rabbit creature tokens.",
+  "triggers": [
+    {
+      "text": "When this creature enters, create two 1/1 white Rabbit creature tokens.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "CreateToken",
+          "count": 2,
+          "power": 1,
+          "toughness": 1,
+          "color": "white",
+          "subtypes": [
+            "Rabbit"
+          ]
+        }
+      ]
+    }
+  ]
+}

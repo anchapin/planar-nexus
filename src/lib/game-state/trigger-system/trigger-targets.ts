@@ -184,13 +184,18 @@ export function scriptedSpellTargetSpec(
 ): TriggerTargetSpec | null | undefined {
   const script = getCardScript(cardName);
   if (!script) return undefined;
-  for (const effect of script.spell) {
+  for (const effect of script.spell ?? []) {
     if (!isTargetedEffect(effect)) continue;
     const base = { controller: "any" as const, optional: false, excludeSource: false };
-    if (effect.op === "DealDamage") {
+    if (effect.op === "DealDamage" && effect.target !== "each_opponent") {
       return { ...base, kind: effect.target };
     }
-    if (effect.op === "Destroy" || effect.op === "Exile" || effect.op === "Pump") {
+    if (
+      effect.op === "Destroy" ||
+      effect.op === "Exile" ||
+      effect.op === "Pump" ||
+      effect.op === "PutCounters"
+    ) {
       return { ...base, kind: "creature" };
     }
     if (effect.op === "Draw" || effect.op === "GainLife" || effect.op === "LoseLife") {

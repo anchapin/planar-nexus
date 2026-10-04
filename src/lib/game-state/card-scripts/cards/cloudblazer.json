@@ -1,0 +1,23 @@
+{
+  "name": "Cloudblazer",
+  "oracle": "Flying\nWhen this creature enters, you gain 2 life and draw two cards.",
+  "triggers": [
+    {
+      "text": "When this creature enters, you gain 2 life and draw two cards.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "GainLife",
+          "amount": 2,
+          "who": "you"
+        },
+        {
+          "op": "Draw",
+          "amount": 2,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}

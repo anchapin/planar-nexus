@@ -1,0 +1,23 @@
+{
+  "name": "Inspiring Overseer",
+  "oracle": "Flying\nWhen this creature enters, you gain 1 life and draw a card.",
+  "triggers": [
+    {
+      "text": "When this creature enters, you gain 1 life and draw a card.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "GainLife",
+          "amount": 1,
+          "who": "you"
+        },
+        {
+          "op": "Draw",
+          "amount": 1,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}

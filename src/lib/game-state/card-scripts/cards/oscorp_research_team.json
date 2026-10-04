@@ -1,0 +1,21 @@
+{
+  "name": "Oscorp Research Team",
+  "oracle": "{6}{U}: Draw two cards.",
+  "activated": [
+    {
+      "text": "Draw two cards.",
+      "cost": {
+        "mana": "{6}{U}",
+        "tap": false,
+        "sacrifice": false
+      },
+      "effects": [
+        {
+          "op": "Draw",
+          "amount": 2,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}

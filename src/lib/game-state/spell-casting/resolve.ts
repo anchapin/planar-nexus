@@ -41,7 +41,10 @@ import {
 } from "./board-sweepers";
 import { generateStackObjectId } from "./cast";
 import { getCardScript } from "../card-scripts/registry";
-import { resolveScriptedSpell } from "../card-scripts/interpret";
+import {
+  resolveScriptedAbility,
+  resolveScriptedSpell,
+} from "../card-scripts/interpret";
 import { createEngineUncaughtException } from "../errors";
 
 /**
@@ -302,10 +305,16 @@ export function resolveTopOfStack(state: GameState): GameState {
       (!stackObject.effects || stackObject.effects.length === 0) &&
       stackObject.text
     ) {
-      const triggerEffects = parseTriggeredAbilityEffects(
-        stackObject.text,
-        stackObject.controllerId,
-      );
+      // Card scripts (#2490): a scripted permanent's ability resolves from
+      // its script; anything else from its text.
+      const scripted = resolveScriptedAbility(currentState, stackObject);
+      const triggerEffects = scripted
+        ? []
+        : parseTriggeredAbilityEffects(
+            stackObject.text,
+            stackObject.controllerId,
+          );
+      if (scripted) currentState = scripted;
       if (triggerEffects.length > 0) {
         currentState = resolveStackObjectEffects(
           currentState,

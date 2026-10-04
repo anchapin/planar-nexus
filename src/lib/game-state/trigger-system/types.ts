@@ -14,6 +14,7 @@ import {
   parseTribute,
 } from "../oracle-text-parser";
 import { hasCorpseAbility, getCorpseAbility } from "../corpse-keyword";
+import { getScriptedTriggeredAbilities } from "../abilities/parse";
 import type { DungeonRoomCompletion } from "../dungeon-data";
 
 export {
@@ -150,6 +151,14 @@ interface ParsedAbility {
 export function getTriggeredAbilitiesFromCard(
   cardData: CardInstance["cardData"],
 ): ParsedAbility[] {
+  // A scripted permanent's triggers come from its script only (#2490).
+  const scripted = getScriptedTriggeredAbilities(cardData);
+  if (scripted) {
+    return scripted.map((a) => ({
+      trigger: { event: a.trigger.event },
+      effect: a.effect,
+    }));
+  }
   return parseTriggeredAbilities(cardData.oracle_text || "").map((parsed) => ({
     trigger: {
       event: parsed.trigger.event,

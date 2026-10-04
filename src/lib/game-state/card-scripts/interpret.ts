@@ -22,7 +22,14 @@ import {
   resolveTokenCreationEffect,
 } from "../effect-resolution";
 import { destroyCard, exileCard } from "../keyword-actions/removal";
-import { isTargetedEffect, type CardEffect, type CardScript } from "./schema";
+import { addCounters } from "../card-instance";
+import { getCardScript } from "./registry";
+import {
+  isPermanentScript,
+  isTargetedEffect,
+  type CardEffect,
+  type CardScript,
+} from "./schema";
 
 interface EffectContext {
   controllerId: PlayerId;
@@ -61,6 +68,45 @@ function playerFor(
     : undefined;
 }
 
+function opponentsOf(state: GameState, playerId: PlayerId): PlayerId[] {
+  return [...state.players.keys()].filter((p) => p !== playerId);
+}
+
+function damagePlayer(
+  state: GameState,
+  amount: number,
+  playerId: PlayerId,
+  ctx: EffectContext,
+): GameState {
+  const target: Target = { type: "player", targetId: playerId, isValid: true };
+  return resolveStackObjectEffects(
+    state,
+    [
+      {
+        effectType: "damage",
+        amount,
+        targetId: playerId,
+        isCombatDamage: false,
+      },
+    ],
+    ctx.sourceId,
+    [target],
+    ctx.kickerBonus,
+  );
+}
+
+/** The card a creature-affecting effect hits: its target, or its source. */
+function creatureFor(
+  state: GameState,
+  target: "creature" | "self",
+  ctx: EffectContext,
+): CardInstanceId | undefined {
+  const cardId =
+    target === "self" ? ctx.sourceId : (ctx.target?.targetId as CardInstanceId);
+  if (!cardId || !isOnBattlefield(state, cardId)) return undefined;
+  return cardId;
+}
+
 function applyEffect(
   state: GameState,
   effect: CardEffect,
@@ -69,6 +115,13 @@ function applyEffect(
   const { sourceId, target } = ctx;
   switch (effect.op) {
     case "DealDamage": {
+      if (effect.target === "each_opponent") {
+        let next = state;
+        for (const opp of opponentsOf(state, ctx.controllerId)) {
+          next = damagePlayer(next, effect.amount, opp, ctx);
+        }
+        return next;
+      }
       if (!target) return state;
       return resolveStackObjectEffects(
         state,
@@ -103,6 +156,14 @@ function applyEffect(
       return r.success ? r.state : state;
     }
     case "LoseLife": {
+      if (effect.who === "each_opponent") {
+        let next = state;
+        for (const opp of opponentsOf(state, ctx.controllerId)) {
+          const r = resolveLifeLossEffect(next, sourceId, effect.amount, opp);
+          if (r.success) next = r.state;
+        }
+        return next;
+      }
       const player = playerFor(effect.who, ctx);
       if (!player) return state;
       const r = resolveLifeLossEffect(state, sourceId, effect.amount, player);
@@ -141,18 +202,27 @@ function applyEffect(
       return r.success ? r.state : state;
     }
     case "Pump": {
-      if (!target) return state;
+      const cardId = creatureFor(state, effect.target, ctx);
+      if (!cardId) return state;
       const r = resolveEffect(
         state,
         {
           effectType: "pt_until_eot",
           power: effect.power,
           toughness: effect.toughness,
-          targetId: target.targetId as CardInstanceId,
+          targetId: cardId,
         },
         sourceId,
       );
       return r.success ? r.state : state;
+    }
+    case "PutCounters": {
+      const cardId = creatureFor(state, effect.target, ctx);
+      const card = cardId ? state.cards.get(cardId) : undefined;
+      if (!cardId || !card) return state;
+      const cards = new Map(state.cards);
+      cards.set(cardId, addCounters(card, effect.counter, effect.amount));
+      return { ...state, cards };
     }
     case "Surveil": {
       const r = resolveEffect(
@@ -169,21 +239,26 @@ function applyEffect(
   }
 }
 
+type ScriptStackObject = Pick<
+  StackObject,
+  "controllerId" | "sourceCardId" | "targets"
+>;
+
 /**
- * Resolve a scripted instant or sorcery. Targeted effects take the stack
- * object's targets in order; an effect whose target is missing or no longer
- * legal does nothing (CR 608.2b).
+ * Apply a list of scripted effects. Targeted effects take the stack object's
+ * targets in order; an effect whose target is missing or no longer legal
+ * does nothing (CR 608.2b).
  */
-export function resolveScriptedSpell(
+export function resolveScriptedEffects(
   state: GameState,
-  script: CardScript,
-  stackObject: Pick<StackObject, "controllerId" | "sourceCardId" | "targets">,
+  effects: readonly CardEffect[],
+  stackObject: ScriptStackObject,
   kickerBonus: number = 0,
 ): GameState {
   const targets = stackObject.targets ?? [];
   let current = state;
   let next = 0;
-  for (const effect of script.spell) {
+  for (const effect of effects) {
     let target: Target | undefined;
     if (isTargetedEffect(effect)) {
       target = targets[next++];
@@ -197,4 +272,55 @@ export function resolveScriptedSpell(
     });
   }
   return current;
+}
+
+/** Resolve a scripted instant or sorcery. */
+export function resolveScriptedSpell(
+  state: GameState,
+  script: CardScript,
+  stackObject: ScriptStackObject,
+  kickerBonus: number = 0,
+): GameState {
+  return resolveScriptedEffects(
+    state,
+    script.spell ?? [],
+    stackObject,
+    kickerBonus,
+  );
+}
+
+const sameText = (a: string, b: string) =>
+  a.trim().toLowerCase() === b.trim().toLowerCase();
+
+/**
+ * The scripted effects of a triggered or activated ability on the stack, or
+ * undefined when its source has no permanent script. Matched by the ability
+ * text, which the stack object carries.
+ */
+export function getScriptedAbilityEffects(
+  state: GameState,
+  stackObject: Pick<StackObject, "sourceCardId" | "text" | "triggered" | "activated">,
+): readonly CardEffect[] | undefined {
+  if (!stackObject.sourceCardId || !stackObject.text) return undefined;
+  const source = state.cards.get(stackObject.sourceCardId as CardInstanceId);
+  const script = getCardScript(source?.cardData.name);
+  if (!script || !isPermanentScript(script)) return undefined;
+  const abilities = stackObject.triggered
+    ? script.triggers ?? []
+    : script.activated ?? [];
+  return abilities.find((a) => sameText(a.text, stackObject.text))?.effects;
+}
+
+/**
+ * Resolve a triggered or activated ability from its source's script.
+ * Returns undefined when the ability isn't scripted, so the caller falls back
+ * to reading its text.
+ */
+export function resolveScriptedAbility(
+  state: GameState,
+  stackObject: StackObject,
+): GameState | undefined {
+  const effects = getScriptedAbilityEffects(state, stackObject);
+  if (!effects) return undefined;
+  return resolveScriptedEffects(state, effects, stackObject);
 }

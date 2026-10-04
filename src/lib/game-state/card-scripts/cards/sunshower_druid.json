@@ -1,0 +1,24 @@
+{
+  "name": "Sunshower Druid",
+  "oracle": "When this creature enters, put a +1/+1 counter on target creature and you gain 1 life.",
+  "triggers": [
+    {
+      "text": "When this creature enters, put a +1/+1 counter on target creature and you gain 1 life.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "PutCounters",
+          "counter": "+1/+1",
+          "amount": 1,
+          "target": "creature"
+        },
+        {
+          "op": "GainLife",
+          "amount": 1,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}

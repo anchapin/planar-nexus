@@ -1,0 +1,23 @@
+{
+  "name": "Guarded Heir",
+  "oracle": "Lifelink (Damage dealt by this creature also causes you to gain that much life.)\nWhen this creature enters, create two 3/3 white Knight creature tokens.",
+  "triggers": [
+    {
+      "text": "When this creature enters, create two 3/3 white Knight creature tokens.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "CreateToken",
+          "count": 2,
+          "power": 3,
+          "toughness": 3,
+          "color": "white",
+          "subtypes": [
+            "Knight"
+          ]
+        }
+      ]
+    }
+  ]
+}

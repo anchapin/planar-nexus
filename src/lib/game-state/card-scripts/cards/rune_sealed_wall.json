@@ -1,0 +1,19 @@
+{
+  "name": "Rune-Sealed Wall",
+  "oracle": "Defender\n{T}: Surveil 1. (Look at the top card of your library. You may put it into your graveyard.)",
+  "activated": [
+    {
+      "text": "Surveil 1.",
+      "cost": {
+        "tap": true,
+        "sacrifice": false
+      },
+      "effects": [
+        {
+          "op": "Surveil",
+          "amount": 1
+        }
+      ]
+    }
+  ]
+}
