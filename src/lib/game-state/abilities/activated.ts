@@ -5,6 +5,7 @@ import type {
   CardInstanceId,
   StackObject,
 } from "../types";
+import { Phase } from "../types";
 import { isPriorityPlayer } from "../priority-guard";
 import { hasSplitSecondOnStack } from "../auto-pass-priority";
 import { isManaAbility, spendMana, addMana } from "../mana";
@@ -29,6 +30,35 @@ import {
   getLegalActivatedAbilityTargets,
 } from "../trigger-system/trigger-targets";
 import type { ActivateAbilityResult } from "./types";
+
+/**
+ * Sorcery timing (CR 307.1): your turn, a main phase, an empty stack, and
+ * priority. Kept local so this module doesn't pull equip into the client
+ * bundle.
+ */
+function atSorcerySpeed(state: GameState, playerId: PlayerId): boolean {
+  const phase = state.turn.currentPhase;
+  return (
+    state.turn.activePlayerId === playerId &&
+    (phase === Phase.PRECOMBAT_MAIN || phase === Phase.POSTCOMBAT_MAIN) &&
+    state.stack.length === 0 &&
+    isPriorityPlayer(state, playerId)
+  );
+}
+
+/** Whether a once-each-turn ability was already activated this turn. */
+function usedThisTurn(
+  state: GameState,
+  card: { activatedThisTurn?: { turn: number; abilities: number[] } },
+  abilityIndex: number,
+): boolean {
+  const used = card.activatedThisTurn;
+  return (
+    !!used &&
+    used.turn === state.turn.turnNumber &&
+    used.abilities.includes(abilityIndex)
+  );
+}
 
 export function canActivateAbility(
   state: GameState,
@@ -99,11 +129,31 @@ export function canActivateAbility(
   if (
     ability &&
     card.activatedOnceAbilities?.includes(abilityIndex) &&
-    isActivateOnlyOnce(card, ability.effect ?? "")
+    (ability.activationLimit === "once" ||
+      isActivateOnlyOnce(card, ability.effect ?? ""))
   ) {
     return {
       canActivate: false,
       reason: "This ability can be activated only once",
+    };
+  }
+
+  // CR 602.5b: "Activate only once each turn" (issue #2496).
+  if (
+    ability?.activationLimit === "oncePerTurn" &&
+    usedThisTurn(state, card, abilityIndex)
+  ) {
+    return {
+      canActivate: false,
+      reason: "This ability can be activated only once each turn",
+    };
+  }
+
+  // CR 602.5d: "Activate only as a sorcery" (issue #2496).
+  if (ability?.sorceryOnly && !atSorcerySpeed(state, playerId)) {
+    return {
+      canActivate: false,
+      reason: "Activate only as a sorcery",
     };
   }
 
@@ -334,8 +384,29 @@ export function activateAbility(
     }
   }
 
+  // CR 602.5b: record a once-each-turn activation (issue #2496).
+  if (ability.activationLimit === "oncePerTurn") {
+    const source = currentState.cards.get(cardId);
+    if (source) {
+      const turn = currentState.turn.turnNumber;
+      const prior =
+        source.activatedThisTurn?.turn === turn
+          ? source.activatedThisTurn.abilities
+          : [];
+      const cards = new Map(currentState.cards);
+      cards.set(cardId, {
+        ...source,
+        activatedThisTurn: { turn, abilities: [...prior, abilityIndex] },
+      });
+      currentState = { ...currentState, cards };
+    }
+  }
+
   // CR 602.5b: record a once-only activation on the permanent (issue #2482).
-  if (isActivateOnlyOnce(card, ability.effect ?? "")) {
+  if (
+    ability.activationLimit === "once" ||
+    isActivateOnlyOnce(card, ability.effect ?? "")
+  ) {
     const source = currentState.cards.get(cardId);
     if (source) {
       const cards = new Map(currentState.cards);

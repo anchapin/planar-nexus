@@ -26,9 +26,11 @@ import s_hop_to_it from "./hop_to_it.json";
 import s_icecave_crasher from "./icecave_crasher.json";
 import s_imperious_inkmage from "./imperious_inkmage.json";
 import s_inspiring_overseer from "./inspiring_overseer.json";
+import s_intrepid_tenderfoot from "./intrepid_tenderfoot.json";
 import s_invasion_reinforcements from "./invasion_reinforcements.json";
 import s_ironpaw_aspirant from "./ironpaw_aspirant.json";
 import s_jeong_jeong_s_deserters from "./jeong_jeong_s_deserters.json";
+import s_kravens_cats from "./kravens_cats.json";
 import s_kyoshi_warriors from "./kyoshi_warriors.json";
 import s_lightning_strike from "./lightning_strike.json";
 import s_moonrise_cleric from "./moonrise_cleric.json";
@@ -95,9 +97,11 @@ export const RAW_CARD_SCRIPTS: unknown[] = [
   s_icecave_crasher,
   s_imperious_inkmage,
   s_inspiring_overseer,
+  s_intrepid_tenderfoot,
   s_invasion_reinforcements,
   s_ironpaw_aspirant,
   s_jeong_jeong_s_deserters,
+  s_kravens_cats,
   s_kyoshi_warriors,
   s_lightning_strike,
   s_moonrise_cleric,
