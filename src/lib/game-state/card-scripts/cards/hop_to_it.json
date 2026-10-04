@@ -8,9 +8,7 @@
       "power": 1,
       "toughness": 1,
       "color": "white",
-      "subtypes": [
-        "Rabbit"
-      ]
+      "subtypes": ["Rabbit"]
     }
   ]
 }

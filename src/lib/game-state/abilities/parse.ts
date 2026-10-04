@@ -13,7 +13,10 @@ import type {
   ParsedActivatedAbility,
   ParsedTriggeredAbility,
 } from "../oracle-text-parser";
-import type { TriggerCondition } from "../oracle-text-parser/abilities";
+import type {
+  CastFilter,
+  TriggerCondition,
+} from "../oracle-text-parser/abilities";
 
 export function hasActivatedAbilities(card: { oracle_text?: string }): boolean {
   if (!card.oracle_text) return false;
@@ -54,10 +57,26 @@ const SUBJECT_EVENT = {
   attacks: "attacked",
 } as const;
 
+const SPELL_FILTER: Record<string, Partial<CastFilter>> = {
+  any: {},
+  creature: { types: ["creature"] },
+  noncreature: { excludeTypes: ["creature"] },
+  instant_or_sorcery: { types: ["instant", "sorcery"] },
+  artifact: { types: ["artifact"] },
+  enchantment: { types: ["enchantment"] },
+  multicolored: { multicolored: true },
+};
+
+function castFilterOf(t: ScriptedTrigger): CastFilter {
+  return { caster: t.caster ?? "you", ...SPELL_FILTER[t.spell ?? "any"] };
+}
+
 function scriptedCondition(t: ScriptedTrigger): TriggerCondition {
   if (t.event === "landfall") return { event: "landfall" };
   if (t.event === "upkeep")
     return { event: "upkeep", upkeepOf: t.whose ?? "you" };
+  if (t.event === "cast")
+    return { event: "spellCast", castFilter: castFilterOf(t) };
   const condition: TriggerCondition = {
     event: SUBJECT_EVENT[t.event],
     subject: t.subject,

@@ -50,6 +50,7 @@ import {
   validateAuraSpellTarget,
 } from "../keyword-actions/enchant";
 import { copySpellOnStack } from "./resolve";
+import { fireCastTriggers } from "../keyword-actions/cast-triggers";
 import { createEngineUncaughtException } from "../errors";
 
 /**
@@ -1402,6 +1403,10 @@ export function castSpell(
         finalState = applyProwessBoost(finalState, trigger.sourceCardId, 1);
       }
     }
+
+    // CR 601.2i / 603.3: "whenever you cast ..." triggers go on the stack
+    // above the spell (#2496).
+    finalState = fireCastTriggers(finalState, cardId, playerId);
 
     return { success: true, state: finalState };
   } catch (err) {

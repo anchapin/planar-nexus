@@ -66,6 +66,37 @@ function subjectMatches(
   return true;
 }
 
+/**
+ * CR 601.2i / 603.2: does a cast trigger care about this spell and caster?
+ * Without a caster in the context (older callers) every cast trigger fires,
+ * as before; in real games only triggers whose filter was parsed fire.
+ */
+function castTriggerMatches(
+  state: GameState,
+  card: CardInstance,
+  trigger: TriggerCondition,
+  context?: TriggerContext,
+): boolean {
+  const filter = trigger.castFilter;
+  if (!context?.castingPlayerId) return true;
+  if (!filter || filter.self || filter.unsupported) return false;
+  const caster = context.castingPlayerId;
+  if (filter.caster === "you" && caster !== card.controllerId) return false;
+  if (filter.caster === "opponent" && caster === card.controllerId)
+    return false;
+  const spell = context.spellCardId
+    ? state.cards.get(context.spellCardId)
+    : undefined;
+  if (!spell) return false;
+  const typeLine = (spell.cardData.type_line ?? "").toLowerCase();
+  if (filter.types && !filter.types.some((t) => typeLine.includes(t)))
+    return false;
+  if (filter.excludeTypes?.some((t) => typeLine.includes(t))) return false;
+  if (filter.multicolored && (spell.cardData.colors ?? []).length < 2)
+    return false;
+  return true;
+}
+
 /** CR 508.1m: does an attack trigger care about this attacker? */
 function attackTriggerMatches(
   state: GameState,
@@ -180,9 +211,12 @@ export function detectTriggeredAbilities(
         case "cast":
         case "spellCast":
           shouldTrigger =
-            ability.trigger.event === "cast" ||
-            ability.trigger.event === "spellCast" ||
-            ability.trigger.event === "abilityActivated";
+            (ability.trigger.event === "cast" ||
+              ability.trigger.event === "spellCast" ||
+              (!context?.castingPlayerId &&
+                ability.trigger.event === "abilityActivated")) &&
+            (ability.trigger.event === "abilityActivated" ||
+              castTriggerMatches(state, card, ability.trigger, context));
           break;
         case "lifeGain":
           shouldTrigger = ability.trigger.event === "lifeGain";

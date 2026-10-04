@@ -12,10 +12,7 @@
           "power": 1,
           "toughness": 1,
           "color": "green",
-          "subtypes": [
-            "Elf",
-            "Warrior"
-          ]
+          "subtypes": ["Elf", "Warrior"]
         }
       ]
     }

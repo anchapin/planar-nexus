@@ -1,0 +1,20 @@
+{
+  "name": "Chandra's Emberling",
+  "oracle": "Haste\nWhenever you cast a noncreature spell, put a +1/+1 counter on this creature.",
+  "triggers": [
+    {
+      "text": "Whenever you cast a noncreature spell, put a +1/+1 counter on this creature.",
+      "event": "cast",
+      "caster": "you",
+      "spell": "noncreature",
+      "effects": [
+        {
+          "op": "PutCounters",
+          "counter": "+1/+1",
+          "amount": 1,
+          "target": "self"
+        }
+      ]
+    }
+  ]
+}

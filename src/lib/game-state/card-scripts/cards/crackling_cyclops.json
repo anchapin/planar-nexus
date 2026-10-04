@@ -1,0 +1,20 @@
+{
+  "name": "Crackling Cyclops",
+  "oracle": "Whenever you cast a noncreature spell, this creature gets +3/+0 until end of turn.",
+  "triggers": [
+    {
+      "text": "Whenever you cast a noncreature spell, this creature gets +3/+0 until end of turn.",
+      "event": "cast",
+      "caster": "you",
+      "spell": "noncreature",
+      "effects": [
+        {
+          "op": "Pump",
+          "power": 3,
+          "toughness": 0,
+          "target": "self"
+        }
+      ]
+    }
+  ]
+}
