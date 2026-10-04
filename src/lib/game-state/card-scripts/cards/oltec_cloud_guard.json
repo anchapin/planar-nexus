@@ -1,0 +1,22 @@
+{
+  "name": "Oltec Cloud Guard",
+  "oracle": "Flying\nWhen this creature enters, create a 1/1 colorless Gnome artifact creature token.",
+  "triggers": [
+    {
+      "text": "When this creature enters, create a 1/1 colorless Gnome artifact creature token.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "CreateToken",
+          "count": 1,
+          "power": 1,
+          "toughness": 1,
+          "color": "colorless",
+          "subtypes": ["Gnome"],
+          "artifact": true
+        }
+      ]
+    }
+  ]
+}

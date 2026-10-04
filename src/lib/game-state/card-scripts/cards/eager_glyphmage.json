@@ -1,0 +1,22 @@
+{
+  "name": "Eager Glyphmage",
+  "oracle": "When this creature enters, create a 1/1 white and black Inkling creature token with flying.",
+  "triggers": [
+    {
+      "text": "When this creature enters, create a 1/1 white and black Inkling creature token with flying.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "CreateToken",
+          "count": 1,
+          "power": 1,
+          "toughness": 1,
+          "colors": ["white", "black"],
+          "subtypes": ["Inkling"],
+          "keywords": ["flying"]
+        }
+      ]
+    }
+  ]
+}

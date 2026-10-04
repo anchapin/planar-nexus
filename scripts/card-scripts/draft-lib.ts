@@ -43,7 +43,7 @@ export const OP_REFERENCE: Record<string, string> = {
   LoseLife:
     '{"op":"LoseLife","amount":N,"who":"you"|"target_player"|"each_opponent"}',
   CreateToken:
-    '{"op":"CreateToken","count":N,"power":N,"toughness":N,"color":"white"|"blue"|"black"|"red"|"green"|"colorless","subtypes":["Goblin"]} (plain creature tokens only: one color, no keywords, not artifact or enchantment)',
+    '{"op":"CreateToken","count":N,"power":N,"toughness":N,"color":"white"|"blue"|"black"|"red"|"green"|"colorless" OR "colors":["white","black"],"subtypes":["Thopter"],"artifact":true,"keywords":["flying"]} (creature tokens; exactly one of color/colors; artifact and keywords optional; evergreen keywords only; no enchantment tokens or token abilities)',
   Destroy: '{"op":"Destroy","target":"creature"}',
   Exile: '{"op":"Exile","target":"creature"}',
   Counter: '{"op":"Counter","target":"spell"}',
@@ -103,7 +103,8 @@ export function skipReason(
   alreadyScripted: ReadonlySet<string>,
 ): string | null {
   if (alreadyScripted.has(card.name.toLowerCase())) return "already scripted";
-  if (card.layout !== "normal") return `layout ${card.layout} not supported yet`;
+  if (card.layout !== "normal")
+    return `layout ${card.layout} not supported yet`;
   if (/\b(Land|Planeswalker|Battle)\b/.test(card.type_line)) {
     return "card type not supported yet";
   }
@@ -243,7 +244,10 @@ export function tallyMissingOps(
   }
   return [...by.entries()]
     .map(([missing, cards]) => ({ missing, cards }))
-    .sort((a, b) => b.cards.length - a.cards.length || a.missing.localeCompare(b.missing));
+    .sort(
+      (a, b) =>
+        b.cards.length - a.cards.length || a.missing.localeCompare(b.missing),
+    );
 }
 
 /** Markdown report: the PR body and docs/card-scripts/drafts/<set>.md. */
@@ -252,7 +256,9 @@ export function renderReport(
   outcomes: readonly DraftOutcome[],
 ): string {
   const of = <K extends DraftOutcome["kind"]>(k: K) =>
-    outcomes.filter((o): o is Extract<DraftOutcome, { kind: K }> => o.kind === k);
+    outcomes.filter(
+      (o): o is Extract<DraftOutcome, { kind: K }> => o.kind === k,
+    );
   const drafted = of("drafted");
   const needs = of("needs_new_op");
   const invalid = of("invalid");
@@ -274,7 +280,9 @@ export function renderReport(
   const tally = tallyMissingOps(outcomes);
   lines.push(
     ...(tally.length
-      ? tally.map((t) => `- ${t.missing} (${t.cards.length}): ${t.cards.join(", ")}`)
+      ? tally.map(
+          (t) => `- ${t.missing} (${t.cards.length}): ${t.cards.join(", ")}`,
+        )
       : ["None."]),
     "",
     "## Failed the schema (not written)",
@@ -287,7 +295,8 @@ export function renderReport(
     "",
   );
   const reasons = new Map<string, number>();
-  for (const s of skipped) reasons.set(s.reason, (reasons.get(s.reason) ?? 0) + 1);
+  for (const s of skipped)
+    reasons.set(s.reason, (reasons.get(s.reason) ?? 0) + 1);
   lines.push(
     ...(reasons.size
       ? [...reasons.entries()].map(([r, n]) => `- ${r}: ${n}`)

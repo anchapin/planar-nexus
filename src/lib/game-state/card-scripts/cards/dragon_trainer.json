@@ -1,0 +1,22 @@
+{
+  "name": "Dragon Trainer",
+  "oracle": "When this creature enters, create a 4/4 red Dragon creature token with flying.",
+  "triggers": [
+    {
+      "text": "When this creature enters, create a 4/4 red Dragon creature token with flying.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "CreateToken",
+          "count": 1,
+          "power": 4,
+          "toughness": 4,
+          "color": "red",
+          "subtypes": ["Dragon"],
+          "keywords": ["flying"]
+        }
+      ]
+    }
+  ]
+}

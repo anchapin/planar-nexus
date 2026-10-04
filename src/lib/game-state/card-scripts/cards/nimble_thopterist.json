@@ -1,0 +1,23 @@
+{
+  "name": "Nimble Thopterist",
+  "oracle": "When this creature enters, create a 1/1 colorless Thopter artifact creature token with flying.",
+  "triggers": [
+    {
+      "text": "When this creature enters, create a 1/1 colorless Thopter artifact creature token with flying.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "CreateToken",
+          "count": 1,
+          "power": 1,
+          "toughness": 1,
+          "color": "colorless",
+          "subtypes": ["Thopter"],
+          "artifact": true,
+          "keywords": ["flying"]
+        }
+      ]
+    }
+  ]
+}

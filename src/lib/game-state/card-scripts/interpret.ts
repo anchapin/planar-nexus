@@ -167,15 +167,23 @@ function applyEffect(
     }
     case "CreateToken": {
       const subtypes = effect.subtypes.join(" ");
+      const keywords = (effect.keywords ?? []).map(
+        (k) => k.charAt(0).toUpperCase() + k.slice(1),
+      );
+      const colors =
+        effect.colors ??
+        (effect.color && effect.color !== "colorless" ? [effect.color] : []);
       const r = resolveTokenCreationEffect(
         state,
         sourceId,
         {
           name: subtypes,
-          type_line: `Token Creature — ${subtypes}`,
+          type_line: `Token ${effect.artifact ? "Artifact " : ""}Creature — ${subtypes}`,
           power: String(effect.power),
           toughness: String(effect.toughness),
-          colors: effect.color === "colorless" ? [] : [effect.color],
+          colors,
+          keywords,
+          oracle_text: keywords.join(", "),
         },
         effect.count,
         ctx.controllerId,
@@ -295,15 +303,18 @@ const sameText = (a: string, b: string) =>
  */
 export function getScriptedAbilityEffects(
   state: GameState,
-  stackObject: Pick<StackObject, "sourceCardId" | "text" | "triggered" | "activated">,
+  stackObject: Pick<
+    StackObject,
+    "sourceCardId" | "text" | "triggered" | "activated"
+  >,
 ): readonly CardEffect[] | undefined {
   if (!stackObject.sourceCardId || !stackObject.text) return undefined;
   const source = state.cards.get(stackObject.sourceCardId as CardInstanceId);
   const script = getCardScript(source?.cardData.name);
   if (!script || !isPermanentScript(script)) return undefined;
   const abilities = stackObject.triggered
-    ? script.triggers ?? []
-    : script.activated ?? [];
+    ? (script.triggers ?? [])
+    : (script.activated ?? []);
   return abilities.find((a) => sameText(a.text, stackObject.text))?.effects;
 }
 
