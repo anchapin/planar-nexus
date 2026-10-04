@@ -134,5 +134,17 @@ describe("search-worker-factory (issue #1894)", () => {
         /new\s+URL\s*\(\s*['"]\.\/search\.worker\.ts['"]\s*,\s*MODULE_URL\s*\)/,
       );
     });
+
+    it("logs the not-bundled fallback warning at most once per page context (issue #2369)", () => {
+      // The factory cannot be loaded under ts-jest CJS (import.meta), so
+      // this pins the source shape: the fallback `console.warn` must sit
+      // behind a module-level once-flag that is set before it fires. A
+      // regression that logs on every call re-floods the E2E logs.
+      const code = stripComments(readFileSync(FACTORY_PATH, "utf8"));
+      expect(code).toMatch(/^let\s+hasWarnedNotBundled\s*=\s*false\s*;/m);
+      expect(code).toMatch(
+        /if\s*\(\s*!hasWarnedNotBundled\s*\)\s*\{\s*hasWarnedNotBundled\s*=\s*true\s*;\s*console\.warn\(/,
+      );
+    });
   });
 });
