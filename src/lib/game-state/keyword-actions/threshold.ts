@@ -264,7 +264,7 @@ export function isActivateOnlyOnce(
   for (const raw of cardOracleText(card).split("\n")) {
     const line = raw.trim().toLowerCase();
     if (!line.includes(":") || !line.includes(key)) continue;
-    return /\b(?:activate|and) only once\b/.test(line);
+    return /\b(?:activate|and) only once\b(?! each turn)/.test(line);
   }
   return false;
 }

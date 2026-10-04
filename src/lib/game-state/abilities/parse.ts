@@ -41,6 +41,10 @@ function scriptedActivated(a: ScriptedActivated): ParsedActivatedAbility {
     effect: a.text,
     effectType: "generic",
     targets: [],
+    ...(a.limit && {
+      activationLimit: a.limit === "once" ? "once" : "oncePerTurn",
+    }),
+    ...(a.timing === "sorcery" && { sorceryOnly: true }),
   };
 }
 
@@ -52,7 +56,8 @@ const SUBJECT_EVENT = {
 
 function scriptedCondition(t: ScriptedTrigger): TriggerCondition {
   if (t.event === "landfall") return { event: "landfall" };
-  if (t.event === "upkeep") return { event: "upkeep", upkeepOf: t.whose ?? "you" };
+  if (t.event === "upkeep")
+    return { event: "upkeep", upkeepOf: t.whose ?? "you" };
   const condition: TriggerCondition = {
     event: SUBJECT_EVENT[t.event],
     subject: t.subject,

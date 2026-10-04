@@ -167,6 +167,10 @@ export const ActivatedSchema = z
         sacrifice: z.boolean().default(false),
       })
       .strict(),
+    /** CR 602.5b: "Activate only once" / "Activate only once each turn". */
+    limit: z.enum(["once", "once_per_turn"]).optional(),
+    /** CR 602.5d: "Activate only as a sorcery". */
+    timing: z.literal("sorcery").optional(),
     effects,
   })
   .strict();

@@ -494,6 +494,7 @@ function moveCardToZoneWithoutTriggers(
     currentZoneKey: null,
     // CR 400.7: a card that changes zones is a new object.
     activatedOnceAbilities: undefined,
+    activatedThisTurn: undefined,
   };
 
   if (targetZoneType === "graveyard" || targetZoneType === "library") {

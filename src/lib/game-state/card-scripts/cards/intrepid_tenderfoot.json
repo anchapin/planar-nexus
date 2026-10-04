@@ -1,0 +1,23 @@
+{
+  "name": "Intrepid Tenderfoot",
+  "oracle": "{3}: Put a +1/+1 counter on this creature. Activate only as a sorcery.",
+  "activated": [
+    {
+      "text": "Put a +1/+1 counter on this creature.",
+      "cost": {
+        "mana": "{3}",
+        "tap": false,
+        "sacrifice": false
+      },
+      "timing": "sorcery",
+      "effects": [
+        {
+          "op": "PutCounters",
+          "counter": "+1/+1",
+          "amount": 1,
+          "target": "self"
+        }
+      ]
+    }
+  ]
+}

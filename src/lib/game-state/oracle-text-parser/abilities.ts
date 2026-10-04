@@ -69,6 +69,13 @@ export interface ParsedActivatedAbility {
   targets: ParsedTarget[];
   value?: number;
   duration?: "untilEndOfTurn" | "untilEndOfGame" | "permanent";
+  /**
+   * CR 602.5b activation restrictions: "Activate only once" (per object) or
+   * "Activate only once each turn" (issue #2496).
+   */
+  activationLimit?: "once" | "oncePerTurn";
+  /** CR 602.5d: "Activate only as a sorcery." */
+  sorceryOnly?: boolean;
 }
 
 /**
@@ -190,7 +197,8 @@ export function parseActivatedAbilities(
   // Split by periods to find ability sentences
   const sentences = oracleText.split(/\.\s*/);
 
-  for (const sentence of sentences) {
+  for (let i = 0; i < sentences.length; i++) {
+    const sentence = sentences[i];
     // Look for the colon that separates cost from effect
     const colonIndex = sentence.indexOf(":");
 
@@ -222,10 +230,31 @@ export function parseActivatedAbilities(
       effectType: effect.effectType as ParsedActivatedAbility["effectType"],
       targets: effect.targets,
       value: effect.value,
+      ...parseActivationRestrictions(sentences.slice(i + 1)),
     });
   }
 
   return abilities;
+}
+
+/**
+ * Activation restrictions in the sentences right after an ability's effect
+ * (CR 602.5b, 602.5d): "Activate only once each turn", "Activate only once",
+ * "Activate only as a sorcery". Stops at the next sentence that isn't one.
+ */
+export function parseActivationRestrictions(
+  following: string[],
+): Pick<ParsedActivatedAbility, "activationLimit" | "sorceryOnly"> {
+  const out: Pick<ParsedActivatedAbility, "activationLimit" | "sorceryOnly"> =
+    {};
+  for (const raw of following) {
+    const s = raw.trim().toLowerCase();
+    if (!s.startsWith("activate only")) break;
+    if (/only once each turn/.test(s)) out.activationLimit = "oncePerTurn";
+    else if (/only once\b/.test(s)) out.activationLimit = "once";
+    if (/as a sorcery/.test(s)) out.sorceryOnly = true;
+  }
+  return out;
 }
 
 /**

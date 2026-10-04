@@ -201,6 +201,12 @@ export interface CardInstance {
    */
   activatedOnceAbilities?: number[];
   /**
+   * "Activate only once each turn" abilities used this turn (CR 602.5b,
+   * issue #2496): indexes tagged with the turn they were activated, so a
+   * new turn needs no reset. Cleared on zone moves (CR 400.7).
+   */
+  activatedThisTurn?: { turn: number; abilities: number[] };
+  /**
    * Summed bonus from "Other <Type>s you control get +N/+N" lords (issue
    * #2300). Maintained by `refreshTribalAnthems`.
    */
