@@ -56,7 +56,7 @@ src-tauri/gen/
 !scripts/differential/scenarios/*.json
 !scripts/differential/cards.snapshot.json
 # Card scripts are data and must be tracked (#2488)
-!src/lib/card-scripts/cards/*.json
+!src/lib/game-state/card-scripts/cards/*.json
 
 # Tauri config + platform overlays must be tracked (tauri.conf.json
 # predates the blanket *.json rule; overlays added by #1729 need the

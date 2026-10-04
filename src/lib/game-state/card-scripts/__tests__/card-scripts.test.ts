@@ -9,12 +9,12 @@ import {
   listScriptedCardNames,
   resolveScriptedSpell,
 } from "../index";
-import { createInitialGameState, startGame } from "../../game-state/game-state";
-import { createCardInstance } from "../../game-state/card-instance";
+import { createInitialGameState, startGame } from "../../game-state";
+import { createCardInstance } from "../../card-instance";
 import {
   getEffectivePower,
   getEffectiveToughness,
-} from "../../game-state/evergreen-keywords";
+} from "../../evergreen-keywords";
 import type {
   CardInstanceId,
   GameState,
@@ -22,7 +22,7 @@ import type {
   ScryfallCard,
   StackObject,
   Target,
-} from "../../game-state/types";
+} from "../../types";
 
 const CARDS_DIR = join(__dirname, "..", "cards");
 const id = (s: string) => s as CardInstanceId;

@@ -11,7 +11,7 @@ import type {
   PlayerId,
   StackObject,
   Target,
-} from "../game-state/types";
+} from "../types";
 import {
   resolveCardDrawEffect,
   resolveCounterEffect,
@@ -20,8 +20,8 @@ import {
   resolveLifeLossEffect,
   resolveStackObjectEffects,
   resolveTokenCreationEffect,
-} from "../game-state/effect-resolution";
-import { destroyCard, exileCard } from "../game-state/keyword-actions/removal";
+} from "../effect-resolution";
+import { destroyCard, exileCard } from "../keyword-actions/removal";
 import { isTargetedEffect, type CardEffect, type CardScript } from "./schema";
 
 interface EffectContext {

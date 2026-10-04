@@ -1,5 +1,5 @@
 /**
- * Regenerates src/lib/card-scripts/cards/index.generated.ts from the JSON card
+ * Regenerates src/lib/game-state/card-scripts/cards/index.generated.ts from the JSON card
  * scripts in that folder. Run after adding or removing a script:
  *
  *   npx tsx scripts/build-card-script-index.ts          # write
@@ -8,7 +8,7 @@
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-const DIR = join(__dirname, "..", "src", "lib", "card-scripts", "cards");
+const DIR = join(__dirname, "..", "src", "lib", "game-state", "card-scripts", "cards");
 const OUT = join(DIR, "index.generated.ts");
 
 const files = readdirSync(DIR)
@@ -33,8 +33,8 @@ if (process.argv.includes("--check")) {
     console.error("card script index is stale; run scripts/build-card-script-index.ts");
     process.exit(1);
   }
-  console.log(`card script index up to date (${files.length} scripts)`);
+  console.info(`card script index up to date (${files.length} scripts)`);
 } else {
   writeFileSync(OUT, body);
-  console.log(`wrote ${files.length} scripts to ${OUT}`);
+  console.info(`wrote ${files.length} scripts to ${OUT}`);
 }

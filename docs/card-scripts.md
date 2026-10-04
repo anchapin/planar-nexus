@@ -25,13 +25,13 @@ is MIT). Every script here is written for this project.
 
 Ops today: `DealDamage`, `Draw`, `GainLife`, `LoseLife`, `CreateToken`,
 `Destroy`, `Exile`, `Counter`, `Pump`, `Surveil`. See
-`src/lib/card-scripts/schema.ts`.
+`src/lib/game-state/card-scripts/schema.ts`.
 
 ## Adding a card
 
-1. Add `src/lib/card-scripts/cards/<card_name>.json`.
+1. Add `src/lib/game-state/card-scripts/cards/<card_name>.json`.
 2. Run `npx tsx scripts/build-card-script-index.ts`.
-3. Run `npx jest src/lib/card-scripts`.
+3. Run `npx jest src/lib/game-state/card-scripts`.
 
 New ops go in `schema.ts` and `interpret.ts`, built on existing engine
 resolution helpers.
