@@ -19,7 +19,9 @@ function build(): Map<string, CardScript> {
 }
 
 /** The script for a card, or undefined when the card has none yet. */
-export function getCardScript(name: string | undefined): CardScript | undefined {
+export function getCardScript(
+  name: string | undefined,
+): CardScript | undefined {
   if (!name) return undefined;
   byName ??= build();
   return byName.get(normalizeCardName(name));

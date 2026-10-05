@@ -1,0 +1,22 @@
+{
+  "name": "Mechanized Ninja Cavalry",
+  "oracle": "When this creature enters, create a 1/1 colorless Robot artifact creature token.",
+  "triggers": [
+    {
+      "text": "When this creature enters, create a 1/1 colorless Robot artifact creature token.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "CreateToken",
+          "count": 1,
+          "power": 1,
+          "toughness": 1,
+          "color": "colorless",
+          "subtypes": ["Robot"],
+          "artifact": true
+        }
+      ]
+    }
+  ]
+}

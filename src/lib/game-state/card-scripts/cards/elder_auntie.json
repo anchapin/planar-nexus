@@ -1,0 +1,21 @@
+{
+  "name": "Elder Auntie",
+  "oracle": "When this creature enters, create a 1/1 black and red Goblin creature token.",
+  "triggers": [
+    {
+      "text": "When this creature enters, create a 1/1 black and red Goblin creature token.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "CreateToken",
+          "count": 1,
+          "power": 1,
+          "toughness": 1,
+          "colors": ["black", "red"],
+          "subtypes": ["Goblin"]
+        }
+      ]
+    }
+  ]
+}

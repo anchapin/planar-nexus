@@ -48,16 +48,41 @@ export const LoseLifeSchema = z
   })
   .strict();
 
+const tokenColor = z.enum(["white", "blue", "black", "red", "green"]);
+
+/** Keywords a created token can have (CR 702). Evergreen ones only for now. */
+export const TOKEN_KEYWORDS = [
+  "flying",
+  "vigilance",
+  "trample",
+  "haste",
+  "lifelink",
+  "deathtouch",
+  "reach",
+  "first strike",
+  "menace",
+  "defender",
+] as const;
+
 export const CreateTokenSchema = z
   .object({
     op: z.literal("CreateToken"),
     count: z.number().int().min(1),
     power: amount,
     toughness: amount,
-    color: z.enum(["white", "blue", "black", "red", "green", "colorless"]),
+    /** One color, or "colorless". Use `colors` for multicolor tokens. */
+    color: z.union([tokenColor, z.literal("colorless")]).optional(),
+    /** Two or more colors, e.g. a white and black Inkling (#2496). */
+    colors: z.array(tokenColor).min(2).optional(),
     subtypes: z.array(z.string().min(1)).min(1),
+    /** An artifact creature token, e.g. a Thopter or Robot (#2496). */
+    artifact: z.boolean().optional(),
+    keywords: z.array(z.enum(TOKEN_KEYWORDS)).min(1).optional(),
   })
-  .strict();
+  .strict()
+  .refine((t) => (t.color === undefined) !== (t.colors === undefined), {
+    message: "set exactly one of color or colors",
+  });
 
 export const DestroySchema = z
   .object({ op: z.literal("Destroy"), target: z.enum(["creature"]) })

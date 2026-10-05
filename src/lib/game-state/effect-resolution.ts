@@ -216,6 +216,7 @@ export function resolveTokenCreationEffect(
     toughness?: string;
     colors?: string[];
     oracle_text?: string;
+    keywords?: string[];
   },
   count: number,
   controllerId?: PlayerId,
@@ -234,7 +235,7 @@ export function resolveTokenCreationEffect(
     cmc: 0,
     colors: tokenData.colors || [],
     color_identity: [],
-    keywords: [],
+    keywords: tokenData.keywords ?? [],
     legalities: { standard: "legal", commander: "legal" },
     card_faces: undefined,
     layout: "token",

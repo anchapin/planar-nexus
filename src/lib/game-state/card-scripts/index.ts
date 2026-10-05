@@ -12,7 +12,11 @@ export type {
   ScriptedActivated,
   ScriptedTrigger,
 } from "./schema";
-export { getCardScript, listScriptedCardNames, normalizeCardName } from "./registry";
+export {
+  getCardScript,
+  listScriptedCardNames,
+  normalizeCardName,
+} from "./registry";
 export {
   getScriptedAbilityEffects,
   resolveScriptedAbility,
