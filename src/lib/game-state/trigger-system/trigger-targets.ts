@@ -20,7 +20,10 @@ import { isCreature, getPower, getToughness } from "../card-instance";
 import { canTargetCard } from "../targeting-validation";
 import { getActivatedAbilities } from "../abilities/parse";
 import { getCardScript } from "../card-scripts/registry";
-import { isTargetedEffect } from "../card-scripts/script-guards";
+import {
+  isTargetedEffect,
+  scriptedSpellEffects,
+} from "../card-scripts/script-guards";
 
 export type TriggerTargetKind = "creature" | "player" | "opponent" | "any";
 
@@ -165,10 +168,11 @@ export function getLegalTriggerTargets(
 export function getSpellTargetSpec(
   state: GameState,
   cardId: CardInstanceId,
+  chosenModes?: readonly string[],
 ): TriggerTargetSpec | null {
   const card = state.cards.get(cardId);
   if (!card) return null;
-  const scripted = scriptedSpellTargetSpec(card.cardData.name);
+  const scripted = scriptedSpellTargetSpec(card.cardData.name, chosenModes);
   if (scripted !== undefined) return scripted;
   return parseTriggerTargetSpec(card.cardData.oracle_text ?? "");
 }
@@ -177,16 +181,22 @@ export function getSpellTargetSpec(
  * Target requirement from a card's script (#2489): the first targeted effect
  * decides it. Returns undefined when the card has no script, so callers fall
  * back to oracle text, and null when the script targets nothing this module
- * models (a spell on the stack, for example).
+ * models (a spell on the stack, for example). For a modal spell the chosen
+ * modes decide it; with no modes given, every mode is considered.
  */
 export function scriptedSpellTargetSpec(
   cardName: string | undefined,
+  chosenModes?: readonly string[],
 ): TriggerTargetSpec | null | undefined {
   const script = getCardScript(cardName);
   if (!script) return undefined;
-  for (const effect of script.spell ?? []) {
+  for (const effect of scriptedSpellEffects(script, chosenModes)) {
     if (!isTargetedEffect(effect)) continue;
-    const base = { controller: "any" as const, optional: false, excludeSource: false };
+    const base = {
+      controller: "any" as const,
+      optional: false,
+      excludeSource: false,
+    };
     if (effect.op === "DealDamage" && effect.target !== "each_opponent") {
       return { ...base, kind: effect.target };
     }
@@ -198,7 +208,11 @@ export function scriptedSpellTargetSpec(
     ) {
       return { ...base, kind: "creature" };
     }
-    if (effect.op === "Draw" || effect.op === "GainLife" || effect.op === "LoseLife") {
+    if (
+      effect.op === "Draw" ||
+      effect.op === "GainLife" ||
+      effect.op === "LoseLife"
+    ) {
       return { ...base, kind: "player" };
     }
     return null;
@@ -211,11 +225,12 @@ export function getLegalSpellTargets(
   state: GameState,
   playerId: PlayerId,
   cardId: CardInstanceId,
+  chosenModes?: readonly string[],
 ): string[] {
   if (!state.cards.has(cardId)) return [];
   return legalTargetsForSpec(
     state,
-    getSpellTargetSpec(state, cardId),
+    getSpellTargetSpec(state, cardId, chosenModes),
     playerId,
     cardId,
   );

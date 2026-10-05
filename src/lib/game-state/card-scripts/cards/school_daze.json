@@ -1,0 +1,33 @@
+{
+  "name": "School Daze",
+  "oracle": "Choose one —\n• Do Homework — Draw three cards.\n• Fight Crime — Counter target spell. Draw a card.",
+  "modes": {
+    "choose": 1,
+    "options": [
+      {
+        "text": "Do Homework — Draw three cards.",
+        "effects": [
+          {
+            "op": "Draw",
+            "amount": 3,
+            "who": "you"
+          }
+        ]
+      },
+      {
+        "text": "Fight Crime — Counter target spell. Draw a card.",
+        "effects": [
+          {
+            "op": "Counter",
+            "target": "spell"
+          },
+          {
+            "op": "Draw",
+            "amount": 1,
+            "who": "you"
+          }
+        ]
+      }
+    ]
+  }
+}

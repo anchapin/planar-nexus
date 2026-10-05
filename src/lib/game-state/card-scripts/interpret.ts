@@ -25,7 +25,11 @@ import { destroyCard, exileCard } from "../keyword-actions/removal";
 import { addCounters } from "../card-instance";
 import { copySpellOnStack } from "../spell-casting/resolve";
 import { getCardScript } from "./registry";
-import { isPermanentScript, isTargetedEffect } from "./script-guards";
+import {
+  isPermanentScript,
+  isTargetedEffect,
+  scriptedSpellEffects,
+} from "./script-guards";
 import type { CardEffect, CardScript } from "./schema";
 
 interface EffectContext {
@@ -283,7 +287,7 @@ type ScriptStackObject = Pick<
   StackObject,
   "controllerId" | "sourceCardId" | "targets"
 > &
-  Partial<Pick<StackObject, "triggeringStackObjectId">>;
+  Partial<Pick<StackObject, "triggeringStackObjectId" | "chosenModes">>;
 
 /**
  * Apply a list of scripted effects. Targeted effects take the stack object's
@@ -316,7 +320,11 @@ export function resolveScriptedEffects(
   return current;
 }
 
-/** Resolve a scripted instant or sorcery. */
+/**
+ * Resolve a scripted instant or sorcery. A modal spell resolves only the
+ * modes on the stack object's `chosenModes`, in printed order (CR 700.2);
+ * with none chosen it does nothing.
+ */
 export function resolveScriptedSpell(
   state: GameState,
   script: CardScript,
@@ -325,7 +333,7 @@ export function resolveScriptedSpell(
 ): GameState {
   return resolveScriptedEffects(
     state,
-    script.spell ?? [],
+    scriptedSpellEffects(script, stackObject.chosenModes ?? []),
     stackObject,
     kickerBonus,
   );

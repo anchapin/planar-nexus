@@ -2,14 +2,19 @@ export {
   ActivatedSchema,
   CardScriptSchema,
   EffectSchema,
+  ModesSchema,
   TriggerSchema,
   isPermanentScript,
   isTargetedEffect,
+  modeLabelKey,
+  scriptedModeChoiceError,
+  scriptedSpellEffects,
 } from "./schema";
 export type {
   CardScript,
   CardEffect,
   ScriptedActivated,
+  ScriptedModes,
   ScriptedTrigger,
 } from "./schema";
 export {
