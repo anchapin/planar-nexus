@@ -197,6 +197,7 @@ describe("card-script drafting pipeline", () => {
     ])
       expect(prompt).toContain(field);
     expect(prompt).not.toMatch(/Dies\/attacks\/upkeep triggers.*need new ops/);
+    expect(prompt).toContain("a script that ignores a filter is wrong");
   });
 
   it("cleans up echoed fields, {T} in mana costs, and ignored subjects", () => {
