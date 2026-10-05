@@ -1,4 +1,9 @@
-import type { GameState, CardInstance, CardInstanceId } from "../types";
+import type {
+  GameState,
+  CardInstance,
+  CardInstanceId,
+  StackObject,
+} from "../types";
 import type { TriggerCondition } from "../oracle-text-parser/abilities";
 import { isOnBattlefield } from "../types";
 import { getTriggeredAbilities } from "./parse";
@@ -94,7 +99,24 @@ function castTriggerMatches(
   if (filter.excludeTypes?.some((t) => typeLine.includes(t))) return false;
   if (filter.multicolored && (spell.cardData.colors ?? []).length < 2)
     return false;
+  if (filter.singleTarget) {
+    const onStack = castSpellStackObject(state, spell.id);
+    if (!onStack || onStack.targets.length !== 1) return false;
+  }
   return true;
+}
+
+/** The cast (not copied) spell on the stack for this card, topmost first. */
+export function castSpellStackObject(
+  state: GameState,
+  spellCardId: CardInstanceId,
+): StackObject | undefined {
+  for (let i = state.stack.length - 1; i >= 0; i--) {
+    const o = state.stack[i];
+    if (o.type === "spell" && !o.isCopy && o.sourceCardId === spellCardId)
+      return o;
+  }
+  return undefined;
 }
 
 /** CR 508.1m: does an attack trigger care about this attacker? */

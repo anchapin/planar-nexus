@@ -51,6 +51,8 @@ export const OP_REFERENCE: Record<string, string> = {
   PutCounters:
     '{"op":"PutCounters","counter":"+1/+1","amount":N,"target":"creature"|"self"}',
   Surveil: '{"op":"Surveil","amount":N}',
+  CopySpell:
+    '{"op":"CopySpell","gain":["wither"]} (cast triggers only: copy the spell that was cast, same targets; gain optional)',
 };
 
 export function documentedOps(): string[] {

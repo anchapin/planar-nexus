@@ -23,6 +23,7 @@ import {
 } from "../effect-resolution";
 import { destroyCard, exileCard } from "../keyword-actions/removal";
 import { addCounters } from "../card-instance";
+import { copySpellOnStack } from "../spell-casting/resolve";
 import { getCardScript } from "./registry";
 import { isPermanentScript, isTargetedEffect } from "./script-guards";
 import type { CardEffect, CardScript } from "./schema";
@@ -32,6 +33,39 @@ interface EffectContext {
   sourceId?: CardInstanceId;
   target?: Target;
   kickerBonus: number;
+  /** Cast triggers: the spell that triggered the ability. */
+  triggeringStackObjectId?: string;
+}
+
+/**
+ * CR 707.10: copy the spell that triggered this ability, keeping its
+ * targets. "Those spells gain ..." marks the original and the copy. Does
+ * nothing when the spell has left the stack (countered or resolved).
+ */
+function copyTriggeringSpell(
+  state: GameState,
+  gain: readonly string[],
+  ctx: EffectContext,
+): GameState {
+  const spellId = ctx.triggeringStackObjectId;
+  if (!spellId || !state.stack.some((o) => o.id === spellId)) return state;
+  const r = copySpellOnStack(state, spellId);
+  if (!r.success || !r.copiedStackObjectId) return state;
+  if (gain.length === 0) return r.state;
+  const marked = new Set([spellId, r.copiedStackObjectId]);
+  return {
+    ...r.state,
+    stack: r.state.stack.map((o) =>
+      marked.has(o.id)
+        ? {
+            ...o,
+            grantedKeywords: [
+              ...new Set([...(o.grantedKeywords ?? []), ...gain]),
+            ],
+          }
+        : o,
+    ),
+  };
 }
 
 function isOnBattlefield(state: GameState, cardId: string): boolean {
@@ -240,13 +274,16 @@ function applyEffect(
       );
       return r.success ? r.state : state;
     }
+    case "CopySpell":
+      return copyTriggeringSpell(state, effect.gain ?? [], ctx);
   }
 }
 
 type ScriptStackObject = Pick<
   StackObject,
   "controllerId" | "sourceCardId" | "targets"
->;
+> &
+  Partial<Pick<StackObject, "triggeringStackObjectId">>;
 
 /**
  * Apply a list of scripted effects. Targeted effects take the stack object's
@@ -273,6 +310,7 @@ export function resolveScriptedEffects(
       sourceId: (stackObject.sourceCardId as CardInstanceId) || undefined,
       target,
       kickerBonus,
+      triggeringStackObjectId: stackObject.triggeringStackObjectId,
     });
   }
   return current;

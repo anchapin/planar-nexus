@@ -159,6 +159,8 @@ export interface CastFilter {
   types?: string[];
   excludeTypes?: string[];
   multicolored?: boolean;
+  /** "a spell with a single target": the spell has exactly one target. */
+  singleTarget?: boolean;
   self?: boolean;
   unsupported?: boolean;
 }

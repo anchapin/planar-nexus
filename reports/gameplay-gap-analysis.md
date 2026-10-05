@@ -1,6 +1,6 @@
 # Gameplay Gap Analysis
 
-**Generated:** 2026-10-05T02:16:26.734Z
+**Generated:** 2026-10-05T03:17:59.249Z
 
 ## Summary
 
@@ -22,7 +22,7 @@
 - Forced auto-pass priority calls: 0
 - Manual tap/untap calls: 0
 - TODO/FIXME/HACK/XXX comments: 0
-- Card scripts: 90 (90 of 5164 Standard cards scripted, 1.7%; 5074 unscripted)
+- Card scripts: 91 (91 of 5164 Standard cards scripted, 1.8%; 5073 unscripted)
   - Scripts with errata drift: 0
 
 ## Keyword Enforcement Matrix
@@ -194,8 +194,8 @@ Cards whose abilities come from a JSON card script instead of the oracle-text pa
 |                                 | Cards     |
 | ------------------------------- | --------- |
 | Standard-legal cards            | 5164      |
-| Scripted (Standard-legal)       | 90 (1.7%) |
-| Unscripted (Standard-legal)     | 5074      |
+| Scripted (Standard-legal)       | 91 (1.8%) |
+| Unscripted (Standard-legal)     | 5073      |
 | Scripted, not Standard-legal    | 0         |
 | Scripted, missing from snapshot | 0         |
 
