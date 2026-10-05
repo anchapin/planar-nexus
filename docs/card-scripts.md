@@ -43,16 +43,25 @@ resolution helpers.
 list (#2491):
 
 ```sh
-DRAFT_LLM_PROVIDER=anthropic ANTHROPIC_API_KEY=... DRAFT_LLM_MODEL=<model> \
-  npx tsx scripts/draft-card-scripts.ts --set dsk --limit 50
+GEMINI_API_KEY=... npx tsx scripts/draft-card-scripts.ts --set dsk --limit 50
 npx tsx scripts/draft-card-scripts.ts --set dsk --dry-run   # no LLM calls
 ```
 
-`DRAFT_LLM_PROVIDER=openai` with `OPENAI_BASE_URL` works with any
-OpenAI-compatible server, including a local Ollama.
+The default provider is `gemini-batch` with `gemini-3.1-flash-lite`, the
+bake-off winner (#2514: 29/30 new cards right, no false drafts, about $0.18
+per 1,000 cards). The whole set goes in one Batch API job, which can take a
+while; if it outlives the timeout, rerun with `--gemini-batch batches/...`
+(same set and `--limit`) to collect it. `DRAFT_LLM_MODEL` picks another
+Gemini model.
 
-- Every reply is checked against the zod schema; failures go in the report and
-  are not written.
+`DRAFT_LLM_PROVIDER=anthropic` (`ANTHROPIC_API_KEY`) or `openai`
+(`OPENAI_API_KEY`, plus `OPENAI_BASE_URL` for any OpenAI-compatible server,
+including a local Ollama) call one card at a time and need `DRAFT_LLM_MODEL`.
+
+- Every reply gets a mechanical clean-up first (echoed card fields dropped,
+  `{T}` moved from the mana cost to `tap`, `subject` dropped on events that
+  ignore it), then is checked against the zod schema; failures go in the
+  report and are not written.
 - When a card needs an effect the schema can't express, the model must answer
   `needs_new_op`. The report tallies these so the most common missing ops are
   first.
@@ -62,5 +71,6 @@ OpenAI-compatible server, including a local Ollama.
   checked for Forge script syntax. Never prompt with or train on Forge scripts.
 
 The **Draft card scripts** workflow (Actions tab) runs the same thing for one
-set and opens a draft PR with the report as its body. It needs an
-`ANTHROPIC_API_KEY` or `OPENAI_API_KEY` repo secret.
+set and opens a draft PR with the report as its body. Only the repo owner can
+run it, and its keys (`GEMINI_API_KEY`, or `ANTHROPIC_API_KEY` /
+`OPENAI_API_KEY`) live in the `llm-spend` environment.

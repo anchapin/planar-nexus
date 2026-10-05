@@ -118,20 +118,77 @@ const SCHEMA_RULES = `You write JSON card scripts for an MTG rules engine. Reply
 
 Either
   {"script": {"name": ..., "oracle": ..., <abilities>}}
-or, when ANY part of the card's abilities can't be expressed exactly with the ops below,
+or, when ANY part of the card's abilities can't be expressed exactly with the fields and ops below,
   {"needs_new_op": ["short description of each missing effect"]}
 
-Never approximate, drop, or simplify an ability. A partial script is wrong: the engine takes a scripted card's abilities only from its script.
+Never approximate, drop, or simplify an ability. A partial script is wrong: the engine takes a scripted card's abilities only from its script. Use only the fields shown here (no "type_line", "mana_cost" or other keys).
 
 Abilities:
 - Instants and sorceries: "spell": [effects], applied in order. Targeted effects use the spell's targets in order.
-- Permanents: "triggers": [{"text": <ability sentence as printed>, "event": "etb"|"landfall", "subject": "self"|"another"|"any", "effects": [...]}] and/or
-  "activated": [{"text": <the part after the colon>, "cost": {"mana": "{1}{B}", "tap": bool, "sacrifice": bool}, "effects": [...]}].
-  Trigger events: "etb" (enters the battlefield) and "landfall" (a land you control enters; "subject" is ignored). Dies/attacks/upkeep triggers, static abilities, activation timing limits, X costs, hybrid or Phyrexian mana in an activation cost, and other costs all need new ops.
-- Keywords (flying, deathtouch, ...) need nothing: the engine reads them from the card.
+- Permanents use any of "triggers", "activated" and "statics", each the full list of that kind.
+- Triggers: {"text": <ability sentence as printed>, "event": ..., "effects": [...]} plus the fields for that event:
+  - "etb" (enters the battlefield), "dies", "attacks": "subject": "self" (this permanent, the default) | "another" | "any" (creatures), and with another/any an optional "controller": "you" | "opponent". "attacks" also takes "once": true for "whenever you attack" (once per combat, not per attacker).
+  - "landfall": a land you control enters. No other fields.
+  - "upkeep": at the beginning of an upkeep. "whose": "you" | "each" | "opponent".
+  - "cast": whenever a spell is cast. "caster": "you" (default) | "opponent" | "any"; "spell": "any" | "creature" | "noncreature" | "instant_or_sorcery" | "artifact" | "enchantment" | "multicolored"; "targets": "single" for "a spell with a single target".
+- Activated: {"text": <the part after the colon>, "cost": {"mana": "{1}{B}", "tap": true, "sacrifice": true}, "effects": [...]}. "mana" holds only generic, colored or {C} mana symbols; {T} goes in "tap"; leave "mana" out when the cost has none. Add "limit": "once" | "once_per_turn" for "Activate only once" / "Activate only once each turn", and "timing": "sorcery" for "Activate only as a sorcery".
+- Statics: {"text": <the line>, "affects": {"controller": "you" | "opponents", "other": true, "subtype": "Dinosaur"}, "power": N, "toughness": N, "keywords": ["haste"]} for creatures getting +N/+N and/or gaining evergreen keywords. "other" and "subtype" are optional; set power and toughness together.
+- Keywords printed on the card itself (flying, flash, prowess, ward, deathtouch, ...) need nothing: the engine reads them from the card. Script the card's other abilities only.
+
+Still needs new ops: X costs, hybrid or Phyrexian mana in an activation cost, other costs (discard, pay life, tap or sacrifice other permanents, remove counters), modes ("choose one"), conditions ("if", "as long as", "unless"), static effects other than P/T and keywords, and any effect not listed.
 
 Ops:
 `;
+
+/**
+ * Keys models echo back from the card or the prompt that aren't script
+ * fields. Dropping them is safe: name and oracle are pinned from the card.
+ */
+const ECHO_KEYS = ["type_line", "mana_cost", "type", "types", "cmc"];
+/** Trigger events whose "subject" the engine ignores. */
+const NO_SUBJECT_EVENTS = new Set(["landfall", "upkeep", "cast"]);
+
+/**
+ * Mechanical clean-up before schema validation: drops echoed card fields,
+ * moves a {T} written into the mana cost to "tap", drops an empty mana cost,
+ * and drops "subject" on events that ignore it. Never changes an effect.
+ */
+export function normalizeDraft(
+  raw: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...raw };
+  for (const k of ECHO_KEYS) delete out[k];
+  if (Array.isArray(out.activated)) {
+    out.activated = out.activated.map((a) => {
+      if (!a || typeof a !== "object") return a;
+      const ability = { ...(a as Record<string, unknown>) };
+      const cost = ability.cost;
+      if (cost && typeof cost === "object") {
+        const c = { ...(cost as Record<string, unknown>) };
+        if (typeof c.mana === "string") {
+          let mana = c.mana.replace(/\s+/g, "");
+          if (/\{T\}/i.test(mana)) {
+            mana = mana.replace(/\{T\}/gi, "");
+            c.tap = true;
+          }
+          if (mana) c.mana = mana.toUpperCase();
+          else delete c.mana;
+        }
+        ability.cost = c;
+      }
+      return ability;
+    });
+  }
+  if (Array.isArray(out.triggers)) {
+    out.triggers = out.triggers.map((t) => {
+      if (!t || typeof t !== "object") return t;
+      const trig = { ...(t as Record<string, unknown>) };
+      if (NO_SUBJECT_EVENTS.has(String(trig.event))) delete trig.subject;
+      return trig;
+    });
+  }
+  return out;
+}
 
 /** The full prompt for one card. Examples must be this repo's own scripts. */
 export function buildPrompt(
@@ -189,7 +246,7 @@ export function judgeReply(card: DraftCard, reply: string): DraftOutcome {
     };
   }
   const candidate = {
-    ...(obj.script as Record<string, unknown>),
+    ...normalizeDraft(obj.script as Record<string, unknown>),
     name: card.name,
     oracle: card.oracle_text ?? "",
   };
