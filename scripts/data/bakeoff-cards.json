@@ -1,0 +1,147 @@
+{
+  "note": "Fixed 50-card set for the card-script model bake-off (#2491). gold = cards this repo already scripts by hand (never used as few-shot examples); a draft is scored against the hand-written script. new = unscripted Standard cards with the outcome the current op set should produce: draft when every ability fits the documented ops, needs_new_op when any part doesn't, either when it is ambiguous.",
+  "gold": [
+    "Bilbo's Deadly Slice",
+    "Cancel",
+    "Fell",
+    "Flame Lash",
+    "Giant Growth",
+    "Hop to It",
+    "Wander Off",
+    "Intrepid Tenderfoot",
+    "Oscorp Research Team",
+    "Rune-Sealed Wall",
+    "Wretched Doll",
+    "Attercop",
+    "Cloudblazer",
+    "Eumidian Terrabotanist",
+    "Pond Prophet",
+    "Resolute Reinforcements",
+    "Sabotender",
+    "Sterling Hound",
+    "Tatyova, Benthic Druid",
+    "Treetop Freedom Fighters"
+  ],
+  "new": [
+    {
+      "name": "Glimmerburst",
+      "expect": "needs_new_op"
+    },
+    {
+      "name": "Extended Absence",
+      "expect": "needs_new_op"
+    },
+    {
+      "name": "Repel Calamity",
+      "expect": "needs_new_op"
+    },
+    {
+      "name": "Shock",
+      "expect": "draft"
+    },
+    {
+      "name": "Blitzball Shot",
+      "expect": "needs_new_op"
+    },
+    {
+      "name": "Refute Destiny",
+      "expect": "needs_new_op"
+    },
+    {
+      "name": "Spin Out",
+      "expect": "needs_new_op"
+    },
+    {
+      "name": "Release the Dogs",
+      "expect": "draft"
+    },
+    {
+      "name": "Defibrillating Current",
+      "expect": "needs_new_op"
+    },
+    {
+      "name": "The Chase Is On",
+      "expect": "needs_new_op"
+    },
+    {
+      "name": "Auspicious Arrival",
+      "expect": "needs_new_op"
+    },
+    {
+      "name": "Sephiroth's Intervention",
+      "expect": "draft"
+    },
+    {
+      "name": "Crustacean Commando",
+      "expect": "needs_new_op"
+    },
+    {
+      "name": "Rampart Hunter",
+      "expect": "needs_new_op"
+    },
+    {
+      "name": "Cursed Courtier",
+      "expect": "needs_new_op"
+    },
+    {
+      "name": "Firespitter Whelp",
+      "expect": "needs_new_op"
+    },
+    {
+      "name": "Textbook Tabulator",
+      "expect": "either"
+    },
+    {
+      "name": "Viashino Pyromancer",
+      "expect": "needs_new_op"
+    },
+    {
+      "name": "Unscrupulous Agent",
+      "expect": "needs_new_op"
+    },
+    {
+      "name": "Skeleton Archer",
+      "expect": "draft"
+    },
+    {
+      "name": "Tunnel Surveyor",
+      "expect": "needs_new_op"
+    },
+    {
+      "name": "Teapot Slinger",
+      "expect": "needs_new_op"
+    },
+    {
+      "name": "Rock Soldiers",
+      "expect": "needs_new_op"
+    },
+    {
+      "name": "Heartstring Puller",
+      "expect": "needs_new_op"
+    },
+    {
+      "name": "Nebula Dragon",
+      "expect": "draft"
+    },
+    {
+      "name": "Lightshell Duo",
+      "expect": "draft"
+    },
+    {
+      "name": "Vault Plunderer",
+      "expect": "draft"
+    },
+    {
+      "name": "Galactic Wayfarer",
+      "expect": "needs_new_op"
+    },
+    {
+      "name": "Devoted Duelist",
+      "expect": "needs_new_op"
+    },
+    {
+      "name": "Mysidian Elder",
+      "expect": "needs_new_op"
+    }
+  ]
+}
