@@ -10,6 +10,7 @@
  * pass, the same way threshold and domain values are.
  */
 import type { CardInstance, GameState, PlayerId } from "../types";
+import { getCardScript } from "../card-scripts/registry";
 
 export interface TribalAnthem {
   subtype: string;
@@ -99,6 +100,8 @@ export function refreshTribalAnthems(state: GameState): GameState {
   const onField = battlefieldCards(state);
   const sources: { card: CardInstance; anthems: TribalAnthem[] }[] = [];
   for (const card of onField) {
+    // A scripted card's statics come from its script (#2496).
+    if (getCardScript(card.cardData.name)) continue;
     const anthems = parseOtherTypeAnthems(card.cardData.oracle_text ?? "");
     if (anthems.length > 0) sources.push({ card, anthems });
   }

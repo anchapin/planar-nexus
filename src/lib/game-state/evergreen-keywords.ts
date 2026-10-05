@@ -28,6 +28,7 @@ import {
   getProtectionQualitiesStrict,
 } from "./keyword-actions/protection";
 import { hasFlyingStrict } from "./keyword-actions/flying";
+import { getCardScript } from "./card-scripts/registry";
 import { hasReachStrict } from "./keyword-actions/reach";
 import { hasMenaceStrict } from "./keyword-actions/menace";
 import { hasFirstStrikeStrict } from "./keyword-actions/first-strike";
@@ -54,6 +55,8 @@ import { isThresholdOnlyKeyword } from "./keyword-actions/threshold";
 export function hasKeyword(card: CardInstance, keyword: string): boolean {
   // Granted by an attached Aura (issue #2464).
   if (card.auraKeywords?.includes(keyword.toLowerCase())) return true;
+  // Granted by a scripted static ability (issue #2496).
+  if (card.scriptStaticKeywords?.includes(keyword.toLowerCase())) return true;
   // A keyword granted only by a threshold clause counts only while
   // threshold is active (issue #2300).
   if (isThresholdOnlyKeyword(card, keyword)) {
@@ -62,7 +65,12 @@ export function hasKeyword(card: CardInstance, keyword: string): boolean {
     );
   }
   const keywords = card.cardData.keywords || [];
-  const oracleText = card.cardData.oracle_text?.toLowerCase() || "";
+  // A scripted static's line grants keywords to others ("Creatures you
+  // control have haste"); it is applied above, not read as the card's own.
+  const statics = getCardScript(card.cardData.name)?.statics ?? [];
+  let oracleText = card.cardData.oracle_text?.toLowerCase() || "";
+  for (const s of statics)
+    oracleText = oracleText.replace(s.text.toLowerCase(), "");
 
   return (
     keywords.some((k) => k.toLowerCase() === keyword.toLowerCase()) ||
@@ -880,6 +888,8 @@ export function getEffectivePower(card: CardInstance): number {
   power += card.tribalAnthemPT?.power || 0;
   // Aura statics ("Enchanted creature gets +N/+N", issue #2453), layer 7c.
   power += card.auraPT?.power || 0;
+  // Scripted static anthems (issue #2496), layer 7c.
+  power += card.scriptStaticPT?.power || 0;
   // Domain characteristic-defining ability (CR 604.3), layer 7a.
   power += card.domainPower || 0;
   return Math.max(0, power);
@@ -913,6 +923,7 @@ export function getEffectiveToughness(card: CardInstance): number {
   toughness += card.thresholdAnthemPT?.toughness || 0;
   toughness += card.tribalAnthemPT?.toughness || 0;
   toughness += card.auraPT?.toughness || 0;
+  toughness += card.scriptStaticPT?.toughness || 0;
 
   return Math.max(0, toughness);
 }

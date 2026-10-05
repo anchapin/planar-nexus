@@ -221,6 +221,16 @@ export interface CardInstance {
    * Armor's first strike (issue #2464). Maintained by `refreshAuraBonuses`.
    */
   auraKeywords?: string[];
+  /**
+   * Summed P/T from scripted static abilities on the battlefield, e.g. Anthem
+   * of Champions (issue #2496). Maintained by `refreshScriptedStatics`.
+   */
+  scriptStaticPT?: { power: number; toughness: number };
+  /**
+   * Keywords granted by scripted static abilities, e.g. Samut's haste
+   * (issue #2496). Maintained by `refreshScriptedStatics`.
+   */
+  scriptStaticKeywords?: string[];
 
   // Renown keyword (CR 702.100)
   /**

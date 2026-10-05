@@ -1,0 +1,13 @@
+{
+  "name": "Samut, Hazoret's Champion",
+  "oracle": "Creatures you control have haste.",
+  "statics": [
+    {
+      "text": "Creatures you control have haste.",
+      "affects": {
+        "controller": "you"
+      },
+      "keywords": ["haste"]
+    }
+  ]
+}

@@ -221,6 +221,36 @@ export const ActivatedSchema = z
   })
   .strict();
 
+/**
+ * A static ability that pumps or grants keywords to creatures (CR 604, 611.3),
+ * e.g. "Other Dinosaurs you control get +1/+1" or "Creatures you control have
+ * haste" (#2496). Applied in layer 6 (keywords) and 7c (P/T).
+ */
+export const StaticSchema = z
+  .object({
+    /** The static ability's line of oracle text. */
+    text: z.string().min(1),
+    affects: z
+      .object({
+        controller: z.enum(["you", "opponents"]),
+        /** "Other creatures": excludes the source itself. */
+        other: z.boolean().optional(),
+        /** Only creatures with this creature type, singular ("Dinosaur"). */
+        subtype: z.string().min(1).optional(),
+      })
+      .strict(),
+    power: z.number().int().optional(),
+    toughness: z.number().int().optional(),
+    keywords: z.array(z.enum(TOKEN_KEYWORDS)).min(1).optional(),
+  })
+  .strict()
+  .refine((s) => (s.power === undefined) === (s.toughness === undefined), {
+    message: "set both power and toughness, or neither",
+  })
+  .refine((s) => s.power !== undefined || s.keywords, {
+    message: "a static needs power/toughness or keywords",
+  });
+
 export const CardScriptSchema = z
   .object({
     /** Exact English card name, as on Scryfall. */
@@ -233,12 +263,14 @@ export const CardScriptSchema = z
     triggers: z.array(TriggerSchema).min(1).optional(),
     /** A permanent's activated abilities (the full list when present). */
     activated: z.array(ActivatedSchema).min(1).optional(),
+    /** A permanent's static abilities (the full list when present). */
+    statics: z.array(StaticSchema).min(1).optional(),
   })
   .strict()
-  .refine((s) => s.spell || s.triggers || s.activated, {
-    message: "a card script needs spell, triggers, or activated",
+  .refine((s) => s.spell || s.triggers || s.activated || s.statics, {
+    message: "a card script needs spell, triggers, activated, or statics",
   })
-  .refine((s) => !(s.spell && (s.triggers || s.activated)), {
+  .refine((s) => !(s.spell && (s.triggers || s.activated || s.statics)), {
     message: "a spell script can't also have permanent abilities",
   });
 
@@ -246,5 +278,6 @@ export type CardEffect = z.infer<typeof EffectSchema>;
 export type CardScript = z.infer<typeof CardScriptSchema>;
 export type ScriptedTrigger = z.infer<typeof TriggerSchema>;
 export type ScriptedActivated = z.infer<typeof ActivatedSchema>;
+export type ScriptedStatic = z.infer<typeof StaticSchema>;
 
 export { isPermanentScript, isTargetedEffect } from "./script-guards";

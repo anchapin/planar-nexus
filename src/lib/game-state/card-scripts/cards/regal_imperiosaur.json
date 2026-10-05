@@ -1,0 +1,16 @@
+{
+  "name": "Regal Imperiosaur",
+  "oracle": "Other Dinosaurs you control get +1/+1.",
+  "statics": [
+    {
+      "text": "Other Dinosaurs you control get +1/+1.",
+      "affects": {
+        "controller": "you",
+        "other": true,
+        "subtype": "Dinosaur"
+      },
+      "power": 1,
+      "toughness": 1
+    }
+  ]
+}

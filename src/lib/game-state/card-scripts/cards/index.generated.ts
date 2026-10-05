@@ -3,6 +3,7 @@
 /* prettier-ignore */
 export const RAW_CARD_SCRIPTS: unknown[] = [
   {"name":"A.I.M. Synthoids","triggers":[{"text":"When this creature enters, surveil 2.","event":"etb","subject":"self","effects":[{"op":"Surveil","amount":2}]}]},
+  {"name":"Anthem of Champions","statics":[{"text":"Creatures you control get +1/+1.","affects":{"controller":"you"},"power":1,"toughness":1}]},
   {"name":"Attercop","triggers":[{"text":"Landfall — Whenever a land you control enters, this creature gets +1/+1 until end of turn.","event":"landfall","effects":[{"op":"Pump","power":1,"toughness":1,"target":"self"}]}]},
   {"name":"Bilbo's Deadly Slice","spell":[{"op":"Destroy","target":"creature"}]},
   {"name":"Black Waltz No. 3","triggers":[{"text":"Whenever you cast a noncreature spell, Black Waltz No. 3 deals 2 damage to each opponent.","event":"cast","caster":"you","spell":"noncreature","effects":[{"op":"DealDamage","amount":2,"target":"each_opponent"}]}]},
@@ -62,11 +63,13 @@ export const RAW_CARD_SCRIPTS: unknown[] = [
   {"name":"Pulse Tracker","triggers":[{"text":"Whenever this creature attacks, each opponent loses 1 life.","event":"attacks","subject":"self","effects":[{"op":"LoseLife","amount":1,"who":"each_opponent"}]}]},
   {"name":"Rampaging Baloths","triggers":[{"text":"Landfall — Whenever a land you control enters, create a 4/4 green Beast creature token.","event":"landfall","effects":[{"op":"CreateToken","count":1,"power":4,"toughness":4,"color":"green","subtypes":["Beast"]}]}]},
   {"name":"Ravine Raider","activated":[{"text":"This creature gets +1/+1 until end of turn.","cost":{"mana":"{1}{B}","tap":false,"sacrifice":false},"effects":[{"op":"Pump","power":1,"toughness":1,"target":"self"}]}]},
+  {"name":"Regal Imperiosaur","statics":[{"text":"Other Dinosaurs you control get +1/+1.","affects":{"controller":"you","other":true,"subtype":"Dinosaur"},"power":1,"toughness":1}]},
   {"name":"Remnant Elemental","triggers":[{"text":"Landfall — Whenever a land you control enters, this creature gets +2/+0 until end of turn.","event":"landfall","effects":[{"op":"Pump","power":2,"toughness":0,"target":"self"}]}]},
   {"name":"Resolute Reinforcements","triggers":[{"text":"When this creature enters, create a 1/1 white Soldier creature token.","event":"etb","subject":"self","effects":[{"op":"CreateToken","count":1,"power":1,"toughness":1,"color":"white","subtypes":["Soldier"]}]}]},
   {"name":"Rune-Sealed Wall","activated":[{"text":"Surveil 1.","cost":{"tap":true,"sacrifice":false},"effects":[{"op":"Surveil","amount":1}]}]},
   {"name":"S.H.I.E.L.D. Deployment Drone","triggers":[{"text":"When this creature enters, create a 1/1 white Soldier creature token.","event":"etb","subject":"self","effects":[{"op":"CreateToken","count":1,"power":1,"toughness":1,"color":"white","subtypes":["Soldier"]}]}]},
   {"name":"Sabotender","triggers":[{"text":"Landfall — Whenever a land you control enters, this creature deals 1 damage to each opponent.","event":"landfall","effects":[{"op":"DealDamage","amount":1,"target":"each_opponent"}]}]},
+  {"name":"Samut, Hazoret's Champion","statics":[{"text":"Creatures you control have haste.","affects":{"controller":"you"},"keywords":["haste"]}]},
   {"name":"Sanguine Syphoner","triggers":[{"text":"Whenever this creature attacks, each opponent loses 1 life and you gain 1 life.","event":"attacks","subject":"self","effects":[{"op":"LoseLife","amount":1,"who":"each_opponent"},{"op":"GainLife","amount":1,"who":"you"}]}]},
   {"name":"Sanitation Automaton","triggers":[{"text":"When this creature enters, surveil 1.","event":"etb","subject":"self","effects":[{"op":"Surveil","amount":1}]}]},
   {"name":"Sazh's Chocobo","triggers":[{"text":"Landfall — Whenever a land you control enters, put a +1/+1 counter on this creature.","event":"landfall","effects":[{"op":"PutCounters","counter":"+1/+1","amount":1,"target":"self"}]}]},
@@ -86,6 +89,7 @@ export const RAW_CARD_SCRIPTS: unknown[] = [
   {"name":"Vampire Neonate","activated":[{"text":"Each opponent loses 1 life and you gain 1 life.","cost":{"mana":"{2}","tap":true,"sacrifice":false},"effects":[{"op":"LoseLife","amount":1,"who":"each_opponent"},{"op":"GainLife","amount":1,"who":"you"}]}]},
   {"name":"Vampire Spawn","triggers":[{"text":"When this creature enters, each opponent loses 2 life and you gain 2 life.","event":"etb","subject":"self","effects":[{"op":"LoseLife","amount":2,"who":"each_opponent"},{"op":"GainLife","amount":2,"who":"you"}]}]},
   {"name":"Wander Off","spell":[{"op":"Exile","target":"creature"}]},
+  {"name":"White Lotus Reinforcements","statics":[{"text":"Other Allies you control get +1/+1.","affects":{"controller":"you","other":true,"subtype":"Ally"},"power":1,"toughness":1}]},
   {"name":"Wreckage Wickerfolk","triggers":[{"text":"When this creature enters, surveil 2.","event":"etb","subject":"self","effects":[{"op":"Surveil","amount":2}]}]},
   {"name":"Wretched Doll","activated":[{"text":"Surveil 1.","cost":{"mana":"{B}","tap":true,"sacrifice":false},"effects":[{"op":"Surveil","amount":1}]}]},
 ];
