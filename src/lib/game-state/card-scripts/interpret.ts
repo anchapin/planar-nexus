@@ -28,9 +28,15 @@ import { getCardScript } from "./registry";
 import {
   isPermanentScript,
   isTargetedEffect,
+  scriptedAbilityEffects,
   scriptedSpellEffects,
 } from "./script-guards";
-import type { CardEffect, CardScript } from "./schema";
+import type {
+  CardEffect,
+  CardScript,
+  ScriptedActivated,
+  ScriptedTrigger,
+} from "./schema";
 
 interface EffectContext {
   controllerId: PlayerId;
@@ -343,25 +349,43 @@ const sameText = (a: string, b: string) =>
   a.trim().toLowerCase() === b.trim().toLowerCase();
 
 /**
- * The scripted effects of a triggered or activated ability on the stack, or
+ * The script entry of a triggered or activated ability on the stack, or
  * undefined when its source has no permanent script. Matched by the ability
  * text, which the stack object carries.
+ */
+export function getScriptedAbility(
+  state: GameState,
+  stackObject: Pick<
+    StackObject,
+    "sourceCardId" | "text" | "triggered" | "activated"
+  >,
+): ScriptedTrigger | ScriptedActivated | undefined {
+  if (!stackObject.sourceCardId || !stackObject.text) return undefined;
+  const source = state.cards.get(stackObject.sourceCardId as CardInstanceId);
+  const script = getCardScript(source?.cardData.name);
+  if (!script || !isPermanentScript(script)) return undefined;
+  const abilities: readonly (ScriptedTrigger | ScriptedActivated)[] =
+    stackObject.triggered ? (script.triggers ?? []) : (script.activated ?? []);
+  return abilities.find((a) => sameText(a.text, stackObject.text));
+}
+
+/**
+ * The scripted effects of a triggered or activated ability on the stack, or
+ * undefined when its source has no permanent script. A modal ability gives
+ * its chosen modes' effects; with none chosen, none (CR 700.2).
  */
 export function getScriptedAbilityEffects(
   state: GameState,
   stackObject: Pick<
     StackObject,
     "sourceCardId" | "text" | "triggered" | "activated"
-  >,
+  > &
+    Partial<Pick<StackObject, "chosenModes">>,
 ): readonly CardEffect[] | undefined {
-  if (!stackObject.sourceCardId || !stackObject.text) return undefined;
-  const source = state.cards.get(stackObject.sourceCardId as CardInstanceId);
-  const script = getCardScript(source?.cardData.name);
-  if (!script || !isPermanentScript(script)) return undefined;
-  const abilities = stackObject.triggered
-    ? (script.triggers ?? [])
-    : (script.activated ?? []);
-  return abilities.find((a) => sameText(a.text, stackObject.text))?.effects;
+  const ability = getScriptedAbility(state, stackObject);
+  return ability
+    ? scriptedAbilityEffects(ability, stackObject.chosenModes ?? [])
+    : undefined;
 }
 
 /**

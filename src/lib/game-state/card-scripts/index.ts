@@ -6,7 +6,10 @@ export {
   TriggerSchema,
   isPermanentScript,
   isTargetedEffect,
+  modalEffects,
+  modeChoiceError,
   modeLabelKey,
+  scriptedAbilityEffects,
   scriptedModeChoiceError,
   scriptedSpellEffects,
 } from "./schema";
@@ -26,6 +29,7 @@ export {
   registerCardScripts,
 } from "./registry";
 export {
+  getScriptedAbility,
   getScriptedAbilityEffects,
   resolveScriptedAbility,
   resolveScriptedEffects,

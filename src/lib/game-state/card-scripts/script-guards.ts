@@ -26,24 +26,47 @@ export function modeLabelKey(text: string): string {
     .toLowerCase();
 }
 
+type Modes = NonNullable<CardScript["modes"]>;
+
 /**
- * The effects a scripted instant or sorcery applies. For a modal spell
- * (CR 700.2) that is the chosen modes' effects in printed order; labels that
- * match no mode are ignored. Pass `chosenModes` undefined to get every mode's
- * effects, e.g. to ask whether the spell can target at all before a mode is
- * picked.
+ * The effects of a modal spell or ability's chosen modes, in printed order
+ * (CR 700.2); labels that match no mode are ignored. Pass `chosenModes`
+ * undefined to get every mode's effects, e.g. to ask whether it can target
+ * at all before a mode is picked.
+ */
+export function modalEffects(
+  modes: Modes,
+  chosenModes?: readonly string[],
+): CardEffect[] {
+  if (chosenModes === undefined) return modes.options.flatMap((o) => o.effects);
+  const chosen = new Set(chosenModes.map(modeLabelKey));
+  return modes.options
+    .filter((o) => chosen.has(modeLabelKey(o.text)))
+    .flatMap((o) => o.effects);
+}
+
+/**
+ * The effects a scripted instant or sorcery applies: its `spell` effects, or
+ * for a modal spell the chosen modes' effects (see `modalEffects`).
  */
 export function scriptedSpellEffects(
   script: CardScript,
   chosenModes?: readonly string[],
 ): CardEffect[] {
   if (!script.modes) return [...(script.spell ?? [])];
-  const options = script.modes.options;
-  if (chosenModes === undefined) return options.flatMap((o) => o.effects);
-  const chosen = new Set(chosenModes.map(modeLabelKey));
-  return options
-    .filter((o) => chosen.has(modeLabelKey(o.text)))
-    .flatMap((o) => o.effects);
+  return modalEffects(script.modes, chosenModes);
+}
+
+/**
+ * The effects a scripted triggered or activated ability applies: its
+ * `effects`, or for a modal ability the chosen modes' effects.
+ */
+export function scriptedAbilityEffects(
+  ability: { effects?: readonly CardEffect[]; modes?: Modes },
+  chosenModes?: readonly string[],
+): CardEffect[] {
+  if (!ability.modes) return [...(ability.effects ?? [])];
+  return modalEffects(ability.modes, chosenModes);
 }
 
 /** True when the effect uses one of the spell's chosen targets. */
@@ -68,16 +91,14 @@ export function isTargetedEffect(effect: CardEffect): boolean {
 }
 
 /**
- * Why `chosenModes` isn't a legal choice for a scripted modal spell, or null
- * when it is (or the script isn't modal): exactly `choose` distinct modes,
- * each one of the script's own (CR 700.2).
+ * Why `chosenModes` isn't a legal choice for `modes`, or null when it is:
+ * exactly `choose` distinct modes, each one of its own (CR 700.2).
  */
-export function scriptedModeChoiceError(
-  script: CardScript,
+export function modeChoiceError(
+  name: string,
+  modes: Modes,
   chosenModes: readonly string[],
 ): string | null {
-  const modes = script.modes;
-  if (!modes) return null;
   const known = new Set(modes.options.map((o) => modeLabelKey(o.text)));
   const picked = chosenModes.map(modeLabelKey);
   if (
@@ -85,7 +106,20 @@ export function scriptedModeChoiceError(
     new Set(picked).size !== picked.length ||
     picked.some((m) => !known.has(m))
   ) {
-    return `${script.name}: choose exactly ${modes.choose} of its modes.`;
+    return `${name}: choose exactly ${modes.choose} of its modes.`;
   }
   return null;
+}
+
+/**
+ * Why `chosenModes` isn't a legal choice for a scripted modal spell, or null
+ * when it is (or the script isn't modal).
+ */
+export function scriptedModeChoiceError(
+  script: CardScript,
+  chosenModes: readonly string[],
+): string | null {
+  return script.modes
+    ? modeChoiceError(script.name, script.modes, chosenModes)
+    : null;
 }

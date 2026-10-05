@@ -153,6 +153,37 @@ export const EffectSchema = z.discriminatedUnion("op", [
 const effects = z.array(EffectSchema).min(1);
 
 /**
+ * One mode of a modal spell or ability. `text` is the mode as printed after its bullet,
+ * mode name included ("Fight Crime — Counter target spell. Draw a card.");
+ * reminder text is left out. It is how the stack's `chosenModes` labels are
+ * matched back to the mode.
+ */
+export const ModeSchema = z
+  .object({ text: z.string().min(1), effects })
+  .strict();
+
+/**
+ * A modal instant or sorcery (CR 700.2): "Choose one —", "Choose two —".
+ * The chosen modes resolve in printed order and share the spell's targets,
+ * in order, like a plain spell's effects.
+ */
+export const ModesSchema = z
+  .object({
+    choose: z.number().int().min(1).max(4),
+    options: z.array(ModeSchema).min(2),
+  })
+  .strict()
+  .refine((m) => m.choose < m.options.length, {
+    message: "choose must be less than the number of modes",
+  })
+  .refine(
+    (m) =>
+      new Set(m.options.map((o) => o.text.trim().toLowerCase())).size ===
+      m.options.length,
+    { message: "mode texts must be distinct" },
+  );
+
+/**
  * A triggered ability. `text` is the ability's oracle sentence: it is what
  * the stack shows and how a resolving ability is matched back to its script.
  */
@@ -196,9 +227,18 @@ export const TriggerSchema = z
       .optional(),
     /** cast only: "a spell with a single target" (exactly one target). */
     targets: z.literal("single").optional(),
-    effects,
+    effects: effects.optional(),
+    /**
+     * A modal ability ("When this creature enters, choose one —"), instead of
+     * `effects`. The controller picks the modes as it goes on the stack
+     * (CR 603.3c, 700.2a); `text` is then the line up to the dash.
+     */
+    modes: ModesSchema.optional(),
   })
   .strict()
+  .refine((t) => (t.effects === undefined) !== (t.modes === undefined), {
+    message: "a trigger has effects or modes, exactly one",
+  })
   .refine((t) => t.event === "upkeep" || t.whose === undefined, {
     message: "whose is only for upkeep triggers",
   })
@@ -214,7 +254,12 @@ export const TriggerSchema = z
     { message: "caster, spell and targets are only for cast triggers" },
   )
   .refine(
-    (t) => t.event === "cast" || !t.effects.some((e) => e.op === "CopySpell"),
+    (t) =>
+      t.event === "cast" ||
+      ![
+        ...(t.effects ?? []),
+        ...(t.modes?.options ?? []).flatMap((o) => o.effects),
+      ].some((e) => e.op === "CopySpell"),
     { message: "CopySpell is only for cast triggers" },
   )
   .refine(
@@ -222,37 +267,6 @@ export const TriggerSchema = z
       t.controller === undefined ||
       (t.subject !== "self" && ["etb", "dies", "attacks"].includes(t.event)),
     { message: "controller needs subject another/any on etb, dies or attacks" },
-  );
-
-/**
- * One mode of a modal spell. `text` is the mode as printed after its bullet,
- * mode name included ("Fight Crime — Counter target spell. Draw a card.");
- * reminder text is left out. It is how the stack's `chosenModes` labels are
- * matched back to the mode.
- */
-export const ModeSchema = z
-  .object({ text: z.string().min(1), effects })
-  .strict();
-
-/**
- * A modal instant or sorcery (CR 700.2): "Choose one —", "Choose two —".
- * The chosen modes resolve in printed order and share the spell's targets,
- * in order, like a plain spell's effects.
- */
-export const ModesSchema = z
-  .object({
-    choose: z.number().int().min(1).max(4),
-    options: z.array(ModeSchema).min(2),
-  })
-  .strict()
-  .refine((m) => m.choose < m.options.length, {
-    message: "choose must be less than the number of modes",
-  })
-  .refine(
-    (m) =>
-      new Set(m.options.map((o) => o.text.trim().toLowerCase())).size ===
-      m.options.length,
-    { message: "mode texts must be distinct" },
   );
 
 /** An activated ability (CR 602). `text` is the part after the colon. */
@@ -273,9 +287,18 @@ export const ActivatedSchema = z
     limit: z.enum(["once", "once_per_turn"]).optional(),
     /** CR 602.5d: "Activate only as a sorcery". */
     timing: z.literal("sorcery").optional(),
-    effects,
+    effects: effects.optional(),
+    /**
+     * A modal ability ("{2}, Sacrifice this creature: Choose one —"), instead
+     * of `effects`; `text` is then "Choose one —". Modes are picked as it is
+     * activated (CR 700.2a).
+     */
+    modes: ModesSchema.optional(),
   })
-  .strict();
+  .strict()
+  .refine((a) => (a.effects === undefined) !== (a.modes === undefined), {
+    message: "an activated ability has effects or modes, exactly one",
+  });
 
 /**
  * A static ability that pumps or grants keywords to creatures (CR 604, 611.3),
@@ -347,7 +370,10 @@ export type ScriptedModes = z.infer<typeof ModesSchema>;
 export {
   isPermanentScript,
   isTargetedEffect,
+  modalEffects,
+  modeChoiceError,
   modeLabelKey,
+  scriptedAbilityEffects,
   scriptedModeChoiceError,
   scriptedSpellEffects,
 } from "./script-guards";

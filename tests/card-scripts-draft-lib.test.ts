@@ -296,4 +296,45 @@ describe("card-script drafting pipeline", () => {
       "modes scripted for a card that isn't modal",
     ]);
   });
+
+  it("checks a modal triggered ability against the printed modes (#2525)", () => {
+    const prince: DraftCard = {
+      name: "Test Prince",
+      type_line: "Creature — Human Noble",
+      layout: "normal",
+      oracle_text:
+        "When this creature enters, choose one —\n• You gain 3 life.\n• Draw a card.",
+    };
+    const text = "When this creature enters, choose one —";
+    const options = [
+      {
+        text: "You gain 3 life.",
+        effects: [{ op: "GainLife", amount: 3, who: "you" }],
+      },
+      {
+        text: "Draw a card.",
+        effects: [{ op: "Draw", amount: 1, who: "you" }],
+      },
+    ];
+    const base = { name: prince.name, oracle: prince.oracle_text! };
+    const withTrigger = (t: object) =>
+      ({
+        ...base,
+        triggers: [{ text, event: "etb", subject: "self", ...t }],
+      }) as CardScript;
+    expect(
+      checkModes(prince, withTrigger({ modes: { choose: 1, options } })),
+    ).toEqual([]);
+    expect(
+      checkModes(
+        prince,
+        withTrigger({
+          modes: { choose: 1, options: options.slice(0, 1).concat(options[0]) },
+        }),
+      ),
+    ).toHaveLength(1);
+    expect(
+      checkModes(prince, withTrigger({ effects: options[1].effects })),
+    ).toEqual(["modal card scripted without modes"]);
+  });
 });

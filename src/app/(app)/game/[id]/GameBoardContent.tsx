@@ -99,6 +99,10 @@ import {
   triggerNeedsTargets,
   chooseTriggerTargets,
   autoChooseTriggerTargets,
+  getAbilityModes,
+  abilityNeedsModes,
+  chooseAbilityModes,
+  autoChooseAbilityModes,
   getSpellTargetSpec,
   getLegalSpellTargets,
   getLegalTargetIdsForChoice,
@@ -321,6 +325,16 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     cardName: string;
     modes: string[];
     modeCount: number;
+  } | null>(null);
+
+  // Modal triggered/activated ability on the stack waiting for its modes
+  // (CR 603.3c, 700.2a; #2525). `picked` collects a "choose two" choice.
+  const [abilityModeChoice, setAbilityModeChoice] = useState<{
+    stackObjectId: string;
+    cardName: string;
+    modes: string[];
+    choose: number;
+    picked: string[];
   } | null>(null);
 
   // X-Cost spell state (for spells like Alchemist's Torrent)
@@ -1013,11 +1027,32 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
   // (CR 603.3d). The AI picks for its own triggers; the human is prompted.
   useEffect(() => {
     if (!gameState || gameState.status !== "in_progress") return;
-    const pending = gameState.stack.find(triggerNeedsTargets);
-    if (!pending) return;
     const human = Array.from(gameState.players.values()).find(
       (p) => p.name === playerName,
     );
+    // A modal ability picks its modes first: they decide its targets.
+    const modal = gameState.stack.find((o) => abilityNeedsModes(gameState, o));
+    if (modal) {
+      if (!human || modal.controllerId !== human.id) {
+        setGameState(autoChooseAbilityModes(gameState, modal.controllerId));
+        return;
+      }
+      if (abilityModeChoice?.stackObjectId === modal.id) return;
+      const modes = getAbilityModes(gameState, modal);
+      if (!modes) return;
+      setAbilityModeChoice({
+        stackObjectId: modal.id,
+        cardName: modal.name,
+        modes: modes.options,
+        choose: modes.choose,
+        picked: [],
+      });
+      return;
+    }
+    const pending = gameState.stack.find((o) =>
+      triggerNeedsTargets(o, gameState),
+    );
+    if (!pending) return;
     if (!human || pending.controllerId !== human.id) {
       setGameState(autoChooseTriggerTargets(gameState, pending.controllerId));
       return;
@@ -1049,7 +1084,13 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
       title: "Choose a target",
       description: `${pending.name}: ${pending.text}${optional ? " (click the source card to choose no target)" : ""}`,
     });
-  }, [gameState, playerName, pendingAction?.stackObjectId, toast]);
+  }, [
+    gameState,
+    playerName,
+    pendingAction?.stackObjectId,
+    abilityModeChoice?.stackObjectId,
+    toast,
+  ]);
 
   // Handle card click - Main interaction handler for all card clicks
   // Legal targets for whatever is choosing targets, highlighted on the board.
@@ -2176,6 +2217,37 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
       setManaAbilityChoice(null);
     },
     [gameState, manaAbilityChoice, playerName, toast, autoSaveEnabled],
+  );
+
+  // Pick a mode of a modal ability on the stack; commits once enough are picked.
+  const handleAbilityModeSelect = useCallback(
+    (mode: string) => {
+      if (!gameState || !abilityModeChoice) return;
+      const picked = abilityModeChoice.picked.includes(mode)
+        ? abilityModeChoice.picked.filter((m) => m !== mode)
+        : [...abilityModeChoice.picked, mode];
+      if (picked.length < abilityModeChoice.choose) {
+        setAbilityModeChoice({ ...abilityModeChoice, picked });
+        return;
+      }
+      const ordered = abilityModeChoice.modes.filter((m) => picked.includes(m));
+      const result = chooseAbilityModes(
+        gameState,
+        abilityModeChoice.stackObjectId,
+        ordered,
+      );
+      if (result.success) {
+        setGameState(result.state);
+      } else {
+        toast({
+          title: "Couldn't choose that mode",
+          description: result.error,
+          variant: "destructive",
+        });
+      }
+      setAbilityModeChoice(null);
+    },
+    [gameState, abilityModeChoice, toast],
   );
 
   // Handle modal spell mode selection
@@ -3491,6 +3563,43 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
                 key={idx}
                 variant="outline"
                 onClick={() => handleModeSelect(idx)}
+                className="justify-start h-auto py-3 px-4 text-left"
+              >
+                <div className="text-left">
+                  <div className="font-medium">Mode {idx + 1}</div>
+                  <div className="text-xs text-muted-foreground line-clamp-3 mt-1">
+                    {mode}
+                  </div>
+                </div>
+              </Button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Ability Mode Choice Dialog (#2525): a mode must be chosen */}
+      <Dialog open={!!abilityModeChoice} onOpenChange={() => undefined}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Choose Mode</DialogTitle>
+            <DialogDescription>
+              {abilityModeChoice?.cardName}: choose{" "}
+              {abilityModeChoice?.choose === 1
+                ? "one"
+                : abilityModeChoice?.choose}
+              .
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 py-4">
+            {abilityModeChoice?.modes.map((mode, idx) => (
+              <Button
+                key={idx}
+                variant={
+                  abilityModeChoice.picked.includes(mode)
+                    ? "default"
+                    : "outline"
+                }
+                onClick={() => handleAbilityModeSelect(mode)}
                 className="justify-start h-auto py-3 px-4 text-left"
               >
                 <div className="text-left">
