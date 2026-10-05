@@ -70,10 +70,11 @@ describe("bake-off card list", () => {
     }
   });
 
-  it("only lists gold cards this repo scripts and new cards it doesn't", () => {
+  it("only lists gold cards this repo scripts", () => {
+    // The set is frozen at the bake-off (#2514). New cards may gain scripts
+    // later through the drafting pipeline, so only the gold half is checked.
     for (const g of list.gold) expect(scriptNames.has(g)).toBe(true);
     for (const c of list.new) {
-      expect(scriptNames.has(c.name)).toBe(false);
       expect(["draft", "needs_new_op", "either"]).toContain(c.expect);
     }
   });

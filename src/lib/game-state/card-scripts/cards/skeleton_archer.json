@@ -1,0 +1,18 @@
+{
+  "name": "Skeleton Archer",
+  "oracle": "When this creature enters, it deals 1 damage to any target.",
+  "triggers": [
+    {
+      "text": "When this creature enters, it deals 1 damage to any target.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "DealDamage",
+          "amount": 1,
+          "target": "any"
+        }
+      ]
+    }
+  ]
+}

@@ -11,9 +11,7 @@
       "effects": [
         {
           "op": "CopySpell",
-          "gain": [
-            "wither"
-          ]
+          "gain": ["wither"]
         }
       ]
     }
