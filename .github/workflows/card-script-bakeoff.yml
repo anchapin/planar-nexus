@@ -1,0 +1,51 @@
+# Runs the 50-card card-script model bake-off (#2491) and uploads the report.
+# Needs repo secrets for the arms you want: GEMINI_API_KEY, ZAI_API_KEY,
+# OPENROUTER_API_KEY. An arm whose secret is missing is skipped. Writes no
+# card scripts and opens no PR.
+name: Card script bake-off
+
+on:
+  workflow_dispatch:
+    inputs:
+      arms:
+        description: "Comma-separated provider:model arms"
+        required: true
+        default: "gemini-batch:gemini-3.1-flash-lite,zai:glm-5.3-flash,openrouter:openrouter/free"
+      gemini_batch:
+        description: "Resume an already-submitted Gemini batch (batches/...)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  bakeoff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Run bake-off
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ARMS: ${{ inputs.arms }}
+          GEMINI_BATCH: ${{ inputs.gemini_batch }}
+        run: |
+          extra=()
+          if [ -n "$GEMINI_BATCH" ]; then extra=(--gemini-batch "$GEMINI_BATCH"); fi
+          npx tsx scripts/card-script-bakeoff.ts --arms "$ARMS" --out bakeoff-out "${extra[@]}"
+      - name: Job summary
+        if: always()
+        run: cat bakeoff-out/report.md >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: card-script-bakeoff
+          path: bakeoff-out/

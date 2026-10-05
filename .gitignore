@@ -126,3 +126,6 @@ DEMO_OPPONENT_GENERATOR.ts
 gameboard_screenshot.png
 repro_parser.ts
 test-serialization.ts
+# card-script bake-off output (#2491)
+bakeoff-out/
+!scripts/data/bakeoff-cards.json
