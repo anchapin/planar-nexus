@@ -1,0 +1,14 @@
+{
+  "name": "Anthem of Champions",
+  "oracle": "Creatures you control get +1/+1.",
+  "statics": [
+    {
+      "text": "Creatures you control get +1/+1.",
+      "affects": {
+        "controller": "you"
+      },
+      "power": 1,
+      "toughness": 1
+    }
+  ]
+}

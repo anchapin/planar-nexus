@@ -1,0 +1,16 @@
+{
+  "name": "White Lotus Reinforcements",
+  "oracle": "Vigilance\nOther Allies you control get +1/+1.",
+  "statics": [
+    {
+      "text": "Other Allies you control get +1/+1.",
+      "affects": {
+        "controller": "you",
+        "other": true,
+        "subtype": "Ally"
+      },
+      "power": 1,
+      "toughness": 1
+    }
+  ]
+}
