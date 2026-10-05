@@ -27,6 +27,7 @@ import { AIPlayerView } from "./_components/ai-player-view";
 // Import game state and AI
 import {
   createInitialGameState,
+  loadCardScripts,
   startGame,
   loadDeckForPlayer,
   type GameState,
@@ -116,7 +117,9 @@ export default function SpectatorPage() {
   const PLAYER_2_NAME = "AI Control";
 
   // Initialize game
-  const initializeGame = useCallback(() => {
+  const initializeGame = useCallback(async () => {
+    // Card scripts live in their own chunk; load them before building state.
+    await loadCardScripts();
     try {
       // Create initial game state with two AI players
       const state = createInitialGameState(
@@ -309,7 +312,7 @@ export default function SpectatorPage() {
         speed={speed}
         onStart={() => {
           if (!isGameStarted) {
-            initializeGame();
+            void initializeGame();
           } else {
             setIsPlaying(true);
             toast({
@@ -327,7 +330,7 @@ export default function SpectatorPage() {
         }}
         onRestart={() => {
           setIsPlaying(false);
-          initializeGame();
+          void initializeGame();
           toast({
             title: "Game Restarted",
             description: "New game initialized",

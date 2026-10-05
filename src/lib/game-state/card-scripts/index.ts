@@ -13,9 +13,12 @@ export type {
   ScriptedTrigger,
 } from "./schema";
 export {
+  cardScriptsLoaded,
   getCardScript,
   listScriptedCardNames,
+  loadCardScripts,
   normalizeCardName,
+  registerCardScripts,
 } from "./registry";
 export {
   getScriptedAbilityEffects,

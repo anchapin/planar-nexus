@@ -176,3 +176,6 @@ export {
 } from "./combat";
 export { getManaValue } from "./card-instance";
 export { getManaValue as getManaValueFromOracleTextParser } from "./oracle-text-parser";
+
+// Card scripts load in their own chunk; game pages await this first (#1814).
+export { cardScriptsLoaded, loadCardScripts } from "./card-scripts/registry";

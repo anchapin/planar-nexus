@@ -19,6 +19,18 @@ jest.mock("next/headers", () => {
   };
 });
 
+// Card scripts load lazily in the app (#1814); install them up front so
+// engine tests see every scripted card without awaiting the load.
+{
+  const {
+    registerCardScripts,
+  } = require("./src/lib/game-state/card-scripts/registry");
+  const {
+    RAW_CARD_SCRIPTS,
+  } = require("./src/lib/game-state/card-scripts/cards/index.generated");
+  registerCardScripts(RAW_CARD_SCRIPTS);
+}
+
 // Jest setup for browser APIs
 require("fake-indexeddb/auto");
 
@@ -209,7 +221,13 @@ if (nodeCrypto.webcrypto) {
   }
   // Fallback implementations for AES-GCM operations used by indexeddb-encryption
   if (!global.crypto.subtle.importKey) {
-    global.crypto.subtle.importKey = async (format, keyData, algorithm, extractable, keyUsages) => ({
+    global.crypto.subtle.importKey = async (
+      format,
+      keyData,
+      algorithm,
+      extractable,
+      keyUsages,
+    ) => ({
       type: "raw",
       format,
       algorithm,
@@ -219,7 +237,13 @@ if (nodeCrypto.webcrypto) {
     });
   }
   if (!global.crypto.subtle.deriveKey) {
-    global.crypto.subtle.deriveKey = async (algorithm, baseKey, derivedKeyAlgorithm, extractable, keyUsages) => ({
+    global.crypto.subtle.deriveKey = async (
+      algorithm,
+      baseKey,
+      derivedKeyAlgorithm,
+      extractable,
+      keyUsages,
+    ) => ({
       type: "raw",
       algorithm: derivedKeyAlgorithm,
       extractable: extractable ?? false,
@@ -236,10 +260,16 @@ if (nodeCrypto.webcrypto) {
         key.__keyData ? Buffer.from(key.__keyData) : Buffer.alloc(32),
         iv,
       );
-      const encrypted = Buffer.concat([cipher.update(Buffer.from(data)), cipher.final()]);
+      const encrypted = Buffer.concat([
+        cipher.update(Buffer.from(data)),
+        cipher.final(),
+      ]);
       const tag = cipher.getAuthTag();
       const combined = Buffer.concat([iv, tag, encrypted]);
-      return combined.buffer.slice(combined.byteOffset, combined.byteOffset + combined.byteLength);
+      return combined.buffer.slice(
+        combined.byteOffset,
+        combined.byteOffset + combined.byteLength,
+      );
     };
   }
   if (!global.crypto.subtle.decrypt) {
@@ -255,7 +285,8 @@ if (nodeCrypto.webcrypto) {
         iv,
       );
       decipher.setAuthTag(tag);
-      return Buffer.concat([decipher.update(encrypted), decipher.final()]).buffer;
+      return Buffer.concat([decipher.update(encrypted), decipher.final()])
+        .buffer;
     };
   }
 }
