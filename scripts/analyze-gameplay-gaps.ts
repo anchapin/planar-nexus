@@ -7,6 +7,11 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as prettier from "prettier";
+import {
+  scriptCoverage,
+  type ScriptOracleSnapshot,
+  type ScriptRef,
+} from "./card-scripts/coverage";
 
 // ─── Configuration ───
 const ROOT = path.resolve(__dirname, "..");
@@ -508,6 +513,45 @@ const undeclaredStandard = [...standardCounts.entries()]
   .filter(([k]) => !declared.has(k))
   .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
 
+// ─── Card script coverage (#2492) ───
+// Scripted vs unscripted Standard cards, plus scripts whose oracle copy no
+// longer matches Scryfall (errata drift). Both read the committed snapshot
+// written by scripts/refresh-card-script-oracle.ts.
+const CARD_SCRIPTS_DIR = path.join(
+  ROOT,
+  "src",
+  "lib",
+  "game-state",
+  "card-scripts",
+  "cards",
+);
+const SCRIPT_ORACLE_SNAPSHOT = path.join(
+  ROOT,
+  "scripts",
+  "data",
+  "card-script-oracle.json",
+);
+const cardScripts: ScriptRef[] = fs
+  .readdirSync(CARD_SCRIPTS_DIR)
+  .filter((f) => f.endsWith(".json"))
+  .map(
+    (f) => JSON.parse(readFile(path.join(CARD_SCRIPTS_DIR, f))) as ScriptRef,
+  );
+const scriptOracleSnapshot: ScriptOracleSnapshot = fs.existsSync(
+  SCRIPT_ORACLE_SNAPSHOT,
+)
+  ? (JSON.parse(readFile(SCRIPT_ORACLE_SNAPSHOT)) as ScriptOracleSnapshot)
+  : {
+      generatedAt: standardSnapshot.generatedAt,
+      standardCardCount: standardSnapshot.cardCount,
+      cards: {},
+    };
+const coverage = scriptCoverage(cardScripts, scriptOracleSnapshot);
+const coveragePct = (
+  (100 * coverage.standardScripted) /
+  Math.max(1, coverage.standardCardCount)
+).toFixed(1);
+
 lines.push(
   `- Standard scope: ${standardSnapshot.cardCount} Standard-legal cards (Scryfall snapshot ${snapshotDate})`,
 );
@@ -536,6 +580,10 @@ lines.push(
   `- Manual tap/untap calls: ${manualTap.length + manualUntap.length}`,
 );
 lines.push(`- TODO/FIXME/HACK/XXX comments: ${todoComments.length}`);
+lines.push(
+  `- Card scripts: ${coverage.scripts} (${coverage.standardScripted} of ${coverage.standardCardCount} Standard cards scripted, ${coveragePct}%; ${coverage.standardCardCount - coverage.standardScripted} unscripted)`,
+);
+lines.push(`  - Scripts with errata drift: ${coverage.drift.length}`);
 lines.push(``);
 
 // ─── Keyword Gaps ───
@@ -604,6 +652,57 @@ lines.push(`| Keyword | Standard cards |`);
 lines.push(`|---------|----------------|`);
 for (const [k, n] of undeclaredStandard.slice(0, 40)) {
   lines.push(`| ${k} | ${n} |`);
+}
+lines.push(``);
+
+// ─── Card Script Coverage ───
+lines.push(`## Card Script Coverage`);
+lines.push(``);
+lines.push(
+  `Cards whose abilities come from a JSON card script instead of the oracle-text parser (epic #2487). Legality and oracle text from the Scryfall snapshot of ${scriptOracleSnapshot.generatedAt.slice(0, 10)}; refresh with \`npx tsx scripts/refresh-card-script-oracle.ts\`.`,
+);
+lines.push(``);
+lines.push(`| | Cards |`);
+lines.push(`|---|---|`);
+lines.push(`| Standard-legal cards | ${coverage.standardCardCount} |`);
+lines.push(
+  `| Scripted (Standard-legal) | ${coverage.standardScripted} (${coveragePct}%) |`,
+);
+lines.push(
+  `| Unscripted (Standard-legal) | ${coverage.standardCardCount - coverage.standardScripted} |`,
+);
+lines.push(`| Scripted, not Standard-legal | ${coverage.nonStandard.length} |`);
+lines.push(`| Scripted, missing from snapshot | ${coverage.missing.length} |`);
+lines.push(``);
+if (coverage.nonStandard.length > 0) {
+  lines.push(
+    `Scripted but not Standard-legal: ${coverage.nonStandard.join(", ")}.`,
+  );
+  lines.push(``);
+}
+if (coverage.missing.length > 0) {
+  lines.push(
+    `Missing from the snapshot (refresh it): ${coverage.missing.join(", ")}.`,
+  );
+  lines.push(``);
+}
+lines.push(`### Errata Drift (${coverage.drift.length})`);
+lines.push(``);
+if (coverage.drift.length === 0) {
+  lines.push(
+    `Every script's \`oracle\` copy matches current Scryfall oracle text.`,
+  );
+} else {
+  lines.push(
+    `Scripts whose \`oracle\` field no longer matches Scryfall. Check the script's abilities against the new wording, then update \`oracle\`.`,
+  );
+  lines.push(``);
+  lines.push(`| Card | Script oracle | Current oracle |`);
+  lines.push(`|------|---------------|----------------|`);
+  const cell = (t: string) => t.replace(/\|/g, "\\|").replace(/\n/g, "<br>");
+  for (const d of coverage.drift) {
+    lines.push(`| ${d.name} | ${cell(d.script)} | ${cell(d.current)} |`);
+  }
 }
 lines.push(``);
 
@@ -748,6 +847,9 @@ void prettier
     console.log(`   Partially enforced: ${partialEnforced.length}`);
     console.log(`   Not enforced: ${noneEnforced.length}`);
     console.log(`   Hardcoded cards: ${hardcodedCards.length}`);
+    console.log(
+      `   Card scripts: ${coverage.standardScripted}/${coverage.standardCardCount} Standard cards, ${coverage.drift.length} with errata drift`,
+    );
     console.log(`   Auto-pass calls: ${forcedAutoPass.length}`);
     console.log(
       `   Manual tap/untap: ${manualTap.length + manualUntap.length}`,
