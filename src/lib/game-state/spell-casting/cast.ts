@@ -50,6 +50,8 @@ import {
   validateAuraSpellTarget,
 } from "../keyword-actions/enchant";
 import { copySpellOnStack } from "./resolve";
+import { getCardScript } from "../card-scripts/registry";
+import { scriptedModeChoiceError } from "../card-scripts/script-guards";
 import { fireCastTriggers } from "../keyword-actions/cast-triggers";
 import { createEngineUncaughtException } from "../errors";
 
@@ -370,6 +372,16 @@ export function castSpell(
           error: "Modal spells require mode selection. No modes provided.",
         };
       }
+    }
+
+    // A scripted modal spell (#2523) needs exactly `choose` distinct modes,
+    // each one of its own, so resolution never silently does nothing.
+    const modalScript = getCardScript(card.cardData.name);
+    const modeError = modalScript
+      ? scriptedModeChoiceError(modalScript, chosenModes)
+      : null;
+    if (modeError) {
+      return { success: false, state, error: modeError };
     }
 
     // Handle split card casting (CR 709.2)

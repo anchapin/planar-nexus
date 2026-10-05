@@ -6,6 +6,7 @@ import {
   abilityText,
   assertNoForgeContent,
   buildPrompt,
+  checkModes,
   documentedOps,
   judgeReply,
   normalizeDraft,
@@ -251,5 +252,48 @@ describe("card-script drafting pipeline", () => {
         tap: true,
         sacrifice: false,
       });
+  });
+
+  it("checks a modal script against the card's printed modes (#2523)", () => {
+    const gyre: DraftCard = {
+      name: "Spellgyre",
+      type_line: "Instant",
+      layout: "normal",
+      oracle_text:
+        "Choose one —\n• Counter target spell.\n• Surveil 2, then draw two cards. (To surveil 2, look at the top two cards.)",
+    };
+    const modes = {
+      choose: 1,
+      options: [
+        {
+          text: "Counter target spell.",
+          effects: [{ op: "Counter", target: "spell" }],
+        },
+        {
+          text: "Surveil 2, then draw two cards.",
+          effects: [
+            { op: "Surveil", amount: 2 },
+            { op: "Draw", amount: 2, who: "you" },
+          ],
+        },
+      ],
+    } as CardScript["modes"];
+    const base = { name: gyre.name, oracle: gyre.oracle_text! };
+    expect(checkModes(gyre, { ...base, modes } as CardScript)).toEqual([]);
+    expect(
+      checkModes(gyre, {
+        ...base,
+        modes: { ...modes!, options: [...modes!.options].reverse() },
+      } as CardScript),
+    ).toHaveLength(1);
+    expect(
+      checkModes(gyre, {
+        ...base,
+        spell: [{ op: "Counter", target: "spell" }],
+      } as CardScript),
+    ).toEqual(["modal card scripted without modes"]);
+    expect(checkModes(shock, { ...base, modes } as CardScript)).toEqual([
+      "modes scripted for a card that isn't modal",
+    ]);
   });
 });
