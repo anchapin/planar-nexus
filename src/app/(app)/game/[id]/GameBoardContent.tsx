@@ -59,6 +59,7 @@ import {
 
 // Game engine imports
 import {
+  loadCardScripts,
   createInitialGameState,
   loadDeckForPlayer,
   startGame,
@@ -422,6 +423,10 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     const initializeGame = async () => {
       try {
         setIsLoading(true);
+
+        // Card scripts live in their own chunk; a game built before they
+        // load would treat every scripted card as unscripted.
+        await loadCardScripts();
 
         // Get player name from localStorage
         const storedName =

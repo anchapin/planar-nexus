@@ -13,7 +13,7 @@ import type {
   PlayerId,
   CardInstanceId,
 } from "@/lib/game-state";
-import { Phase } from "@/lib/game-state";
+import { Phase, loadCardScripts } from "@/lib/game-state";
 import {
   createInitialGameState as engineCreateInitialGameState,
   startGame as engineStartGame,
@@ -305,6 +305,12 @@ export function useGameEngine(
       opponentDeck: options.opponentDeck,
     };
   }, [options.playerDeck, options.opponentDeck]);
+
+  // Card scripts live in their own chunk; start loading them on mount so
+  // they are in place before the player starts a game.
+  useEffect(() => {
+    void loadCardScripts().catch(() => undefined);
+  }, []);
 
   // Update ref when state changes
   useEffect(() => {
@@ -748,8 +754,8 @@ export function useGameEngine(
     canPlayLand: canPlayLandCheck,
     canCastSpell: canCastSpellCheck,
     resolveWaitingChoice: (
-    selectedValue: string | readonly string[] | number | boolean,
-  ) => {
+      selectedValue: string | readonly string[] | number | boolean,
+    ) => {
       if (!engineStateRef.current)
         return { success: false, error: "Game not initialized" };
       const result = engineResolveWaitingChoice(
