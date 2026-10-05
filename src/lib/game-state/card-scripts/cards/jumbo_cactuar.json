@@ -1,0 +1,19 @@
+{
+  "name": "Jumbo Cactuar",
+  "oracle": "10,000 Needles — Whenever this creature attacks, it gets +9999/+0 until end of turn.",
+  "triggers": [
+    {
+      "text": "Whenever this creature attacks, it gets +9999/+0 until end of turn.",
+      "event": "attacks",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "Pump",
+          "power": 9999,
+          "toughness": 0,
+          "target": "self"
+        }
+      ]
+    }
+  ]
+}

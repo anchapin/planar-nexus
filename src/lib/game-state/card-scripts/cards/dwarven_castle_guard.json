@@ -1,0 +1,23 @@
+{
+  "name": "Dwarven Castle Guard",
+  "oracle": "When this creature dies, create a 1/1 colorless Hero creature token.",
+  "triggers": [
+    {
+      "text": "When this creature dies, create a 1/1 colorless Hero creature token.",
+      "event": "dies",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "CreateToken",
+          "count": 1,
+          "power": 1,
+          "toughness": 1,
+          "color": "colorless",
+          "subtypes": [
+            "Hero"
+          ]
+        }
+      ]
+    }
+  ]
+}

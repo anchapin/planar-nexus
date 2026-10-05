@@ -1,0 +1,15 @@
+{
+  "name": "Sephiroth's Intervention",
+  "oracle": "Destroy target creature. You gain 2 life.",
+  "spell": [
+    {
+      "op": "Destroy",
+      "target": "creature"
+    },
+    {
+      "op": "GainLife",
+      "amount": 2,
+      "who": "you"
+    }
+  ]
+}
