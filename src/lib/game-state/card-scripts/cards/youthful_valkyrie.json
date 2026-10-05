@@ -1,0 +1,19 @@
+{
+  "name": "Youthful Valkyrie",
+  "oracle": "Flying\nWhenever another Angel you control enters, put a +1/+1 counter on this creature.",
+  "triggers": [
+    {
+      "text": "Whenever another Angel you control enters, put a +1/+1 counter on this creature.",
+      "event": "etb",
+      "subject": "another",
+      "effects": [
+        {
+          "op": "PutCounters",
+          "counter": "+1/+1",
+          "amount": 1,
+          "target": "self"
+        }
+      ]
+    }
+  ]
+}

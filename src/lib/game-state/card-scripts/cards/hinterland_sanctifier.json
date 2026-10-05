@@ -1,0 +1,19 @@
+{
+  "name": "Hinterland Sanctifier",
+  "oracle": "Whenever another creature you control enters, you gain 1 life.",
+  "triggers": [
+    {
+      "text": "Whenever another creature you control enters, you gain 1 life.",
+      "event": "etb",
+      "subject": "another",
+      "controller": "you",
+      "effects": [
+        {
+          "op": "GainLife",
+          "amount": 1,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}

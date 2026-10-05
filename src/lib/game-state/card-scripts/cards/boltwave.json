@@ -1,0 +1,11 @@
+{
+  "name": "Boltwave",
+  "oracle": "Boltwave deals 3 damage to each opponent.",
+  "spell": [
+    {
+      "op": "DealDamage",
+      "amount": 3,
+      "target": "each_opponent"
+    }
+  ]
+}

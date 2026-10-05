@@ -1,0 +1,23 @@
+{
+  "name": "Maalfeld Twins",
+  "oracle": "When this creature dies, create two 2/2 black Zombie creature tokens.",
+  "triggers": [
+    {
+      "text": "When this creature dies, create two 2/2 black Zombie creature tokens.",
+      "event": "dies",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "CreateToken",
+          "count": 2,
+          "power": 2,
+          "toughness": 2,
+          "color": "black",
+          "subtypes": [
+            "Zombie"
+          ]
+        }
+      ]
+    }
+  ]
+}

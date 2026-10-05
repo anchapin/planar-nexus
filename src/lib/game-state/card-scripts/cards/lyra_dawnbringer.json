@@ -1,0 +1,19 @@
+{
+  "name": "Lyra Dawnbringer",
+  "oracle": "Flying\nFirst strike (This creature deals combat damage before creatures without first strike.)\nLifelink (Damage dealt by this creature also causes you to gain that much life.)\nOther Angels you control get +1/+1 and have lifelink.",
+  "statics": [
+    {
+      "text": "Other Angels you control get +1/+1 and have lifelink.",
+      "affects": {
+        "controller": "you",
+        "other": true,
+        "subtype": "Angel"
+      },
+      "power": 1,
+      "toughness": 1,
+      "keywords": [
+        "lifelink"
+      ]
+    }
+  ]
+}

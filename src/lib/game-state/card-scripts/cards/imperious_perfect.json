@@ -1,0 +1,39 @@
+{
+  "name": "Imperious Perfect",
+  "oracle": "Other Elves you control get +1/+1.\n{G}, {T}: Create a 1/1 green Elf Warrior creature token.",
+  "activated": [
+    {
+      "text": "{G}, {T}: Create a 1/1 green Elf Warrior creature token.",
+      "cost": {
+        "mana": "{G}",
+        "tap": true,
+        "sacrifice": false
+      },
+      "effects": [
+        {
+          "op": "CreateToken",
+          "count": 1,
+          "power": 1,
+          "toughness": 1,
+          "color": "green",
+          "subtypes": [
+            "Elf",
+            "Warrior"
+          ]
+        }
+      ]
+    }
+  ],
+  "statics": [
+    {
+      "text": "Other Elves you control get +1/+1.",
+      "affects": {
+        "controller": "you",
+        "other": true,
+        "subtype": "Elf"
+      },
+      "power": 1,
+      "toughness": 1
+    }
+  ]
+}
