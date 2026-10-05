@@ -23,6 +23,8 @@ jobs:
   bakeoff:
     # Spends the owner's API credit: only anchapin may start or re-run it.
     if: github.triggering_actor == 'anchapin' && github.actor == 'anchapin'
+    # API keys live in this environment, which only main can use.
+    environment: llm-spend
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
