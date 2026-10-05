@@ -1,0 +1,14 @@
+{
+  "name": "Release the Dogs",
+  "oracle": "Create four 1/1 white Dog creature tokens.",
+  "spell": [
+    {
+      "op": "CreateToken",
+      "count": 4,
+      "power": 1,
+      "toughness": 1,
+      "color": "white",
+      "subtypes": ["Dog"]
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "name": "Wary Thespian",
+  "oracle": "When this creature enters or dies, surveil 1. (Look at the top card of your library. You may put it into your graveyard.)",
+  "triggers": [
+    {
+      "text": "When this creature enters, surveil 1.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "Surveil",
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "text": "When this creature dies, surveil 1.",
+      "event": "dies",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "Surveil",
+          "amount": 1
+        }
+      ]
+    }
+  ]
+}

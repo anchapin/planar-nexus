@@ -1,0 +1,20 @@
+{
+  "name": "Fanatical Firebrand",
+  "oracle": "Haste (This creature can attack and {T} as soon as it comes under your control.)\n{T}, Sacrifice this creature: It deals 1 damage to any target.",
+  "activated": [
+    {
+      "text": "It deals 1 damage to any target.",
+      "cost": {
+        "tap": true,
+        "sacrifice": true
+      },
+      "effects": [
+        {
+          "op": "DealDamage",
+          "amount": 1,
+          "target": "any"
+        }
+      ]
+    }
+  ]
+}
