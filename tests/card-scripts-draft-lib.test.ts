@@ -8,6 +8,7 @@ import {
   buildPrompt,
   documentedOps,
   judgeReply,
+  normalizeDraft,
   renderReport,
   schemaOps,
   scriptFileName,
@@ -166,5 +167,88 @@ describe("card-script drafting pipeline", () => {
     expect(scriptFileName("S.H.I.E.L.D. Deployment Drone")).toBe(
       "s_h_i_e_l_d_deployment_drone.json",
     );
+  });
+
+  it("tells the model about every trigger event, activation limit and static", () => {
+    const prompt = buildPrompt(
+      {
+        name: "Test",
+        type_line: "Creature",
+        oracle_text: "Flying",
+        layout: "normal",
+      } as DraftCard,
+      [],
+    );
+    for (const event of [
+      "etb",
+      "landfall",
+      "dies",
+      "attacks",
+      "upkeep",
+      "cast",
+    ])
+      expect(prompt).toContain(`"${event}"`);
+    for (const field of [
+      '"limit"',
+      '"timing"',
+      '"statics"',
+      '"whose"',
+      '"caster"',
+    ])
+      expect(prompt).toContain(field);
+    expect(prompt).not.toMatch(/Dies\/attacks\/upkeep triggers.*need new ops/);
+  });
+
+  it("cleans up echoed fields, {T} in mana costs, and ignored subjects", () => {
+    const out = normalizeDraft({
+      name: "X",
+      type_line: "Creature — Wall",
+      mana_cost: "{1}{U}",
+      activated: [
+        { text: "Surveil 1.", cost: { mana: "{T}" }, effects: [] },
+        { text: "Draw.", cost: { mana: "{2} {u}{T}" }, effects: [] },
+      ],
+      triggers: [
+        { text: "Landfall", event: "landfall", subject: "any", effects: [] },
+        { text: "ETB", event: "etb", subject: "another", effects: [] },
+      ],
+    });
+    expect(out.type_line).toBeUndefined();
+    expect(out.mana_cost).toBeUndefined();
+    const [a, b] = out.activated as Array<{ cost: Record<string, unknown> }>;
+    expect(a.cost).toEqual({ tap: true });
+    expect(b.cost).toEqual({ mana: "{2}{U}", tap: true });
+    const [l, e] = out.triggers as Array<Record<string, unknown>>;
+    expect(l.subject).toBeUndefined();
+    expect(e.subject).toBe("another");
+  });
+
+  it("accepts a draft that echoes type_line and puts {T} in the mana cost", () => {
+    const wall = {
+      name: "Rune-Sealed Wall",
+      type_line: "Artifact Creature — Wall",
+      oracle_text: "Defender\n{T}: Surveil 1.",
+      layout: "normal",
+    } as DraftCard;
+    const reply = JSON.stringify({
+      script: {
+        name: "Rune-Sealed Wall",
+        type_line: "Artifact Creature — Wall",
+        activated: [
+          {
+            text: "Surveil 1.",
+            cost: { mana: "{T}" },
+            effects: [{ op: "Surveil", amount: 1 }],
+          },
+        ],
+      },
+    });
+    const outcome = judgeReply(wall, reply);
+    expect(outcome.kind).toBe("drafted");
+    if (outcome.kind === "drafted")
+      expect(outcome.script.activated?.[0].cost).toEqual({
+        tap: true,
+        sacrifice: false,
+      });
   });
 });

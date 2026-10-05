@@ -25,10 +25,8 @@ import {
 import {
   DEFAULT_PRICES,
   agreement,
-  geminiBatchBody,
   parseArms,
   parseChat,
-  parseGeminiBatch,
   renderBakeoffReport,
   scoreArm,
   type Arm,
@@ -37,6 +35,7 @@ import {
   type CardResult,
   type Price,
 } from "./card-scripts/bakeoff-lib";
+import { runGeminiBatch } from "./card-scripts/gemini-batch";
 
 const ROOT = join(__dirname, "..");
 const CARDS_DIR = join(
@@ -224,64 +223,37 @@ async function runGeminiArm(
 ): Promise<CardResult[] | string> {
   const key = process.env.GEMINI_API_KEY;
   if (!key) return "skipped: GEMINI_API_KEY not set";
-  const api = "https://generativelanguage.googleapis.com/v1beta";
-  const headers = { "content-type": "application/json", "x-goog-api-key": key };
-  let name = arg("gemini-batch");
-  if (!name) {
-    const items = cards.map((c, i) => ({
-      key: `card-${i}`,
-      prompt: prompts.get(c.name)!,
-    }));
-    const res = await fetch(`${api}/models/${arm.model}:batchGenerateContent`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(
-        geminiBatchBody(items, `planar-nexus-bakeoff-${Date.now()}`),
-      ),
-    });
-    if (!res.ok)
-      throw new Error(
-        `Gemini batch create ${res.status}: ${(await res.text()).slice(0, 300)}`,
-      );
-    name = ((await res.json()) as { name: string }).name;
-    console.info(
-      `[${arm.id}] submitted ${name} (resume with --gemini-batch ${name})`,
-    );
-  }
-  const deadline =
-    Date.now() + Number(process.env.BAKEOFF_GEMINI_TIMEOUT_MIN ?? 100) * 60_000;
-  while (Date.now() < deadline) {
-    const res = await fetch(`${api}/${name}`, { headers });
-    if (!res.ok)
-      throw new Error(
-        `Gemini batch poll ${res.status}: ${(await res.text()).slice(0, 300)}`,
-      );
-    const parsed = parseGeminiBatch(await res.json());
-    if (parsed) {
-      return cards.map((card, i) => {
-        const item = parsed.get(`card-${i}`);
-        if (!item || "error" in item) {
-          return {
-            name: card.name,
-            outcome: {
-              kind: "error" as const,
-              name: card.name,
-              error: item ? item.error : "missing from batch",
-            },
-            usage: { input: 0, output: 0 },
-          };
-        }
-        logCall(arm, card.name, item.usage.input, item.usage.output);
-        return {
+  const batch = await runGeminiBatch({
+    model: arm.model,
+    prompts: cards.map((c) => prompts.get(c.name)!),
+    apiKey: key,
+    displayName: `planar-nexus-bakeoff-${Date.now()}`,
+    resume: arg("gemini-batch"),
+    timeoutMin: Number(process.env.BAKEOFF_GEMINI_TIMEOUT_MIN ?? 100),
+    log: (line) => console.info(`[${arm.id}] ${line}`),
+  });
+  if (!batch.done)
+    return `still running: rerun with --gemini-batch ${batch.name}`;
+  return cards.map((card, i) => {
+    const item = batch.items.get(`card-${i}`);
+    if (!item || "error" in item) {
+      return {
+        name: card.name,
+        outcome: {
+          kind: "error" as const,
           name: card.name,
-          outcome: judgeReply(card, item.text),
-          usage: item.usage,
-        };
-      });
+          error: item ? item.error : "missing from batch",
+        },
+        usage: { input: 0, output: 0 },
+      };
     }
-    await sleep(30_000);
-  }
-  return `still running: rerun with --gemini-batch ${name}`;
+    logCall(arm, card.name, item.usage.input, item.usage.output);
+    return {
+      name: card.name,
+      outcome: judgeReply(card, item.text),
+      usage: item.usage,
+    };
+  });
 }
 
 async function main() {

@@ -1,5 +1,8 @@
 # Drafts card scripts for one Standard set with an LLM and opens a draft PR
-# for review (#2491). Needs a repo secret ANTHROPIC_API_KEY or OPENAI_API_KEY.
+# for review (#2491). The default, picked by the bake-off (#2514), is one
+# Gemini Batch API job with gemini-3.1-flash-lite (GEMINI_API_KEY). anthropic
+# and openai need ANTHROPIC_API_KEY / OPENAI_API_KEY. Keys live in the
+# llm-spend environment.
 # PRs opened with GITHUB_TOKEN don't trigger CI: push a commit (or close and
 # reopen) before review so the required checks run.
 name: Draft card scripts
@@ -11,16 +14,21 @@ on:
         description: "Scryfall set code (e.g. dsk)"
         required: true
       provider:
-        description: "anthropic or openai"
+        description: "gemini-batch, anthropic or openai"
         required: true
-        default: anthropic
+        default: gemini-batch
       model:
         description: "Model id for the provider"
         required: true
+        default: gemini-3.1-flash-lite
       limit:
         description: "Max cards to draft"
         required: false
-        default: "200"
+        default: "400"
+      gemini_batch:
+        description: "Resume a Gemini batch (batches/...) that outlived the timeout; same set and limit"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -33,7 +41,7 @@ jobs:
     # API keys live in this environment, which only main can use.
     environment: llm-spend
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -45,9 +53,14 @@ jobs:
         env:
           DRAFT_LLM_PROVIDER: ${{ inputs.provider }}
           DRAFT_LLM_MODEL: ${{ inputs.model }}
+          DRAFT_GEMINI_BATCH: ${{ inputs.gemini_batch }}
+          DRAFT_GEMINI_TIMEOUT_MIN: "160"
+          SET: ${{ inputs.set }}
+          LIMIT: ${{ inputs.limit }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        run: npx tsx scripts/draft-card-scripts.ts --set "${{ inputs.set }}" --limit "${{ inputs.limit }}"
+        run: npx tsx scripts/draft-card-scripts.ts --set "$SET" --limit "$LIMIT"
       - name: Open draft PR
         env:
           GH_TOKEN: ${{ github.token }}
