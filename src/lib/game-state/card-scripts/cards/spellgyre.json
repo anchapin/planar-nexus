@@ -1,0 +1,32 @@
+{
+  "name": "Spellgyre",
+  "oracle": "Choose one —\n• Counter target spell.\n• Surveil 2, then draw two cards. (To surveil 2, look at the top two cards of your library, then put any number of them into your graveyard and the rest on top of your library in any order.)",
+  "modes": {
+    "choose": 1,
+    "options": [
+      {
+        "text": "Counter target spell.",
+        "effects": [
+          {
+            "op": "Counter",
+            "target": "spell"
+          }
+        ]
+      },
+      {
+        "text": "Surveil 2, then draw two cards.",
+        "effects": [
+          {
+            "op": "Surveil",
+            "amount": 2
+          },
+          {
+            "op": "Draw",
+            "amount": 2,
+            "who": "you"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -224,6 +224,37 @@ export const TriggerSchema = z
     { message: "controller needs subject another/any on etb, dies or attacks" },
   );
 
+/**
+ * One mode of a modal spell. `text` is the mode as printed after its bullet,
+ * mode name included ("Fight Crime — Counter target spell. Draw a card.");
+ * reminder text is left out. It is how the stack's `chosenModes` labels are
+ * matched back to the mode.
+ */
+export const ModeSchema = z
+  .object({ text: z.string().min(1), effects })
+  .strict();
+
+/**
+ * A modal instant or sorcery (CR 700.2): "Choose one —", "Choose two —".
+ * The chosen modes resolve in printed order and share the spell's targets,
+ * in order, like a plain spell's effects.
+ */
+export const ModesSchema = z
+  .object({
+    choose: z.number().int().min(1).max(4),
+    options: z.array(ModeSchema).min(2),
+  })
+  .strict()
+  .refine((m) => m.choose < m.options.length, {
+    message: "choose must be less than the number of modes",
+  })
+  .refine(
+    (m) =>
+      new Set(m.options.map((o) => o.text.trim().toLowerCase())).size ===
+      m.options.length,
+    { message: "mode texts must be distinct" },
+  );
+
 /** An activated ability (CR 602). `text` is the part after the colon. */
 export const ActivatedSchema = z
   .object({
@@ -284,6 +315,8 @@ export const CardScriptSchema = z
     oracle: z.string().min(1),
     /** Effects of an instant or sorcery, applied in order on resolution. */
     spell: effects.optional(),
+    /** A modal instant or sorcery's modes, instead of `spell`. */
+    modes: ModesSchema.optional(),
     /** A permanent's triggered abilities (the full list when present). */
     triggers: z.array(TriggerSchema).min(1).optional(),
     /** A permanent's activated abilities (the full list when present). */
@@ -292,11 +325,16 @@ export const CardScriptSchema = z
     statics: z.array(StaticSchema).min(1).optional(),
   })
   .strict()
-  .refine((s) => s.spell || s.triggers || s.activated || s.statics, {
-    message: "a card script needs spell, triggers, activated, or statics",
+  .refine((s) => s.spell || s.modes || s.triggers || s.activated || s.statics, {
+    message:
+      "a card script needs spell, modes, triggers, activated, or statics",
   })
-  .refine((s) => !(s.spell && (s.triggers || s.activated || s.statics)), {
-    message: "a spell script can't also have permanent abilities",
+  .refine(
+    (s) => !((s.spell || s.modes) && (s.triggers || s.activated || s.statics)),
+    { message: "a spell script can't also have permanent abilities" },
+  )
+  .refine((s) => !(s.spell && s.modes), {
+    message: "a spell script has spell or modes, not both",
   });
 
 export type CardEffect = z.infer<typeof EffectSchema>;
@@ -304,5 +342,12 @@ export type CardScript = z.infer<typeof CardScriptSchema>;
 export type ScriptedTrigger = z.infer<typeof TriggerSchema>;
 export type ScriptedActivated = z.infer<typeof ActivatedSchema>;
 export type ScriptedStatic = z.infer<typeof StaticSchema>;
+export type ScriptedModes = z.infer<typeof ModesSchema>;
 
-export { isPermanentScript, isTargetedEffect } from "./script-guards";
+export {
+  isPermanentScript,
+  isTargetedEffect,
+  modeLabelKey,
+  scriptedModeChoiceError,
+  scriptedSpellEffects,
+} from "./script-guards";
