@@ -1,6 +1,6 @@
 # Gameplay Gap Analysis
 
-**Generated:** 2026-10-04T06:38:39.161Z
+**Generated:** 2026-10-05T02:16:26.734Z
 
 ## Summary
 
@@ -22,6 +22,8 @@
 - Forced auto-pass priority calls: 0
 - Manual tap/untap calls: 0
 - TODO/FIXME/HACK/XXX comments: 0
+- Card scripts: 90 (90 of 5164 Standard cards scripted, 1.7%; 5074 unscripted)
+  - Scripts with errata drift: 0
 
 ## Keyword Enforcement Matrix
 
@@ -184,6 +186,22 @@ Declared by the parser but not on any Standard-legal card as of 2026-10-01. Not 
 | delirium           | 20             |
 | changeling         | 19             |
 | convoke            | 19             |
+
+## Card Script Coverage
+
+Cards whose abilities come from a JSON card script instead of the oracle-text parser (epic #2487). Legality and oracle text from the Scryfall snapshot of 2026-10-05; refresh with `npx tsx scripts/refresh-card-script-oracle.ts`.
+
+|                                 | Cards     |
+| ------------------------------- | --------- |
+| Standard-legal cards            | 5164      |
+| Scripted (Standard-legal)       | 90 (1.7%) |
+| Unscripted (Standard-legal)     | 5074      |
+| Scripted, not Standard-legal    | 0         |
+| Scripted, missing from snapshot | 0         |
+
+### Errata Drift (0)
+
+Every script's `oracle` copy matches current Scryfall oracle text.
 
 ## Hardcoded Card Effects
 

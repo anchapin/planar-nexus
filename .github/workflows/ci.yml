@@ -507,6 +507,11 @@ jobs:
       - name: Run ESLint
         run: npm run lint
 
+      - name: Card script index is up to date (#2492)
+        # Fails when a card script JSON was added, removed, or edited without
+        # regenerating src/lib/game-state/card-scripts/cards/index.generated.ts.
+        run: npx tsx scripts/build-card-script-index.ts --check
+
   a11y-contrast:
     name: A11y Color Contrast
     # WCAG 1.4.3 / 1.4.11 design-token audit (#1268). Runs scripts/check-color-contrast.ts
