@@ -699,7 +699,8 @@ if (coverage.drift.length === 0) {
   lines.push(``);
   lines.push(`| Card | Script oracle | Current oracle |`);
   lines.push(`|------|---------------|----------------|`);
-  const cell = (t: string) => t.replace(/\|/g, "\\|").replace(/\n/g, "<br>");
+  const cell = (t: string) =>
+    t.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\n/g, "<br>");
   for (const d of coverage.drift) {
     lines.push(`| ${d.name} | ${cell(d.script)} | ${cell(d.current)} |`);
   }
