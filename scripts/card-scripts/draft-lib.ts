@@ -128,6 +128,7 @@ Never approximate, drop, or simplify an ability. A partial script is wrong: the 
 Abilities:
 - Instants and sorceries: "spell": [effects], applied in order. Targeted effects use the spell's targets in order.
 - Modal instants and sorceries ("Choose one —", "Choose two —"): "modes": {"choose": N, "options": [{"text": <the mode as printed after its bullet, mode name included, reminder text left out>, "effects": [...]}, ...]} instead of "spell", one option per bullet. Every mode must be expressible exactly; if any one isn't, answer needs_new_op.
+- Modal triggered or activated abilities ("When this creature enters, choose one —", "{2}, Sacrifice this creature: Choose one —"): the same "modes" object instead of that ability's "effects". Its "text" is the sentence up to and including the dash ("When this creature enters, choose one —", or "Choose one —" for an activated ability).
 - Permanents use any of "triggers", "activated" and "statics", each the full list of that kind.
 - Triggers: {"text": <ability sentence as printed>, "event": ..., "effects": [...]} plus the fields for that event:
   - "etb" (enters the battlefield), "dies", "attacks": "subject": "self" (this permanent, the default) | "another" | "any" (creatures), and with another/any an optional "controller": "you" | "opponent". "attacks" also takes "once": true for "whenever you attack" (once per combat, not per attacker).
@@ -138,7 +139,7 @@ Abilities:
 - Statics: {"text": <the line>, "affects": {"controller": "you" | "opponents", "other": true, "subtype": "Dinosaur"}, "power": N, "toughness": N, "keywords": ["haste"]} for creatures getting +N/+N and/or gaining evergreen keywords. "other" and "subtype" are optional; set power and toughness together.
 - Keywords printed on the card itself (flying, flash, prowess, ward, deathtouch, ...) need nothing: the engine reads them from the card. Script the card's other abilities only.
 
-Still needs new ops: X costs, hybrid or Phyrexian mana in an activation cost, other costs (discard, pay life, tap or sacrifice other permanents, remove counters), modes on permanents (modal triggers or activated abilities), "choose one or more", conditions ("if", "as long as", "unless"), static effects other than P/T and keywords, and any effect not listed.
+Still needs new ops: X costs, hybrid or Phyrexian mana in an activation cost, other costs (discard, pay life, tap or sacrifice other permanents, remove counters), tiered costs, "choose one or more", conditions ("if", "as long as", "unless"), static effects other than P/T and keywords, and any effect not listed.
 
 Ops:
 `;
@@ -287,24 +288,32 @@ export function judgeReply(card: DraftCard, reply: string): DraftOutcome {
 }
 
 /**
- * A modal script must match the card's own modes (#2523): the same "choose"
- * count and one option per printed mode, in order, reminder text ignored.
- * A plain spell script for a modal card is wrong too.
+ * A modal script must match the card's own modes (#2523, #2525): the same
+ * "choose" count and one option per printed mode, in order, reminder text
+ * ignored. Spells put them in `modes`; permanents on the one modal triggered
+ * or activated ability. Scripting a modal card without modes is wrong too.
  */
 export function checkModes(card: DraftCard, script: CardScript): string[] {
   const printed = parseModes(card.oracle_text ?? "");
-  if (!script.modes) {
-    return printed && script.spell ? ["modal card scripted without modes"] : [];
+  const abilityModes = [
+    ...(script.triggers ?? []),
+    ...(script.activated ?? []),
+  ].flatMap((a) => (a.modes ? [a.modes] : []));
+  const all = script.modes ? [script.modes, ...abilityModes] : abilityModes;
+  if (all.length === 0) {
+    return printed ? ["modal card scripted without modes"] : [];
   }
   if (!printed) return ["modes scripted for a card that isn't modal"];
+  if (all.length > 1) return ["more than one modal ability scripted"];
+  const modes = all[0];
   const errors: string[] = [];
-  if (script.modes.choose !== printed.modeCount) {
+  if (modes.choose !== printed.modeCount) {
     errors.push(
-      `modes.choose is ${script.modes.choose}, the card says ${printed.modeCount}`,
+      `modes.choose is ${modes.choose}, the card says ${printed.modeCount}`,
     );
   }
   const want = printed.modes.map(modeLabelKey);
-  const got = script.modes.options.map((o) => modeLabelKey(o.text));
+  const got = modes.options.map((o) => modeLabelKey(o.text));
   if (want.length !== got.length || want.some((w, i) => w !== got[i])) {
     errors.push("modes.options texts don't match the card's printed modes");
   }
