@@ -1,0 +1,17 @@
+{
+  "name": "Il Mheg Pixie",
+  "oracle": "Flying\nWhenever this creature attacks, surveil 1. (Look at the top card of your library. You may put it into your graveyard.)",
+  "triggers": [
+    {
+      "text": "Whenever this creature attacks, surveil 1.",
+      "event": "attacks",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "Surveil",
+          "amount": 1
+        }
+      ]
+    }
+  ]
+}
