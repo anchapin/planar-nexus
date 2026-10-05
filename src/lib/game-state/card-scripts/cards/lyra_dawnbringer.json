@@ -11,9 +11,7 @@
       },
       "power": 1,
       "toughness": 1,
-      "keywords": [
-        "lifelink"
-      ]
+      "keywords": ["lifelink"]
     }
   ]
 }

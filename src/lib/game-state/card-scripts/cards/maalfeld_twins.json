@@ -13,9 +13,7 @@
           "power": 2,
           "toughness": 2,
           "color": "black",
-          "subtypes": [
-            "Zombie"
-          ]
+          "subtypes": ["Zombie"]
         }
       ]
     }
