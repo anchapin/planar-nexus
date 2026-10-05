@@ -1,6 +1,7 @@
 import type { GameState, PlayerId, StackObject } from "../types";
 import type { TriggeredAbilityInstance } from "../abilities";
 import type { TriggerResult } from "./types";
+import { castSpellStackObject } from "../abilities/triggered";
 
 export function putTriggersOnStack(
   state: GameState,
@@ -29,6 +30,11 @@ export function putTriggersOnStack(
       timestamp: trigger.timestamp,
       interveningIf: trigger.interveningIf,
     };
+    const spellCardId = trigger.context?.spellCardId;
+    if (spellCardId) {
+      const spell = castSpellStackObject(currentState, spellCardId);
+      if (spell) stackObject.triggeringStackObjectId = spell.id;
+    }
 
     currentState = {
       ...currentState,

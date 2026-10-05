@@ -68,7 +68,11 @@ const SPELL_FILTER: Record<string, Partial<CastFilter>> = {
 };
 
 function castFilterOf(t: ScriptedTrigger): CastFilter {
-  return { caster: t.caster ?? "you", ...SPELL_FILTER[t.spell ?? "any"] };
+  return {
+    caster: t.caster ?? "you",
+    ...SPELL_FILTER[t.spell ?? "any"],
+    ...(t.targets === "single" ? { singleTarget: true } : {}),
+  };
 }
 
 function scriptedCondition(t: ScriptedTrigger): TriggerCondition {

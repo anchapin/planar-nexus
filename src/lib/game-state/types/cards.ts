@@ -231,6 +231,12 @@ export interface CardInstance {
    * (issue #2496). Maintained by `refreshScriptedStatics`.
    */
   scriptStaticKeywords?: string[];
+  /**
+   * Keywords granted to this card's spell while it resolves (#2483): set
+   * from the stack object's `grantedKeywords` for the duration of
+   * `resolveTopOfStack`, so damage it deals sees them.
+   */
+  resolvingSpellKeywords?: string[];
 
   // Renown keyword (CR 702.100)
   /**

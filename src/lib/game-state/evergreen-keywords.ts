@@ -1361,6 +1361,8 @@ export function hasInfect(card: CardInstance): boolean {
  * "those spells gain wither" never gives the *spells' text* wither by itself.
  */
 export function hasWither(card: CardInstance): boolean {
+  // A spell that gained wither on the stack (Spinerock Tyrant, #2483).
+  if (card.resolvingSpellKeywords?.includes("wither")) return true;
   if ((card.cardData.keywords ?? []).some((k) => /^wither$/i.test(k.trim()))) {
     return true;
   }

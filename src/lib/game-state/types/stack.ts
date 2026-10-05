@@ -140,6 +140,17 @@ export interface StackObject {
    */
   isCopy?: boolean;
   /**
+   * Keywords this spell gained while on the stack, e.g. Spinerock Tyrant's
+   * "those spells gain wither" (#2483). Not copiable (CR 707.2), so
+   * `copySpellOnStack` doesn't carry it over.
+   */
+  grantedKeywords?: string[];
+  /**
+   * A cast trigger's stack object: the spell that triggered it (CR 603.2),
+   * for "copy it" effects.
+   */
+  triggeringStackObjectId?: string;
+  /**
    * Intervening "if" clause (CR 603.4).
    *
    * Set on a triggered ability's StackObject when its Oracle text is of the form

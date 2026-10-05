@@ -155,7 +155,37 @@ export function copySpellOnStack(
  * EngineUncaughtException so the UI can surface a recoverable error toast
  * instead of crashing the session.
  */
+/**
+ * Set or clear the keywords a spell gained on the stack (#2483) on its card,
+ * so damage the spell deals while resolving sees them (e.g. wither).
+ */
+function withResolvingKeywords(
+  state: GameState,
+  cardId: CardInstanceId,
+  keywords: string[] | undefined,
+): GameState {
+  const card = state.cards.get(cardId);
+  if (!card) return state;
+  const cards = new Map(state.cards);
+  cards.set(cardId, { ...card, resolvingSpellKeywords: keywords });
+  return { ...state, cards };
+}
+
 export function resolveTopOfStack(state: GameState): GameState {
+  const top = state.stack[state.stack.length - 1];
+  const granted =
+    top?.type === "spell" && top.sourceCardId && top.grantedKeywords?.length
+      ? top.grantedKeywords
+      : undefined;
+  if (!granted || !top?.sourceCardId) return resolveTopOfStackInner(state);
+  const cardId = top.sourceCardId as CardInstanceId;
+  const resolved = resolveTopOfStackInner(
+    withResolvingKeywords(state, cardId, granted),
+  );
+  return withResolvingKeywords(resolved, cardId, undefined);
+}
+
+function resolveTopOfStackInner(state: GameState): GameState {
   const originalState = state;
   try {
     if (state.stack.length === 0) {
@@ -275,8 +305,8 @@ export function resolveTopOfStack(state: GameState): GameState {
           const parsedEffects = script
             ? []
             : isModalWithChoice
-            ? getEffectsForChosenModes(stackObject, currentState)
-            : parseSpellEffects(oracleText, stackObject.variableValues);
+              ? getEffectsForChosenModes(stackObject, currentState)
+              : parseSpellEffects(oracleText, stackObject.variableValues);
 
           if (parsedEffects.length > 0) {
             // Apply effects with target information. CR 702.85 — pass the

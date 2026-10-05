@@ -120,6 +120,21 @@ export const SurveilSchema = z
   .object({ op: z.literal("Surveil"), amount: z.number().int().min(1) })
   .strict();
 
+/**
+ * Copy the spell that triggered this ability (CR 707.10), keeping its
+ * targets. Only for cast triggers. `gain`: "those spells gain wither", so
+ * the original and the copy both get the keyword while on the stack.
+ */
+export const CopySpellSchema = z
+  .object({
+    op: z.literal("CopySpell"),
+    gain: z
+      .array(z.enum(["wither"]))
+      .min(1)
+      .optional(),
+  })
+  .strict();
+
 export const EffectSchema = z.discriminatedUnion("op", [
   DealDamageSchema,
   DrawSchema,
@@ -132,6 +147,7 @@ export const EffectSchema = z.discriminatedUnion("op", [
   PumpSchema,
   PutCountersSchema,
   SurveilSchema,
+  CopySpellSchema,
 ]);
 
 const effects = z.array(EffectSchema).min(1);
@@ -178,6 +194,8 @@ export const TriggerSchema = z
         "multicolored",
       ])
       .optional(),
+    /** cast only: "a spell with a single target" (exactly one target). */
+    targets: z.literal("single").optional(),
     effects,
   })
   .strict()
@@ -189,8 +207,15 @@ export const TriggerSchema = z
   })
   .refine(
     (t) =>
-      t.event === "cast" || (t.caster === undefined && t.spell === undefined),
-    { message: "caster and spell are only for cast triggers" },
+      t.event === "cast" ||
+      (t.caster === undefined &&
+        t.spell === undefined &&
+        t.targets === undefined),
+    { message: "caster, spell and targets are only for cast triggers" },
+  )
+  .refine(
+    (t) => t.event === "cast" || !t.effects.some((e) => e.op === "CopySpell"),
+    { message: "CopySpell is only for cast triggers" },
   )
   .refine(
     (t) =>
