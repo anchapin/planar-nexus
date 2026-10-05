@@ -121,7 +121,7 @@ Either
 or, when ANY part of the card's abilities can't be expressed exactly with the fields and ops below,
   {"needs_new_op": ["short description of each missing effect"]}
 
-Never approximate, drop, or simplify an ability. A partial script is wrong: the engine takes a scripted card's abilities only from its script. Use only the fields shown here (no "type_line", "mana_cost" or other keys).
+Never approximate, drop, or simplify an ability. A partial script is wrong: the engine takes a scripted card's abilities only from its script. Every condition on what a trigger watches, what a static affects, or what an effect targets must be expressed by a field: "with flying", "creature spell", "target creature you control", "another Angel you control", "white or blue", "that player". If no field says it, answer needs_new_op; a script that ignores a filter is wrong. Use only the fields shown here (no "type_line", "mana_cost" or other keys).
 
 Abilities:
 - Instants and sorceries: "spell": [effects], applied in order. Targeted effects use the spell's targets in order.
