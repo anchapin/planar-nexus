@@ -1,0 +1,12 @@
+{
+  "name": "Overkill",
+  "oracle": "Target creature gets -0/-9999 until end of turn.",
+  "spell": [
+    {
+      "op": "Pump",
+      "power": 0,
+      "toughness": -9999,
+      "target": "creature"
+    }
+  ]
+}

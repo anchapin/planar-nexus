@@ -1,539 +1,503 @@
 # Card script drafts: FIN
 
-4 drafted, 229 need new ops, 0 failed the schema, 78 skipped.
+1 drafted, 227 need new ops, 1 failed the schema, 82 skipped.
 
 Every draft is LLM-written and must be checked against the card before merge.
 
 ## Drafted
 
-- Dwarven Castle Guard
-- Il Mheg Pixie
-- Sephiroth's Intervention
-- Jumbo Cactuar
+- Overkill
 
 ## Missing ops
 
-- modes (choose one) (16): Aerith Rescue Mission, Battle Menu, Phoenix Down, Restoration Magic, Ice Magic, Gaius van Baelsar, Poison the Waters, Qutrub Forayer, Vincent's Limit Break, Fire Magic, Opera Love Song, Suplex, Thunder Magic, Coliseum Behemoth, Rydia's Return, Tifa's Limit Break
+- x costs (11): Gogo, Master of Mimicry, Syncopate, The Final Days, Choco-Comet, Self-Destruct, Cloud of Darkness, Hope Estheim, Omega, Heartless Evolution, Rydia, Summoner of Mist, Aettir and Priwen, Judgment Bolt
 - discard a card (8): Qiqirn Merchant, Rook Turret, Hecteyes, Malboro, Giott, King of the Dwarves, Locke Cole, Rydia, Summoner of Mist, Adventurer's Airship
-- equip cost (8): Dragoon's Lance, Thief's Knife, Black Mage's Rod, Red Mage's Rapier, Aettir and Priwen, Excalibur II, The Masamune, Magitek Scythe
-- additional costs (7): Restoration Magic, Ice Magic, Vincent's Limit Break, Fire Magic, Laughing Mad, Thunder Magic, Tifa's Limit Break
-- flashback cost (7): Auron's Inspiration, From Father to Son, Memories Returning, Resentful Revelation, Call the Mountain Chocobo, Random Encounter, Sorceress's Schemes
-- x costs (7): Syncopate, The Final Days, Choco-Comet, Self-Destruct, Omega, Heartless Evolution, Rydia, Summoner of Mist, Judgment Bolt
-- crew ability (5): Cargo Ship, The Lunar Whale, The Prima Vista, Adventurer's Airship, The Regalia
-- job select (create token and attach) (5): Dragoon's Lance, Thief's Knife, Red Mage's Rapier, Warrior's Sword, Bard's Bow
-- shuffle library (5): Delivery Moogle, Prishe's Wanderings, Reach the Horizon, Sazh Katzroy, World Map
-- static effect changing creature types (5): Dragoon's Lance, White Mage's Staff, Black Mage's Rod, Dark Knight's Greatsword, Warrior's Sword
-- stun counters (4): Aerith Rescue Mission, Ultros, Obnoxious Octopus, Tonberry, Omega, Heartless Evolution
-- add mana (3): White Auracite, Sorceress's Schemes, Ring of the Lucii
-- conditional trigger based on mana spent (3): The Prima Vista, Sahagin, Prompto Argentum
-- cost reduction for spells (3): The Water Crystal, The Darkness Crystal, The Fire Crystal
-- equipment mechanics (3): Ninja's Blades, Summoner's Grimoire, Genji Glove
-- flashback (3): The Final Days, Laughing Mad, Nibelheim Aflame
-- flashback cost and mechanic (3): Dreams of Laguna, Retrieve the Esper, Gysahl Greens
-- mill cards (3): Shinra Reinforcements, Random Encounter, Town Greeter
-- put card into hand (3): Ashe, Princess of Dalmasca, Delivery Moogle, Resentful Revelation
-- put cards on bottom of library in random order (3): Ashe, Princess of Dalmasca, Gilgamesh, Master-at-Arms, Ignis Scientia
-- sacrifice cost other than self (3): Zack Fair, Phantom Train, Quina, Qu Gourmet
-- search library for a card (3): Call the Mountain Chocobo, Prishe's Wanderings, World Map
-- search library for a card and put it onto the battlefield (3): Magitek Infantry, Sandworm, Gladiolus Amicitia
-- surveil effect (3): Swallowed by Leviathan, Namazu Trader, Lunatic Pandora
-- x costs in effects (3): Cloud of Darkness, Hope Estheim, Shantotto, Tactician Magician
-- add mana effect (2): Ether, Goobbue Gardener
-- attach equipment (2): Beatrix, Loyal General, Magitek Scythe
-- combat damage triggers (2): Ninja's Blades, Buster Sword
-- condition 'attacks alone' (2): Seifer Almasy, Squall, SeeD Mercenary
-- conditional effect (if you do) (2): Seymour Flux, Magitek Scythe
-- conditional effect based on kicker status (2): Vayne's Treachery, Chocobo Kick
-- conditions (as long as you control seven or more lands) (2): Scorpion Sentinel, Gigantoad
+- equip cost (8): Dragoon's Lance, Thief's Knife, Coral Sword, Red Mage's Rapier, Aettir and Priwen, Lion Heart, The Masamune, Magitek Scythe
+- flashback (7): From Father to Son, Resentful Revelation, Laughing Mad, Nibelheim Aflame, Random Encounter, Sorceress's Schemes, Gysahl Greens
+- crew ability (6): Magitek Armor, Cargo Ship, The Lunar Whale, The Prima Vista, Adventurer's Airship, The Regalia
+- flashback cost (6): Auron's Inspiration, Dreams of Laguna, Memories Returning, Retrieve the Esper, The Final Days, Call the Mountain Chocobo
+- shuffle library (6): Hill Gigas, Prishe's Wanderings, Reach the Horizon, Sazh Katzroy, Gladiolus Amicitia, World Map
+- tiered costs (6): Restoration Magic, Ice Magic, Vincent's Limit Break, Fire Magic, Thunder Magic, Tifa's Limit Break
+- attach effect (5): Weapons Vendor, Astrologian's Planisphere, Black Mage's Rod, Bard's Bow, Magitek Scythe
+- equipment mechanics (5): Ninja's Blades, Summoner's Grimoire, Buster Sword, Genji Glove, Lion Heart
+- reveal card (5): Delivery Moogle, From Father to Son, Hill Gigas, Sazh Katzroy, World Map
+- put card into hand (4): Memories Returning, Dark Confidant, Choco, Seeker of Paradise, World Map
+- search library (4): Delivery Moogle, From Father to Son, Hill Gigas, Sazh Katzroy
+- search library for a card (4): Call the Mountain Chocobo, Prishe's Wanderings, Gladiolus Amicitia, World Map
+- add mana (3): Ether, Sorceress's Schemes, Ring of the Lucii
+- damage equal to power (3): Blazing Bomb, Nibelheim Aflame, Chocobo Kick
+- enters tapped (3): Shambling Cie'th, Tonberry, Elixir
+- equip ability (3): Machinist's Arsenal, Bard's Bow, Ultima Weapon
+- equipment mechanics (attach, equip cost) (3): Paladin's Arms, Samurai's Katana, Warrior's Sword
+- equipment mechanics (attach, equip) (3): Sage's Nouliths, Dark Knight's Greatsword, Monk's Fist
+- equipped creature gains subtype (3): Dragoon's Lance, Thief's Knife, Red Mage's Rapier
+- exile this artifact as a cost (3): Phoenix Down, Ether, Elixir
+- look at the top n cards of your library (3): Ashe, Princess of Dalmasca, Gilgamesh, Master-at-Arms, Ignis Scientia
+- put into hand (3): Delivery Moogle, From Father to Son, Commune with Beavers
+- static effects changing creature types (3): Sage's Nouliths, Dark Knight's Greatsword, Monk's Fist
+- stun counters (3): Ultros, Obnoxious Octopus, Tonberry, Omega, Heartless Evolution
+- token abilities (3): Choco-Comet, Chocobo Racetrack, Gysahl Greens
+- attach an equipment to a creature (2): Stolen Uniform, Gilgamesh, Master-at-Arms
+- choose one additional cost (2): Fire Magic, Thunder Magic
+- conditional trigger based on mana spent (2): The Prima Vista, Prompto Argentum
+- conditions (2): Omega, Heartless Evolution, Judgment Bolt
+- conditions (if at least four mana was spent) (2): Sahagin, Blazing Bomb
+- copying permanents (2): Relm's Sketching, Firion, Wild Rose Warrior
 - cost reduction effect (2): The Wind Crystal, The Earth Crystal
-- cycling cost (2): Hill Gigas, Balamb T-Rexaur
-- damage equal to power (2): Blazing Bomb, Chocobo Kick
-- delayed triggered ability to sacrifice a permanent (2): The Fire Crystal, Firion, Wild Rose Warrior
-- destroy target nonland permanent (2): Fate of the Sun-Cryst, Lunatic Pandora
-- enters tapped (2): Shambling Cie'th, Tonberry
-- equip cost and mechanic (2): Warrior's Sword, Bard's Bow
+- cost reduction for spells (2): The Water Crystal, The Fire Crystal
+- create treasure token (2): Undercity Dire Rat, Magic Pot
+- during your turn condition (2): Dragoon's Lance, Tonberry
 - exile target card from a graveyard (2): Ignis Scientia, Magic Pot
 - exile top card of library (2): Reno and Rude, Lightning, Security Sergeant
+- finality counters (2): Noctis, Prince of Lucis, Yuna, Hope of Spira
+- gain control of target creature (2): Unexpected Request, Zidane, Tantalus Thief
+- hexproof (2): Restoration Magic, Magic Damper
+- job select (create token and attach) (2): Dragoon's Lance, Red Mage's Rapier
+- job select effect (2): Machinist's Arsenal, Bard's Bow
 - look at top card of library (2): The Lunar Whale, Traveling Chocobo
-- look at top cards of library (2): Resentful Revelation, Commune with Beavers
-- look at top n cards of library (2): Ashe, Princess of Dalmasca, Gilgamesh, Master-at-Arms
-- must be blocked if able (2): The Masamune, Magitek Scythe
+- mill cards (2): Shinra Reinforcements, Town Greeter
+- play card from exile (2): Reno and Rude, Lightning, Security Sergeant
 - put card onto battlefield tapped (2): Prishe's Wanderings, The Regalia
-- return card from graveyard to battlefield (2): Evil Reawakened, Rydia, Summoner of Mist
-- return cards from graveyard to hand (2): Fight On!, Rydia's Return
-- reveal card (2): Delivery Moogle, Sazh Katzroy
-- reveal cards from library (2): Memories Returning, Commune with Beavers
-- sacrifice cost (2): Blazing Bomb, Lunatic Pandora
-- search library (2): Delivery Moogle, Sazh Katzroy
-- static effects modifying creature types (2): Sage's Nouliths, Samurai's Katana
+- put cards on the bottom of your library in a random order (2): Ashe, Princess of Dalmasca, Gilgamesh, Master-at-Arms
+- return card from graveyard to battlefield (2): Evil Reawakened, Yuna, Hope of Spira
+- return target cards from graveyard to hand (2): Fight On!, Rydia's Return
+- shuffle (2): Delivery Moogle, From Father to Son
 - this spell can't be countered (2): Eject, Absolute Virtue
-- triggered ability doubling effect (2): Cloud, Midgar Mercenary, Traveling Chocobo
-- untap effect (2): Magic Damper, Genji Glove
-- untap target creature (2): Unexpected Request, Zidane, Tantalus Thief
-- ability 'deals combat damage' (1): Squall, SeeD Mercenary
-- ability 'double strike' (1): Squall, SeeD Mercenary
-- ability 'gains double strike' (1): Seifer Almasy
-- ability granting (adding subtypes and triggered abilities to other permanents) (1): Summoner's Grimoire
-- ability refers to the number of permanent cards in your graveyard, which is not a supported effect or condition (1): Gran Pulse Ochu
-- ability to add a static mana ability to a land (1): Ultima, Origin of Oblivion
-- ability to cast spells from graveyard (1): Noctis, Prince of Lucis
-- ability to change a creature's subtype (1): Jenova, Ancient Calamity
-- ability to draw cards equal to a variable (1): Jenova, Ancient Calamity
-- ability to modify land types and abilities (1): Ultima, Origin of Oblivion
-- ability to place non-+1/+1 counters (1): Ultima, Origin of Oblivion
-- ability to play exiled card (1): Reno and Rude
-- ability to reference a creature's power dynamically in an effect (1): Jenova, Ancient Calamity
-- ability to trigger on tapping a land for mana (1): Ultima, Origin of Oblivion
-- ability: if a creature with a finality counter on it would die, exile it instead (1): Relentless X-ATM092
-- ability: return this card from your graveyard to the battlefield tapped with a finality counter on it (1): Relentless X-ATM092
-- ability: this creature can't be blocked except by three or more creatures (1): Relentless X-ATM092
-- add counters to a card as it enters the battlefield (1): Evil Reawakened
-- add counters to non-creature permanents (1): Clash of the Eikons
-- adding creature types (1): Ninja's Blades
-- additional combat phase effect (1): Genji Glove
+- token with triggered ability (2): Cornered by Black Mages, Call the Mountain Chocobo
+- triggered ability condition 'whenever you gain life' (2): Aerith Gainsborough, Minwu, White Mage
+- ability limit 'this ability triggers only once each turn' (1): G'raha Tia
+- ability to grant a triggered ability to a permanent (1): Galuf's Final Act
+- ability to reference a creature's power dynamically in an effect (1): Galuf's Final Act
+- ability to target a creature based on a variable amount (1): Galuf's Final Act
+- add {c} with restriction (1): Cargo Ship
+- add counters upon entering (1): Evil Reawakened
+- add mana effect (1): Goobbue Gardener
+- add one mana of any color (1): Blitzball
+- adding creature subtypes (1): Ninja's Blades
+- adding creature subtypes (mutant) (1): Jenova, Ancient Calamity
+- adding creature types (1): Summoner's Grimoire
+- additional combat phase (1): Genji Glove
+- additional costs (1): Laughing Mad
 - additional costs (pay life) (1): Noctis, Prince of Lucis
-- additional costs (sacrifice/pay mana) (1): Louisoix's Sacrifice
+- additional costs (sacrifice/pay) (1): Louisoix's Sacrifice
 - additional land play effect (1): Zell Dincht
 - affinity for artifacts (1): Valkyrie Aerial Unit
 - affinity for birds (1): Bartz and Boko
 - affinity for towns (cost reduction based on permanents controlled) (1): Travel the Overworld
+- all creatures get -1/-1 until end of turn (1): Poison the Waters
 - all damage that would be dealt to you and other permanents you control is dealt to this creature instead (1): Ancient Adamantoise
-- as long as condition (1): The Masamune
 - as long as this creature has a counter on it, it can attack as though it didn't have defender (1): Demon Wall
-- at the beginning of combat trigger (1): Rosa, Resolute White Mage
-- at the beginning of upkeep trigger (1): Triple Triad
+- as long as you control two or more artifacts, this creature gets +2/+0 (1): Gaelicat
 - at the beginning of your end step (1): Cactuar
-- attach an equipment to a creature (1): Gilgamesh, Master-at-Arms
-- attach an equipment you control to a creature (1): Unexpected Request
-- attach effect (1): Weapons Vendor
+- at the beginning of your upkeep (1): Triple Triad
+- attach an equipment you control (1): Unexpected Request
+- attach equipment (1): Beatrix, Loyal General
 - attach equipment effect (1): Raubahn, Bull of Ala Mhigo
-- attach equipment to token on etb (1): Astrologian's Planisphere
-- attach it to the chosen creature (1): Stolen Uniform
 - attaching equipment (1): Zack Fair
-- attacking state modification (1): Summoner's Grimoire
-- base power and toughness setting effect (1): Aettir and Priwen
-- cast a spell without paying its mana cost (1): Buster Sword
-- cast card from graveyard without paying mana cost (1): Seifer Almasy
+- blight counter effect (1): Ultima, Origin of Oblivion
+- cast a spell from hand without paying mana cost (1): Buster Sword
 - cast spells from top of library (1): Traveling Chocobo
-- cast without paying mana costs (1): Triple Triad
 - casting a card from a graveyard (1): Quistis Trepe
+- casting from graveyard (1): Dreams of Laguna
+- casting spells from graveyard (1): Noctis, Prince of Lucis
 - charge counters (1): Excalibur II
-- choose an opponent (1): Memories Returning
-- choose card from hand (1): Poison the Waters
-- choose target creature you control (1): Nibelheim Aflame
-- choose target creature you control and target equipment (1): Stolen Uniform
+- choose one or more (1): Clash of the Eikons
 - choosing new targets for copies (1): Gogo, Master of Mimicry
-- combat damage trigger (1): Locke Cole
-- condition 'if at least four mana was spent to cast it' (1): Blazing Bomb
-- condition 'if it's the first combat phase of the turn' (1): Balthier and Fran
-- condition 'if this spell was cast from a graveyard' (1): Retrieve the Esper
+- combat damage trigger (1): Reno and Rude
+- combat damage triggers (1): Buster Sword
 - condition 'if you control eight or more artifacts' (1): Golbez, Crystal Collector
 - condition 'if you control five or more towns' (1): The Wandering Minstrel
 - condition 'if you control four or more artifacts' (1): Golbez, Crystal Collector
-- condition/effect: 'it becomes a spirit artifact creature in addition to its other types until end of turn' (1): Phantom Train
-- conditional activation requirement (if an opponent was dealt combat damage by a legendary creature this turn) (1): Blitzball
-- conditional additional turn/step effect (1): Y'shtola Rhul
-- conditional choice (any number of sagas) (1): Garnet, Princess of Alexandria
+- condition based on combat damage dealt to a player (1): Lightning, Army of One
+- condition: activate only if an opponent was dealt combat damage by a legendary creature this turn (1): Blitzball
+- conditional additional end step effect (1): Y'shtola Rhul
 - conditional cost payment (1): Shambling Cie'th
-- conditional counter based on graveyard count (1): Swallowed by Leviathan
-- conditional counterspell (unless its controller pays) (1): Syncopate
+- conditional counter cost based on graveyard size (1): Swallowed by Leviathan
+- conditional damage based on kicker (1): Chocobo Kick
+- conditional effect 'if you do' (1): Namazu Trader
 - conditional effect based on card type (1): Town Greeter
-- conditional effect based on game state (number of creatures that died this turn) (1): Deadly Embrace
-- conditional effect based on number of creatures controlled (1): You're Not Alone
-- conditional effect based on sacrificing another permanent (1): Reno and Rude
-- conditional effect based on the success of another effect (1): Stiltzkin, Moogle Merchant
-- conditional effect based on zone of origin (1): From Father to Son
-- conditional effects (if you do) (1): Namazu Trader
-- conditional effects based on card type (enchantment card) (1): Summoner's Grimoire
-- conditional effects based on life gained this turn (1): Hope Estheim
+- conditional effect based on discard (1): Giott, King of the Dwarves
+- conditional effect based on kicker (1): Vayne's Treachery
+- conditional effect based on zone (1): Nibelheim Aflame
+- conditional effect based on zone of origin (1): Retrieve the Esper
+- conditional effects (if/unless) (1): Seymour Flux
+- conditional effects based on card type (1): Summoner's Grimoire
 - conditional effects based on mana spent (1): Tellah, Great Sage
-- conditional effects based on variable values (1): Shantotto, Tactician Magician
-- conditional mana cost reduction based on target state (1): Fate of the Sun-Cryst
+- conditional effects based on x (1): Shantotto, Tactician Magician
 - conditional mana restriction (1): Freya Crescent
-- conditional mana spent check (1): Ultros, Obnoxious Octopus
-- conditional replacement effect (double damage) (1): Lightning, Army of One
-- conditional replacement effect for etb counters based on board state (1): Torgal, A Fine Hound
+- conditional number of counters based on previous effect (1): Garnet, Princess of Alexandria
+- conditional replacement effect for etb counters (1): Torgal, A Fine Hound
 - conditional replacement effects (1): The Final Days
-- conditional static ability (as long as equipped) (1): Cloud, Planet's Champion
-- conditional static effect (as long as equipped) (1): Cloud, Midgar Mercenary
+- conditional sacrifice effect (1): Reno and Rude
+- conditional static ability based on equipment status (1): Cloud, Planet's Champion
+- conditional static effect (as long as...) (1): Cloud, Midgar Mercenary
+- conditional static effects on tokens (1): Chocobo Racetrack
 - conditional trigger (if it's the first combat phase) (1): Genji Glove
-- conditional trigger (if you control an equipment) (1): Weapons Vendor
-- conditional/variable values (number of counters equal to power) (1): Galuf's Final Act
-- conditions (counting permanents you control) (1): Judgment Bolt
-- conditions (if you don't control a creature named darkstar) (1): Rufus Shinra
-- conditions (mana value 4 or less) (1): Phoenix Down
-- conditions (power 4 or greater) (1): Battle Menu
-- conditions (power-based damage) (1): Self-Destruct
+- conditional type-changing effect (1): Phantom Train
+- conditions ('if you don't control a creature named darkstar') (1): Rufus Shinra
+- conditions (as long as you control seven or more lands) (1): Gigantoad
+- conditions (as long as) (1): Scorpion Sentinel
+- conditions (choose one additional cost) (1): Vincent's Limit Break
+- conditions (if at least four/eight mana was spent) (1): Ultros, Obnoxious Octopus
+- conditions (if you control an equipment) (1): Weapons Vendor
+- conditions (if) (1): You're Not Alone
+- conditions (then draw a card for each creature that died this turn) (1): Deadly Embrace
+- conditions (unless) (1): Syncopate
+- conditions (x is the number of permanent cards in your graveyard) (1): Cloud of Darkness
+- conditions based on life gained this turn (1): Hope Estheim
+- conditions based on power (1): Self-Destruct
 - copy spell with new targets (1): Ether
 - copying a permanent (1): The Fire Crystal
-- copying a permanent as a token (1): Firion, Wild Rose Warrior
-- copying a permanent that is an artifact, creature, or land (1): Relm's Sketching
 - copying activated or triggered abilities (1): Gogo, Master of Mimicry
-- cost 'pay {1}{r}{g}' (1): Balthier and Fran
 - cost reduction based on graveyard contents (1): Diamond Weapon
-- cost reduction based on number of permanents with subtype town (1): Qiqirn Merchant
-- costs other than mana/tap/sacrifice (exile this artifact) (1): Phoenix Down
+- cost reduction static effect (1): The Darkness Crystal
+- costs other than mana/tap/sacrifice (pay life) (1): Dark Knight's Greatsword
 - countering activated or triggered abilities (1): Louisoix's Sacrifice
-- counting cards in graveyard (1): Cloud of Darkness
+- counting permanents with multiple subtypes (1): Torgal, A Fine Hound
 - create a food token (1): Ignis Scientia
-- create a token that is a copy of a card (1): Sin, Spira's Punishment
+- create a tapped token that's a copy of that card (1): Sin, Spira's Punishment
 - create a treasure token (1): Prompto Argentum
-- create legendary tokens (1): Rinoa Heartilly
+- create legendary token (1): Rinoa Heartilly
 - create tapped tokens (1): Ancient Adamantoise
-- createtoken does not support artifact tokens with activated abilities (1): Undercity Dire Rat
-- createtoken does not support treasure tokens (1): Magic Pot
+- create token that is a copy of a card (1): Ardyn, the Usurper
+- create token with lifelink (non-evergreen keyword) (1): Moogles' Valor
+- create treasure tokens (1): Kain, Traitorous Dragoon
 - creating legendary tokens (1): Rufus Shinra
+- creatures you control gain indestructible (static effect other than p/t or evergreen keywords) (1): Moogles' Valor
 - cycling ability (1): Cid, Timeless Artificer
-- cycling cost and effect (1): Airship Crash
-- damage based on variable mana spent (1): Tellah, Great Sage
+- cycling cost (1): Hill Gigas
+- cycling cost (discarding card) (1): Airship Crash
+- damage based on variable (1): Tellah, Great Sage
+- damage calculation based on number of permanents you control (1): Slash of Light
 - damage equal to its power (1): Bartz and Boko
 - damage equal to the number of equipped creatures you control (1): Barret Wallace
 - damage isn't removed from this creature during cleanup steps (1): Ancient Adamantoise
-- delayed trigger at end step (1): Random Encounter
-- delayed trigger effect (1): Ether
-- delayed triggered ability (return to battlefield) (1): Vincent's Limit Break
+- damage prevention effect (1): Diamond Weapon
+- delayed trigger (return to hand) (1): Random Encounter
+- delayed triggered ability (1): Ether
+- delayed triggered ability to sacrifice a permanent (1): Firion, Wild Rose Warrior
 - destroy all artifacts (1): Ultima
+- destroy target artifact or enchantment (1): Coliseum Behemoth
+- destroy target creature that was dealt damage this turn (1): Qutrub Forayer
+- destroy target creature with power 4 or greater (1): Battle Menu
+- destroy target equipment (1): Light of Judgment
 - destroy target land (1): Sandworm
-- destroying an equipment attached to a creature (1): Light of Judgment
-- discard card (1): Poison the Waters
-- discard cost (1): Balamb T-Rexaur
-- discarding as a cost (1): Hill Gigas
-- discarding cards (1): Ninja's Blades
+- destroy target nonland permanent (1): Lunatic Pandora
+- destroy target nonland permanent (target type not supported) (1): Fate of the Sun-Cryst
+- discard cost (1): Hill Gigas
+- discard hand (1): Nibelheim Aflame
 - distribute counters effect (1): The Earth Crystal
-- doesn't untap during untap step (static effect other than p/t or keywords) (1): Sleep Magic
-- double number of counters (1): Sazh Katzroy
+- double counters (1): Sazh Katzroy
+- double power and toughness (1): Tifa's Limit Break
 - double strike keyword (1): Genji Glove
-- doubling power and toughness (1): Tifa's Limit Break
-- doubling power is not a supported operation (1): Tifa Lockhart
+- doubling power is not a supported pump operation (1): Tifa Lockhart
+- draw a card (1): Buster Sword
 - draw a card for each artifact you control (1): Edgar, King of Figaro
-- draw a card then cast a spell from hand (1): Buster Sword
 - duration until next turn (1): Lightning, Army of One
-- during your turn condition (1): Tonberry
-- dynamic damage calculation based on number of creatures and equipment controlled (1): Slash of Light
-- dynamic effect based on number of counters removed (1): Garnet, Princess of Alexandria
-- dynamic p/t pump based on number of towns (1): The Wandering Minstrel
-- dynamic pump effects based on board state (1): Rinoa Heartilly
+- dynamic power/toughness pump based on graveyard count (1): Gran Pulse Ochu
+- dynamic values based on power (jenova's power, creature's power) (1): Jenova, Ancient Calamity
+- each other card exiled this way with lesser mana value than it (1): Triple Triad
 - effect 'after this phase, there is an additional combat phase' (1): Balthier and Fran
 - effect 'each opponent loses life equal to that card's power' (1): Golbez, Crystal Collector
 - effect 'exile the top card of that player's library' (1): Vaan, Street Thief
 - effect 'if you don't, create a treasure token' (1): Vaan, Street Thief
+- effect 'it gains lifelink until end of turn' (1): Rosa, Resolute White Mage
 - effect 'put a +1/+1 counter on each scout, pirate, and rogue you control' (1): Vaan, Street Thief
-- effect 'put two +1/+1 counters on that token' (specifically targeting a token created in the same spell) (1): Retrieve the Esper
-- effect 'put x +1/+1 counters on each legendary creature you control' is not supported (1): Aerith Gainsborough
 - effect 'return target creature card from your graveyard to your hand' (1): Golbez, Crystal Collector
-- effect 'return target permanent card from graveyard to battlefield' (1): Squall, SeeD Mercenary
 - effect 'you may cast it' (1): Vaan, Street Thief
-- effect applying a finality counter (1): Yuna, Hope of Spira
-- effect creating a token that is a copy of a card with modified p/t and subtypes (1): Ardyn, the Usurper
-- effect dependent on number of creatures controlled (1): Moogles' Valor
-- effect returning card from graveyard to battlefield (1): Yuna, Hope of Spira
-- enchant ability (1): Stuck in Summoner's Sanctum
-- enchant creature (aura targeting) (1): Sleep Magic
-- enchantment - aura type (1): Stuck in Summoner's Sanctum
+- effect to put counters on each legendary creature you control (1): Aerith Gainsborough
+- effect: 'draw a card, then discard a card' (1): Ninja's Blades
+- effect: 'that player loses life equal to the discarded card's mana value' (1): Ninja's Blades
+- enchant artifact or creature (1): Stuck in Summoner's Sanctum
+- enchant creature (aura attachment) (1): Sleep Magic
+- enchanted creature doesn't untap during its controller's untap step (1): Sleep Magic
+- enchanted permanent doesn't untap during its controller's untap step (1): Stuck in Summoner's Sanctum
+- enchanted permanent's activated abilities can't be activated (1): Stuck in Summoner's Sanctum
 - enchantment becoming a creature (1): Ride the Shoopuf
-- end step trigger (1): Hope Estheim
 - end the turn (1): Ultima
 - enters with counters (1): Zack Fair
-- equip ability (1): White Mage's Staff
-- equip cost using life payment (1): Dark Knight's Greatsword
-- equip cost with activation limit (1): Dark Knight's Greatsword
-- equip cost with name/flavor text (1): Astrologian's Planisphere
-- equip cost with variable/non-standard text (1): Machinist's Arsenal
-- equipment mechanics (attach, equip cost, static bonus to equipped creature) (1): Coral Sword
-- equipment mechanics (attach, equip cost, static effects modifying types/keywords/stats of equipped creature) (1): Paladin's Arms
-- equipment mechanics (attach, equip cost, static type-changing effects) (1): Monk's Fist
-- equipment mechanics (attach, equip cost) (1): Samurai's Katana
-- equipment mechanics (attach, equip) (1): Sage's Nouliths
-- equipment mechanics (equip cost, attaching to creatures, static p/t bonus to equipped creature) (1): Lion Heart
-- equipment mechanics (equip cost, attaching to creatures) (1): Ultima Weapon
-- equipment mechanics (equip, equipped creature) (1): Buster Sword
-- equipped creature gains creature type artificer (1): Machinist's Arsenal
-- equipped creature gains subtype (1): Thief's Knife
+- equip cost with name (1): Astrologian's Planisphere
+- equipment attachment (1): Coral Sword
+- equipment mechanics (attach, equip cost, static effects granting abilities/subtypes to equipped creature) (1): White Mage's Staff
+- equipped creature gains ability (1): Red Mage's Rapier
 - equipped creature gains triggered ability (1): Thief's Knife
 - equipped creature gets +1/+1 (1): Thief's Knife
-- equipped creature gets +n/+n for each artifact you control (1): Machinist's Arsenal
-- equipped creature has ability (static effect granting ability) (1): Red Mage's Rapier
-- equipped creature is a wizard in addition to its other types (static effect changing subtype) (1): Red Mage's Rapier
-- evasion effect (can't be blocked) (1): Sahagin
-- exile a card at random from graveyard (1): Sin, Spira's Punishment
+- evasion effects (can't be blocked) (1): Sahagin
+- exile a permanent card from your graveyard at random (1): Sin, Spira's Punishment
 - exile and return to battlefield effect (1): Y'shtola Rhul
-- exile cards from library (1): Triple Triad
-- exile cards from library to play them later (1): Opera Love Song
+- exile cards from library and play them (1): Opera Love Song
+- exile the top card of their library (1): Triple Triad
 - exile the top card of your library (1): Haste Magic
 - exile the top three cards of their library (1): Malboro
-- exile this artifact as a cost (1): Elixir
-- exile tracking/referencing (1): The Darkness Crystal
 - exile until this artifact leaves the battlefield (1): White Auracite
-- fight mechanic (1): Clash of the Eikons
+- exile up to two target cards from a single graveyard (1): Qutrub Forayer
+- exile zone tracking (1): The Darkness Crystal
+- fight effect (1): Clash of the Eikons
 - finality counter (1): Rydia, Summoner of Mist
 - flashback mechanic (1): Auron's Inspiration
-- gain control of target creature (1): Zidane, Tantalus Thief
-- gain control of target creature until end of turn (1): Unexpected Request
-- gain control of that equipment until end of turn (1): Stolen Uniform
+- for each creature you control (dynamic count) (1): Moogles' Valor
+- forestcycling is a cycling ability which requires searching the library and discarding the card as a cost (1): Balamb T-Rexaur
+- gain control of a permanent (1): Stolen Uniform
+- gain haste (static effect) (1): Random Encounter
 - gain life equal to number of cards shuffled (1): Elixir
-- gaining control of a permanent (1): Stiltzkin, Moogle Merchant
-- gaining first strike (1): Magitek Scythe
+- gain trample (1): Gladiolus Amicitia
 - gains haste until end of turn (1): Rydia, Summoner of Mist
-- grant haste to specific objects (1): Random Encounter
-- granting abilities with triggered effects (1): Ninja's Blades
-- granting an ability to a permanent (1): Galuf's Final Act
-- granting indestructible (1): Moogles' Valor
-- granting lifelink (1): Zidane, Tantalus Thief
-- granting non-evergreen keyword lifelink (1): The Wind Crystal
-- hexproof and indestructible keywords (1): Restoration Magic
-- hexproof keyword (1): Magic Damper
+- gains lifelink (1): Zidane, Tantalus Thief
+- granting abilities to equipped creatures (1): Summoner's Grimoire
+- granting abilities to permanents (1): Ninja's Blades
+- granting an ability to a creature (1): Astrologian's Planisphere
+- granting non-evergreen keywords like lifelink (1): The Wind Crystal
+- if a creature with a finality counter on it would die, exile it instead (1): Relentless X-ATM092
+- if the exiled card is a land card, repeat this process (1): Sin, Spira's Punishment
+- if they do, you draw a card (1): Stiltzkin, Moogle Merchant
 - if this creature didn't enter the battlefield this turn (1): Cactuar
-- if this spell was cast from a graveyard, discard your hand and draw four cards (1): Nibelheim Aflame
-- if you do (conditional effect) (1): Giott, King of the Dwarves
 - if you do, draw a card (1): Rydia, Summoner of Mist
+- indestructible (1): Restoration Magic
 - indestructible keyword (1): Zack Fair
 - islandcycling (1): Ice Flan
-- it deals damage equal to its power to each other creature (1): Nibelheim Aflame
-- job select (attach effect) (1): Black Mage's Rod
-- job select (conditional attachment and token creation) (1): Dark Knight's Greatsword
-- job select (conditional token creation and automatic attachment) (1): Paladin's Arms
-- job select (enters, create token, attach) (1): Machinist's Arsenal
+- job select (attach effect) (1): Thief's Knife
 - job select mechanic (1): Astrologian's Planisphere
-- job select mechanic (create token and attach) (1): White Mage's Staff
 - jump ability (static effect not p/t or keyword) (1): Freya Crescent
-- jump ability (static effect other than p/t and keywords) (1): Kain, Traitorous Dragoon
-- kicker cost (return a land to hand) (1): Chocobo Kick
+- jump ability (static with condition) (1): Kain, Traitorous Dragoon
+- kicker cost (1): Chocobo Kick
 - kicker cost (sacrifice) (1): Vayne's Treachery
-- landfall trigger effect (pump self) (1): Ambrosia Whiteheart
-- lifelink keyword gain (1): Rosa, Resolute White Mage
-- look at cards from library and choose one to put into hand (1): Choco, Seeker of Paradise
-- look at top n cards and put a land onto the battlefield (1): Ignis Scientia
-- look at/select from milled cards (1): Town Greeter
-- lose life equal to its mana value (1): Dark Confidant
-- loss of life based on variable values (1): Ninja's Blades
+- land gaining new activated ability (1): Ultima, Origin of Oblivion
+- land losing types and abilities (1): Ultima, Origin of Oblivion
+- lands you control enter untapped (1): The Wandering Minstrel
+- look at cards from library (1): Choco, Seeker of Paradise
+- look at top cards (1): Resentful Revelation
+- look at top n cards (1): Commune with Beavers
+- lose life equal to damage dealt (1): Kain, Traitorous Dragoon
+- lose life equal to mana value (1): Dark Confidant
+- mana ability (1): White Auracite
 - mana ability with choice of color (1): Torgal, A Fine Hound
-- mana of any type can be spent (1): Quistis Trepe
-- mana of any type can be spent to cast it (1): Reno and Rude
-- mana production effect (1): Blitzball
-- mana production with restrictions (1): Cargo Ship
-- mana value comparison (1): Triple Triad
-- may condition (1): Beatrix, Loyal General
+- mana value condition (1): Phoenix Down
+- may (optional effect) (1): Ambrosia Whiteheart
 - menace keyword (1): Item Shopkeep
+- mill (1): Random Encounter
 - mill effect (1): Hope Estheim
 - mill effect based on hand size (1): The Water Crystal
-- modes (choose one or more) (1): Clash of the Eikons
-- modifying activated ability costs of a permanent (1): Firion, Wild Rose Warrior
-- moving counters between objects (1): Zack Fair
-- negative power/toughness pump (1): Overkill
-- number of nonbasic lands you control (1): Omega, Heartless Evolution
-- opponent puts cards on bottom of library (1): Memories Returning
-- optional cost (you may pay 1 life) (1): Seymour Flux
-- optional cost payment (may pay {1}) (1): Weapons Vendor
-- optional effect (may draw) (1): Rook Turret
-- optional effect (may return another permanent to hand) (1): Ambrosia Whiteheart
-- pay life cost (1): Ring of the Lucii
-- permanents you control (1): Restoration Magic
+- modifying activation costs of abilities (1): Firion, Wild Rose Warrior
+- moving counters from self to target (1): Zack Fair
+- must be blocked if able (1): Magitek Scythe
+- opponent chooses card to put on bottom of library (1): Memories Returning
+- optional cost 'you may sacrifice another creature or artifact' (1): Namazu Trader
+- optional costs (may pay life) (1): Seymour Flux
+- optional costs (you may pay {1}) (1): Weapons Vendor
+- pay life (1): Ring of the Lucii
 - plainscycling (discard cost, search library, reveal, shuffle) (1): Cloudbound Moogle
-- play card from exile (1): Lightning, Security Sergeant
-- play card from library (1): The Lunar Whale
-- play cards from exile (1): Triple Triad
+- play cards from library (1): The Lunar Whale
 - play lands from top of library (1): Traveling Chocobo
-- prevention of combat damage (1): Diamond Weapon
-- put a card into hand (1): World Map
+- pump all creatures you control (1): Rydia's Return
+- pump effect with dynamic value based on number of creatures (1): Rinoa Heartilly
+- put a +1/+1 counter on each creature you control (1): The Crystal's Chosen
+- put a card from graveyard to hand (1): Town Greeter
+- put a card into your hand (1): Ashe, Princess of Dalmasca
+- put a land card from among them onto the battlefield tapped (1): Ignis Scientia
+- put a land card from your hand onto the battlefield (1): PuPu UFO
 - put a stun counter on it (1): Ice Flan
+- put a stun counter on one of them (1): Aerith Rescue Mission
 - put any number of cards of a specific subtype from among them onto the battlefield (1): Gilgamesh, Master-at-Arms
-- put any number of land cards from among them onto the battlefield tapped (1): Choco, Seeker of Paradise
-- put card from graveyard to hand (1): Town Greeter
-- put cards from graveyard onto battlefield (1): Random Encounter
-- put cards into graveyard (1): Resentful Revelation
-- put cards into hand (1): Commune with Beavers
-- put cards on bottom of library in any order (1): Commune with Beavers
-- put cards onto the battlefield (1): Reach the Horizon
-- put counters on self based on condition (1): Ultros, Obnoxious Octopus
-- put remaining cards on bottom of library in random order (1): The Regalia
-- put specific cards into hand (1): Memories Returning
-- put target creature on top or bottom of library (1): Ice Magic
-- put that card into your hand (1): Dark Confidant
-- put the rest into your graveyard (1): Choco, Seeker of Paradise
+- put card onto battlefield (1): Gladiolus Amicitia
+- put cards from graveyard to battlefield (1): Random Encounter
+- put cards into graveyard (1): Choco, Seeker of Paradise
+- put cards onto battlefield (1): Reach the Horizon
+- put counter on permanent (1): Clash of the Eikons
+- put into hand/graveyard (1): Resentful Revelation
+- put land cards onto battlefield (1): Choco, Seeker of Paradise
+- put onto battlefield (1): From Father to Son
+- put rest on bottom of library (1): Commune with Beavers
+- put rest on bottom of library in random order (1): The Regalia
+- put the rest on the bottom of your library in a random order (1): Ignis Scientia
 - put two +1/+1 counters on this creature (1): Demon Wall
-- putcounters on multiple targets (each creature you control) (1): The Crystal's Chosen
-- putting a card from hand onto the battlefield (1): PuPu UFO
-- referencing mana values of discarded cards (1): Ninja's Blades
-- remove counters (1): Clash of the Eikons
-- remove counters from permanents (1): Garnet, Princess of Alexandria
-- repeat process if condition met (1): Sin, Spira's Punishment
-- replacement effect (if that creature would die this turn, exile it instead) (1): Suplex
-- replacement effect for coin flips (1): Edgar, King of Figaro
+- putting cards from hand onto the battlefield (1): Summoner's Grimoire
+- remove a lore counter from sagas (1): Garnet, Princess of Alexandria
+- remove counter effect (1): Clash of the Eikons
 - replacement effect for counters (1): The Earth Crystal
 - replacement effect for death (1): The Darkness Crystal
-- replacement effect for exile instead of graveyard (1): Seifer Almasy
-- replacement effect for exiling a countered spell (1): Syncopate
+- replacement effect for doubling damage (1): Lightning, Army of One
 - replacement effect for exiling a spell (1): Quistis Trepe
 - replacement effect for life gain (1): The Wind Crystal
 - replacement effect for milling (1): The Water Crystal
 - replacement effect for token creation (1): Quina, Qu Gourmet
-- replacement effects for entering the battlefield with counters (1): Noctis, Prince of Lucis
+- replacement effects (exile instead of graveyard) (1): Syncopate
+- replacement effects like 'if that creature would die this turn, exile it instead' (1): Suplex
+- return a land you control to its owner's hand (1): Zell Dincht
+- return another permanent you control to its owner's hand (1): Ambrosia Whiteheart
 - return card from graveyard or exile to hand (1): Sorceress's Schemes
 - return from graveyard to hand (1): Shambling Cie'th
 - return it to its owner's hand (1): Cactuar
-- return objects to hand (1): Random Encounter
-- return target creature to owner's hand (1): Ice Magic
+- return target card from graveyard to battlefield (1): Rydia, Summoner of Mist
+- return target creature card from graveyard to battlefield (1): Phoenix Down
+- return target creature to its owner's hand (1): Ice Magic
 - return target nonland permanent to its owner's hand (1): Eject
-- returning cards from exile to battlefield with counters (1): The Darkness Crystal
-- reveal a card (1): World Map
-- reveal card from library (1): Ashe, Princess of Dalmasca
-- reveal cards from library until a land is found (1): The Regalia
-- reveal effect (1): Balamb T-Rexaur
-- reveal hand (1): Poison the Waters
-- reveal the top card of your library (1): Dark Confidant
-- revealing cards (1): Hill Gigas
+- return this card from your graveyard to the battlefield tapped with a finality counter on it (1): Relentless X-ATM092
+- returning a card to the battlefield from the graveyard (1): Vincent's Limit Break
+- returning card from exile to battlefield with counters (1): The Darkness Crystal
+- reveal a card (1): Ashe, Princess of Dalmasca
+- reveal card from among them (1): Commune with Beavers
+- reveal card from library (1): Dark Confidant
+- reveal cards from library (1): Memories Returning
+- reveal cards from library until land (1): The Regalia
 - sacrifice another creature or artifact (1): Ahriman
-- sacrifice cost for activated ability (1): Blitzball
-- sacrifice effect (1): Cornered by Black Mages
-- sacrifice effect for enchantments (1): Gaius van Baelsar
-- sacrifice effect for nontoken creatures (1): Gaius van Baelsar
-- sacrifice effect for players (1): Gaius van Baelsar
-- sacrifice effect with rounding and choice (1): Zodiark, Umbral God
-- sacrifice other permanents as a cost (1): Namazu Trader
+- sacrifice at end step (1): The Fire Crystal
+- sacrifice cost for non-creature permanent (1): Lunatic Pandora
+- sacrifice cost in activated ability (1): Instant Ramen
+- sacrifice cost involving a specific subtype (1): Quina, Qu Gourmet
+- sacrifice cost other than self (1): Phantom Train
+- sacrifice effect with choice (1): Cornered by Black Mages
+- sacrifice half of a set of permanents rounded down (1): Zodiark, Umbral God
 - sacrifice self as part of an effect (1): Tellah, Great Sage
-- sacrifice this artifact as a cost (1): Instant Ramen
-- sacrifice this aura when enchanted creature is dealt damage (trigger on damage) (1): Sleep Magic
-- sacrifice this creature (1): Qiqirn Merchant
+- sacrifice this creature (cost) (1): Qiqirn Merchant
+- sacrificing a creature token (1): Gaius van Baelsar
+- sacrificing a nontoken creature (1): Gaius van Baelsar
+- sacrificing an enchantment (1): Gaius van Baelsar
 - search graveyard (1): Delivery Moogle
-- search library effect (1): Balamb T-Rexaur
+- search library for a card and put it onto the battlefield (1): Sandworm
 - search library for card (1): Cloud, Midgar Mercenary
+- search library for card and put onto battlefield (1): Magitek Infantry
 - search library for cards (1): Reach the Horizon
-- search library for specific card type (1): From Father to Son
-- searching library (1): Hill Gigas
-- setting base power to a variable value based on a subtype count (1): PuPu UFO
+- set base power to a variable number (1): PuPu UFO
 - shuffle cards from graveyard into library (1): Elixir
-- shuffle effect (1): Balamb T-Rexaur
-- shuffle target creature into library (1): Ice Magic
-- shuffling library (1): Hill Gigas
-- static ability granting keywords (double strike, indestructible) (1): Cloud, Planet's Champion
+- spend mana of any type (1): Reno and Rude
+- spending mana of any type (1): Quistis Trepe
 - static ability granting keywords based on turn phase (1): Tonberry
-- static ability granting keywords to multiple types (yuna and enchantment creatures) (1): Yuna, Hope of Spira
-- static ability granting ward {2} (1): Yuna, Hope of Spira
-- static ability modifying activation costs of other cards (1): Cloud, Planet's Champion
-- static ability with conditional timing (during your turn) (1): Yuna, Hope of Spira
-- static effect adding creature subtype (1): Astrologian's Planisphere
+- static ability modifying costs of activated abilities (1): Cloud, Planet's Champion
+- static effect adding creature subtype (1): Machinist's Arsenal
+- static effect adding creature types (1): Warrior's Sword
+- static effect affecting vehicles (subtype/type filter) (1): Balthier and Fran
 - static effect affects creatures you control (1): Circle of Power
-- static effect applying counters to multiple targets based on a subtype (1): Minwu, White Mage
 - static effect based on count of permanents and cards in graveyard (1): Cid, Timeless Artificer
+- static effect based on number of cards in graveyard (1): Xande, Dark Mage
 - static effect based on number of counters (1): Excalibur II
 - static effect based on number of permanents controlled (1): Adelbert Steiner
-- static effect based on the number of cards in a graveyard (1): Xande, Dark Mage
-- static effect changing base power and toughness (1): Vincent's Limit Break
+- static effect changing card type (1): The Prima Vista
 - static effect changing card types (1): Ride the Shoopuf
-- static effect for lands entering untapped (1): The Wandering Minstrel
-- static effect granting abilities to equipped creature (1): White Mage's Staff
+- static effect changing creature types (1): Black Mage's Rod
+- static effect for 'if a creature dying causes a triggered ability... triggers an additional time' (1): The Masamune
+- static effect for 'must be blocked if able' (1): The Masamune
+- static effect granting +7/+7 to equipped creature (1): Ultima Weapon
 - static effect granting abilities to other permanents (1): Firion, Wild Rose Warrior
 - static effect granting ability to equipped creature (1): Black Mage's Rod
 - static effect granting an activated ability to other permanents (1): A Realm Reborn
 - static effect granting haste to creatures (1): The Fire Crystal
+- static effect granting keywords other than evergreen keywords (menace) (1): Ardyn, the Usurper
 - static effect granting keywords to permanents (1): Balthier and Fran
-- static effect granting multiple keywords to a subtype (1): Ardyn, the Usurper
-- static effect granting p/t to equipped creature (1): Ultima Weapon
-- static effect granting triggered abilities to equipped creature (1): Astrologian's Planisphere
+- static effect granting subtypes (1): Bard's Bow
 - static effect grants lifelink (1): Circle of Power
-- static effect modifying creature types (1): Bard's Bow
-- static effect preventing activation of abilities (1): Stuck in Summoner's Sanctum
-- static effect preventing untap (1): Stuck in Summoner's Sanctum
-- static effect setting power based on a variable count of creatures (1): Snow Villiers
-- static effect that modifies power and toughness of multiple creatures (opponents' creatures) until end of turn (1): Sephiroth, Planet's Heir
+- static effect modifying creature types (1): Astrologian's Planisphere
+- static effect modifying power/toughness based on number of artifacts (1): Machinist's Arsenal
+- static effect or trigger that affects 'each cleric you control' (1): Minwu, White Mage
+- static effect setting power to a variable number of creatures (1): Snow Villiers
+- static effect that reduces power and toughness of opponent's creatures (1): Sephiroth, Planet's Heir
 - static effect with condition 'as long as you control another artifact' (1): Magitek Infantry
-- static effect with condition 'as long as you control two or more artifacts' (1): Gaelicat
-- static effect with timing condition (during your turn) (1): Dragoon's Lance
-- static effect: all creatures get -1/-1 (1): Poison the Waters
+- static effects adding subtypes (1): Samurai's Katana
 - static effects granting abilities to other permanents (1): Sage's Nouliths
 - static effects granting non-evergreen keywords (trample) (1): Samurai's Katana
+- static effects granting ward (1): Paladin's Arms
+- static effects modifying creature types (1): Paladin's Arms
+- static effects other than p/t and keywords (base power/toughness setting) (1): Aettir and Priwen
+- static effects other than p/t and keywords (gaining an ability) (1): Vincent's Limit Break
+- static effects other than p/t and keywords (negative p/t pump) (1): Cloud of Darkness
+- static effects other than p/t and keywords (trample, lifelink, ward) (1): Yuna, Hope of Spira
 - static equipment bonus (1): Magitek Scythe
+- static p/t bonus for equipped creature (1): Coral Sword
 - static power boost based on number of lands controlled (1): Zell Dincht
-- surveil effect requires a choice/optional graveyard move (1): Dreams of Laguna
 - swampcycling (1): Malboro
 - tap all creatures your opponents control (1): Ultimecia, Temporal Threat
-- tap target artifact or creature (1): Ice Flan
-- tap target creature (the 'tap' effect is not in the provided list of ops) (1): Coeurl
-- tap target creatures (1): Aerith Rescue Mission
+- tap target artifact or creature an opponent controls (1): Ice Flan
+- tap target creature (1): Coeurl
+- tap target creature an opponent controls (1): Tidus, Blitzball Star
 - tap target nonland permanent (1): Ring of the Lucii
-- tap target permanent (1): Ultros, Obnoxious Octopus
-- tapped tokens (1): The Final Days
-- tapping a target creature (1): Tidus, Blitzball Star
-- target artifact or enchantment (1): Coliseum Behemoth
+- tap up to three target creatures (1): Aerith Rescue Mission
+- tapped and attacking state (1): Summoner's Grimoire
 - target attacking equipped creature (1): Item Shopkeep
-- target condition (creature that was dealt damage this turn) (1): Qutrub Forayer
-- target creature you control (1): Self-Destruct
-- target graveyard cards (1): Qutrub Forayer
-- target nonland permanent (1): Omega, Heartless Evolution
-- target permanent (1): Restoration Magic
+- target creature you control (1): Gladiolus Amicitia
+- target creature's owner puts it on their choice of the top or bottom of their library (1): Ice Magic
+- target creature's owner shuffles it into their library (1): Ice Magic
+- target opponent gains control of another target permanent you control (1): Stiltzkin, Moogle Merchant
+- target player reveals their hand (1): Poison the Waters
+- targeting 'target player' (1): Combat Tutorial
+- targeting 'up to one' creature (1): Combat Tutorial
 - targeting all attacking creatures (1): Auron's Inspiration
-- targeting an opponent in a trigger effect (1): Al Bhed Salvagers
-- targeting from graveyard (1): Phoenix Down
-- targeting logic for triggered abilities granted to permanents (1): Galuf's Final Act
-- targeting multiple objects with different constraints (1): Combat Tutorial
+- targeting multiple permanents or all permanents you control (1): Restoration Magic
 - targeting multiple types (artifact, enchantment, or creature with flying) (1): Airship Crash
-- targeting specific creature types (skeleton, spirit, or zombie) (1): Phoenix Down
-- the effect 'whenever a land you control enters, this token gets +1/+0 until end of turn' is a triggered ability on a token, which is not supported by the createtoken op or the trigger system (1): Chocobo Racetrack
-- the token created has an ability ('whenever you cast a noncreature spell, this token deals 1 damage to each opponent') which is not supported by the createtoken op (1): Mysidian Elder
-- this artifact enters tapped (1): Elixir
-- token abilities (1): Choco-Comet
-- token abilities (the token has a triggered ability) (1): Queen Brahne
-- token abilities (whenever a land you control enters, this token gets +1/+0 until end of turn) (1): Gysahl Greens
-- token creation with 'all colors' (1): The Wandering Minstrel
+- targeting one or two creatures (1): Opera Love Song
+- targeting permanents (1): Restoration Magic
+- targeting specific creature subtypes (1): Phoenix Down
+- that player discards that card (1): Poison the Waters
+- the first time you flip one or more coins each turn, those coins come up heads and you win those flips (1): Edgar, King of Figaro
+- this creature can't be blocked except by three or more creatures (1): Relentless X-ATM092
+- tiered costs / cost reduction (1): Qiqirn Merchant
+- token abilities are not supported (1): Mysidian Elder
 - token has an ability (1): Circle of Power
-- token with ability (1): Cornered by Black Mages
-- token with triggered ability (1): Call the Mountain Chocobo
-- trample is not in the allowed evergreen keyword list (1): Gladiolus Amicitia
-- trample is not in the list of supported keywords for the pump op or static effects (1): Blitzball Shot
-- trigger condition 'at the beginning of your end step' (1): Golbez, Crystal Collector
-- trigger condition 'whenever a vehicle crewed by [this] this turn attacks' (1): Balthier and Fran
-- trigger condition 'whenever another creature or artifact you control dies' requires filtering for multiple types (creature or artifact) (1): Judge Magister Gabranth
-- trigger condition 'whenever one or more other creatures and/or artifacts you control die' involves multiple card types (creatures and artifacts) (1): G'raha Tia
+- token has an ability (whenever you cast a noncreature spell, this token deals 1 damage to each opponent) (1): Queen Brahne
+- token with 'all colors' (1): The Wandering Minstrel
+- trample is not in the list of supported evergreen keywords for the pump op (1): Blitzball Shot
+- trigger condition 'at the beginning of combat on your turn' (1): Rosa, Resolute White Mage
+- trigger condition 'whenever another creature or artifact you control dies' requires filtering for both creature and artifact types (1): Judge Magister Gabranth
+- trigger condition 'whenever one or more other creatures and/or artifacts you control die' (1): G'raha Tia
 - trigger condition 'whenever one or more scouts, pirates, and/or rogues you control deal combat damage to a player' (1): Vaan, Street Thief
+- trigger condition 'whenever this creature or another creature or artifact you control dies' requires a filter for both creature and artifact types, and the 'dies' event field does not support multiple types or 'or' logic (1): Al Bhed Salvagers
 - trigger condition 'whenever you cast a spell you don't own' (1): Vaan, Street Thief
-- trigger condition 'whenever you gain life' (1): Minwu, White Mage
-- trigger condition 'whenever you gain life' is not supported (1): Aerith Gainsborough
-- trigger event 'dies' with subject 'any' and filter 'creature or artifact you control' (1): Al Bhed Salvagers
-- trigger limit 'this ability triggers only once each turn' (1): G'raha Tia
-- trigger on combat damage to a player (1): Seifer Almasy
+- trigger condition 'whenever you draw your third card each turn' (1): Astrologian's Planisphere
+- trigger for artifact entering the battlefield (1): Tidus, Blitzball Star
 - trigger on sacrifice of another creature (1): Zodiark, Umbral God
-- triggered abilities granted to other permanents (1): Sage's Nouliths
-- triggered ability condition 'draw your third card each turn' (1): Astrologian's Planisphere
-- triggered ability condition 'when you search your library this way' (1): Prishe's Wanderings
-- triggered ability modification (additional trigger) (1): The Masamune
-- triggered ability on a token (1): Queen Brahne
-- triggered ability that modifies power/toughness based on an event (1): Loporrit Scout
-- triggered ability that watches for a creature an opponent controls dying (1): Sephiroth, Planet's Heir
-- triggered ability to return a permanent to hand (1): Zell Dincht
-- triggered ability with a condition (if) (1): Ardyn, the Usurper
-- triggered ability with combat damage condition (1): Reno and Rude
+- triggered abilities on tokens are not supported (1): Mysidian Elder
+- triggered abilities with costs (when you do) (1): Weapons Vendor
+- triggered ability adding mana (1): Ultima, Origin of Oblivion
+- triggered ability based on searching library (1): Prishe's Wanderings
+- triggered ability condition (during your turn) (1): Jenova, Ancient Calamity
+- triggered ability doubling effect (1): Cloud, Midgar Mercenary
+- triggered ability on equipped creature (1): White Mage's Staff
+- triggered ability target (up to one other target creature) (1): Jenova, Ancient Calamity
+- triggered ability targeting creature an opponent controls (1): Ultima Weapon
+- triggered ability that puts a counter on self when an opponent's creature dies (1): Sephiroth, Planet's Heir
+- triggered ability that triggers when control is lost (1): Stolen Uniform
+- triggered ability triggers an additional time (1): Traveling Chocobo
+- triggered ability with 'that many' scaling based on damage dealt (1): Kain, Traitorous Dragoon
+- triggered ability with a condition based on another creature entering, and a pump effect triggered by that event (1): Loporrit Scout
+- triggered ability with complex token creation and attachment (1): Paladin's Arms
+- triggered ability with condition 'if it's the first combat phase of the turn' (1): Balthier and Fran
 - triggered ability with conditional control change (1): Kain, Traitorous Dragoon
-- triggered ability with effect dependent on damage amount (draw cards, create tokens, lose life) (1): Kain, Traitorous Dragoon
-- triggered ability with target selection from graveyard (1): Yuna, Hope of Spira
-- triggering on artifact entering the battlefield (1): Tidus, Blitzball Star
+- triggered ability with conditional effect based on exile (1): Ardyn, the Usurper
+- triggered ability with cost 'pay {1}{r}{g}' (1): Balthier and Fran
+- triggered ability: 'whenever this creature deals combat damage to a player' (1): Ninja's Blades
 - triggering on scry (1): Matoya, Archon Elder
-- tripling power and toughness (1): Tifa's Limit Break
-- unattach an equipment at the beginning of the next end step (1): Unexpected Request
-- up to one target (1): Combat Tutorial
-- variable number of targets (1): Opera Love Song
-- variable x based on counters on self is not supported (1): Aerith Gainsborough
-- vehicle animation effect (1): The Prima Vista
-- vehicle type and crew ability are not supported (1): Magitek Armor
+- triple power and toughness (1): Tifa's Limit Break
+- unattach an equipment (1): Stolen Uniform
+- unattach at the beginning of the next end step (1): Unexpected Request
+- untap (1): Magic Damper
+- untap effect (1): Genji Glove
+- untap target (1): Zidane, Tantalus Thief
+- untap target creature (1): Unexpected Request
+- until end of turn, you may play the card you own exiled this way (1): Triple Triad
+- variable x based on number of counters on self (1): Aerith Gainsborough
+- vehicle type (1): Magitek Armor
 - ward cost involving variable power (1): Raubahn, Bull of Ala Mhigo
-- when you lose control of that equipment this turn, if it's attached to a creature you control, unattach it (1): Stolen Uniform
+- when enchanted creature is dealt damage, sacrifice this aura (1): Sleep Magic
+- whenever a creature you control attacks alone, it gains double strike until end of turn (1): Squall, SeeD Mercenary
 - whenever a creature you control deals combat damage to a player, draw a card (1): Ultimecia, Temporal Threat
 - whenever an opponent gains control of a permanent from you (1): Zidane, Tantalus Thief
-- x cost in activation (1): The Wandering Minstrel
-- x costs in activation costs (1): Gogo, Master of Mimicry
-- x costs in equipment abilities (1): Aettir and Priwen
+- whenever squall deals combat damage to a player, return target permanent card with mana value 3 or less from your graveyard to the battlefield (1): Squall, SeeD Mercenary
+- without paying their mana costs (1): Triple Triad
+- x costs (conditional cost reduction) (1): Fate of the Sun-Cryst
+- x costs in activation cost (1): The Wandering Minstrel
+- x costs in effects (1): Shantotto, Tactician Magician
+- x in effect value (1): The Wandering Minstrel
+- you choose an artifact or creature card from it (1): Poison the Waters
 - you have protection from each of your opponents (1): Absolute Virtue
 - you may play it until your next end step (1): Haste Magic
-- zone movement (put a card from hand onto the battlefield) (1): Summoner's Grimoire
 
 ## Failed the schema (not written)
 
-None.
+- Seifer Almasy: Unexpected token ''', ..."ndition", 'combat da"... is not valid JSON
 
 ## Skipped
 
 - layout saga not supported yet: 15
 - layout transform not supported yet: 27
-- already scripted: 4
+- already scripted: 8
 - layout meld not supported yet: 3
 - no abilities beyond keywords: 1
 - card type not supported yet: 23
