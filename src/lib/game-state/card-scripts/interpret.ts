@@ -63,6 +63,8 @@ interface EffectContext {
    */
   fighter?: Target;
   kickerBonus: number;
+  /** The spell's X (#2552); 0 when it has none. */
+  x: number;
   /** Cast triggers: the spell that triggered the ability. */
   triggeringStackObjectId?: string;
 }
@@ -282,9 +284,10 @@ function fight(
 
 function applyEffect(
   state: GameState,
-  effect: CardEffect,
+  scripted: CardEffect,
   ctx: EffectContext,
 ): GameState {
+  const effect = withX(scripted, ctx.x);
   const { sourceId, target } = ctx;
   switch (effect.op) {
     case "DealDamage": {
@@ -522,7 +525,30 @@ type ScriptStackObject = Pick<
   StackObject,
   "controllerId" | "sourceCardId" | "targets"
 > &
-  Partial<Pick<StackObject, "triggeringStackObjectId" | "chosenModes">>;
+  Partial<
+    Pick<
+      StackObject,
+      "triggeringStackObjectId" | "chosenModes" | "variableValues"
+    >
+  >;
+
+type XValue = "X" | "-X";
+/** An effect with its X amounts replaced by numbers. */
+type ResolvedEffect = CardEffect extends infer E
+  ? E extends unknown
+    ? { [K in keyof E]: Exclude<E[K], XValue> }
+    : never
+  : never;
+
+/** Replace "X" / "-X" with the spell's X (CR 107.3a, #2552). */
+export function withX(effect: CardEffect, x: number): ResolvedEffect {
+  const out: Record<string, unknown> = { ...effect };
+  for (const [key, value] of Object.entries(out)) {
+    if (value === "X") out[key] = x;
+    else if (value === "-X") out[key] = -x;
+  }
+  return out as ResolvedEffect;
+}
 
 /**
  * Apply a list of scripted effects. Targeted effects take the stack object's
@@ -546,6 +572,7 @@ export function resolveScriptedEffects(
   kickerBonus: number = 0,
 ): GameState {
   const targets = stackObject.targets ?? [];
+  const x = stackObject.variableValues?.get("X") ?? 0;
   let current = state;
   let next = 0;
   // The previous targeted effect's target, while it is still legal: what
@@ -577,6 +604,7 @@ export function resolveScriptedEffects(
       target,
       fighter,
       kickerBonus,
+      x,
       triggeringStackObjectId: stackObject.triggeringStackObjectId,
     });
   }

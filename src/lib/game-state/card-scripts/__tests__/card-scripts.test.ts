@@ -14,6 +14,7 @@ import {
   scriptedModeChoiceError,
   scriptedSpellEffects,
 } from "../index";
+import { withX as withXEffect } from "../interpret";
 import { parseModes } from "../../oracle-text-parser/modes";
 import type { CardScript } from "../schema";
 import {
@@ -2277,5 +2278,108 @@ describe("scripted Fight and Bite (#2548)", () => {
     const s = put(state, p1, "kapow", card("Kapow!", "Sorcery"), "hand");
     expect(getSpellTargetSpecs(s, id("kapow"))).toHaveLength(2);
     expect(getLegalSpellTargets(s, p1, id("kapow"))).toEqual(["elk"]);
+  });
+});
+
+describe("scripted X spells (#2552)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+    state = put(state, p2, "bear", card("Bear", "Creature — Bear", [2, 2]));
+  });
+
+  const withX = (
+    controllerId: PlayerId,
+    x: number,
+    targets: Target[] = [],
+  ) => ({
+    ...spell(controllerId, targets),
+    variableValues: new Map([["X", x]]),
+  });
+  const handSize = (s: GameState, p: PlayerId) =>
+    s.zones.get(`${p}-hand`)!.cardIds.length;
+
+  it("validates X amounts", () => {
+    const ok = (effect: object) =>
+      CardScriptSchema.safeParse({ name: "X", oracle: "x", spell: [effect] })
+        .success;
+    expect(ok({ op: "Draw", amount: "X", who: "you" })).toBe(true);
+    expect(ok({ op: "DealDamage", amount: "X", target: "any" })).toBe(true);
+    expect(
+      ok({ op: "Pump", power: "-X", toughness: "-X", target: "creature" }),
+    ).toBe(true);
+    expect(
+      ok({ op: "PutCounters", counter: "+1/+1", amount: "X", target: "self" }),
+    ).toBe(true);
+    expect(ok({ op: "Draw", amount: "-X", who: "you" })).toBe(false);
+    expect(ok({ op: "Draw", amount: "Y", who: "you" })).toBe(false);
+  });
+
+  it("only cards with X in their text use X", () => {
+    for (const file of readdirSync(CARDS_DIR).filter((f) =>
+      f.endsWith(".json"),
+    )) {
+      const text = readFileSync(join(CARDS_DIR, file), "utf8");
+      if (/"-?X"/.test(text)) {
+        const { name, oracle } = JSON.parse(text) as CardScript;
+        expect(`${name}: ${oracle}`).toMatch(/\bX\b/);
+      }
+    }
+  });
+
+  it("Mind Spring draws X cards", () => {
+    let s = state;
+    for (let i = 0; i < 5; i++)
+      s = put(s, p1, `lib${i}`, card(`Lib ${i}`, "Instant"), "library");
+    const before = handSize(s, p1);
+    const after = resolveScriptedSpell(
+      s,
+      getCardScript("Mind Spring")!,
+      withX(p1, 3),
+    );
+    expect(handSize(after, p1)).toBe(before + 3);
+  });
+
+  it("an X spell cast with no X does nothing", () => {
+    let s = state;
+    s = put(s, p1, "lib0", card("Lib 0", "Instant"), "library");
+    const before = handSize(s, p1);
+    const after = resolveScriptedSpell(
+      s,
+      getCardScript("Mind Spring")!,
+      spell(p1),
+    );
+    expect(handSize(after, p1)).toBe(before);
+  });
+
+  it("Traumatic Critique deals X damage to a creature or a player", () => {
+    const script = getCardScript("Traumatic Critique")!;
+    const atBear = resolveScriptedSpell(
+      state,
+      script,
+      withX(p1, 3, [cardTarget("bear")]),
+    );
+    expect(atBear.cards.get(id("bear"))!.damage).toBe(3);
+    const atFace = resolveScriptedSpell(
+      state,
+      script,
+      withX(p1, 4, [playerTarget(p2)]),
+    );
+    expect(atFace.players.get(p2)!.life).toBe(16);
+  });
+
+  it("withX fills in X and -X", () => {
+    expect(
+      withXEffect(
+        { op: "Pump", power: "-X", toughness: "X", target: "creature" },
+        2,
+      ),
+    ).toMatchObject({ power: -2, toughness: 2 });
   });
 });
