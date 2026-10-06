@@ -57,6 +57,8 @@ src-tauri/gen/
 !scripts/differential/cards.snapshot.json
 # Card scripts are data and must be tracked (#2488)
 !src/lib/game-state/card-scripts/cards/*.json
+# manamind simple-v1 parity replays exported from the Python ruleset (#2557)
+!src/ai/manamind/__tests__/fixtures/*.json
 
 # Tauri config + platform overlays must be tracked (tauri.conf.json
 # predates the blanket *.json rule; overlays added by #1729 need the
