@@ -1,0 +1,18 @@
+{
+  "name": "Screaming Phantom",
+  "oracle": "Flying\nWhenever this creature attacks, mill a card. (Put the top card of your library into your graveyard.)",
+  "triggers": [
+    {
+      "text": "Whenever this creature attacks, mill a card.",
+      "event": "attacks",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "Mill",
+          "amount": 1,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}

@@ -55,6 +55,7 @@ export const OP_REFERENCE: Record<string, string> = {
   PutCounters:
     '{"op":"PutCounters","counter":"+1/+1","amount":N,"target":"creature"|"self","controller":"you"|"opponent"} (controller optional, target creature only)',
   Surveil: '{"op":"Surveil","amount":N}',
+  Mill: '{"op":"Mill","amount":N,"who":"you"|"target_player"|"each_opponent"} (top N cards of that library into its graveyard; fixed N only, not "you may mill")',
   CopySpell:
     '{"op":"CopySpell","gain":["wither"]} (cast triggers only: copy the spell that was cast, same targets; gain optional)',
 };

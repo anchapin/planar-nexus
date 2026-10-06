@@ -153,6 +153,18 @@ export const PutCountersSchema = z
     controllerNeedsCreatureTarget,
   );
 
+/**
+ * Put the top N cards of a library into its owner's graveyard (#2534).
+ * Milling more cards than the library holds mills what is there.
+ */
+export const MillSchema = z
+  .object({
+    op: z.literal("Mill"),
+    amount: z.number().int().min(1),
+    who: z.enum(["you", "target_player", "each_opponent"]).default("you"),
+  })
+  .strict();
+
 export const SurveilSchema = z
   .object({ op: z.literal("Surveil"), amount: z.number().int().min(1) })
   .strict();
@@ -184,6 +196,7 @@ export const EffectSchema = z.discriminatedUnion("op", [
   PumpSchema,
   PutCountersSchema,
   SurveilSchema,
+  MillSchema,
   CopySpellSchema,
 ]);
 

@@ -22,6 +22,7 @@ import {
   resolveTokenCreationEffect,
 } from "../effect-resolution";
 import { destroyCard, exileCard } from "../keyword-actions/removal";
+import { millCards } from "../zones";
 import { addCounters } from "../card-instance";
 import { copySpellOnStack } from "../spell-casting/resolve";
 import { getCardScript } from "./registry";
@@ -176,6 +177,32 @@ function controllerStillMatches(
   );
 }
 
+/**
+ * Put the top `amount` cards of `playerId`'s library into their graveyard
+ * (#2534), keeping each card's zone key in sync.
+ */
+function millPlayer(
+  state: GameState,
+  playerId: PlayerId,
+  amount: number,
+): GameState {
+  const libraryKey = `${playerId}-library`;
+  const graveyardKey = `${playerId}-graveyard`;
+  const library = state.zones.get(libraryKey);
+  const graveyard = state.zones.get(graveyardKey);
+  if (!library || !graveyard || library.cardIds.length === 0) return state;
+  const milled = millCards(library, graveyard, amount);
+  const zones = new Map(state.zones);
+  zones.set(libraryKey, milled.library);
+  zones.set(graveyardKey, milled.graveyard);
+  const cards = new Map(state.cards);
+  for (const cardId of milled.milledCards) {
+    const card = cards.get(cardId);
+    if (card) cards.set(cardId, { ...card, currentZoneKey: graveyardKey });
+  }
+  return { ...state, zones, cards };
+}
+
 function applyEffect(
   state: GameState,
   effect: CardEffect,
@@ -328,6 +355,17 @@ function applyEffect(
         sourceId,
       );
       return r.success ? r.state : state;
+    }
+    case "Mill": {
+      if (effect.who === "each_opponent") {
+        let next = state;
+        for (const opp of opponentsOf(state, ctx.controllerId)) {
+          next = millPlayer(next, opp, effect.amount);
+        }
+        return next;
+      }
+      const player = playerFor(effect.who, ctx);
+      return player ? millPlayer(state, player, effect.amount) : state;
     }
     case "CopySpell":
       return copyTriggeringSpell(state, effect.gain ?? [], ctx);
