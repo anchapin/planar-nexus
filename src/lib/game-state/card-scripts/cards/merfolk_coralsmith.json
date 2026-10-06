@@ -1,0 +1,35 @@
+{
+  "name": "Merfolk Coralsmith",
+  "oracle": "{1}: This creature gets +1/-1 until end of turn.\nWhen this creature dies, scry 2.",
+  "triggers": [
+    {
+      "text": "When this creature dies, scry 2.",
+      "event": "dies",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "Scry",
+          "amount": 2
+        }
+      ]
+    }
+  ],
+  "activated": [
+    {
+      "text": "This creature gets +1/-1 until end of turn.",
+      "cost": {
+        "mana": "{1}",
+        "tap": false,
+        "sacrifice": false
+      },
+      "effects": [
+        {
+          "op": "Pump",
+          "power": 1,
+          "toughness": -1,
+          "target": "self"
+        }
+      ]
+    }
+  ]
+}

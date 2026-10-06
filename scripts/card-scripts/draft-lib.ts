@@ -58,6 +58,7 @@ export const OP_REFERENCE: Record<string, string> = {
   PutCounters:
     '{"op":"PutCounters","counter":"+1/+1","amount":N,"target":"creature"|"self","controller":"you"|"opponent"} (controller optional, target creature only)',
   Surveil: '{"op":"Surveil","amount":N}',
+  Scry: '{"op":"Scry","amount":N} (you scry)',
   Mill: '{"op":"Mill","amount":N,"who":"you"|"target_player"|"each_opponent"} (top N cards of that library into its graveyard; fixed N only, not "you may mill")',
   Discard:
     '{"op":"Discard","amount":N,"who":"you"|"target_player"|"each_opponent"} (that player discards N cards of their choice; must come after every other effect, e.g. "draw two cards, then discard a card"; not random, not "you may discard", not a cost)',

@@ -34,6 +34,7 @@ import {
   getFightDamage,
   isFightText,
 } from "./keyword-actions";
+import { performScry } from "./keyword-actions/scry";
 import { dealDamageToCard } from "./keyword-actions";
 import { hasLifelink } from "./evergreen-keywords";
 import { getModesForModalSpell } from "./oracle-text-parser";
@@ -1082,6 +1083,21 @@ export function resolveEffect(
         (sourceId ? state.cards.get(sourceId)?.controllerId : undefined) ??
         state.turn.activePlayerId;
       const result = performSurveil(state, surveilPlayerId, effect.amount);
+      return {
+        success: result.success,
+        state: result.state,
+        description: result.description,
+        affectedCards: result.affectedCards,
+        error: result.error,
+      };
+    }
+
+    case "scry": {
+      const scryPlayerId =
+        effect.targetId ??
+        (sourceId ? state.cards.get(sourceId)?.controllerId : undefined) ??
+        state.turn.activePlayerId;
+      const result = performScry(state, scryPlayerId, effect.amount);
       return {
         success: result.success,
         state: result.state,

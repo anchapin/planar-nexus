@@ -1,0 +1,17 @@
+{
+  "name": "Glider Kids",
+  "oracle": "Flying\nWhen this creature enters, scry 1. (Look at the top card of your library. You may put it on the bottom.)",
+  "triggers": [
+    {
+      "text": "When this creature enters, scry 1.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "Scry",
+          "amount": 1
+        }
+      ]
+    }
+  ]
+}

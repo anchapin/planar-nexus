@@ -187,6 +187,11 @@ export const DiscardSchema = z
   })
   .strict();
 
+/** Scry N (CR 701.22, #2540). */
+export const ScrySchema = z
+  .object({ op: z.literal("Scry"), amount: z.number().int().min(1) })
+  .strict();
+
 export const SurveilSchema = z
   .object({ op: z.literal("Surveil"), amount: z.number().int().min(1) })
   .strict();
@@ -220,6 +225,7 @@ export const EffectSchema = z.discriminatedUnion("op", [
   PumpSchema,
   PutCountersSchema,
   SurveilSchema,
+  ScrySchema,
   MillSchema,
   DiscardSchema,
   CopySpellSchema,

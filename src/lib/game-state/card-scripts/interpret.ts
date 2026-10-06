@@ -375,6 +375,18 @@ function applyEffect(
       );
       return r.success ? r.state : state;
     }
+    case "Scry": {
+      const r = resolveEffect(
+        state,
+        {
+          effectType: "scry",
+          amount: effect.amount,
+          targetId: ctx.controllerId,
+        },
+        sourceId,
+      );
+      return r.success ? r.state : state;
+    }
     case "Mill": {
       if (effect.who === "each_opponent") {
         let next = state;
