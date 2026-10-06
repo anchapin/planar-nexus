@@ -1,8 +1,19 @@
 # Card script drafts: SOS
 
-10 drafted, 193 need new ops, 1 failed the schema, 67 skipped.
+10 drafted (6 kept after review), 193 need new ops, 1 failed the schema, 67 skipped.
 
 Every draft is LLM-written and must be checked against the card before merge.
+
+## Review
+
+Kept after checking each draft against the card: Stand Up for Yourself, Muse's Encouragement, Unsubtle Mockery, Mindful Biomancer, Bogwater Lumaret, Silverquill Charm.
+
+Removed because the script ignores part of the card:
+
+- Essence Scatter: counters any spell; the card only counters creature spells (Counter has no spell-type filter yet).
+- Melancholic Poet: `targets: single` means "exactly one target", not "targets a creature".
+- Oracle's Restoration: pumps any creature; the card says target creature you control.
+- Grapple with Death: scripted as artifact or enchantment; the card says artifact or creature (no such removal target yet).
 
 ## Drafted
 
