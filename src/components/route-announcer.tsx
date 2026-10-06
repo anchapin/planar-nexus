@@ -29,6 +29,7 @@ const ROUTE_LABELS: Record<string, string> = {
   "/draft-assistant": "Draft Assistant",
   "/sealed": "Sealed",
   "/single-player": "Single Player",
+  "/simple-mode": "Simple Mode",
   "/multiplayer": "Multiplayer",
   "/multiplayer/browse": "Multiplayer — Browse Games",
   "/multiplayer/join": "Multiplayer — Join",

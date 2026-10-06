@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
@@ -166,6 +167,24 @@ export default function SinglePlayerPage() {
           own.
         </p>
       </header>
+      <div className="mb-4 flex justify-center">
+        <Card className="w-full max-w-2xl">
+          <CardHeader className="py-3 px-4">
+            <CardTitle className="text-base">
+              New: Simple mode vs. manamind
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Forests and vanilla creatures against the Easy manamind opponent,
+              a neural network trained by self-play.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="px-4 pb-3">
+            <Button asChild size="sm" variant="secondary">
+              <Link href="/simple-mode">Play simple mode</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
       <main className="flex justify-center">
         <Tabs defaultValue="play-ai" className="w-full max-w-2xl">
           <TabsList className="grid w-full grid-cols-2">
