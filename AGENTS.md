@@ -28,6 +28,11 @@ Package manager is **npm** (`package-lock.json` + CI `npm ci`, Node 22). No `pnp
 
 The `build` job `needs:` **all** of: `test, lint, typecheck, commitlint, mutation-smoke, security, cargo-audit, rust-checks, a11y-contrast, e2e, workflow-lint, tauri-updater-config, turn-credentials-guard, engine-size-budget, coverage-docs-guard, test-count-docs-guard`. Failing any one blocks merge. Run `typecheck && lint && test` locally before pushing.
 
+- **Update the test-count docs in the same commit as any test change, before pushing.** `test-count-docs-guard` re-measures live Jest and fails on any drift in `docs/onboarding.md` or `docs/TEST_VIDEO_FIXTURES.md`. A guard-only failure costs a full extra CI run for a one-line docs fix, so never push a commit that adds or removes tests or test files without the matching bump:
+  - Preferred: `npm run ratchet:test-count`, which runs full Jest and rewrites both anchored blocks.
+  - On a machine too small for the full suite: take the **suite** count from `npx jest --listTests | wc -l` (~8s; a new test file is +1), and the **test case** count from a before/after `jest <affected paths>` delta on `main` vs your branch. Update all four numbers: Test suites, `--listTests` files, Test cases total, passed (skipped normally stays put).
+  - A renamed mock or a newly scripted card can also change counts or flip a test, so rerun the affected suites after the last code change, not before.
+
 - `mutation-smoke` runs a fast config guard only (`node scripts/check-mutation-config.mjs`, ~50ms). PRs touching `src/lib/game-state/` get a targeted layer-system mutation check via `.github/workflows/mutation-pr.yml` (non-blocking, informational). Full Stryker suite (layer-system, combat, etc.) runs **nightly** in `.github/workflows/mutation.yml` (#1762).
 - `workflow-lint` enforces that every job bootstraps via the shared `.github/actions/setup-node-npm-ci` composite (Node 22 + `npm ci`, ≥11 uses repo-wide). It **rejects** direct `npm ci` and `actions/setup-node@v1-5`. When adding/editing a workflow, reuse that action — do not hand-roll setup.
 
