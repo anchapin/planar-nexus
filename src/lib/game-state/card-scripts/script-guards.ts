@@ -81,6 +81,7 @@ export function isTargetedEffect(effect: CardEffect): boolean {
     case "Exile":
     case "Tap":
     case "Untap":
+    case "ReturnToHand":
     case "Counter":
       return true;
     case "Draw":

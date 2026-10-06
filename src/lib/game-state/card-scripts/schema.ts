@@ -141,6 +141,14 @@ export const UntapSchema = z
   .object({ op: z.literal("Untap"), ...removalFields })
   .strict();
 
+/**
+ * Return target permanent to its owner's hand (#2546). Same filters as
+ * Destroy/Exile. A token returned to hand ceases to exist (CR 111.8).
+ */
+export const ReturnToHandSchema = z
+  .object({ op: z.literal("ReturnToHand"), ...removalFields })
+  .strict();
+
 export const CounterSchema = z
   .object({ op: z.literal("Counter"), target: z.enum(["spell"]) })
   .strict();
@@ -235,6 +243,7 @@ export const EffectSchema = z.discriminatedUnion("op", [
   ExileSchema,
   TapSchema,
   UntapSchema,
+  ReturnToHandSchema,
   CounterSchema,
   PumpSchema,
   PutCountersSchema,
