@@ -1,0 +1,51 @@
+{
+  "name": "Primeval Bounty",
+  "oracle": "Whenever you cast a creature spell, create a 3/3 green Beast creature token.\nWhenever you cast a noncreature spell, put three +1/+1 counters on target creature you control.\nLandfall — Whenever a land you control enters, you gain 3 life.",
+  "triggers": [
+    {
+      "text": "Whenever you cast a creature spell, create a 3/3 green Beast creature token.",
+      "event": "cast",
+      "subject": "self",
+      "caster": "you",
+      "spell": "creature",
+      "effects": [
+        {
+          "op": "CreateToken",
+          "count": 1,
+          "power": 3,
+          "toughness": 3,
+          "color": "green",
+          "subtypes": ["Beast"]
+        }
+      ]
+    },
+    {
+      "text": "Whenever you cast a noncreature spell, put three +1/+1 counters on target creature you control.",
+      "event": "cast",
+      "subject": "self",
+      "caster": "you",
+      "spell": "noncreature",
+      "effects": [
+        {
+          "op": "PutCounters",
+          "counter": "+1/+1",
+          "amount": 3,
+          "target": "creature",
+          "controller": "you"
+        }
+      ]
+    },
+    {
+      "text": "Landfall — Whenever a land you control enters, you gain 3 life.",
+      "event": "landfall",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "GainLife",
+          "amount": 3,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}

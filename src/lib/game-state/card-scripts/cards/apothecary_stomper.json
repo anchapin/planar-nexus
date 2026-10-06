@@ -1,0 +1,38 @@
+{
+  "name": "Apothecary Stomper",
+  "oracle": "Vigilance (Attacking doesn't cause this creature to tap.)\nWhen this creature enters, choose one —\n• Put two +1/+1 counters on target creature you control.\n• You gain 4 life.",
+  "triggers": [
+    {
+      "text": "When this creature enters, choose one —",
+      "event": "etb",
+      "subject": "self",
+      "modes": {
+        "choose": 1,
+        "options": [
+          {
+            "text": "Put two +1/+1 counters on target creature you control.",
+            "effects": [
+              {
+                "op": "PutCounters",
+                "counter": "+1/+1",
+                "amount": 2,
+                "target": "creature",
+                "controller": "you"
+              }
+            ]
+          },
+          {
+            "text": "You gain 4 life.",
+            "effects": [
+              {
+                "op": "GainLife",
+                "amount": 4,
+                "who": "you"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

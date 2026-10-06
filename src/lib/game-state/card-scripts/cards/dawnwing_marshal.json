@@ -1,0 +1,23 @@
+{
+  "name": "Dawnwing Marshal",
+  "oracle": "Flying\n{4}{W}: Creatures you control get +1/+1 until end of turn.",
+  "activated": [
+    {
+      "text": "Creatures you control get +1/+1 until end of turn.",
+      "cost": {
+        "mana": "{4}{W}",
+        "tap": false,
+        "sacrifice": false
+      },
+      "effects": [
+        {
+          "op": "Pump",
+          "power": 1,
+          "toughness": 1,
+          "target": "creature",
+          "controller": "you"
+        }
+      ]
+    }
+  ]
+}

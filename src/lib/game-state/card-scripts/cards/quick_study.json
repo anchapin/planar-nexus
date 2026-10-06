@@ -1,0 +1,11 @@
+{
+  "name": "Quick Study",
+  "oracle": "Draw two cards.",
+  "spell": [
+    {
+      "op": "Draw",
+      "amount": 2,
+      "who": "you"
+    }
+  ]
+}

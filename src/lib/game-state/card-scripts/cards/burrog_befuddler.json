@@ -1,0 +1,20 @@
+{
+  "name": "Burrog Befuddler",
+  "oracle": "Flash (You may cast this spell any time you could cast an instant.)\nWhen this creature enters, target creature an opponent controls gets -1/-0 until end of turn.",
+  "triggers": [
+    {
+      "text": "When this creature enters, target creature an opponent controls gets -1/-0 until end of turn.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "Pump",
+          "power": -1,
+          "toughness": 0,
+          "target": "creature",
+          "controller": "opponent"
+        }
+      ]
+    }
+  ]
+}

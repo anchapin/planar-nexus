@@ -1,0 +1,19 @@
+{
+  "name": "Impact Tremors",
+  "oracle": "Whenever a creature you control enters, this enchantment deals 1 damage to each opponent.",
+  "triggers": [
+    {
+      "text": "Whenever a creature you control enters, this enchantment deals 1 damage to each opponent.",
+      "event": "etb",
+      "subject": "any",
+      "controller": "you",
+      "effects": [
+        {
+          "op": "DealDamage",
+          "amount": 1,
+          "target": "each_opponent"
+        }
+      ]
+    }
+  ]
+}

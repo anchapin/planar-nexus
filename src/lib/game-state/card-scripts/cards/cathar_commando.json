@@ -1,0 +1,20 @@
+{
+  "name": "Cathar Commando",
+  "oracle": "Flash\n{1}, Sacrifice this creature: Destroy target artifact or enchantment.",
+  "activated": [
+    {
+      "text": "Destroy target artifact or enchantment.",
+      "cost": {
+        "mana": "{1}",
+        "tap": false,
+        "sacrifice": true
+      },
+      "effects": [
+        {
+          "op": "Destroy",
+          "target": "artifact_or_enchantment"
+        }
+      ]
+    }
+  ]
+}
