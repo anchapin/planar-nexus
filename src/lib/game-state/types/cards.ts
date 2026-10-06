@@ -272,6 +272,22 @@ export interface CardInstance {
   /** The zone key where this card currently resides. Updated on zone changes for O(1) lookup */
   currentZoneKey: string | null;
 
+  /**
+   * The value of X chosen when this permanent was cast (CR 107.3, #2559).
+   *
+   * Set on the CardInstance as the spell resolves onto the battlefield (see
+   * `resolveTopOfStack`). Preserved for the life of the permanent so that
+   * later triggered and activated abilities — "Whenever this creature
+   * attacks, draw X cards", "{X}, {T}: ..." — can look up the same X when
+   * they go on the stack. The interpreter reads X from
+   * `stackObject.variableValues.get("X")`; for a triggered or activated
+   * ability the stack object is freshly created with no X (issue #2559),
+   * so the engine seeds `variableValues` from `source.xValue` here.
+   *
+   * Undefined for non-X-cast permanents. Cleared on zone change (CR 400.7).
+   */
+  xValue?: number;
+
   // Phasing tracking (CR 702.19) - used to track that a card has been phased out even after it phases back in
   /** @internal Used by phasing system to track if a card has ever been phased out */
   _hasBeenPhasedOut?: boolean;

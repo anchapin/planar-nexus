@@ -544,14 +544,22 @@ function resolveSpellCompletion(
         );
 
         // Initialize loyalty counters for planeswalkers entering the battlefield
+        // and stamp the chosen X (CR 107.3, #2559) so later triggers and
+        // activations from this permanent can read it back. Both happen here
+        // because both are spell-resolution side effects on the
+        // CardInstance.
         let updatedCards = state.cards;
         if (!typeLine.includes("instant") && !typeLine.includes("sorcery")) {
           const card = state.cards.get(stackObject.sourceCardId);
           if (card) {
-            const initializedCard = initializePlaneswalkerLoyalty(card);
-            if (initializedCard !== card) {
+            let next: typeof card = initializePlaneswalkerLoyalty(card);
+            const x = stackObject.variableValues?.get("X");
+            if (typeof x === "number") {
+              next = { ...next, xValue: x };
+            }
+            if (next !== card) {
               updatedCards = new Map(state.cards);
-              updatedCards.set(stackObject.sourceCardId, initializedCard);
+              updatedCards.set(stackObject.sourceCardId, next);
             }
           }
         }
