@@ -49,7 +49,10 @@ test.describe("manamind simple-v1 in the browser", () => {
     await expect(page.getByText("Loading the Easy opponent…")).toBeHidden({
       timeout: 60000,
     });
-    await expect(page.getByRole("alert")).toHaveCount(0);
+    // Scope to the page's own error message: the app shell keeps a separate
+    // role="alert" live region (the route announcer) mounted on every route.
+    await expect(page.getByText(/Easy opponent couldn.t load/)).toHaveCount(0);
+    await expect(page.getByTestId("simple-moves")).toBeVisible();
     await expect(page.getByTestId("simple-you-life")).toHaveText("20");
   });
 
