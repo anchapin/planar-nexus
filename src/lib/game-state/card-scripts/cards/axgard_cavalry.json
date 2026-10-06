@@ -1,0 +1,21 @@
+{
+  "name": "Axgard Cavalry",
+  "oracle": "{T}: Target creature gains haste until end of turn. (It can attack and {T} this turn.)",
+  "activated": [
+    {
+      "text": "Target creature gains haste until end of turn.",
+      "cost": {
+        "tap": true,
+        "sacrifice": false
+      },
+      "effects": [
+        {
+          "op": "Pump",
+          "power": 0,
+          "toughness": 0,
+          "target": "creature"
+        }
+      ]
+    }
+  ]
+}

@@ -45,13 +45,19 @@ import type { GameState, StackObject } from "../types";
 /* ------------------------------------------------------------------ */
 
 function buildAbrade(): ScryfallCard {
+  // Oracle text mirrors the FDN/188 print and the card-script at
+  // src/lib/game-state/card-scripts/cards/abrade.json: "Abrade deals 3
+  // damage to target creature" (the modern wording — the older "any target"
+  // print predates the script). Keep these in lockstep so the scripted
+  // resolution path is exercised by the modal test (the resolver takes the
+  // scripted branch whenever a card has a script, even from a test mock).
   return {
     id: "mock-abrade",
     name: "Abrade",
     type_line: "Instant",
     keywords: [],
     oracle_text:
-      "Choose one —\n• Abrade deals 3 damage to any target.\n• Destroy target artifact.",
+      "Choose one —\n• Abrade deals 3 damage to target creature.\n• Destroy target artifact.",
     mana_cost: "{1}{R}",
     cmc: 2,
     colors: ["R"],
@@ -174,7 +180,7 @@ describe("Modal Spell Resolution (Issue #1224) — resolveWaitingChoice multi-se
     const { state, aliceId } = setupGameWithCard(buildAbrade());
     const withStack = placeCardOnStack(state, aliceId, "abr-1", buildAbrade());
 
-    const chosen = "Abrade deals 3 damage to any target.";
+    const chosen = "Abrade deals 3 damage to target creature.";
     const waiting = createModeChoice(
       withStack,
       aliceId,
@@ -391,7 +397,7 @@ describe("getEffectsForChosenModes", () => {
   it("returns only the chosen damage mode effects, not the destroy mode", () => {
     const card = buildAbrade();
     const { state, aliceId } = setupGameWithCard(card);
-    const damage = "Abrade deals 3 damage to any target.";
+    const damage = "Abrade deals 3 damage to target creature.";
     const withStack = placeCardOnStack(state, aliceId, "abr-g1", card, [
       damage,
     ]);
@@ -502,7 +508,7 @@ describe("Modal Spell Resolution (Issue #1224) — end-to-end resolveTopOfStack"
   it("Abrade (choose one — damage OR destroy artifact): picking damage deals damage and skips destroy", () => {
     const card = buildAbrade();
     const { state, aliceId, bobId, cardId } = setupGameWithCard(card);
-    const damage = "Abrade deals 3 damage to any target.";
+    const damage = "Abrade deals 3 damage to target creature.";
     const withStack = placeCardOnStack(state, aliceId, cardId, card, [damage]);
     // Target Bob (a player) so we can verify life loss without an
     // artifact in play; resolveStackObjectEffects routes by target.type.
@@ -520,7 +526,7 @@ describe("Modal Spell Resolution (Issue #1224) — end-to-end resolveTopOfStack"
   it("Abrade chosen mode = damage does not attempt to resolve the destroy mode", () => {
     const card = buildAbrade();
     const { state, aliceId, bobId, cardId } = setupGameWithCard(card);
-    const damage = "Abrade deals 3 damage to any target.";
+    const damage = "Abrade deals 3 damage to target creature.";
     const withStack = placeCardOnStack(state, aliceId, cardId, card, [damage]);
     withStack.stack[0].targets = [
       { type: "player", targetId: bobId, isValid: true },

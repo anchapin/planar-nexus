@@ -1,0 +1,24 @@
+{
+  "name": "Vengeful Bloodwitch",
+  "oracle": "Whenever this creature or another creature you control dies, target opponent loses 1 life and you gain 1 life.",
+  "triggers": [
+    {
+      "text": "Whenever this creature or another creature you control dies, target opponent loses 1 life and you gain 1 life.",
+      "event": "dies",
+      "subject": "any",
+      "controller": "you",
+      "effects": [
+        {
+          "op": "LoseLife",
+          "amount": 1,
+          "who": "target_player"
+        },
+        {
+          "op": "GainLife",
+          "amount": 1,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}

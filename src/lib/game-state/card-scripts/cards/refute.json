@@ -1,0 +1,20 @@
+{
+  "name": "Refute",
+  "oracle": "Counter target spell. Draw a card, then discard a card.",
+  "spell": [
+    {
+      "op": "Counter",
+      "target": "spell"
+    },
+    {
+      "op": "Draw",
+      "amount": 1,
+      "who": "you"
+    },
+    {
+      "op": "Discard",
+      "amount": 1,
+      "who": "you"
+    }
+  ]
+}

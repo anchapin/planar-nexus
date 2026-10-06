@@ -1,0 +1,24 @@
+{
+  "name": "Rite of the Dragoncaller",
+  "oracle": "Whenever you cast an instant or sorcery spell, create a 5/5 red Dragon creature token with flying.",
+  "triggers": [
+    {
+      "text": "Whenever you cast an instant or sorcery spell, create a 5/5 red Dragon creature token with flying.",
+      "event": "cast",
+      "subject": "self",
+      "caster": "you",
+      "spell": "instant_or_sorcery",
+      "effects": [
+        {
+          "op": "CreateToken",
+          "count": 1,
+          "power": 5,
+          "toughness": 5,
+          "color": "red",
+          "subtypes": ["Dragon"],
+          "keywords": ["flying"]
+        }
+      ]
+    }
+  ]
+}

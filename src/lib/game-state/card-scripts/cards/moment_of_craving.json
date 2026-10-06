@@ -1,0 +1,17 @@
+{
+  "name": "Moment of Craving",
+  "oracle": "Target creature gets -2/-2 until end of turn. You gain 2 life.",
+  "spell": [
+    {
+      "op": "Pump",
+      "power": -2,
+      "toughness": -2,
+      "target": "creature"
+    },
+    {
+      "op": "GainLife",
+      "amount": 2,
+      "who": "you"
+    }
+  ]
+}

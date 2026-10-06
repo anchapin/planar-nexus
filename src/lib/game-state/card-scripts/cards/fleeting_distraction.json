@@ -1,0 +1,17 @@
+{
+  "name": "Fleeting Distraction",
+  "oracle": "Target creature gets -1/-0 until end of turn.\nDraw a card.",
+  "spell": [
+    {
+      "op": "Pump",
+      "power": -1,
+      "toughness": 0,
+      "target": "creature"
+    },
+    {
+      "op": "Draw",
+      "amount": 1,
+      "who": "you"
+    }
+  ]
+}

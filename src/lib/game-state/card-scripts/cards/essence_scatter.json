@@ -1,0 +1,10 @@
+{
+  "name": "Essence Scatter",
+  "oracle": "Counter target creature spell.",
+  "spell": [
+    {
+      "op": "Counter",
+      "target": "spell"
+    }
+  ]
+}

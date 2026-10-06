@@ -1,0 +1,17 @@
+{
+  "name": "Voracious Greatshark",
+  "oracle": "Flash (You may cast this spell any time you could cast an instant.)\nWhen this creature enters, counter target artifact or creature spell.",
+  "triggers": [
+    {
+      "text": "When this creature enters, counter target artifact or creature spell.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "Counter",
+          "target": "spell"
+        }
+      ]
+    }
+  ]
+}

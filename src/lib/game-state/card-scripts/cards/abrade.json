@@ -1,0 +1,28 @@
+{
+  "name": "Abrade",
+  "oracle": "Choose one —\n• Abrade deals 3 damage to target creature.\n• Destroy target artifact.",
+  "modes": {
+    "choose": 1,
+    "options": [
+      {
+        "text": "Abrade deals 3 damage to target creature.",
+        "effects": [
+          {
+            "op": "DealDamage",
+            "amount": 3,
+            "target": "creature"
+          }
+        ]
+      },
+      {
+        "text": "Destroy target artifact.",
+        "effects": [
+          {
+            "op": "Destroy",
+            "target": "artifact"
+          }
+        ]
+      }
+    ]
+  }
+}
