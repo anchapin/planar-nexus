@@ -28,6 +28,7 @@ import { declareAttackers as engineDeclareAttackers } from "@/lib/game-state";
 import { tapCardAction, untapCardAction } from "@/lib/game-state";
 import { passPriority } from "@/lib/game-state";
 import { moveCardBetweenZones, shuffleZone, drawCards } from "@/lib/game-state";
+import { canAffordMana, getSpellManaCost, isConvergeX } from "@/lib/game-state";
 import { quickScore } from "./game-state-evaluator";
 import type { GameState } from "./game-state-evaluator";
 
@@ -207,6 +208,27 @@ function executeCastSpell(
     };
   }
 
+  // #2552: an X spell cast with no X chosen picks the largest X it can pay,
+  // and is held when that is 0 (a 0/0 or "draw 0" wastes the card).
+  if (xValue === 0) {
+    xValue = chooseAIXValue(gameState, playerId, cardId);
+    const cost = gameState.cards.get(cardId)?.cardData.mana_cost ?? "";
+    const oracle = (
+      gameState.cards.get(cardId)?.cardData as { oracle_text?: string }
+    )?.oracle_text;
+    if (xValue === 0 && /\{X\}/i.test(cost) && !isConvergeX(oracle)) {
+      return {
+        success: false,
+        error: "Not casting an X spell for X = 0",
+        action: {
+          type: "cast_spell",
+          cardId,
+          targetId: targetIdOrIds as string,
+        },
+      };
+    }
+  }
+
   // Handle multi-target: array of targetIds
   let targets;
   if (Array.isArray(targetIdOrIds)) {
@@ -249,6 +271,42 @@ function executeCastSpell(
     error: result.error || "Failed to cast spell",
     action: { type: "cast_spell", cardId, targetId: targetIdOrIds as string },
   };
+}
+
+/** Highest X the AI would ever pay; keeps the affordability loop bounded. */
+const MAX_AI_X = 20;
+
+/**
+ * X the AI picks for a spell with {X} in its mana cost (#2552): everything
+ * left in its pool after the rest of the cost (CR 107.3, 601.2b). Returns 0
+ * for spells without a chosen X, including converge X, which the engine
+ * sets from the colors spent.
+ */
+export function chooseAIXValue(
+  gameState: EngineGameState,
+  playerId: PlayerId,
+  cardId: CardInstanceId,
+): number {
+  const data = gameState.cards.get(cardId)?.cardData as
+    { mana_cost?: string; oracle_text?: string } | undefined;
+  if (!data || !/\{X\}/i.test(data.mana_cost ?? "")) return 0;
+  if (isConvergeX(data.oracle_text)) return 0;
+  const { white, blue, black, red, green, generic } = getSpellManaCost(data);
+  let x = 0;
+  while (
+    x < MAX_AI_X &&
+    canAffordMana(gameState, playerId, {
+      white,
+      blue,
+      black,
+      red,
+      green,
+      generic: generic + x + 1,
+    })
+  ) {
+    x++;
+  }
+  return x;
 }
 
 /**

@@ -40,7 +40,11 @@ jest.mock("../game-state-evaluator", () => ({
   quickScore: jest.fn(() => 0),
 }));
 
-import { executeAIAction, type AIAction } from "../ai-action-executor";
+import {
+  executeAIAction,
+  chooseAIXValue,
+  type AIAction,
+} from "../ai-action-executor";
 import {
   getAvailableLands,
   getAvailableAttackers,
@@ -59,6 +63,7 @@ import { declareAttackers } from "@/lib/game-state";
 import { tapCardAction, untapCardAction } from "@/lib/game-state";
 import { passPriority } from "@/lib/game-state";
 import { engineToAIState } from "@/lib/game-state";
+import { canAffordMana, getSpellManaCost, isConvergeX } from "@/lib/game-state";
 import { quickScore } from "../game-state-evaluator";
 
 import type {
@@ -407,6 +412,128 @@ describe("executeAIAction: cast_spell", () => {
     );
     expect(res.success).toBe(false);
     expect(res.error).toBe("Invalid target");
+  });
+});
+
+// ===========================================================================
+// X spells (#2552): the AI pays the largest X its pool allows, never X = 0
+// ===========================================================================
+describe("executeAIAction: X spells (#2552)", () => {
+  // The mana and keyword-action modules are auto-mocked for this file; the X
+  // choice needs their real cost parsing and affordability checks.
+  beforeEach(() => {
+    const mana = jest.requireActual<Record<string, unknown>>(
+      "@/lib/game-state/mana",
+    );
+    const converge = jest.requireActual<Record<string, unknown>>(
+      "@/lib/game-state/keyword-actions/converge",
+    );
+    (canAffordMana as unknown as jest.Mock).mockImplementation(
+      mana.canAffordMana as (...a: unknown[]) => unknown,
+    );
+    (getSpellManaCost as unknown as jest.Mock).mockImplementation(
+      mana.getSpellManaCost as (...a: unknown[]) => unknown,
+    );
+    (isConvergeX as unknown as jest.Mock).mockImplementation(
+      converge.isConvergeX as (...a: unknown[]) => unknown,
+    );
+  });
+
+  function xState(
+    card: CardInstance,
+    pool: Partial<Record<string, number>>,
+  ): EngineGameState {
+    const state = buildState({ cards: [card] });
+    (state.players as Map<PlayerId, unknown>).set(AI, {
+      id: AI,
+      manaPool: {
+        white: 0,
+        blue: 0,
+        black: 0,
+        red: 0,
+        green: 0,
+        colorless: 0,
+        generic: 0,
+        ...pool,
+      },
+    });
+    return state;
+  }
+  const mindSpring = mkCard("ms", {
+    type_line: "Sorcery",
+    mana_cost: "{X}{U}{U}",
+    cmc: 2,
+    oracle_text: "Draw X cards.",
+  });
+
+  it("chooses X from what is left after the rest of the cost", () => {
+    expect(
+      chooseAIXValue(xState(mindSpring, { blue: 2, red: 3 }), AI, "ms"),
+    ).toBe(3);
+    expect(chooseAIXValue(xState(mindSpring, { blue: 5 }), AI, "ms")).toBe(3);
+    expect(chooseAIXValue(xState(mindSpring, { blue: 2 }), AI, "ms")).toBe(0);
+  });
+
+  it("is 0 for spells without {X} and for converge X", () => {
+    const bolt = mkCard("bolt", {
+      type_line: "Instant",
+      mana_cost: "{R}",
+      oracle_text: "Lightning Bolt deals 3 damage to any target.",
+    });
+    expect(chooseAIXValue(xState(bolt, { red: 5 }), AI, "bolt")).toBe(0);
+    const converge = mkCard("cv", {
+      type_line: "Sorcery",
+      mana_cost: "{X}{W}",
+      oracle_text:
+        "Converge — You gain X life, where X is the number of colors of mana spent to cast this spell.",
+    });
+    expect(chooseAIXValue(xState(converge, { white: 5 }), AI, "cv")).toBe(0);
+  });
+
+  it("casts with the chosen X", async () => {
+    const state = xState(mindSpring, { blue: 4 });
+    const res = await executeAIAction(
+      state,
+      { type: "cast_spell", cardId: "ms" },
+      AI,
+    );
+    expect(res.success).toBe(true);
+    expect(castSpellMock).toHaveBeenCalledWith(
+      state,
+      AI,
+      "ms",
+      undefined,
+      [],
+      2,
+    );
+  });
+
+  it("holds an X spell rather than cast it for X = 0", async () => {
+    const res = await executeAIAction(
+      xState(mindSpring, { blue: 2 }),
+      { type: "cast_spell", cardId: "ms" },
+      AI,
+    );
+    expect(res.success).toBe(false);
+    expect(res.error).toContain("X = 0");
+    expect(castSpellMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps an X the caller already chose", async () => {
+    const state = xState(mindSpring, { blue: 6 });
+    await executeAIAction(
+      state,
+      { type: "cast_spell", cardId: "ms", xValue: 1 },
+      AI,
+    );
+    expect(castSpellMock).toHaveBeenCalledWith(
+      state,
+      AI,
+      "ms",
+      undefined,
+      [],
+      1,
+    );
   });
 });
 
