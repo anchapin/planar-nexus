@@ -1,0 +1,26 @@
+{
+  "name": "Muse's Encouragement",
+  "oracle": "Create a 3/3 blue and red Elemental creature token with flying.\nSurveil 2. (Look at the top two cards of your library, then put any number of them into your graveyard and the rest on top of your library in any order.)",
+  "spell": [
+    {
+      "op": "CreateToken",
+      "count": 1,
+      "power": 3,
+      "toughness": 3,
+      "colors": [
+        "blue",
+        "red"
+      ],
+      "subtypes": [
+        "Elemental"
+      ],
+      "keywords": [
+        "flying"
+      ]
+    },
+    {
+      "op": "Surveil",
+      "amount": 2
+    }
+  ]
+}

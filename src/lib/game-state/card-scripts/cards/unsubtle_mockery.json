@@ -1,0 +1,15 @@
+{
+  "name": "Unsubtle Mockery",
+  "oracle": "Unsubtle Mockery deals 4 damage to target creature. Surveil 1. (Look at the top card of your library. You may put it into your graveyard.)",
+  "spell": [
+    {
+      "op": "DealDamage",
+      "amount": 4,
+      "target": "creature"
+    },
+    {
+      "op": "Surveil",
+      "amount": 1
+    }
+  ]
+}

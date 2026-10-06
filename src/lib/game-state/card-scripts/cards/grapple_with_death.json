@@ -1,0 +1,15 @@
+{
+  "name": "Grapple with Death",
+  "oracle": "Destroy target artifact or creature. You gain 1 life.",
+  "spell": [
+    {
+      "op": "Destroy",
+      "target": "artifact_or_enchantment"
+    },
+    {
+      "op": "GainLife",
+      "amount": 1,
+      "who": "you"
+    }
+  ]
+}
