@@ -260,7 +260,8 @@ export function resolveWaitingChoice(
 
   // Issue #2446: cleanup discard to maximum hand size. Accepts the chosen
   // card ids as an array, or a single id when only one card is discarded.
-  if (type === "discard_to_hand_size") {
+  // Issue #2536: a scripted discard is answered the same way.
+  if (type === "discard_to_hand_size" || type === "discard_cards") {
     const ids = Array.isArray(selectedValue)
       ? (selectedValue as readonly string[])
       : typeof selectedValue === "string"

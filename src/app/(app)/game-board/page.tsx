@@ -1181,10 +1181,17 @@ export default function GameBoardPage() {
       )}
 
       {/* Cleanup discard to maximum hand size (issue #2446) */}
-      {engineState?.waitingChoice?.type === "discard_to_hand_size" &&
+      {/* Issue #2536: a scripted discard uses the same dialog. */}
+      {(engineState?.waitingChoice?.type === "discard_to_hand_size" ||
+        engineState?.waitingChoice?.type === "discard_cards") &&
         engineState.waitingChoice.playerId === currentPlayerId && (
           <HandSizeDiscardDialog
             open
+            title={
+              engineState.waitingChoice.type === "discard_cards"
+                ? "Discard"
+                : undefined
+            }
             prompt={engineState.waitingChoice.prompt}
             count={engineState.waitingChoice.minChoices}
             cards={engineState.waitingChoice.choices.map((c) => ({

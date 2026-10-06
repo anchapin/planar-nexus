@@ -23,6 +23,7 @@ import {
 } from "../effect-resolution";
 import { destroyCard, exileCard } from "../keyword-actions/removal";
 import { millCards } from "../zones";
+import { startDiscard } from "../keyword-actions/discard-choice";
 import { addCounters } from "../card-instance";
 import { copySpellOnStack } from "../spell-casting/resolve";
 import { getCardScript } from "./registry";
@@ -366,6 +367,17 @@ function applyEffect(
       }
       const player = playerFor(effect.who, ctx);
       return player ? millPlayer(state, player, effect.amount) : state;
+    }
+    case "Discard": {
+      if (effect.who === "each_opponent") {
+        let next = state;
+        for (const opp of opponentsOf(state, ctx.controllerId)) {
+          next = startDiscard(next, opp, effect.amount);
+        }
+        return next;
+      }
+      const player = playerFor(effect.who, ctx);
+      return player ? startDiscard(state, player, effect.amount) : state;
     }
     case "CopySpell":
       return copyTriggeringSpell(state, effect.gain ?? [], ctx);

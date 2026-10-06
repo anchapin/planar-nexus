@@ -36,6 +36,18 @@ export function isHandSizeDiscardChoice(
   return choice?.type === "discard_to_hand_size";
 }
 
+/**
+ * True when `choice` asks a player to pick cards to discard: the cleanup
+ * discard (#2446) or a scripted "discards N cards" (#2536).
+ */
+export function isDiscardChoice(
+  choice: WaitingChoice | null | undefined,
+): choice is WaitingChoice {
+  return (
+    choice?.type === "discard_to_hand_size" || choice?.type === "discard_cards"
+  );
+}
+
 /** True when `choice` is one of the "you may pay" offers this module answers. */
 export function isOfferChoice(
   choice: WaitingChoice | null | undefined,
@@ -120,8 +132,11 @@ export function answerAIOfferChoices(
     if (!choice || choice.playerId !== aiPlayerId) break;
 
     // Issue #2446: the cleanup discard also waits on the AI before its
-    // turn can end.
-    if (choice.type === "discard_to_hand_size") {
+    // turn can end; #2536: so does a scripted discard.
+    if (
+      choice.type === "discard_to_hand_size" ||
+      choice.type === "discard_cards"
+    ) {
       const cards = decideHandSizeDiscard(current, choice, difficulty);
       const result = resolveWaitingChoice(current, aiPlayerId, cards);
       if (!result.success) break;

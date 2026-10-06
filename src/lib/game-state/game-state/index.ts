@@ -45,6 +45,10 @@ import {
   discardToHandSize,
   validateHandSizeDiscard,
 } from "../keyword-actions/hand-size";
+import {
+  SCRIPTED_DISCARD_CHOICE_TYPE,
+  resolveScriptedDiscard,
+} from "../keyword-actions/discard-choice";
 import { registerCardListResolver } from "../spell-casting/choices";
 import {
   detectEndStepTriggers,
@@ -411,7 +415,11 @@ function getNextAPNAPPlayer(state: GameState): PlayerId | null {
 export function passPriority(state: GameState, playerId: PlayerId): GameState {
   // Issue #2446: the turn cannot end until the cleanup discard is answered.
   // Passing is a no-op while it is pending, so pass loops cannot skip it.
-  if (state.waitingChoice?.type === HAND_SIZE_DISCARD_CHOICE_TYPE) {
+  // Issue #2536: same for a scripted discard the player must choose.
+  if (
+    state.waitingChoice?.type === HAND_SIZE_DISCARD_CHOICE_TYPE ||
+    state.waitingChoice?.type === SCRIPTED_DISCARD_CHOICE_TYPE
+  ) {
     return state;
   }
 
@@ -754,6 +762,7 @@ function resolveHandSizeDiscard(
 }
 
 registerCardListResolver(HAND_SIZE_DISCARD_CHOICE_TYPE, resolveHandSizeDiscard);
+registerCardListResolver(SCRIPTED_DISCARD_CHOICE_TYPE, resolveScriptedDiscard);
 
 function resolveStackTop(state: GameState): GameState {
   if (state.stack.length === 0) {

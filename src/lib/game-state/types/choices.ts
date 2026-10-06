@@ -28,7 +28,8 @@ export interface WaitingChoice {
     | "corpse_offer"
     | "tribute_offer"
     | "attack_return_offer"
-    | "discard_to_hand_size";
+    | "discard_to_hand_size"
+    | "discard_cards";
   /** ID of player who needs to make this choice */
   playerId: PlayerId;
   /** ID of the stack object this choice is for */
@@ -43,6 +44,11 @@ export interface WaitingChoice {
   maxChoices: number;
   /** Timestamp when this choice was presented */
   presentedAt: number;
+  /**
+   * `discard_cards` only (#2536): further players who must discard for the
+   * same effect, answered one at a time after this one.
+   */
+  pendingDiscards?: { playerId: PlayerId; amount: number }[];
 }
 
 /**

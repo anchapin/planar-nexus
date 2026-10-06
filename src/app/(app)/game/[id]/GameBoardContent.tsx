@@ -120,7 +120,7 @@ import {
 import { ValidationService } from "@/lib/validation-service";
 import {
   answerAIOfferChoices,
-  isHandSizeDiscardChoice,
+  isDiscardChoice,
   isOfferChoice,
 } from "@/ai/offer-choices";
 import { HandSizeDiscardDialog } from "@/components/choice-dialog";
@@ -649,8 +649,9 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
   useEffect(() => {
     if (!gameState || mode !== "ai") return;
     const choice = gameState.waitingChoice;
-    // Issue #2446: the cleanup discard to hand size also waits on the AI.
-    if (!isOfferChoice(choice) && !isHandSizeDiscardChoice(choice)) return;
+    // Issue #2446: the cleanup discard to hand size also waits on the AI;
+    // #2536: so does a scripted discard.
+    if (!isOfferChoice(choice) && !isDiscardChoice(choice)) return;
     const aiPlayer = Array.from(gameState.players.values()).find((p) =>
       p.name.includes("AI"),
     );
@@ -664,14 +665,17 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     if (answered.length === 0) return;
     setGameState(answeredState);
     const discarded = answered.filter((a) => a.type === "discard_to_hand_size");
+    const scriptedDiscard = answered.some((a) => a.type === "discard_cards");
     toast({
       title: "AI Action",
       description:
         discarded.length > 0
           ? "AI opponent discarded down to its maximum hand size"
-          : answered.some((a) => !a.value.startsWith("decline:"))
-            ? "AI opponent paid an optional cost"
-            : "AI opponent declined an optional cost",
+          : scriptedDiscard
+            ? "AI opponent chose cards to discard"
+            : answered.some((a) => !a.value.startsWith("decline:"))
+              ? "AI opponent paid an optional cost"
+              : "AI opponent declined an optional cost",
     });
   }, [gameState, mode, toast, difficulty]);
 
@@ -679,7 +683,7 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
   // cannot end until it is answered, so the dialog cannot be dismissed.
   const humanDiscardChoice =
     gameState &&
-    isHandSizeDiscardChoice(gameState.waitingChoice) &&
+    isDiscardChoice(gameState.waitingChoice) &&
     gameState.players.get(gameState.waitingChoice.playerId)?.name === playerName
       ? gameState.waitingChoice
       : null;
@@ -688,7 +692,7 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     (cardIds: string[]) => {
       const latest = gameStateRef.current;
       const choice = latest?.waitingChoice;
-      if (!latest || !isHandSizeDiscardChoice(choice)) return;
+      if (!latest || !isDiscardChoice(choice)) return;
       const result = resolveWaitingChoice(latest, choice.playerId, cardIds);
       if (!result.success) {
         toast({
@@ -3855,6 +3859,9 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
       {humanDiscardChoice && (
         <HandSizeDiscardDialog
           open
+          title={
+            humanDiscardChoice.type === "discard_cards" ? "Discard" : undefined
+          }
           prompt={humanDiscardChoice.prompt}
           count={humanDiscardChoice.minChoices}
           cards={humanDiscardChoice.choices.map((c) => ({
