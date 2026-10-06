@@ -1,0 +1,22 @@
+{
+  "name": "Holy Cow",
+  "oracle": "Flash\nFlying\nWhen this creature enters, you gain 2 life and scry 1. (Look at the top card of your library. You may put that card on the bottom.)",
+  "triggers": [
+    {
+      "text": "When this creature enters, you gain 2 life and scry 1.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "GainLife",
+          "amount": 2,
+          "who": "you"
+        },
+        {
+          "op": "Scry",
+          "amount": 1
+        }
+      ]
+    }
+  ]
+}

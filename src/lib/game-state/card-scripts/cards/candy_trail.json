@@ -1,0 +1,39 @@
+{
+  "name": "Candy Trail",
+  "oracle": "When this artifact enters, scry 2.\n{2}, {T}, Sacrifice this artifact: You gain 3 life and draw a card.",
+  "triggers": [
+    {
+      "text": "When this artifact enters, scry 2.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "Scry",
+          "amount": 2
+        }
+      ]
+    }
+  ],
+  "activated": [
+    {
+      "text": "You gain 3 life and draw a card.",
+      "cost": {
+        "mana": "{2}",
+        "tap": true,
+        "sacrifice": true
+      },
+      "effects": [
+        {
+          "op": "GainLife",
+          "amount": 3,
+          "who": "you"
+        },
+        {
+          "op": "Draw",
+          "amount": 1,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}

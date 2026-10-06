@@ -1,0 +1,15 @@
+{
+  "name": "Opt",
+  "oracle": "Scry 1. (Look at the top card of your library. You may put that card on the bottom.)\nDraw a card.",
+  "spell": [
+    {
+      "op": "Scry",
+      "amount": 1
+    },
+    {
+      "op": "Draw",
+      "amount": 1,
+      "who": "you"
+    }
+  ]
+}

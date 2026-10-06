@@ -298,6 +298,7 @@ export type StackEffectType =
   | "loseLife"
   | "venture_dungeon"
   | "surveil"
+  | "scry"
   | "attach"
   | "transform"
   | "crew"
@@ -398,6 +399,7 @@ export type StackEffect =
       targetId?: PlayerId;
     }
   | { effectType: "surveil"; amount: number; targetId?: PlayerId }
+  | { effectType: "scry"; amount: number; targetId?: PlayerId }
   | { effectType: "transform"; targetId?: CardInstanceId }
   | { effectType: "reveal_until_instant_sorcery"; targetId?: PlayerId }
   | {
