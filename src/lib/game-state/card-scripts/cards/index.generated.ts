@@ -67,6 +67,7 @@ export const RAW_CARD_SCRIPTS: unknown[] = [
   {"name":"Oltec Cloud Guard","triggers":[{"text":"When this creature enters, create a 1/1 colorless Gnome artifact creature token.","event":"etb","subject":"self","effects":[{"op":"CreateToken","count":1,"power":1,"toughness":1,"color":"colorless","subtypes":["Gnome"],"artifact":true}]}]},
   {"name":"Oscorp Research Team","activated":[{"text":"Draw two cards.","cost":{"mana":"{6}{U}","tap":false,"sacrifice":false},"effects":[{"op":"Draw","amount":2,"who":"you"}]}]},
   {"name":"Outlaw Medic","triggers":[{"text":"When this creature dies, draw a card.","event":"dies","subject":"self","effects":[{"op":"Draw","amount":1,"who":"you"}]}]},
+  {"name":"Overkill","spell":[{"op":"Pump","power":0,"toughness":-9999,"target":"creature"}]},
   {"name":"Phyrexian Arena","triggers":[{"text":"At the beginning of your upkeep, you draw a card and lose 1 life.","event":"upkeep","whose":"you","effects":[{"op":"Draw","amount":1,"who":"you"},{"op":"LoseLife","amount":1,"who":"you"}]}]},
   {"name":"Pond Prophet","triggers":[{"text":"When this creature enters, draw a card.","event":"etb","subject":"self","effects":[{"op":"Draw","amount":1,"who":"you"}]}]},
   {"name":"Prideful Parent","triggers":[{"text":"When this creature enters, create a 1/1 white Cat creature token.","event":"etb","subject":"self","effects":[{"op":"CreateToken","count":1,"power":1,"toughness":1,"color":"white","subtypes":["Cat"]}]}]},
