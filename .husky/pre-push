@@ -1,0 +1,38 @@
+#!/usr/bin/env sh
+# Block a push when the test-count docs drift away from the live Jest run
+# (#2487, #1902). A failing run here means the docs/onboarding.md or
+# docs/TEST_VIDEO_FIXTURES.md anchored block is stale; fix with
+# `npm run ratchet:test-count`, amend, and try again. The full CI guard
+# (`test-count-docs-guard`) still runs after push.
+#
+# Skipped on empty diff (e.g. pushing tags/branches with no commits
+# touching the docs).
+
+set -e
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "[husky pre-push] node not found; skipping test-count-docs check."
+  exit 0
+fi
+
+# If neither test-count doc is touched in the outgoing push, skip.
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
+    continue
+  fi
+  range="$local_sha"
+  if [ "$remote_sha" != "0000000000000000000000000000000000000000" ]; then
+    range="$remote_sha..$local_sha"
+  fi
+  if git diff --name-only "$range" 2>/dev/null | grep -Eq '^docs/(onboarding|TEST_VIDEO_FIXTURES)\.md$'; then
+    if ! node scripts/check-test-count-docs.mjs; then
+      echo ""
+      echo "[husky pre-push] test-count docs are out of date (#1902)."
+      echo "  Run:  npm run ratchet:test-count"
+      echo "  Then: git add docs/onboarding.md docs/TEST_VIDEO_FIXTURES.md"
+      echo "       git commit --amend --no-edit"
+      exit 1
+    fi
+    break
+  fi
+done

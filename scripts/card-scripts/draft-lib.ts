@@ -16,6 +16,7 @@ import {
   modeLabelKey,
   type CardScript,
 } from "../../src/lib/game-state/card-scripts/schema";
+import { buildOpReference } from "../../src/lib/game-state/card-scripts/ops/registry";
 import { parseModes } from "../../src/lib/game-state/oracle-text-parser/modes";
 
 /** The Scryfall fields the pipeline reads. */
@@ -38,42 +39,13 @@ export type DraftOutcome =
  * covers EffectSchema exactly, so a new op can't ship undocumented to the LLM.
  * "X" is the X the spell was cast with (#2552): only on cards with {X} in
  * their mana cost; "-X" only for Pump.
+ *
+ * Built from the per-op modules under `src/lib/game-state/card-scripts/ops/`
+ * (#2487, phase 2.3). Each op's one-line description lives in its own file,
+ * so an op PR adds exactly one new module and one entry in `ops/registry.ts`
+ * — no more edits to this giant literal.
  */
-export const OP_REFERENCE: Record<string, string> = {
-  DealDamage:
-    '{"op":"DealDamage","amount":N|"X","target":"any"|"creature"|"player"|"each_opponent","controller":"you"|"opponent"} (controller optional, target creature only: "target creature you control" is "you", "an opponent controls" or "you don\'t control" is "opponent")',
-  Draw: '{"op":"Draw","amount":N|"X","who":"you"|"target_player"}',
-  GainLife: '{"op":"GainLife","amount":N|"X","who":"you"|"target_player"}',
-  LoseLife:
-    '{"op":"LoseLife","amount":N|"X","who":"you"|"target_player"|"each_opponent"}',
-  CreateToken:
-    '{"op":"CreateToken","count":N|"X","power":N,"toughness":N,"color":"white"|"blue"|"black"|"red"|"green"|"colorless" OR "colors":["white","black"],"subtypes":["Thopter"],"artifact":true,"keywords":["flying"]} (creature tokens; exactly one of color/colors; artifact and keywords optional; evergreen keywords only; no enchantment tokens or token abilities)',
-  CreatePredefinedToken:
-    '{"op":"CreatePredefinedToken","token":"treasure"|"food"|"clue","count":N} (you create N Treasure, Food or Clue tokens; "investigate" is one Clue; not tapped tokens, not "its controller creates")',
-  Destroy:
-    '{"op":"Destroy","target":"creature"|"artifact"|"enchantment"|"artifact_or_enchantment"|"nonland_permanent","min_power":N,"max_power":N} (min_power/max_power optional, creature targets only: "creature with power 4 or greater" is min_power 4; controller "you"|"opponent" optional, as for DealDamage)',
-  Exile:
-    '{"op":"Exile","target":"creature"|"artifact"|"enchantment"|"artifact_or_enchantment"|"nonland_permanent","min_power":N,"max_power":N} (same targets as Destroy)',
-  Tap: '{"op":"Tap","target":"creature"|"artifact"|"enchantment"|"artifact_or_enchantment"|"nonland_permanent"} (same targets and options as Destroy; not "target permanent" or "creature or land")',
-  Untap:
-    '{"op":"Untap","target":"creature"|"artifact"|"enchantment"|"artifact_or_enchantment"|"nonland_permanent"} (same targets and options as Destroy)',
-  ReturnToHand:
-    '{"op":"ReturnToHand","target":"creature"|"artifact"|"enchantment"|"artifact_or_enchantment"|"nonland_permanent"} (return target permanent to its owner\'s hand; same targets and options as Destroy)',
-  Counter: '{"op":"Counter","target":"spell"}',
-  Pump: '{"op":"Pump","power":N|"X"|"-X","toughness":N|"X"|"-X","target":"creature"|"self","controller":"you"|"opponent"} (until end of turn; controller optional, target creature only)',
-  PutCounters:
-    '{"op":"PutCounters","counter":"+1/+1","amount":N|"X","target":"creature"|"self","controller":"you"|"opponent"} (controller optional, target creature only)',
-  Fight:
-    '{"op":"Fight","fighter":"self"|"it"|"creature","target":"creature","controller":"you"|"opponent"} (fighter and target each deal damage equal to its power to the other; "it" = the creature the previous effect targeted, "creature" = a second target you choose first, which must be yours; controller optional, applies to target; "optional":true only with fighter "self")',
-  Bite: '{"op":"Bite","fighter":"self"|"it"|"creature","target":"creature","controller":"you"|"opponent"} (one-sided fight: only the fighter deals damage equal to its power to target; same fighter rules as Fight)',
-  Surveil: '{"op":"Surveil","amount":N}',
-  Scry: '{"op":"Scry","amount":N} (you scry)',
-  Mill: '{"op":"Mill","amount":N|"X","who":"you"|"target_player"|"each_opponent"} (top N cards of that library into its graveyard; fixed N only, not "you may mill")',
-  Discard:
-    '{"op":"Discard","amount":N,"who":"you"|"target_player"|"each_opponent"} (that player discards N cards of their choice; must come after every other effect, e.g. "draw two cards, then discard a card"; not random, not "you may discard", not a cost)',
-  CopySpell:
-    '{"op":"CopySpell","gain":["wither"]} (cast triggers only: copy the spell that was cast, same targets; gain optional)',
-};
+export const OP_REFERENCE: Record<string, string> = buildOpReference();
 
 export function documentedOps(): string[] {
   return Object.keys(OP_REFERENCE).sort();
