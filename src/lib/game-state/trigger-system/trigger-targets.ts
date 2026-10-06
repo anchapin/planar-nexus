@@ -242,7 +242,8 @@ function effectsTargetSpec(
     if (
       effect.op === "Draw" ||
       effect.op === "GainLife" ||
-      effect.op === "LoseLife"
+      effect.op === "LoseLife" ||
+      effect.op === "Mill"
     ) {
       return { ...base, kind: "player" };
     }
