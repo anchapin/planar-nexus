@@ -57,6 +57,8 @@ src-tauri/gen/
 !scripts/differential/cards.snapshot.json
 # Card scripts are data and must be tracked (#2488)
 !src/lib/game-state/card-scripts/cards/*.json
+# manamind simple-v1 parity replays exported from the Python ruleset (#2557)
+!src/ai/manamind/__tests__/fixtures/*.json
 # Generated card-script index is rebuilt before every dev/build/test/typecheck
 # (#2487); committing it forced every card PR to rebase on the index file.
 src/lib/game-state/card-scripts/cards/index.generated.ts
