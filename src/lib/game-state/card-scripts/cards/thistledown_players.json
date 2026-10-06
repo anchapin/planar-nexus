@@ -1,0 +1,17 @@
+{
+  "name": "Thistledown Players",
+  "oracle": "Whenever this creature attacks, untap target nonland permanent.",
+  "triggers": [
+    {
+      "text": "Whenever this creature attacks, untap target nonland permanent.",
+      "event": "attacks",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "Untap",
+          "target": "nonland_permanent"
+        }
+      ]
+    }
+  ]
+}

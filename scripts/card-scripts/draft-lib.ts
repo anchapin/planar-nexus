@@ -50,6 +50,9 @@ export const OP_REFERENCE: Record<string, string> = {
     '{"op":"Destroy","target":"creature"|"artifact"|"enchantment"|"artifact_or_enchantment"|"nonland_permanent","min_power":N,"max_power":N} (min_power/max_power optional, creature targets only: "creature with power 4 or greater" is min_power 4; controller "you"|"opponent" optional, as for DealDamage)',
   Exile:
     '{"op":"Exile","target":"creature"|"artifact"|"enchantment"|"artifact_or_enchantment"|"nonland_permanent","min_power":N,"max_power":N} (same targets as Destroy)',
+  Tap: '{"op":"Tap","target":"creature"|"artifact"|"enchantment"|"artifact_or_enchantment"|"nonland_permanent"} (same targets and options as Destroy; not "target permanent" or "creature or land")',
+  Untap:
+    '{"op":"Untap","target":"creature"|"artifact"|"enchantment"|"artifact_or_enchantment"|"nonland_permanent"} (same targets and options as Destroy)',
   Counter: '{"op":"Counter","target":"spell"}',
   Pump: '{"op":"Pump","power":N,"toughness":N,"target":"creature"|"self","controller":"you"|"opponent"} (until end of turn; controller optional, target creature only)',
   PutCounters:

@@ -22,6 +22,7 @@ import {
   resolveTokenCreationEffect,
 } from "../effect-resolution";
 import { destroyCard, exileCard } from "../keyword-actions/removal";
+import { tapCardAction, untapCardAction } from "../keyword-actions/damage-tap";
 import { millCards } from "../zones";
 import { startDiscard } from "../keyword-actions/discard-choice";
 import { addCounters } from "../card-instance";
@@ -315,6 +316,23 @@ function applyEffect(
       )
         return state;
       const r = exileCard(state, target.targetId as CardInstanceId);
+      return r.success ? r.state : state;
+    }
+    case "Tap":
+    case "Untap": {
+      // #2538: an illegal target does nothing; tapping a tapped permanent
+      // (or untapping an untapped one) changes nothing.
+      if (
+        !target ||
+        !targetStillMatches(state, target.targetId, effect) ||
+        !controllerStillMatches(state, target.targetId, effect.controller, ctx)
+      )
+        return state;
+      const id = target.targetId as CardInstanceId;
+      const r =
+        effect.op === "Tap"
+          ? tapCardAction(state, id)
+          : untapCardAction(state, id);
       return r.success ? r.state : state;
     }
     case "Counter": {

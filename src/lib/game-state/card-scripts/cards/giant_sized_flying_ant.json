@@ -1,0 +1,34 @@
+{
+  "name": "Giant-Sized Flying Ant",
+  "oracle": "Flash\nFlying\nWhen this creature enters, choose one —\n• Tap target nonland permanent.\n• Untap target nonland permanent.",
+  "triggers": [
+    {
+      "text": "When this creature enters, choose one —",
+      "event": "etb",
+      "subject": "self",
+      "modes": {
+        "choose": 1,
+        "options": [
+          {
+            "text": "Tap target nonland permanent.",
+            "effects": [
+              {
+                "op": "Tap",
+                "target": "nonland_permanent"
+              }
+            ]
+          },
+          {
+            "text": "Untap target nonland permanent.",
+            "effects": [
+              {
+                "op": "Untap",
+                "target": "nonland_permanent"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
