@@ -1,6 +1,26 @@
 import type { CardInstance } from "../types";
 import { getPower, isCreature } from "../card-instance";
 
+/**
+ * Whose permanent a targeted effect may pick (#2532): "you" is "target
+ * creature you control"; "opponent" is "an opponent controls" or "you don't
+ * control" (the same thing in a two-player game).
+ */
+export const TARGET_CONTROLLERS = ["you", "opponent"] as const;
+export type TargetController = (typeof TARGET_CONTROLLERS)[number];
+
+/** True when `card` is controlled by the right player relative to `playerId`. */
+export function matchesController(
+  card: CardInstance,
+  controller: TargetController | undefined,
+  playerId: string,
+): boolean {
+  if (!controller) return true;
+  return controller === "you"
+    ? card.controllerId === playerId
+    : card.controllerId !== playerId;
+}
+
 /** What a scripted Destroy or Exile may target (#2528). */
 export const REMOVAL_TARGETS = [
   "creature",

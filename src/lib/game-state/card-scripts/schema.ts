@@ -10,9 +10,19 @@
  * targeted effect uses targets[0], the next targeted effect targets[1], etc.
  */
 import { z } from "zod";
-import { REMOVAL_TARGETS } from "./target-filters";
+import { REMOVAL_TARGETS, TARGET_CONTROLLERS } from "./target-filters";
 
 const amount = z.number().int().min(0);
+
+/**
+ * Whose permanent a targeted effect may pick (#2532): "target creature you
+ * control" is "you", "an opponent controls" / "you don't control" is
+ * "opponent". Only on effects that target a permanent.
+ */
+const controller = z.enum(TARGET_CONTROLLERS).optional();
+const controllerNeedsCreatureTarget = {
+  message: "controller only applies to target creature",
+};
 
 export const DealDamageSchema = z
   .object({
@@ -20,8 +30,13 @@ export const DealDamageSchema = z
     amount,
     /** each_opponent is untargeted: damage to every opponent. */
     target: z.enum(["any", "creature", "player", "each_opponent"]),
+    controller,
   })
-  .strict();
+  .strict()
+  .refine(
+    (e) => e.controller === undefined || e.target === "creature",
+    controllerNeedsCreatureTarget,
+  );
 
 export const DrawSchema = z
   .object({
@@ -93,6 +108,7 @@ const removalFields = {
   target: z.enum(REMOVAL_TARGETS),
   min_power: z.number().int().optional(),
   max_power: z.number().int().optional(),
+  controller,
 };
 
 export const DestroySchema = z
@@ -114,8 +130,13 @@ export const PumpSchema = z
     toughness: z.number().int(),
     /** self: the permanent the ability belongs to (untargeted). */
     target: z.enum(["creature", "self"]),
+    controller,
   })
-  .strict();
+  .strict()
+  .refine(
+    (e) => e.controller === undefined || e.target === "creature",
+    controllerNeedsCreatureTarget,
+  );
 
 export const PutCountersSchema = z
   .object({
@@ -124,8 +145,13 @@ export const PutCountersSchema = z
     counter: z.literal("+1/+1"),
     amount: z.number().int().min(1),
     target: z.enum(["creature", "self"]),
+    controller,
   })
-  .strict();
+  .strict()
+  .refine(
+    (e) => e.controller === undefined || e.target === "creature",
+    controllerNeedsCreatureTarget,
+  );
 
 export const SurveilSchema = z
   .object({ op: z.literal("Surveil"), amount: z.number().int().min(1) })
