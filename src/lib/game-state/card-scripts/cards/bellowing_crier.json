@@ -1,0 +1,23 @@
+{
+  "name": "Bellowing Crier",
+  "oracle": "When this creature enters, draw a card, then discard a card.",
+  "triggers": [
+    {
+      "text": "When this creature enters, draw a card, then discard a card.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "Draw",
+          "amount": 1,
+          "who": "you"
+        },
+        {
+          "op": "Discard",
+          "amount": 1,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}

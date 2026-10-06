@@ -1,0 +1,16 @@
+{
+  "name": "Ancestral Reminiscence",
+  "oracle": "Draw three cards, then discard a card.",
+  "spell": [
+    {
+      "op": "Draw",
+      "amount": 3,
+      "who": "you"
+    },
+    {
+      "op": "Discard",
+      "amount": 1,
+      "who": "you"
+    }
+  ]
+}

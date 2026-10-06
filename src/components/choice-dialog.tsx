@@ -805,6 +805,8 @@ export interface HandSizeDiscardDialogProps {
   cards: { id: string; name: string }[];
   count: number;
   onConfirm: (cardIds: string[]) => void;
+  /** Dialog title; a scripted discard (#2536) passes "Discard". */
+  title?: string;
 }
 
 export function HandSizeDiscardDialog({
@@ -813,6 +815,7 @@ export function HandSizeDiscardDialog({
   cards,
   count,
   onConfirm,
+  title = "Discard to hand size",
 }: HandSizeDiscardDialogProps) {
   const [selected, setSelected] = React.useState<string[]>([]);
 
@@ -844,7 +847,7 @@ export function HandSizeDiscardDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Hand className="h-5 w-5" />
-            Discard to hand size
+            {title}
           </DialogTitle>
           <DialogDescription className="text-base">{prompt}</DialogDescription>
         </DialogHeader>

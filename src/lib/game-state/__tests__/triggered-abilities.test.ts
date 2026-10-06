@@ -138,8 +138,9 @@ describe("Triggered Abilities System - detectTriggeredAbilities", () => {
       placeCardOnBattlefield(
         createMockCard({
           id: "attacks-trigger",
-          name: "Burglar Rat",
-          oracle_text: "Whenever Burglar Rat attacks, you draw a card.",
+          // A made-up name: a real card name could pick up its card script.
+          name: "Test Prowler",
+          oracle_text: "Whenever Test Prowler attacks, you draw a card.",
         }),
         aliceId,
       );

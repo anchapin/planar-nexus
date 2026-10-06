@@ -19,6 +19,7 @@ import {
   answerAIOfferChoices,
   decideHandSizeDiscard,
   decideOfferChoice,
+  isDiscardChoice,
   isHandSizeDiscardChoice,
   isOfferChoice,
 } from "../offer-choices";
@@ -230,5 +231,71 @@ describe("AI cleanup discard to hand size (#2446)", () => {
     const { state: after, answered } = answerAIOfferChoices(state, human);
     expect(answered).toHaveLength(0);
     expect(after).toBe(state);
+  });
+});
+
+describe("AI scripted discard (#2536)", () => {
+  function pendingDiscard(): { state: GameState; ai: PlayerId } {
+    let state = startGame(createInitialGameState(["Human", "AI"], 20, false));
+    const ai = state.turn.activePlayerId;
+    const cards = new Map(state.cards);
+    const zones = new Map(state.zones);
+    const key = `${ai}-hand`;
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      const id = `ai-d${i}`;
+      const card = {
+        id: `mock-d${i}`,
+        name: `Bear ${i}`,
+        type_line: "Creature — Bear",
+        oracle_text: "",
+        mana_cost: "{1}{G}",
+        cmc: 2,
+        colors: [],
+        color_identity: [],
+        keywords: [],
+        legalities: { standard: "legal" },
+        layout: "normal",
+      } as unknown as ScryfallCard;
+      cards.set(
+        id,
+        createCardInstance(card, ai, ai, { id, currentZoneKey: key }),
+      );
+      ids.push(id);
+    }
+    zones.set(key, { ...zones.get(key)!, cardIds: ids });
+    state = {
+      ...state,
+      cards,
+      zones,
+      waitingChoice: {
+        type: "discard_cards",
+        playerId: ai,
+        stackObjectId: null,
+        prompt: "Discard 1 card.",
+        choices: ids.map((id) => ({ label: id, value: id, isValid: true })),
+        minChoices: 1,
+        maxChoices: 1,
+        presentedAt: 0,
+      },
+    };
+    return { state, ai };
+  }
+
+  it("recognises the scripted discard choice", () => {
+    const { state } = pendingDiscard();
+    expect(isDiscardChoice(state.waitingChoice)).toBe(true);
+    expect(isHandSizeDiscardChoice(state.waitingChoice)).toBe(false);
+    expect(isOfferChoice(state.waitingChoice)).toBe(false);
+  });
+
+  it("answers it with one card from hand", () => {
+    const { state, ai } = pendingDiscard();
+    const { state: after, answered } = answerAIOfferChoices(state, ai);
+    expect(answered).toHaveLength(1);
+    expect(answered[0].type).toBe("discard_cards");
+    expect(after.waitingChoice).toBeNull();
+    expect(after.zones.get(`${ai}-hand`)!.cardIds).toHaveLength(2);
+    expect(after.zones.get(`${ai}-graveyard`)!.cardIds).toHaveLength(1);
   });
 });

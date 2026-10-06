@@ -1,0 +1,18 @@
+{
+  "name": "Virus Beetle",
+  "oracle": "When this creature enters, each opponent discards a card.",
+  "triggers": [
+    {
+      "text": "When this creature enters, each opponent discards a card.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "Discard",
+          "amount": 1,
+          "who": "each_opponent"
+        }
+      ]
+    }
+  ]
+}

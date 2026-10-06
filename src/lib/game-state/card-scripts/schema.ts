@@ -165,6 +165,19 @@ export const MillSchema = z
   })
   .strict();
 
+/**
+ * That player discards N cards of their choice (CR 701.8a). The game waits
+ * for the choice, so Discard must come after every other effect in its list
+ * ("draw two cards, then discard a card").
+ */
+export const DiscardSchema = z
+  .object({
+    op: z.literal("Discard"),
+    amount: z.number().int().min(1),
+    who: z.enum(["you", "target_player", "each_opponent"]).default("you"),
+  })
+  .strict();
+
 export const SurveilSchema = z
   .object({ op: z.literal("Surveil"), amount: z.number().int().min(1) })
   .strict();
@@ -197,10 +210,19 @@ export const EffectSchema = z.discriminatedUnion("op", [
   PutCountersSchema,
   SurveilSchema,
   MillSchema,
+  DiscardSchema,
   CopySpellSchema,
 ]);
 
-const effects = z.array(EffectSchema).min(1);
+/** True when no non-Discard effect follows a Discard (#2536). */
+function discardIsLast(list: readonly { op: string }[]): boolean {
+  const first = list.findIndex((e) => e.op === "Discard");
+  return first < 0 || list.slice(first).every((e) => e.op === "Discard");
+}
+
+const effects = z.array(EffectSchema).min(1).refine(discardIsLast, {
+  message: "Discard must come after every other effect",
+});
 
 /**
  * One mode of a modal spell or ability. `text` is the mode as printed after its bullet,
