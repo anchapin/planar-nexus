@@ -106,3 +106,24 @@ D  src/lib/game-state/card-scripts/cards/index.generated.ts
   2. FDN includes many complex Commander-tier cards with ward, kicker, equipment, multi-target.
 - A re-prompt with stronger "you can express this with the schema below" instructions would likely halve the false-cries. That's a Phase 5 lane.
 - Phase 4's frontier list will be derived from `docs/card-scripts/drafts/*.md`.
+
+## Phase 4 — DONE (frontier + 10 issues filed)
+
+Aggregated seven draft reports (`blb`, `card-list`, `fdn`, `fin`, `mkm`, `sos`, `tdc`) and grouped the LLM's per-card `needs_new_op` reasons by capability. Wrote `reports/op-frontier.md` and `scripts/build-op-frontier.ts` (re-runs with `npx tsx scripts/build-op-frontier.ts`).
+
+Top 10 capabilities by card-unlock count (combined across sets):
+
+| #   | Capability                                 | Cards | Issue |
+| --- | ------------------------------------------ | ----: | ----- |
+| 1   | X-cost in triggered/activated effects      |    69 | #2559 |
+| 2   | Return card from graveyard to battlefield  |    46 | #2560 |
+| 3   | Equipment (attach, equip, equipped static) |    44 | #2561 |
+| 4   | Search library                             |    36 | #2562 |
+| 5   | Flashback cost                             |    32 | #2563 |
+| 6   | Kicker / additional cost                   |    28 | #2564 |
+| 7   | Add mana                                   |    27 | #2565 |
+| 8   | Shuffle library                            |    26 | #2566 |
+| 9   | Indestructible keyword                     |    17 | #2567 |
+| 10  | Aura enchantment                           |    15 | #2568 |
+
+Each issue body has CR references, the first 5 cards it unlocks, and a brief spec of what the op should do. They are the inputs for Phase 5 worktrees; that lane is held until #2555 (scaffold) and #2556 (FDN) merge into main.
