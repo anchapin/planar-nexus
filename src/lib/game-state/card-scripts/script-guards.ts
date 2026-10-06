@@ -83,6 +83,8 @@ export function isTargetedEffect(effect: CardEffect): boolean {
     case "Untap":
     case "ReturnToHand":
     case "Counter":
+    case "Fight":
+    case "Bite":
       return true;
     case "Draw":
     case "GainLife":
@@ -93,6 +95,21 @@ export function isTargetedEffect(effect: CardEffect): boolean {
     default:
       return false;
   }
+}
+
+/**
+ * How many of the spell's chosen targets the effect uses (#2548): a Fight or
+ * Bite whose fighter is a target uses two (the fighter, then the other
+ * creature); any other targeted effect uses one.
+ */
+export function effectTargetCount(effect: CardEffect): number {
+  if (!isTargetedEffect(effect)) return 0;
+  if (
+    (effect.op === "Fight" || effect.op === "Bite") &&
+    effect.fighter === "creature"
+  )
+    return 2;
+  return 1;
 }
 
 /**

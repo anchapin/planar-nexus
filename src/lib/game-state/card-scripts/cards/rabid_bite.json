@@ -1,0 +1,12 @@
+{
+  "name": "Rabid Bite",
+  "oracle": "Target creature you control deals damage equal to its power to target creature you don't control.",
+  "spell": [
+    {
+      "op": "Bite",
+      "fighter": "creature",
+      "target": "creature",
+      "controller": "opponent"
+    }
+  ]
+}

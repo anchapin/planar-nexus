@@ -149,6 +149,40 @@ export const ReturnToHandSchema = z
   .object({ op: z.literal("ReturnToHand"), ...removalFields })
   .strict();
 
+/**
+ * Fight and Bite (#2548). Fight (CR 701.14): the fighter and the target
+ * creature each deal damage equal to their power to the other. Bite: only the
+ * fighter deals damage ("deals damage equal to its power to target creature").
+ *
+ * `fighter` is who fights:
+ * - "self": the permanent the ability belongs to (untargeted).
+ * - "it": the creature the previous targeted effect targeted ("Put a +1/+1
+ *   counter on target creature you control. It fights ...").
+ * - "creature": a target creature you control, chosen just before the other
+ *   target, so the effect uses two targets.
+ * `controller` is whose creature the other target is. `optional` is "up to
+ * one target creature" and is only scripted on abilities of the fighter.
+ */
+const fightFields = {
+  fighter: z.enum(["self", "it", "creature"]),
+  target: z.literal("creature"),
+  controller,
+  optional: z.boolean().optional(),
+};
+const optionalNeedsSelf = {
+  message: "optional only applies when the fighter is self",
+};
+
+export const FightSchema = z
+  .object({ op: z.literal("Fight"), ...fightFields })
+  .strict()
+  .refine((e) => !e.optional || e.fighter === "self", optionalNeedsSelf);
+
+export const BiteSchema = z
+  .object({ op: z.literal("Bite"), ...fightFields })
+  .strict()
+  .refine((e) => !e.optional || e.fighter === "self", optionalNeedsSelf);
+
 export const CounterSchema = z
   .object({ op: z.literal("Counter"), target: z.enum(["spell"]) })
   .strict();
@@ -252,6 +286,8 @@ export const EffectSchema = z.discriminatedUnion("op", [
   MillSchema,
   DiscardSchema,
   CopySpellSchema,
+  FightSchema,
+  BiteSchema,
 ]);
 
 /** True when no non-Discard effect follows a Discard (#2536). */
@@ -482,6 +518,7 @@ export type ScriptedModes = z.infer<typeof ModesSchema>;
 export {
   isPermanentScript,
   isTargetedEffect,
+  effectTargetCount,
   modalEffects,
   modeChoiceError,
   modeLabelKey,

@@ -29,7 +29,8 @@ import {
 import { tapCardAction, untapCardAction } from "../keyword-actions/damage-tap";
 import { millCards } from "../zones";
 import { startDiscard } from "../keyword-actions/discard-choice";
-import { addCounters } from "../card-instance";
+import { addCounters, isCreature } from "../card-instance";
+import { getEffectivePower } from "../evergreen-keywords";
 import { copySpellOnStack } from "../spell-casting/resolve";
 import { getCardScript } from "./registry";
 import { PREDEFINED_TOKENS } from "./predefined-tokens";
@@ -40,8 +41,8 @@ import {
   type TargetController,
 } from "./target-filters";
 import {
+  effectTargetCount,
   isPermanentScript,
-  isTargetedEffect,
   scriptedAbilityEffects,
   scriptedSpellEffects,
 } from "./script-guards";
@@ -56,6 +57,11 @@ interface EffectContext {
   controllerId: PlayerId;
   sourceId?: CardInstanceId;
   target?: Target;
+  /**
+   * Fight/Bite (#2548): the fighter when it is a target (fighter "creature")
+   * or the previous targeted effect's target (fighter "it").
+   */
+  fighter?: Target;
   kickerBonus: number;
   /** Cast triggers: the spell that triggered the ability. */
   triggeringStackObjectId?: string;
@@ -208,6 +214,70 @@ function millPlayer(
     if (card) cards.set(cardId, { ...card, currentZoneKey: graveyardKey });
   }
   return { ...state, zones, cards };
+}
+
+/** Noncombat damage dealt by one creature to another (#2548). */
+function creatureDamage(
+  state: GameState,
+  fromId: CardInstanceId,
+  toId: CardInstanceId,
+  amount: number,
+): GameState {
+  if (amount <= 0) return state;
+  return resolveStackObjectEffects(
+    state,
+    [
+      {
+        effectType: "damage",
+        amount,
+        targetId: toId,
+        isCombatDamage: false,
+      },
+    ],
+    fromId,
+    [{ type: "card", targetId: toId }],
+  );
+}
+
+/**
+ * Fight (CR 701.14) or Bite (#2548). Nothing happens unless both creatures
+ * are still on the battlefield and still legal (CR 701.14b, 608.2b): a
+ * targeted or "it" fighter must still be a creature you control, and the
+ * other creature must still match its controller filter. Powers are read
+ * before any damage is dealt, so both fighters deal damage at once.
+ */
+function fight(
+  state: GameState,
+  effect: Extract<CardEffect, { op: "Fight" | "Bite" }>,
+  ctx: EffectContext,
+): GameState {
+  const fighterId =
+    effect.fighter === "self"
+      ? ctx.sourceId
+      : (ctx.fighter?.targetId as CardInstanceId | undefined);
+  const otherId = ctx.target?.targetId as CardInstanceId | undefined;
+  if (!fighterId || !otherId) return state;
+  const fighter = state.cards.get(fighterId);
+  const other = state.cards.get(otherId);
+  if (
+    !fighter ||
+    !other ||
+    !isOnBattlefield(state, fighterId) ||
+    !isOnBattlefield(state, otherId) ||
+    !isCreature(fighter) ||
+    !isCreature(other)
+  )
+    return state;
+  if (effect.fighter !== "self" && fighter.controllerId !== ctx.controllerId)
+    return state;
+  if (!controllerStillMatches(state, otherId, effect.controller, ctx))
+    return state;
+  const fighterPower = getEffectivePower(fighter);
+  const otherPower = getEffectivePower(other);
+  let next = creatureDamage(state, fighterId, otherId, fighterPower);
+  if (effect.op === "Fight")
+    next = creatureDamage(next, otherId, fighterId, otherPower);
+  return next;
 }
 
 function applyEffect(
@@ -442,6 +512,9 @@ function applyEffect(
     }
     case "CopySpell":
       return copyTriggeringSpell(state, effect.gain ?? [], ctx);
+    case "Fight":
+    case "Bite":
+      return fight(state, effect, ctx);
   }
 }
 
@@ -475,16 +548,34 @@ export function resolveScriptedEffects(
   const targets = stackObject.targets ?? [];
   let current = state;
   let next = 0;
+  // The previous targeted effect's target, while it is still legal: what
+  // "it" means in "... target creature you control. It fights ..." (#2548).
+  let previous: Target | undefined;
   for (const effect of effects) {
     let target: Target | undefined;
-    if (isTargetedEffect(effect)) {
-      target = targets[next++];
-      if (!target || !targetStillLegal(current, target)) continue;
+    let fighter: Target | undefined;
+    const count = effectTargetCount(effect);
+    if (
+      (effect.op === "Fight" || effect.op === "Bite") &&
+      effect.fighter === "it"
+    )
+      fighter = previous;
+    if (count > 0) {
+      const taken = targets.slice(next, next + count);
+      next += count;
+      const legal =
+        taken.length === count &&
+        taken.every((t) => targetStillLegal(current, t));
+      previous = legal ? taken[0] : undefined;
+      if (!legal) continue;
+      target = taken[count - 1];
+      if (count === 2) fighter = taken[0];
     }
     current = applyEffect(current, effect, {
       controllerId: stackObject.controllerId as PlayerId,
       sourceId: (stackObject.sourceCardId as CardInstanceId) || undefined,
       target,
+      fighter,
       kickerBonus,
       triggeringStackObjectId: stackObject.triggeringStackObjectId,
     });

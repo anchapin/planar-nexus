@@ -61,6 +61,9 @@ export const OP_REFERENCE: Record<string, string> = {
   Pump: '{"op":"Pump","power":N,"toughness":N,"target":"creature"|"self","controller":"you"|"opponent"} (until end of turn; controller optional, target creature only)',
   PutCounters:
     '{"op":"PutCounters","counter":"+1/+1","amount":N,"target":"creature"|"self","controller":"you"|"opponent"} (controller optional, target creature only)',
+  Fight:
+    '{"op":"Fight","fighter":"self"|"it"|"creature","target":"creature","controller":"you"|"opponent"} (fighter and target each deal damage equal to its power to the other; "it" = the creature the previous effect targeted, "creature" = a second target you choose first, which must be yours; controller optional, applies to target; "optional":true only with fighter "self")',
+  Bite: '{"op":"Bite","fighter":"self"|"it"|"creature","target":"creature","controller":"you"|"opponent"} (one-sided fight: only the fighter deals damage equal to its power to target; same fighter rules as Fight)',
   Surveil: '{"op":"Surveil","amount":N}',
   Scry: '{"op":"Scry","amount":N} (you scry)',
   Mill: '{"op":"Mill","amount":N,"who":"you"|"target_player"|"each_opponent"} (top N cards of that library into its graveyard; fixed N only, not "you may mill")',

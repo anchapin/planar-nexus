@@ -105,7 +105,9 @@ import {
   chooseAbilityModes,
   autoChooseAbilityModes,
   getSpellTargetSpec,
+  getSpellTargetSpecs,
   getLegalSpellTargets,
+  getLegalSpellTargetsAt,
   getLegalTargetIdsForChoice,
   type GameState,
   type Player,
@@ -270,6 +272,7 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     spellRequiresTarget?: boolean;
     targetCount?: number; // Number of targets needed
     stackObjectId?: string; // Triggered ability choosing its targets
+    chosenTargets?: string[]; // Spell with several targets: picked so far (#2548)
   } | null>(null);
 
   // Combat state
@@ -1121,6 +1124,7 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
           pendingAction.type === "activate"
             ? pendingAction.abilityIndex
             : undefined,
+        targetIndex: pendingAction.chosenTargets?.length,
       }),
     );
   }, [gameState, pendingAction, playerName]);
@@ -1259,18 +1263,31 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
         // anything else (e.g. Auras) is validated by castSpell.
         const isCreatureOnBattlefield =
           zone === "battlefield" && isCreature(card);
-        const spellSpec =
+        // A spell with several targets (#2548) picks them one at a time,
+        // each against its own requirement.
+        const chosenSoFar = pendingAction.chosenTargets ?? [];
+        const spellSpecs =
           pendingAction.type === "cast" && pendingAction.cardId
-            ? getSpellTargetSpec(
+            ? getSpellTargetSpecs(
                 gameState,
                 pendingAction.cardId as CardInstance["id"],
               )
+            : [];
+        const spellSpec =
+          pendingAction.type === "cast" && pendingAction.cardId
+            ? chosenSoFar.length === 0
+              ? getSpellTargetSpec(
+                  gameState,
+                  pendingAction.cardId as CardInstance["id"],
+                )
+              : (spellSpecs[chosenSoFar.length] ?? null)
             : null;
         if (spellSpec && pendingAction.cardId !== cardId) {
-          const legal = getLegalSpellTargets(
+          const legal = getLegalSpellTargetsAt(
             gameState,
             player.id,
             pendingAction.cardId as CardInstance["id"],
+            chosenSoFar.length,
           );
           if (!legal.includes(cardId)) {
             toast({
@@ -1288,6 +1305,20 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
 
         if (isTargetable) {
           // Target selected - complete the action
+          if (
+            pendingAction.type === "cast" &&
+            spellSpecs.length > chosenSoFar.length + 1
+          ) {
+            setPendingAction({
+              ...pendingAction,
+              chosenTargets: [...chosenSoFar, cardId],
+            });
+            toast({
+              title: "Target chosen",
+              description: `Now choose target ${chosenSoFar.length + 2} of ${spellSpecs.length}.`,
+            });
+            return;
+          }
           if (pendingAction.type === "cast") {
             // Cast spell with target
             const validation = ValidationService.canCastSpell(
@@ -1303,7 +1334,13 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
                   gameState,
                   player.id,
                   pendingAction.cardId!,
-                  [{ type: "card", targetId: cardId, isValid: true }],
+                  [...chosenSoFar, cardId].map((id) => ({
+                    type: gameState.players.has(id as Player["id"])
+                      ? ("player" as const)
+                      : ("card" as const),
+                    targetId: id,
+                    isValid: true,
+                  })),
                 );
                 if (result.success) {
                   // Auto-pass priority after casting in single-player to resolve the spell
@@ -1833,24 +1870,49 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
           }
           return;
         }
+        const chosenSoFar = pendingAction.chosenTargets ?? [];
+        const spellSpecs =
+          pendingAction.type === "cast" && pendingAction.cardId
+            ? getSpellTargetSpecs(
+                gameState,
+                pendingAction.cardId as CardInstance["id"],
+              )
+            : [];
         if (
           targetPlayer &&
           pendingAction.type === "cast" &&
           pendingAction.cardId &&
-          getSpellTargetSpec(
-            gameState,
-            pendingAction.cardId as CardInstance["id"],
-          ) &&
-          !getLegalSpellTargets(
+          (chosenSoFar.length > 0 ||
+            getSpellTargetSpec(
+              gameState,
+              pendingAction.cardId as CardInstance["id"],
+            )) &&
+          !getLegalSpellTargetsAt(
             gameState,
             player.id,
             pendingAction.cardId as CardInstance["id"],
+            chosenSoFar.length,
           ).includes(targetPlayer.id)
         ) {
           toast({
             title: "Not a legal target",
             description: `${targetPlayer.name} can't be targeted by that spell.`,
             variant: "destructive",
+          });
+          return;
+        }
+        if (
+          targetPlayer &&
+          pendingAction.type === "cast" &&
+          spellSpecs.length > chosenSoFar.length + 1
+        ) {
+          setPendingAction({
+            ...pendingAction,
+            chosenTargets: [...chosenSoFar, targetPlayer.id],
+          });
+          toast({
+            title: "Target chosen",
+            description: `Now choose target ${chosenSoFar.length + 2} of ${spellSpecs.length}.`,
           });
           return;
         }
@@ -1868,13 +1930,13 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
                   gameState,
                   player.id,
                   pendingAction.cardId!,
-                  [
-                    {
-                      type: "player",
-                      targetId: targetPlayer.id,
-                      isValid: true,
-                    },
-                  ],
+                  [...chosenSoFar, targetPlayer.id].map((id) => ({
+                    type: gameState.players.has(id as Player["id"])
+                      ? ("player" as const)
+                      : ("card" as const),
+                    targetId: id,
+                    isValid: true,
+                  })),
                 );
                 if (result.success) {
                   // Auto-pass priority after casting in single-player to resolve the spell
