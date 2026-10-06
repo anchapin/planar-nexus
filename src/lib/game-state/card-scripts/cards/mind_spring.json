@@ -1,0 +1,11 @@
+{
+  "name": "Mind Spring",
+  "oracle": "Draw X cards.",
+  "spell": [
+    {
+      "op": "Draw",
+      "amount": "X",
+      "who": "you"
+    }
+  ]
+}

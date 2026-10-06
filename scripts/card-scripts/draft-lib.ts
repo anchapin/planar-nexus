@@ -36,16 +36,18 @@ export type DraftOutcome =
 /**
  * Human-readable reference for every op the schema accepts. A test checks it
  * covers EffectSchema exactly, so a new op can't ship undocumented to the LLM.
+ * "X" is the X the spell was cast with (#2552): only on cards with {X} in
+ * their mana cost; "-X" only for Pump.
  */
 export const OP_REFERENCE: Record<string, string> = {
   DealDamage:
-    '{"op":"DealDamage","amount":N,"target":"any"|"creature"|"player"|"each_opponent","controller":"you"|"opponent"} (controller optional, target creature only: "target creature you control" is "you", "an opponent controls" or "you don\'t control" is "opponent")',
-  Draw: '{"op":"Draw","amount":N,"who":"you"|"target_player"}',
-  GainLife: '{"op":"GainLife","amount":N,"who":"you"|"target_player"}',
+    '{"op":"DealDamage","amount":N|"X","target":"any"|"creature"|"player"|"each_opponent","controller":"you"|"opponent"} (controller optional, target creature only: "target creature you control" is "you", "an opponent controls" or "you don\'t control" is "opponent")',
+  Draw: '{"op":"Draw","amount":N|"X","who":"you"|"target_player"}',
+  GainLife: '{"op":"GainLife","amount":N|"X","who":"you"|"target_player"}',
   LoseLife:
-    '{"op":"LoseLife","amount":N,"who":"you"|"target_player"|"each_opponent"}',
+    '{"op":"LoseLife","amount":N|"X","who":"you"|"target_player"|"each_opponent"}',
   CreateToken:
-    '{"op":"CreateToken","count":N,"power":N,"toughness":N,"color":"white"|"blue"|"black"|"red"|"green"|"colorless" OR "colors":["white","black"],"subtypes":["Thopter"],"artifact":true,"keywords":["flying"]} (creature tokens; exactly one of color/colors; artifact and keywords optional; evergreen keywords only; no enchantment tokens or token abilities)',
+    '{"op":"CreateToken","count":N|"X","power":N,"toughness":N,"color":"white"|"blue"|"black"|"red"|"green"|"colorless" OR "colors":["white","black"],"subtypes":["Thopter"],"artifact":true,"keywords":["flying"]} (creature tokens; exactly one of color/colors; artifact and keywords optional; evergreen keywords only; no enchantment tokens or token abilities)',
   CreatePredefinedToken:
     '{"op":"CreatePredefinedToken","token":"treasure"|"food"|"clue","count":N} (you create N Treasure, Food or Clue tokens; "investigate" is one Clue; not tapped tokens, not "its controller creates")',
   Destroy:
@@ -58,15 +60,15 @@ export const OP_REFERENCE: Record<string, string> = {
   ReturnToHand:
     '{"op":"ReturnToHand","target":"creature"|"artifact"|"enchantment"|"artifact_or_enchantment"|"nonland_permanent"} (return target permanent to its owner\'s hand; same targets and options as Destroy)',
   Counter: '{"op":"Counter","target":"spell"}',
-  Pump: '{"op":"Pump","power":N,"toughness":N,"target":"creature"|"self","controller":"you"|"opponent"} (until end of turn; controller optional, target creature only)',
+  Pump: '{"op":"Pump","power":N|"X"|"-X","toughness":N|"X"|"-X","target":"creature"|"self","controller":"you"|"opponent"} (until end of turn; controller optional, target creature only)',
   PutCounters:
-    '{"op":"PutCounters","counter":"+1/+1","amount":N,"target":"creature"|"self","controller":"you"|"opponent"} (controller optional, target creature only)',
+    '{"op":"PutCounters","counter":"+1/+1","amount":N|"X","target":"creature"|"self","controller":"you"|"opponent"} (controller optional, target creature only)',
   Fight:
     '{"op":"Fight","fighter":"self"|"it"|"creature","target":"creature","controller":"you"|"opponent"} (fighter and target each deal damage equal to its power to the other; "it" = the creature the previous effect targeted, "creature" = a second target you choose first, which must be yours; controller optional, applies to target; "optional":true only with fighter "self")',
   Bite: '{"op":"Bite","fighter":"self"|"it"|"creature","target":"creature","controller":"you"|"opponent"} (one-sided fight: only the fighter deals damage equal to its power to target; same fighter rules as Fight)',
   Surveil: '{"op":"Surveil","amount":N}',
   Scry: '{"op":"Scry","amount":N} (you scry)',
-  Mill: '{"op":"Mill","amount":N,"who":"you"|"target_player"|"each_opponent"} (top N cards of that library into its graveyard; fixed N only, not "you may mill")',
+  Mill: '{"op":"Mill","amount":N|"X","who":"you"|"target_player"|"each_opponent"} (top N cards of that library into its graveyard; fixed N only, not "you may mill")',
   Discard:
     '{"op":"Discard","amount":N,"who":"you"|"target_player"|"each_opponent"} (that player discards N cards of their choice; must come after every other effect, e.g. "draw two cards, then discard a card"; not random, not "you may discard", not a cost)',
   CopySpell:

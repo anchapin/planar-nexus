@@ -16,6 +16,16 @@ import { REMOVAL_TARGETS, TARGET_CONTROLLERS } from "./target-filters";
 const amount = z.number().int().min(0);
 
 /**
+ * "X" (CR 107.3, #2552): the value chosen for X as the spell was cast
+ * (CR 601.2b). Only on a card whose mana cost has {X}; 0 anywhere else.
+ */
+const X = z.literal("X");
+const xAmount = z.union([amount, X]);
+const xCount = z.union([z.number().int().min(1), X]);
+/** Pump: "+X/+0", "-X/-X". */
+const xPump = z.union([z.number().int(), X, z.literal("-X")]);
+
+/**
  * Whose permanent a targeted effect may pick (#2532): "target creature you
  * control" is "you", "an opponent controls" / "you don't control" is
  * "opponent". Only on effects that target a permanent.
@@ -28,7 +38,7 @@ const controllerNeedsCreatureTarget = {
 export const DealDamageSchema = z
   .object({
     op: z.literal("DealDamage"),
-    amount,
+    amount: xAmount,
     /** each_opponent is untargeted: damage to every opponent. */
     target: z.enum(["any", "creature", "player", "each_opponent"]),
     controller,
@@ -42,7 +52,7 @@ export const DealDamageSchema = z
 export const DrawSchema = z
   .object({
     op: z.literal("Draw"),
-    amount,
+    amount: xAmount,
     who: z.enum(["you", "target_player"]).default("you"),
   })
   .strict();
@@ -50,7 +60,7 @@ export const DrawSchema = z
 export const GainLifeSchema = z
   .object({
     op: z.literal("GainLife"),
-    amount,
+    amount: xAmount,
     who: z.enum(["you", "target_player"]).default("you"),
   })
   .strict();
@@ -58,7 +68,7 @@ export const GainLifeSchema = z
 export const LoseLifeSchema = z
   .object({
     op: z.literal("LoseLife"),
-    amount,
+    amount: xAmount,
     who: z
       .enum(["you", "target_player", "each_opponent"])
       .default("target_player"),
@@ -84,7 +94,7 @@ export const TOKEN_KEYWORDS = [
 export const CreateTokenSchema = z
   .object({
     op: z.literal("CreateToken"),
-    count: z.number().int().min(1),
+    count: xCount,
     power: amount,
     toughness: amount,
     /** One color, or "colorless". Use `colors` for multicolor tokens. */
@@ -190,8 +200,8 @@ export const CounterSchema = z
 export const PumpSchema = z
   .object({
     op: z.literal("Pump"),
-    power: z.number().int(),
-    toughness: z.number().int(),
+    power: xPump,
+    toughness: xPump,
     /** self: the permanent the ability belongs to (untargeted). */
     target: z.enum(["creature", "self"]),
     controller,
@@ -207,7 +217,7 @@ export const PutCountersSchema = z
     op: z.literal("PutCounters"),
     /** Only +1/+1 counters for now. */
     counter: z.literal("+1/+1"),
-    amount: z.number().int().min(1),
+    amount: xCount,
     target: z.enum(["creature", "self"]),
     controller,
   })
@@ -224,7 +234,7 @@ export const PutCountersSchema = z
 export const MillSchema = z
   .object({
     op: z.literal("Mill"),
-    amount: z.number().int().min(1),
+    amount: xCount,
     who: z.enum(["you", "target_player", "each_opponent"]).default("you"),
   })
   .strict();

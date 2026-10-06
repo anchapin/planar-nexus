@@ -1,0 +1,21 @@
+{
+  "name": "Traumatic Critique",
+  "oracle": "Traumatic Critique deals X damage to any target. Draw two cards, then discard a card.",
+  "spell": [
+    {
+      "op": "DealDamage",
+      "amount": "X",
+      "target": "any"
+    },
+    {
+      "op": "Draw",
+      "amount": 2,
+      "who": "you"
+    },
+    {
+      "op": "Discard",
+      "amount": 1,
+      "who": "you"
+    }
+  ]
+}
