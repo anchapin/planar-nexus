@@ -10,6 +10,7 @@
  * targeted effect uses targets[0], the next targeted effect targets[1], etc.
  */
 import { z } from "zod";
+import { REMOVAL_TARGETS } from "./target-filters";
 
 const amount = z.number().int().min(0);
 
@@ -84,12 +85,22 @@ export const CreateTokenSchema = z
     message: "set exactly one of color or colors",
   });
 
+/**
+ * Destroy/Exile targets (#2528). min_power/max_power bound a creature's power
+ * ("creature with power 4 or greater"); they only ever match creatures.
+ */
+const removalFields = {
+  target: z.enum(REMOVAL_TARGETS),
+  min_power: z.number().int().optional(),
+  max_power: z.number().int().optional(),
+};
+
 export const DestroySchema = z
-  .object({ op: z.literal("Destroy"), target: z.enum(["creature"]) })
+  .object({ op: z.literal("Destroy"), ...removalFields })
   .strict();
 
 export const ExileSchema = z
-  .object({ op: z.literal("Exile"), target: z.enum(["creature"]) })
+  .object({ op: z.literal("Exile"), ...removalFields })
   .strict();
 
 export const CounterSchema = z

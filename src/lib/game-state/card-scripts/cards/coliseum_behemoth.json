@@ -1,0 +1,35 @@
+{
+  "name": "Coliseum Behemoth",
+  "oracle": "Trample\nWhen this creature enters, choose one —\n• Destroy target artifact or enchantment.\n• Draw a card.",
+  "triggers": [
+    {
+      "text": "When this creature enters, choose one —",
+      "event": "etb",
+      "subject": "self",
+      "modes": {
+        "choose": 1,
+        "options": [
+          {
+            "text": "Destroy target artifact or enchantment.",
+            "effects": [
+              {
+                "op": "Destroy",
+                "target": "artifact_or_enchantment"
+              }
+            ]
+          },
+          {
+            "text": "Draw a card.",
+            "effects": [
+              {
+                "op": "Draw",
+                "amount": 1,
+                "who": "you"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

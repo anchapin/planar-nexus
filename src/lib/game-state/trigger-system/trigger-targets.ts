@@ -28,8 +28,13 @@ import {
   scriptedSpellEffects,
 } from "../card-scripts/script-guards";
 import type { CardEffect, ScriptedModes } from "../card-scripts/schema";
+import {
+  matchesRemovalFilter,
+  type RemovalFilter,
+} from "../card-scripts/target-filters";
 
-export type TriggerTargetKind = "creature" | "player" | "opponent" | "any";
+export type TriggerTargetKind =
+  "creature" | "permanent" | "player" | "opponent" | "any";
 
 export interface TriggerTargetSpec {
   kind: TriggerTargetKind;
@@ -39,6 +44,8 @@ export interface TriggerTargetSpec {
   optional: boolean;
   /** "another target creature" — the source itself is excluded. */
   excludeSource: boolean;
+  /** Scripted Destroy/Exile: which permanents qualify (#2528). */
+  filter?: RemovalFilter;
 }
 
 export interface ChooseTriggerTargetsResult {
@@ -90,6 +97,18 @@ function findTrigger(
   );
 }
 
+function battlefieldPermanents(state: GameState): CardInstance[] {
+  const out: CardInstance[] = [];
+  for (const playerId of state.players.keys()) {
+    const zone = state.zones.get(`${playerId}-battlefield`);
+    for (const id of zone?.cardIds ?? []) {
+      const card = state.cards.get(id);
+      if (card) out.push(card);
+    }
+  }
+  return out;
+}
+
 function battlefieldCreatures(state: GameState): CardInstance[] {
   const out: CardInstance[] = [];
   for (const playerId of state.players.keys()) {
@@ -128,8 +147,17 @@ function legalTargetsForSpec(
   const source = sourceCardId ? state.cards.get(sourceCardId) : undefined;
   const ids: string[] = [];
 
-  if (spec.kind === "creature" || spec.kind === "any") {
-    for (const card of battlefieldCreatures(state)) {
+  if (
+    spec.kind === "creature" ||
+    spec.kind === "permanent" ||
+    spec.kind === "any"
+  ) {
+    const candidates =
+      spec.kind === "permanent"
+        ? battlefieldPermanents(state)
+        : battlefieldCreatures(state);
+    for (const card of candidates) {
+      if (spec.filter && !matchesRemovalFilter(card, spec.filter)) continue;
       if (spec.controller === "you" && card.controllerId !== controllerId)
         continue;
       if (spec.controller === "opponent" && card.controllerId === controllerId)
@@ -191,12 +219,16 @@ function effectsTargetSpec(
     if (effect.op === "DealDamage" && effect.target !== "each_opponent") {
       return { ...base, kind: effect.target };
     }
-    if (
-      effect.op === "Destroy" ||
-      effect.op === "Exile" ||
-      effect.op === "Pump" ||
-      effect.op === "PutCounters"
-    ) {
+    if (effect.op === "Destroy" || effect.op === "Exile") {
+      const filter: RemovalFilter = {
+        target: effect.target,
+        min_power: effect.min_power,
+        max_power: effect.max_power,
+      };
+      const kind = effect.target === "creature" ? "creature" : "permanent";
+      return { ...base, kind, filter };
+    }
+    if (effect.op === "Pump" || effect.op === "PutCounters") {
       return { ...base, kind: "creature" };
     }
     if (

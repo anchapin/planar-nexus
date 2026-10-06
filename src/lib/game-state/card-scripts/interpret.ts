@@ -25,6 +25,7 @@ import { destroyCard, exileCard } from "../keyword-actions/removal";
 import { addCounters } from "../card-instance";
 import { copySpellOnStack } from "../spell-casting/resolve";
 import { getCardScript } from "./registry";
+import { matchesRemovalFilter, type RemovalFilter } from "./target-filters";
 import {
   isPermanentScript,
   isTargetedEffect,
@@ -235,12 +236,15 @@ function applyEffect(
       return r.success ? r.state : state;
     }
     case "Destroy": {
-      if (!target) return state;
+      // A target that no longer matches is illegal: nothing happens (CR 608.2b).
+      if (!target || !targetStillMatches(state, target.targetId, effect))
+        return state;
       const r = destroyCard(state, target.targetId as CardInstanceId);
       return r.success ? r.state : state;
     }
     case "Exile": {
-      if (!target) return state;
+      if (!target || !targetStillMatches(state, target.targetId, effect))
+        return state;
       const r = exileCard(state, target.targetId as CardInstanceId);
       return r.success ? r.state : state;
     }
@@ -300,6 +304,16 @@ type ScriptStackObject = Pick<
  * targets in order; an effect whose target is missing or no longer legal
  * does nothing (CR 608.2b).
  */
+/** True when the targeted card is still there and still matches `filter`. */
+function targetStillMatches(
+  state: GameState,
+  targetId: string,
+  filter: RemovalFilter,
+): boolean {
+  const card = state.cards.get(targetId as CardInstanceId);
+  return Boolean(card) && matchesRemovalFilter(card!, filter);
+}
+
 export function resolveScriptedEffects(
   state: GameState,
   effects: readonly CardEffect[],
