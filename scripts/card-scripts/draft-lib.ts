@@ -55,6 +55,8 @@ export const OP_REFERENCE: Record<string, string> = {
   Tap: '{"op":"Tap","target":"creature"|"artifact"|"enchantment"|"artifact_or_enchantment"|"nonland_permanent"} (same targets and options as Destroy; not "target permanent" or "creature or land")',
   Untap:
     '{"op":"Untap","target":"creature"|"artifact"|"enchantment"|"artifact_or_enchantment"|"nonland_permanent"} (same targets and options as Destroy)',
+  ReturnToHand:
+    '{"op":"ReturnToHand","target":"creature"|"artifact"|"enchantment"|"artifact_or_enchantment"|"nonland_permanent"} (return target permanent to its owner\'s hand; same targets and options as Destroy)',
   Counter: '{"op":"Counter","target":"spell"}',
   Pump: '{"op":"Pump","power":N,"toughness":N,"target":"creature"|"self","controller":"you"|"opponent"} (until end of turn; controller optional, target creature only)',
   PutCounters:

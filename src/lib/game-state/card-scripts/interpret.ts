@@ -21,7 +21,11 @@ import {
   resolveStackObjectEffects,
   resolveTokenCreationEffect,
 } from "../effect-resolution";
-import { destroyCard, exileCard } from "../keyword-actions/removal";
+import {
+  destroyCard,
+  exileCard,
+  moveCardToZone,
+} from "../keyword-actions/removal";
 import { tapCardAction, untapCardAction } from "../keyword-actions/damage-tap";
 import { millCards } from "../zones";
 import { startDiscard } from "../keyword-actions/discard-choice";
@@ -344,6 +348,22 @@ function applyEffect(
         effect.op === "Tap"
           ? tapCardAction(state, id)
           : untapCardAction(state, id);
+      return r.success ? r.state : state;
+    }
+    case "ReturnToHand": {
+      // #2546: an illegal target does nothing (CR 608.2b). The card goes to
+      // its owner's hand (CR 400.3); a token ceases to exist (CR 111.8).
+      if (
+        !target ||
+        !targetStillMatches(state, target.targetId, effect) ||
+        !controllerStillMatches(state, target.targetId, effect.controller, ctx)
+      )
+        return state;
+      const r = moveCardToZone(
+        state,
+        target.targetId as CardInstanceId,
+        "hand",
+      );
       return r.success ? r.state : state;
     }
     case "Counter": {

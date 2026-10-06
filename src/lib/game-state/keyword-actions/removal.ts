@@ -461,7 +461,8 @@ function moveCardToZoneWithoutTriggers(
     // Exile can be controller's or shared
     targetZoneKey = card.controllerId ? `${card.controllerId}-exile` : "exile";
   } else if (targetZoneType === "hand") {
-    targetZoneKey = `${card.controllerId}-hand`;
+    // CR 400.3: a card put into a hand goes to its owner's hand.
+    targetZoneKey = `${card.ownerId}-hand`;
   } else if (targetZoneType === "battlefield") {
     targetZoneKey = `${card.controllerId}-battlefield`;
   } else {
@@ -559,6 +560,15 @@ function moveCardToZoneWithoutTriggers(
     isCreatureOnCurrentFace(card)
   ) {
     movedState = markCreatureDiedThisTurn(movedState);
+  }
+  // CR 111.8: a token that leaves the battlefield ceases to exist (as a
+  // state-based action, CR 704.5d). In a hand it would otherwise be playable.
+  if (targetZoneType === "hand" && card.isToken) {
+    const zones = new Map(movedState.zones);
+    zones.set(targetZoneKey, targetZone);
+    const cards = new Map(movedState.cards);
+    cards.delete(cardId);
+    movedState = { ...movedState, zones, cards };
   }
 
   return {

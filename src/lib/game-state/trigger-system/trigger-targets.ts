@@ -227,7 +227,8 @@ function effectsTargetSpec(
       effect.op === "Destroy" ||
       effect.op === "Exile" ||
       effect.op === "Tap" ||
-      effect.op === "Untap"
+      effect.op === "Untap" ||
+      effect.op === "ReturnToHand"
     ) {
       const filter: RemovalFilter = {
         target: effect.target,

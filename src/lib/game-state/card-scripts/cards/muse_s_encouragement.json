@@ -7,16 +7,9 @@
       "count": 1,
       "power": 3,
       "toughness": 3,
-      "colors": [
-        "blue",
-        "red"
-      ],
-      "subtypes": [
-        "Elemental"
-      ],
-      "keywords": [
-        "flying"
-      ]
+      "colors": ["blue", "red"],
+      "subtypes": ["Elemental"],
+      "keywords": ["flying"]
     },
     {
       "op": "Surveil",

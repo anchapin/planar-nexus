@@ -1,0 +1,14 @@
+{
+  "name": "Banishing Betrayal",
+  "oracle": "Return target nonland permanent to its owner's hand. Surveil 1. (Look at the top card of your library. You may put it into your graveyard.)",
+  "spell": [
+    {
+      "op": "ReturnToHand",
+      "target": "nonland_permanent"
+    },
+    {
+      "op": "Surveil",
+      "amount": 1
+    }
+  ]
+}
