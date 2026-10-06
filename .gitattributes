@@ -1,0 +1,16 @@
+# Git attributes for Planar Nexus (epic #2487).
+#
+# Test-count docs are ratcheted by `npm run ratchet:test-count` after a
+# successful test run, so two PRs that each ratchet the same doc on different
+# commits will conflict at the anchored block (#1902, #1910). Keep the merge
+# trivial: always keep the current side (the side being merged INTO), so the
+# next `npm run ratchet:test-count` rewrites the block to the latest live
+# numbers. Do not weaken `test-count-docs-guard`: it still fails the build when
+# the doc drifts away from the live Jest run, so a stale block never ships.
+#
+# Local one-liner after a rebase: `npm run ratchet:test-count`.
+
+# Custom driver: keeps the current side and exits 0 (no conflicts).
+[attr] keepcurrent merge=keepcurrent
+docs/onboarding.md keepcurrent
+docs/TEST_VIDEO_FIXTURES.md keepcurrent
