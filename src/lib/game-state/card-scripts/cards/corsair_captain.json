@@ -1,0 +1,30 @@
+{
+  "name": "Corsair Captain",
+  "oracle": "When this creature enters, create a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")\nOther Pirates you control get +1/+1.",
+  "triggers": [
+    {
+      "text": "When this creature enters, create a Treasure token.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "CreatePredefinedToken",
+          "token": "treasure",
+          "count": 1
+        }
+      ]
+    }
+  ],
+  "statics": [
+    {
+      "text": "Other Pirates you control get +1/+1.",
+      "affects": {
+        "controller": "you",
+        "other": true,
+        "subtype": "Pirate"
+      },
+      "power": 1,
+      "toughness": 1
+    }
+  ]
+}

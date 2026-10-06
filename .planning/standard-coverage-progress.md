@@ -67,19 +67,63 @@ D  src/lib/game-state/card-scripts/cards/index.generated.ts
 ?? src/lib/game-state/card-scripts/ops/                # 21 op modules + registry + types
 ```
 
-## Phase 3 — STOPPED (waiting on GEMINI_API_KEY)
+## Phase 3 — IN PROGRESS (one set drafted, smoke test scaffolding landed)
 
-- `scripts/draft-card-scripts.ts` exists and supports Gemini batch provider.
-- Default: `gemini-3.1-flash-lite` batch.
-- Drafts land in `src/lib/game-state/card-scripts/cards/`; reports to `docs/card-scripts/drafts/<set>.md`.
-- Per the prompt: report expected card count + cost via `--dry-run` first, then a paid run.
+### 3.4 safety nets — landed in PR #2555 (chore/phase2-no-conflict-hotspots)
 
-## Phase 4 — BLOCKED on Phase 3
+- `src/lib/game-state/card-scripts/__tests__/drafted-scripts.test.ts` — 4 data-driven guards:
+  1. Smoke test: every scripted card resolves without throwing on minimal state.
+  2. Empty-effect-list check.
+  3. Modal sanity (every `modes` has ≥2 options and `choose < options.length`).
+  4. Text-vs-numbers guard: digits 2-10 in the script appear in the oracle text as either digits or words; skips 0/1 because P/T 1/1 and discard-1 are too often spelled out.
+- Test count: 653 → 654 suites, 13170 → 13174 tests. Docs ratchet'd.
 
-- Parse every `docs/card-scripts/drafts/*.md` report, group `needs_new_op` by capability, write `reports/op-frontier.md`.
-- Open one issue per op for the top 10, link to board 11 and epic #2487.
+### 3.1 first run — FDN landed in PR #2556 (feat/draft-fdn-batch-1)
 
-## Phase 5 — BLOCKED on Phase 4
+- 396 cards queued (517 FDN − 50 already scripted − 121 skipped).
+- Gemini 3.1 Flash-Lite batch (the bake-off winner).
+- 34 drafted, 356 needs_new_op, 6 invalid schema (not written).
+- **28 land in the PR** after 10% hand-check removed 6 cards with known schema gaps:
+  - heroic_reinforcements: dropped haste keyword
+  - empyrean_eagle: "other flying creatures" filter not in static schema
+  - youthful_valkyrie: "another angel" subtype filter not in etb schema
+  - slagstorm: "each player" (both) damage not expressible
+  - make_your_move: OR-target (artifact or 4+ power creature) not expressible
+  - firespitter_whelp: "noncreature or dragon" trigger condition not expressible
+- Token usage: ~26K input / ~3K output for 396 cards. Cost: ~$0.13.
+- **Smoke test + schema validation + text-vs-numbers: all green** on the 201 scripts.
+- Scoreboard: 308/5164 (6.0%) → 342/5164 (6.6%).
 
-- Up to 5 worktrees, one per op.
-- Each lane: op module + card JSONs + test-count bump + draft PR.
+### Spend to date
+
+- ~$0.13 of $50 budget (0.3%).
+- Per-card cost: $0.0003 (matches bake-off projection of $0.18/1k cards).
+
+### Observations for Phase 4
+
+- 356/396 = 90% of FDN came back as `needs_new_op`. The bake-off projected 65% gold accuracy; the real rate here is much lower because:
+  1. The model is over-conservative: it says "needs_new_op" for things the schema covers (e.g. "creatures you control get +2/+2" is fully StaticSchema).
+  2. FDN includes many complex Commander-tier cards with ward, kicker, equipment, multi-target.
+- A re-prompt with stronger "you can express this with the schema below" instructions would likely halve the false-cries. That's a Phase 5 lane.
+- Phase 4's frontier list will be derived from `docs/card-scripts/drafts/*.md`.
+
+## Phase 4 — DONE (frontier + 10 issues filed)
+
+Aggregated seven draft reports (`blb`, `card-list`, `fdn`, `fin`, `mkm`, `sos`, `tdc`) and grouped the LLM's per-card `needs_new_op` reasons by capability. Wrote `reports/op-frontier.md` and `scripts/build-op-frontier.ts` (re-runs with `npx tsx scripts/build-op-frontier.ts`).
+
+Top 10 capabilities by card-unlock count (combined across sets):
+
+| #   | Capability                                 | Cards | Issue |
+| --- | ------------------------------------------ | ----: | ----- |
+| 1   | X-cost in triggered/activated effects      |    69 | #2559 |
+| 2   | Return card from graveyard to battlefield  |    46 | #2560 |
+| 3   | Equipment (attach, equip, equipped static) |    44 | #2561 |
+| 4   | Search library                             |    36 | #2562 |
+| 5   | Flashback cost                             |    32 | #2563 |
+| 6   | Kicker / additional cost                   |    28 | #2564 |
+| 7   | Add mana                                   |    27 | #2565 |
+| 8   | Shuffle library                            |    26 | #2566 |
+| 9   | Indestructible keyword                     |    17 | #2567 |
+| 10  | Aura enchantment                           |    15 | #2568 |
+
+Each issue body has CR references, the first 5 cards it unlocks, and a brief spec of what the op should do. They are the inputs for Phase 5 worktrees; that lane is held until #2555 (scaffold) and #2556 (FDN) merge into main.

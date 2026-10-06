@@ -1,0 +1,19 @@
+{
+  "name": "Felidar Cub",
+  "oracle": "Sacrifice this creature: Destroy target enchantment.",
+  "activated": [
+    {
+      "text": "Sacrifice this creature: Destroy target enchantment.",
+      "cost": {
+        "tap": false,
+        "sacrifice": true
+      },
+      "effects": [
+        {
+          "op": "Destroy",
+          "target": "enchantment"
+        }
+      ]
+    }
+  ]
+}

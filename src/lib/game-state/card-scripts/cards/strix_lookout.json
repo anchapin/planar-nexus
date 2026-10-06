@@ -1,0 +1,26 @@
+{
+  "name": "Strix Lookout",
+  "oracle": "Flying, vigilance (Attacking doesn't cause this creature to tap.)\n{1}{U}, {T}: Draw a card, then discard a card.",
+  "activated": [
+    {
+      "text": "Draw a card, then discard a card.",
+      "cost": {
+        "mana": "{1}{U}",
+        "tap": true,
+        "sacrifice": false
+      },
+      "effects": [
+        {
+          "op": "Draw",
+          "amount": 1,
+          "who": "you"
+        },
+        {
+          "op": "Discard",
+          "amount": 1,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}

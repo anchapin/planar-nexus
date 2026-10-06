@@ -1,0 +1,30 @@
+{
+  "name": "Pelakka Wurm",
+  "oracle": "Trample (This creature can deal excess combat damage to the player or planeswalker it's attacking.)\nWhen this creature enters, you gain 7 life.\nWhen this creature dies, draw a card.",
+  "triggers": [
+    {
+      "text": "When this creature enters, you gain 7 life.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "GainLife",
+          "amount": 7,
+          "who": "you"
+        }
+      ]
+    },
+    {
+      "text": "When this creature dies, draw a card.",
+      "event": "dies",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "Draw",
+          "amount": 1,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}

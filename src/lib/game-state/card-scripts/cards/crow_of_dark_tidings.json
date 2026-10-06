@@ -1,0 +1,30 @@
+{
+  "name": "Crow of Dark Tidings",
+  "oracle": "Flying\nWhen this creature enters or dies, mill two cards. (Put the top two cards of your library into your graveyard.)",
+  "triggers": [
+    {
+      "text": "When this creature enters or dies, mill two cards.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "Mill",
+          "amount": 2,
+          "who": "you"
+        }
+      ]
+    },
+    {
+      "text": "When this creature enters or dies, mill two cards.",
+      "event": "dies",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "Mill",
+          "amount": 2,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}

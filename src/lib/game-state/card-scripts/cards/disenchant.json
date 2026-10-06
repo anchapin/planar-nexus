@@ -1,0 +1,10 @@
+{
+  "name": "Disenchant",
+  "oracle": "Destroy target artifact or enchantment.",
+  "spell": [
+    {
+      "op": "Destroy",
+      "target": "artifact_or_enchantment"
+    }
+  ]
+}

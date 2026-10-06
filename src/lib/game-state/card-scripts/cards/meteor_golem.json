@@ -1,0 +1,18 @@
+{
+  "name": "Meteor Golem",
+  "oracle": "When this creature enters, destroy target nonland permanent an opponent controls.",
+  "triggers": [
+    {
+      "text": "When this creature enters, destroy target nonland permanent an opponent controls.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "Destroy",
+          "target": "nonland_permanent",
+          "controller": "opponent"
+        }
+      ]
+    }
+  ]
+}

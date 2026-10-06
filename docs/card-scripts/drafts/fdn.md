@@ -1,24 +1,605 @@
 # Card script drafts: FDN
 
-0 drafted, 0 need new ops, 0 failed the schema, 517 skipped.
+34 drafted, 356 need new ops, 6 failed the schema, 121 skipped.
 
 Every draft is LLM-written and must be checked against the card before merge.
 
 ## Drafted
 
-None.
+- Refute
+- Stab
+- Vengeful Bloodwitch
+- Rite of the Dragoncaller
+- Apothecary Stomper
+- Beast-Kin Ranger
+- Cathar Commando
+- Make Your Move
+- Youthful Valkyrie
+- Essence Scatter
+- Fleeting Distraction
+- Abrade
+- Axgard Cavalry
+- Slagstorm
+- Empyrean Eagle
+- Heroic Reinforcements
+- Meteor Golem
+- Moment of Triumph
+- Burrog Befuddler
+- Corsair Captain
+- Quick Study
+- Crow of Dark Tidings
+- Moment of Craving
+- Thrashing Brontodon
+- Dawnwing Marshal
+- Disenchant
+- Felidar Cub
+- Voracious Greatshark
+- Primeval Bounty
+- Negate
+- Impact Tremors
+- Strix Lookout
+- Firespitter Whelp
+- Pelakka Wurm
 
 ## Missing ops
 
-None.
+- aura enchantment (10): Twinblade Blessing, Witness Protection, Blanchwood Armor, Pacifism, Eaten by Piranhas, Starlight Snare, Untamed Hunger, Angelic Destiny, Confiscate, Unflinching Courage
+- kicker cost (9): Divine Resilience, Sun-Blessed Healer, Burst Lightning, Gnarlid Colony, Grow from the Ashes, Into the Roil, Nullpriest of Oblivion, Rite of Replication, Gatekeeper of Malakir
+- shuffle library (8): Bushwhack, Burnished Hart, Campus Guide, Solemn Simulacrum, Wishclaw Talisman, Circuitous Route, Fierce Empath, Expedition Map
+- x costs (8): Goblin Negotiation, Exsanguinate, Genesis Wave, Ghalta, Primal Hunger, Wildwood Scourge, Finale of Revelation, Dread Summons, Primal Might
+- equipment mechanics (6): Fishing Pole, Leyline Axe, Quick-Draw Katana, Goldvein Pick, Swiftfoot Boots, Fireshrieker
+- indestructible keyword (5): Celestial Armor, Divine Resilience, Predator Ooze, Darksteel Colossus, Boros Charm
+- end step trigger (4): Midnight Snack, Searslicer Goblin, Stromkirk Bloodthief, Ball Lightning
+- flashback cost (4): Revenge of the Rats, Electroduplicate, Self-Reflection, Mystical Teachings
+- return card from graveyard to battlefield (4): Sun-Blessed Healer, Alesha, Who Laughs at Fate, Reassembling Skeleton, Zombify
+- search library (4): Micromancer, Campus Guide, Hoarding Dragon, Fierce Empath
+- at the beginning of your end step trigger (3): Cackling Prowler, Needletooth Pack, Wardens of the Cycle
+- conditions ('if you attacked this turn') (3): Skyship Buccaneer, Gorehorn Raider, Storm Fleet Spy
+- conditions (as long as) (3): Knight of Grace, Ghitu Lavarunner, Kitesail Corsair
+- exile until this enchantment leaves the battlefield (3): Banishing Light, Stasis Snare, Prayer of Binding
+- hexproof (3): Snakeskin Veil, Dive Down, Sphinx of the Final Word
+- morbid condition (if a creature died this turn) (3): Cackling Prowler, Needletooth Pack, Wardens of the Cycle
+- raid condition (if you attacked this turn) (3): Midnight Snack, Alesha, Who Laughs at Fate, Perforating Artist
+- return card from graveyard to hand (3): Inspiration from Beyond, Cemetery Recruitment, Shipwreck Dowser
+- reveal card (3): Micromancer, Campus Guide, Fierce Empath
+- search library for a card (3): Bushwhack, Wishclaw Talisman, Expedition Map
+- shuffle (3): Micromancer, Hoarding Dragon, Springbloom Druid
+- this spell can't be countered (3): Curator of Destinies, Koma, World-Eater, Sphinx of the Final Word
+- trigger on life gain (3): Ajani's Pridemate, Twinblade Paladin, Drogskol Reaver
+- x costs in effects (3): Ashroot Animist, Krenko, Mob Boss, Ovika, Enigma Goliath
+- 'can't be blocked' effect (2): Goblin Smuggler, Gateway Sneak
+- add mana (2): Llanowar Elves, Druid of the Cowl
+- add one mana of any color (2): Cultivator's Caravan, Three Tree Mascot
+- additional cost to cast this spell (2): Arbiter of Woe, Seize the Spoils
+- change control of a permanent (2): Wishclaw Talisman, Harmless Offering
+- condition 'if it was kicked' (2): Sun-Blessed Healer, Nullpriest of Oblivion
+- conditional effect 'if you do' (2): Vampire Gourmand, Frenzied Goblin
+- conditional effect based on kicker (2): Divine Resilience, Gatekeeper of Malakir
+- conditional effect based on whether a spell was kicked (2): Into the Roil, Rite of Replication
+- conditional replacement effect (2): Fiery Annihilation, Grow from the Ashes
+- conditional trigger based on attacking (2): Gutless Plunderer, Strongbox Raider
+- copying a permanent as a token (2): Self-Reflection, Rite of Replication
+- cost reduction based on board state (2): Arcane Epiphany, Bolt Bend
+- cost reduction effects (2): Dragonlord's Servant, Ballyrush Banneret
+- cost reduction for spells (2): Archmage of Runes, Mocking Sprite
+- destroy target planeswalker (2): Hero's Downfall, Deadly Plot
+- enters with counters based on condition (2): Nine-Lives Familiar, Gnarlid Colony
+- exile target card from a graveyard (2): Ambush Wolf, Soul-Guide Lantern
+- flashback (2): Inspiration from Beyond, Bulk Up
+- gaining first strike (2): Sure Strike, Kindled Fury
+- hexproof keyword (2): Celestial Armor, Swiftfoot Boots
+- indestructible keyword is not supported in the pump op or as a static effect (2): Adamant Will, Make a Stand
+- optional effect (2): Reclamation Sage, Trygon Predator
+- planeswalker target (2): Viashino Pyromancer, Boros Charm
+- play cards from exile (2): Tinybones, Bauble Burglar, Kellan, Planar Trailblazer
+- put cards onto the battlefield (2): Burnished Hart, Circuitous Route
+- remove counters from self (2): Nine-Lives Familiar, Wishclaw Talisman
+- replacement effect for death (2): Scorching Dragonfire, Obliterating Bolt
+- replacement effect for moving to graveyard (2): Progenitus, Darksteel Colossus
+- reveal a card (2): Bushwhack, Expedition Map
+- sacrifice a creature (2): Arbiter of Woe, Tribute to Hunger
+- sacrifice a creature as a cost (2): Ravenous Amulet, Eaten Alive
+- search library for cards (2): Burnished Hart, Circuitous Route
+- shuffle graveyard into library (2): Finale of Revelation, Feldon's Cane
+- static effect based on number of lands controlled (2): Blanchwood Armor, Tempest Djinn
+- target planeswalker (2): Eaten Alive, Scorching Dragonfire
+- trigger condition 'whenever you gain life' is not supported (2): Fiendish Panda, Exemplar of Light
+- up to one target (2): Mischievous Pup, Prayer of Binding
+- x costs in activation costs (2): Heroes' Bane, Steel Hellkite
+- 'threshold' condition (if there are seven or more cards in your graveyard) (1): Kiora, the Rising Tide
+- 'whenever this creature deals combat damage' trigger (1): Gateway Sneak
+- 'you may' (optional trigger effect) (1): Kiora, the Rising Tide
+- 'you may' condition for effects (1): Battle-Rattle Shaman
+- 'you may' condition for triggered ability (1): Taurean Mauler
+- {t}: add one mana of the chosen color (1): Heraldic Banner
+- ability granting (1): Fishing Pole
+- ability referencing the creature's own power as a variable for counter amount (1): Heroes' Bane
+- ability to add mana (1): Ruby, Daring Tracker
+- ability to cast spells from graveyard (1): Muldrotha, the Gravetide
+- ability to change creature subtype (1): Mild-Mannered Librarian
+- ability to check for power 4 or greater on a creature you control (1): Ruby, Daring Tracker
+- ability to create tokens with static abilities (can't block) (1): Redcap Gutter-Dweller
+- ability to deal damage to multiple targets with different amounts in a single trigger (1): Drakuseth, Maw of Flames
+- ability to draw a card (1): Mild-Mannered Librarian
+- ability to grant a triggered ability that includes a delayed effect or state-based return to the battlefield (1): Undying Malice
+- ability to modify a card's cost and allow casting from graveyard is not supported (1): Sphinx of Forgotten Lore
+- ability to play cards from exile (1): Redcap Gutter-Dweller
+- ability to play cards from graveyard (1): Muldrotha, the Gravetide
+- ability to play lands from graveyard (1): Muldrotha, the Gravetide
+- ability to remove counters as a cost (1): Drake Hatcher
+- ability to restrict number of plays per turn (1): Muldrotha, the Gravetide
+- ability to specify 'up to two other targets' (1): Drakuseth, Maw of Flames
+- ability to track and remove specific types of counters (1): Drake Hatcher
+- ability to track combat damage dealt to a player (1): Drake Hatcher
+- activated abilities of sources with the chosen name can't be activated unless they're mana abilities (1): Sorcerous Spyglass
+- activated ability cost with specific colored mana symbols (1): Arcanis the Omnipotent
+- add {c} (1): Imprisoned in the Moon
+- add counters upon return (1): Infernal Vessel
+- add creature types (1): Valkyrie's Call
+- add keywords to permanent (1): Valkyrie's Call
+- add mana effect (1): Hedron Archive
+- add mana of any one color (1): Gilded Lotus
+- add mana to mana pool (1): Elvish Archdruid
+- add specific mana to mana pool (1): Ramos, Dragon Engine
+- add subtype to token (1): Abyssal Harvester
+- adding mana to mana pool (1): Savage Ventmaw
+- additional casting cost/timing modification (1): Harbinger of the Tides
+- additional combat phase (1): Aurelia, the Warleader
+- additional cost to cast (1): Eaten Alive
+- additional costs (1): Thrill of Possibility
+- affinity for cats (cost reduction) (1): Claws Out
+- affinity for gates (1): Gate Colossus
+- alternative casting cost from graveyard with 'removing six counters' is not supported (1): Quilled Greatwurm
+- alternative cost based on board state (1): Blasphemous Edict
+- an opponent chooses one of those piles (1): Curator of Destinies
+- any number of targets (1): Divine Resilience
+- as long as this creature has three or more +1/+1 counters on it, it has flying and is a knight in addition to its other types (1): Skyknight Squire
+- as this artifact enters, choose a color (1): Heraldic Banner
+- as this artifact enters, choose a creature type (1): Banner of Kinship
+- as this artifact enters, look at an opponent's hand, then choose any card name (1): Sorcerous Spyglass
+- as this creature enters, choose a color (1): Diamond Mare
+- as this creature enters, choose a creature type (1): Adaptive Automaton
+- at the beginning of your end step (trigger event not supported) (1): Sylvan Scavenging
+- at the beginning of your upkeep, each player draws a card (1): Scrawling Crawler
+- bite effect targeting a creature you don't control (1): Bite Down
+- calculating excess damage dealt to a target (1): Goblin Negotiation
+- cast card from graveyard (1): Zul Ashur, Lich Lord
+- cast spells from exile without paying mana costs (1): Etali, Primal Storm
+- cast spells from the top of your library (1): Vizier of the Menagerie
+- change base power and toughness (1): Eaten by Piranhas
+- change colors and creature types (1): Eaten by Piranhas
+- change creature types (1): Infernal Vessel
+- change the target of a spell or ability (1): Bolt Bend
+- characteristic-defining ability setting power and toughness based on the number of creatures you control (1): Crusader of Odric
+- choosing a specific card from a revealed hand (1): Pilfer
+- choosing new targets for copied spells (1): Thousand-Year Storm
+- combat damage trigger (1): Trygon Predator
+- combat damage triggers (1): Goldvein Pick
+- condition 'mana value less than or equal to this creature's power' is not supported (1): Fiendish Panda
+- condition 'whenever you draw your second card each turn' is not supported by the available event triggers (1): Erudite Wizard
+- condition checking for number of counters on self (1): Mazemind Tome
+- condition: 'whenever you attack with three or more creatures' (1): Armasaur Guide
+- conditional activation based on life total (1): Ayli, Eternal Pilgrim
+- conditional cost reduction based on target state (1): Luminous Rebuke
+- conditional effect 'if you control a creature with power 4 or greater' (1): Sylvan Scavenging
+- conditional effect 'if you do' for sacrifice (1): High-Society Hunter
+- conditional effect based on card type (1): Cemetery Recruitment
+- conditional effect based on card types exiled (1): Soul-Shackled Zombie
+- conditional effect based on number of times an ability has resolved (1): Venom Connoisseur
+- conditional effect based on opponent's choice (1): Desecration Demon
+- conditional effect based on whether a cost was paid (1): Burst Lightning
+- conditional effect based on whether the creature was attacking (1): Garna, Bloodfist of Keld
+- conditional effect: 'if you control another elf' (1): Dwynen's Elite
+- conditional effect: 'unless you attacked this turn' (1): Chart a Course
+- conditional effects (if you do) (1): Redcap Gutter-Dweller
+- conditional effects based on counter removal (1): Fishing Pole
+- conditional effects based on mana usage (1): Carnelian Orb of Dragonkind
+- conditional effects based on payment (1): Wildborn Preserver
+- conditional etb effect based on whether you attacked this turn (1): Goblin Boarders
+- conditional payment cost (1): Mentor of the Meek
+- conditional sacrifice effect (1): Ordeal of Nylea
+- conditional token creation based on cards milled (1): Dread Summons
+- conditional transformation (1): Kellan, Planar Trailblazer
+- conditional trigger (if it wasn't a demon) (1): Infernal Vessel
+- conditional trigger (if you control a creature with power 4 or greater) (1): Garruk's Uprising
+- conditions (1): Genesis Wave
+- conditions ('if a creature died this turn') (1): Tragic Banshee
+- conditions ('if an opponent lost life this turn') (1): Bloodtithe Collector
+- conditions ('if it was a creature card') (1): Scavenging Ooze
+- conditions ('if target player has exactly 10 life') (1): Hidetsugu's Second Rite
+- conditions ('if that creature is a cat') (1): Ingenious Leonin
+- conditions (if an opponent lost life this turn) (1): Stromkirk Bloodthief
+- conditions (if x is 10 or more) (1): Finale of Revelation
+- conditions (if you attacked this turn) (1): Searslicer Goblin
+- conditions (if you control another creature with power 4 or greater) (1): Nessian Hornbeetle
+- conditions (if you control six or more lands) (1): Dragonmaster Outcast
+- conditions (if you control three or more creatures) (1): Leonin Vanguard
+- conditions (if) (1): Incinerating Blast
+- conditions (unless) (1): Painful Quandary
+- conditions (up to one target) (1): Primal Might
+- conditions (while you control a creature with power 4 or greater) (1): Courageous Goblin
+- conditions based on combat damage dealt this turn (1): Steel Hellkite
+- control-changing effect (1): Confiscate
+- copy spell with new targets (1): Teach by Example
+- copying a creature with added abilities (1): Electroduplicate
+- copying a permanent as a token is not supported by the createtoken op (1): Extravagant Replication
+- copying a spell based on a count of previous spells cast this turn (1): Thousand-Year Storm
+- copying a spell with the ability to choose new targets (1): Pyromancer's Goggles
+- cost 'pay {r}' as part of a trigger (1): Frenzied Goblin
+- cost reduction based on condition (1): Sanguine Indulgence
+- cost reduction based on graveyard contents (1): Tolarian Terror
+- count counters on a permanent (1): Ravenous Amulet
+- counter target red or green spell (1): Flashfreeze
+- counters as costs/triggers (1): Fishing Pole
+- counters on self as a cost (1): Mazemind Tome
+- counting permanents with a specific subtype (1): Archway Angel
+- counting permanents you control (1): Krenko, Mob Boss
+- create a number of tokens equal to the number of lands you control (1): Brass's Bounty
+- create a token that's a copy of this creature (1): Homunculus Horde
+- create legendary token (1): Kiora, the Rising Tide
+- create token that is a copy of a card (1): Abyssal Harvester
+- create tokens with a specific name (1): Koma, World-Eater
+- creature gains haste until end of turn (1): Involuntary Employment
+- creatures you control get +2/+2 (target 'creatures you control' is not supported by pump) (1): Claws Out
+- creatures you control of the chosen color get +1/+0 (1): Heraldic Banner
+- creatures you control of the chosen type get +1/+1 for each fellowship counter on this artifact (1): Banner of Kinship
+- crew (1): Cultivator's Caravan
+- damage equal to power (1): Heartfire Immolator
+- damage equal to the number of goblins you control (1): Volley Veteran
+- damage prevention effect (1): Crystal Barricade
+- delayed triggered ability (1): Teach by Example
+- delayed triggered ability with condition (1): Nine-Lives Familiar
+- delayed triggered effect for returning a card at the beginning of the next end step (1): Kykar, Zephyr Awakener
+- destroy all creatures (1): Fumigate
+- destroy all creatures (current destroy op only supports targeting a single creature/permanent) (1): Day of Judgment
+- destroy all other permanents with the same name as the target (1): Maelstrom Pulse
+- destroy target permanent (only creature, artifact, enchantment, or nonland_permanent supported) (1): Goblin Firebomb
+- destroying permanents based on mana value (1): Steel Hellkite
+- discard effect following a draw effect (1): Dreadwing Scavenger
+- discard hand (1): Myojin of Night's Reach
+- discard trigger (1): Tinybones, Bauble Burglar
+- discarding a hand (variable amount) (1): Dragon Mage
+- distribute counters among multiple targets (1): Biogenic Upgrade
+- double counters on permanents (1): Biogenic Upgrade
+- double strike keyword (1): Leyline Axe
+- double strike keyword gain (1): Kellan, Planar Trailblazer
+- double strike keyword granting (1): Fireshrieker
+- double target creature's power (1): Bulk Up
+- doubling counters on a permanent (1): Mossborn Hydra
+- draw a card for each creature you control with a +1/+1 counter on it (1): Inspiring Call
+- draw a card for each different mana value among nonland permanents you control (dynamic x based on board state) (1): Lunar Insight
+- drawing a specific number of cards (7) (1): Dragon Mage
+- dwynen's attack trigger requires counting the number of attacking elf creatures you control to determine the amount of life gained, which is not supported by the gainlife op (1): Dwynen, Gilt-Leaf Daen
+- dynamic power calculation for etb effects (1): Prime Speaker Zegana
+- dynamic power/toughness calculation (1): Ashroot Animist
+- each player sacrifices a creature or planeswalker of their choice (1): Deadly Brew
+- effect 'put that many +1/+1 counters on it' requires dynamic x based on damage dealt (1): Quilled Greatwurm
+- effect 'return target card from graveyard to the battlefield' is not supported (1): Fiendish Panda
+- effect 'target creature can't block' (1): Frenzied Goblin
+- effect depends on the number of other permanents with a specific name (1): Hare Apparent
+- effect that causes a player to lose the game (1): Demonic Pact
+- effect that changes base power and toughness (1): Witness Protection
+- effect that changes name, colors, and creature types (1): Witness Protection
+- effect that prevents mana from emptying from mana pool (1): Savage Ventmaw
+- effect that removes all abilities (1): Witness Protection
+- effect to choose a card from a set of cards (1): Duress
+- effect to filter discard by card type (1): Duress
+- effect to reveal hand (1): Duress
+- effects dependent on the result of previous effects (gain life equal to life lost) (1): Exsanguinate
+- enchant creature (1): Twinblade Blessing
+- enchant creature, land, or planeswalker (1): Imprisoned in the Moon
+- enchant land (1): New Horizons
+- enchanted creature doesn't untap during its controller's untap step (1): Starlight Snare
+- enchanted land has ability (1): New Horizons
+- enchanted permanent becomes a land (1): Imprisoned in the Moon
+- enchantment - aura (1): Imprisoned in the Moon
+- end the turn (1): Time Stop
+- enters tapped (1): Diregraf Ghoul
+- enters with a counter if cast from hand (1): Myojin of Night's Reach
+- equipment mechanics (attach to creature) (1): Basilisk Collar
+- equipment mechanics (attach, equip cost, static buff to equipped creature) (1): Pirate's Cutlass
+- equipment mechanics (attach, equip) (1): Celestial Armor
+- equipment mechanics (attach, equipped creature) (1): Adventuring Gear
+- evasion ability: 'can't be blocked by humans' (1): Stromkirk Noble
+- evasion effect 'can't be blocked' (1): Vampire Gourmand
+- exile all other tokens of a specific subtype (1): Abyssal Harvester
+- exile card from graveyard with condition 'put there this turn' (1): Abyssal Harvester
+- exile card from library (1): Hoarding Dragon
+- exile card with counter (1): Tinybones, Bauble Burglar
+- exile cards from a graveyard (1): Soul-Shackled Zombie
+- exile cards from library to a temporary zone (1): Strongbox Raider
+- exile each opponent's graveyard (1): Soul-Guide Lantern
+- exile self (1): Finale of Revelation
+- exile self as a triggered effect (1): Mazemind Tome
+- exile target planeswalker (1): Devout Decree
+- exile target player's graveyard (1): Angel of Finality
+- exile this card from your graveyard as a cost (1): Suspicious Shambler
+- exile top card of each player's library (1): Etali, Primal Storm
+- exile up to one target card from a graveyard (1): Immersturm Predator
+- ferocious condition (if you control a creature with power 4 or greater) (1): Flamewake Phoenix
+- filter by mana value (1): Raise the Past
+- filter for black or red (1): Devout Decree
+- flashback cost and mechanic (1): Think Twice
+- flashback is not a supported effect or keyword (1): Sphinx of Forgotten Lore
+- forcing a player to reveal their hand (1): Pilfer
+- formidable condition (if creatures you control have total power 8 or greater) (1): Surrak, the Hunt Caller
+- gain control of target creature until end of turn (1): Involuntary Employment
+- gain indestructible until end of turn (1): Immersturm Predator
+- gain life equal to toughness (1): Tribute to Hunger
+- gain life for each creature destroyed this way (1): Fumigate
+- gaining abilities (1): Kellan, Planar Trailblazer
+- gaining haste until end of turn via token creation (1): Ovika, Enigma Goliath
+- gaining keywords via effect ('it gains first strike until end of turn') (1): Ingenious Leonin
+- gaining non-evergreen keywords (menace) (1): Courageous Goblin
+- granting a delayed triggered ability to a permanent (1): Fake Your Own Death
+- granting a keyword ability via activated ability (1): Dropkick Bomber
+- granting a triggered ability via activated ability (1): Dropkick Bomber
+- granting haste to another creature (1): Halana and Alena, Partners
+- granting keywords to spells/permanents based on mana usage (1): Carnelian Orb of Dragonkind
+- hexproof for player (1): Crystal Barricade
+- hexproof from specific card types (1): Elenda, Saint of Dusk
+- hexproof from white (1): Knight of Malice
+- hybrid mana cost (1): Teach by Example
+- hybrid mana in casting cost (1): Wilt-Leaf Liege
+- if you sacrificed a permanent this way, you may return another permanent card from your graveyard to your hand (1): Deadly Brew
+- indestructible effect (1): Valorous Stance
+- indestructible keyword/effect (1): Offer Immortality
+- instant and sorcery spells you control can't be countered (1): Sphinx of the Final Word
+- instead effects (1): Finale of Revelation
+- landfall trigger affecting equipped creature (1): Adventuring Gear
+- lifelink keyword in static ability (1): Regal Caracal
+- lifelink keyword on tokens (1): Regal Caracal
+- look at the top card of your library (1): Vizier of the Menagerie
+- look at the top five cards of your library and separate them into a face-down pile and a face-up pile (1): Curator of Destinies
+- look at the top six cards of your library. you may reveal a creature card with mana value less than or equal to the number of lands you control from among them and put it onto the battlefield. put the rest on the bottom in a random order (1): Loot, Exuberant Explorer
+- look at top n cards (1): Squad Rallier
+- look at top n cards and manipulate library/graveyard (1): Gutless Plunderer
+- lose life equal to a variable (1): Ravenous Amulet
+- loses all other card types and abilities (1): Imprisoned in the Moon
+- mana ability with restriction on how the mana is spent (1): Giada, Font of Hope
+- mana production (1): Carnelian Orb of Dragonkind
+- mana value comparison condition (1): Alesha, Who Laughs at Fate
+- mana value filter (1): Sun-Blessed Healer
+- mana value of a permanent (1): Feed the Swarm
+- menace keyword is not supported in the 'pump' op or as a static keyword for target creatures (1): Battlesong Berserker
+- mill until a specific card type is revealed (1): Consuming Aberration
+- modal ability with memory of previously chosen modes (1): Demonic Pact
+- morbid — at the beginning of each end step, if a creature died this turn, untap this creature (1): Slumbering Cerberus
+- must be blocked this turn if able (1): Joraga Invocation
+- no maximum hand size for the rest of the game (1): Finale of Revelation
+- opening hand ability (1): Leyline Axe
+- optional cost payment (you may pay {r}) (1): Flamewake Phoenix
+- optional effect (you may) (1): Affectionate Indrik
+- optional effect based on payment (1): Mentor of the Meek
+- optional sacrifice cost (1): Vampire Gourmand
+- optional trigger 'you may sacrifice' (1): High-Society Hunter
+- optional triggers (you may) (1): Solemn Simulacrum
+- optionality of etb effect (1): Harbinger of the Tides
+- other creatures you control of the chosen type get +1/+1 (1): Adaptive Automaton
+- pay life as a ward cost (1): Ovika, Enigma Goliath
+- play a card from a temporary zone (1): Strongbox Raider
+- poison counters (1): Fynn, the Fangbearer
+- power and toughness defined by variable game state (1): Consuming Aberration
+- prevent all combat damage that would be dealt to and dealt by this creature (1): Fog Bank
+- prevent all combat damage that would be dealt to it this turn (1): Fleeting Flight
+- protection from everything (1): Progenitus
+- pump effect targeting multiple creatures (all creatures you control) (1): Goblin Surprise
+- put a counter on a permanent (1): Ravenous Amulet
+- put all creature cards from all graveyards onto the battlefield under your control (1): Rise of the Dark Realms
+- put card on top of library (1): Campus Guide
+- put cards into graveyard (1): Genesis Wave
+- put cards onto the battlefield tapped (1): Springbloom Druid
+- put exiled card into hand (1): Hoarding Dragon
+- put into hand (1): Squad Rallier
+- put permanent cards onto the battlefield (1): Genesis Wave
+- put rest on bottom of library in random order (1): Squad Rallier
+- put that card into your hand and the rest on the bottom of your library in a random order (1): Spinner of Souls
+- put that pile into your hand and the other into your graveyard (1): Curator of Destinies
+- remove a counter as a cost (1): Myojin of Night's Reach
+- remove all abilities (1): Eaten by Piranhas
+- remove counters as a cost (1): Ramos, Dragon Engine
+- replacement effect (1): Dryad Militant
+- replacement effect for 'if that creature would die this turn, exile it instead' (1): Elspeth's Smite
+- replacement effect for damage doubling (1): Gratuitous Violence
+- replacement effect for discarding (1): Wilt-Leaf Liege
+- replacement effect for doubling damage (1): Twinflame Tyrant
+- replacement effect for life gain (1): Angel of Vitality
+- replacement effects for counter placement (1): Doubling Season
+- replacement effects for token creation (1): Doubling Season
+- return all creatures of a specific state (attacking) to hand (1): Aetherize
+- return all nonland permanents target player controls to their owner's hand (1): River's Rebuke
+- return card to battlefield with counters (1): Valkyrie's Call
+- return cards from graveyard to battlefield (1): Raise the Past
+- return cards from graveyard to hand (1): Macabre Waltz
+- return creature card from graveyard to battlefield (1): Nullpriest of Oblivion
+- return from graveyard to battlefield (1): Flamewake Phoenix
+- return self to hand (1): Arcanis the Omnipotent
+- return target card from graveyard to battlefield (1): Deadly Plot
+- return target card from graveyard to hand (1): Elvish Regrower
+- return target creature card from graveyard to battlefield (1): Driver of the Dead
+- return target creature card from your graveyard to your hand (1): Vampire Soulcaller
+- return target creature cards from graveyard to hand (1): Sanguine Indulgence
+- return to battlefield effect (1): Infernal Vessel
+- return to battlefield from graveyard (1): Nine-Lives Familiar
+- return to the battlefield at the beginning of the next end step (1): Charming Prince
+- returning a card to the battlefield from the graveyard (1): Fake Your Own Death
+- reveal card from among them (1): Squad Rallier
+- reveal cards from library (1): Genesis Wave
+- reveal cards from the top of your library until you reveal a creature card (1): Spinner of Souls
+- sacrifice a creature (cost involves sacrificing a permanent other than self) (1): Vampiric Rites
+- sacrifice a land (1): Springbloom Druid
+- sacrifice another creature (1): Hungry Ghoul
+- sacrifice as a triggered effect (1): Ball Lightning
+- sacrifice cost (1): Heartfire Immolator
+- sacrifice cost for activated ability (1): Hedron Archive
+- sacrifice cost with toughness-based life gain (1): Ayli, Eternal Pilgrim
+- sacrifice effect (1): Gatekeeper of Malakir
+- sacrifice effect for n permanents (1): Blasphemous Edict
+- sacrifice this enchantment as a cost (1): Midnight Snack
+- search library for a card and put it into graveyard (1): Vile Entomber
+- search library for a card and put it into hand (1): Rune-Scarred Demon
+- search library for a card and put it onto the battlefield (1): Solemn Simulacrum
+- search library for a card with specific properties (1): Mystical Teachings
+- search library for card (1): Grow from the Ashes
+- search library for cards and put onto battlefield (1): Ordeal of Nylea
+- search your library for land cards (1): Springbloom Druid
+- spend mana of any type (1): Tinybones, Bauble Burglar
+- spend mana of any type to cast spells (1): Vizier of the Menagerie
+- static ability checking for counters (1): Myojin of Night's Reach
+- static ability granting keyword to creatures with counters (1): Gnarlid Colony
+- static ability granting keyword to other creatures based on counter presence (1): Inspiring Paladin
+- static ability granting keywords to attacking creatures (1): Crossway Troublemakers
+- static ability granting keywords to equipped creature (1): Basilisk Collar
+- static ability restricting blocking (1): Vampire Interloper
+- static ability with a condition ('as long as you control a dragon') (1): Kargan Dragonrider
+- static ability with condition 'during your turn' (1): Inspiring Paladin
+- static ability with condition (as long as you have 25 or more life) (1): Twinblade Paladin
+- static cost reduction effect (1): Ghalta, Primal Hunger
+- static effect 'dragons you control get +1/+0' is not supported (1): Lathliss, Dragon Queen
+- static effect affecting creatures based on their state (attacking) (1): Goblin Oriflamme
+- static effect affecting multiple creatures you control (1): Dauntless Veteran
+- static effect affecting multiple creatures you control (other than self) (1): Syr Alin, the Lion's Claw
+- static effect allowing casting spells as though they had flash (1): High Fae Trickster
+- static effect causing creatures to enter tapped (1): Authority of the Consuls
+- static effect for 'other cats you control get +1/+1' (requires subtype filter and power/toughness boost) (1): Arahbo, the First Fang
+- static effect for 'other goblins you control get +1/+1' (1): Dropkick Bomber
+- static effect for 'other green creatures you control' (1): Wilt-Leaf Liege
+- static effect for 'other white creatures you control' (1): Wilt-Leaf Liege
+- static effect for no maximum hand size (1): Niv-Mizzet, Visionary
+- static effect granting +n/+n to multiple creatures (1): Overrun
+- static effect granting double strike (1): Twinblade Blessing
+- static effect granting double strike to creatures you control (1): Terror of Mount Velus
+- static effect granting keyword to multiple creatures (1): Preposterous Proportions
+- static effect granting keywords (trample, lifelink) (1): Unflinching Courage
+- static effect granting keywords to all creatures you control (1): Venom Connoisseur
+- static effect granting keywords to multiple creatures (1): Overrun
+- static effect granting keywords to multiple subtypes (1): Death Baron
+- static effect granting trample (1): Balmor, Battlemage Captain
+- static effect granting vigilance until end of turn (1): Felidar Retreat
+- static effect modifying creature types (1): Angelic Destiny
+- static effect modifying how permanents enter the battlefield (1): Giada, Font of Hope
+- static effect preventing attacking or blocking (1): Pacifism
+- static effect preventing losing the game (1): Herald of Eternal Dawn
+- static effect preventing opponents from winning the game (1): Herald of Eternal Dawn
+- static effect that modifies power and toughness of all creatures an opponent controls (1): Massacre Wurm
+- static effect that modifies the cost of casting spells (1): Omniscience
+- static effect that modifies the game rules (drawing an additional card) (1): Dictate of Kruphix
+- static effect with complex filtering (skeletons you control or other zombies you control) (1): Death Baron
+- static effect with condition 'as long as any player controls a white permanent' (1): Knight of Malice
+- static effect with condition based on life total (1): Angel of Vitality
+- static effect: can't be blocked (1): Cephalid Inkmage
+- static effect: players can't gain life (1): Giant Cindermaw
+- static effects based on life total conditions (1): Elenda, Saint of Dusk
+- static effects other than p/t and keywords (checking graveyard contents) (1): Ghitu Lavarunner
+- static effects other than p/t and keywords (hexproof from black) (1): Knight of Grace
+- static effects with timing conditions (during your turn) (1): Quick-Draw Katana
+- static keyword 'menace' (1): Untamed Hunger
+- static keyword grant (trample) (1): Garruk's Uprising
+- static power/toughness defined by graveyard count (1): Enigma Drake
+- stun counters (1): Grappling Kraken
+- surveil 1 (optional graveyard move) (1): Uncharted Voyage
+- tap and put counter as a result of a sacrifice (1): Desecration Demon
+- tap ten untapped elves you control (1): Lathril, Blade of the Elves
+- target creature can't block this turn (1): Sower of Chaos
+- target creature or planeswalker (1): Obliterating Bolt
+- target creature's owner puts it on their choice of the top or bottom of their library (1): Uncharted Voyage
+- target filter 'without flying' (1): Seismic Rupture
+- target green or white creature (1): Deathmark
+- target tapped creature (1): Deadly Riposte
+- targeting a planeswalker (1): Bite Down
+- targeting a subset of creatures based on a keyword (flying) is not supported by the destroy op (1): Broken Wings
+- targeting cards in graveyards (1): Scavenging Ooze
+- targeting creature cards in graveyard (1): Macabre Waltz
+- targeting planeswalkers (1): Heartfire Immolator
+- targeting restriction 'attacking or blocking creature' (1): Elspeth's Smite
+- targeting restriction 'attacking or blocking creature' is not supported by the available target filters (1): Joust Through
+- targeting restriction based on previous target (1): Fiery Annihilation
+- targeting two creatures controlled by different players (1): Run Away Together
+- targeting/applying effects to 'each creature you control' (1): Felidar Retreat
+- the ability contains a 'you may' condition, which is not supported by the current op set (1): Mold Adder
+- the effect 'creatures your opponents control get -1/-1 until end of turn' is a static modification of power/toughness for a group of creatures, which is not supported by the provided pump op (which only targets a single creature or self) (1): Seeker's Folly
+- the effect 'gain 1 life for each attacking creature' requires a dynamic calculation based on the number of attacking creatures, which is not supported by the current gainlife op (1): Ancestor Dragon
+- the effect 'its controller creates a 1/1 white human creature token' refers to the controller of the permanent that was destroyed, which is not supported by the current createtoken op (1): Stroke of Midnight
+- the effect 'its controller creates two treasure tokens' requires a target player (the controller of the countered spell) to be the creator of the tokens, which is not supported by the createpredefinedtoken op (1): An Offer You Can't Refuse
+- this artifact enters with a fellowship counter on it for each creature you control of the chosen type (1): Banner of Kinship
+- this creature attacks each combat if able (1): Juggernaut
+- this creature can't be blocked by creatures with power 2 or less (1): Gate Colossus
+- this creature can't be blocked by walls (1): Juggernaut
+- this creature can't block (1): Vampire Soulcaller
+- this creature doesn't untap during your untap step (1): Slumbering Cerberus
+- this creature is the chosen type in addition to its other types (1): Adaptive Automaton
+- those creatures gain indestructible until end of turn (1): Inspiring Call
+- threshold condition (1): Cephalid Inkmage
+- threshold condition (as long as there are seven or more cards in your graveyard) (1): Dreadwing Scavenger
+- threshold condition (if there are seven or more cards in your graveyard) (1): Crypt Feaster
+- threshold condition: 'as long as there are seven or more cards in your graveyard' (1): Billowing Shriekmass
+- tracking mana spent to cast a spell (1): Pyromancer's Goggles
+- trample keyword (1): Leyline Axe
+- trample keyword is not in the allowed list for pump or static effects (1): Wildheart Invoker
+- trample keyword is not in the allowed list for pump or statics (1): Crash Through
+- trample keyword is not in the supported list of keywords for statics (1): Aggressive Mammoth
+- trigger condition 'another nontoken dragon' is not supported (1): Lathliss, Dragon Queen
+- trigger condition 'during an opponent's turn' is not supported by the 'cast' event fields (1): Brineborn Cutthroat
+- trigger condition 'during each of your turns' is not supported (1): Cat Collector
+- trigger condition 'for the first time during each of your turns' is not supported (1): Cat Collector
+- trigger condition 'for the first time each turn' (1): Vanguard Seraph
+- trigger condition 'nontoken creature' is not supported by the 'dies' event field (1): Midnight Reaper
+- trigger condition 'whenever a creature you control deals combat damage during your turn' is not supported (1): Quilled Greatwurm
+- trigger condition 'whenever a white creature you control attacks' requires a filter for creature color and controller that is not supported by the 'attacks' event fields (1): Linden, the Steadfast Queen
+- trigger condition 'whenever an opponent casts a white or blue instant or sorcery spell' requires filtering by color and spell type simultaneously, which is not supported by the 'cast' event fields (1): Mindsparker
+- trigger condition 'whenever you cast a spell that targets this creature' is not supported by the 'cast' event field (1): Gnarlback Rhino
+- trigger condition 'whenever you draw your second card each turn' is not supported by the available event fields (1): Mischievous Mystic
+- trigger condition 'whenever you put one or more +1/+1 counters on this creature' is not supported (1): Exemplar of Light
+- trigger condition (power 4 or greater) (1): Garruk's Uprising
+- trigger condition: 'deals combat damage to a player' (1): Stromkirk Noble
+- trigger for noncombat damage (1): Niv-Mizzet, Visionary
+- trigger on combat damage to a player (1): Eager Trufflesnout
+- trigger on drawing a card (1): Clinquant Skymage
+- triggered ability based on 'whenever an opponent loses life' and 'gain that much life' (dynamic amount based on event) (1): Bloodthirsty Conqueror
+- triggered ability based on damage dealt by this creature (1): Predator Ooze
+- triggered ability dependent on the resolution of a previous effect ('when you do') (1): Faebloom Trick
+- triggered ability for 'whenever arahbo or another nontoken cat you control enters' (requires 'nontoken' filter) (1): Arahbo, the First Fang
+- triggered ability on casting a spell (1): Archmage of Runes
+- triggered ability that targets the creature that entered the battlefield (1): Good-Fortune Unicorn
+- triggered ability that tracks a specific card moving from battlefield to graveyard (1): Angelic Destiny
+- triggered ability that watches for a creature dying and performs an effect on the controller of that creature (1): Massacre Wurm
+- triggered ability with a cost (pay life) and a conditional effect (if you do) (1): Crossway Troublemakers
+- triggering on 'whenever you gain life' is not supported by the provided event list (1): Marauding Blight-Priest
+- triggering on a specific step (draw step) (1): Dictate of Kruphix
+- triggering on any creature entering the battlefield (1): Authority of the Consuls
+- triggers on counters being put on other permanents (1): Wildwood Scourge
+- unless that player sacrifices a nonland permanent of their choice or discards a card (1): Perforating Artist
+- untap up to five lands (1): Finale of Revelation
+- up to two target creatures (1): Felidar Savior
+- ward cost (pay life) (1): Zul Ashur, Lich Lord
+- ward keyword (1): Tolarian Terror
+- ward—pay 7 life (1): Sire of Seven Deaths
+- whenever a gate you control enters, you may put this card from your graveyard on top of your library (1): Gate Colossus
+- whenever an opponent draws a card, that player loses 1 life (1): Scrawling Crawler
+- whenever koma deals combat damage to a player (1): Koma, World-Eater
+- whenever lathril deals combat damage to a player (1): Lathril, Blade of the Elves
+- whenever you cast a spell of the chosen color, you gain 1 life (1): Diamond Mare
+- whenever you draw your second card each turn (1): Homunculus Horde
+- x cost based on life gained this turn (1): Midnight Snack
+- x costs in etb effects (1): Prime Speaker Zegana
+- x costs in pump effect (1): Jazal Goldmane
+- x costs in token creation (1): Revenge of the Rats
+- x costs in triggered abilities (1): Wildborn Preserver
+- x power dependency in effect (1): Halana and Alena, Partners
+- you may discard a card (1): Incinerating Blast
+- you may play an additional land on each of your turns (1): Loot, Exuberant Explorer
 
 ## Failed the schema (not written)
 
-None.
+- Treetop Snarespinner: activated.0.limit: Invalid option: expected one of "once"|"once_per_turn"
+- Zimone, Paradox Sculptor: Unexpected token ''', ..."lection", 'doubling "... is not valid JSON
+- Angelic Edict: spell.0.target: Invalid option: expected one of "creature"|"artifact"|"enchantment"|"artifact_or_enchantment"|"nonland_permanent"
+- Ravenous Giant: triggers.0.effects.0: controller only applies to target creature
+- Mortify: spell.0.target: Invalid option: expected one of "creature"|"artifact"|"enchantment"|"artifact_or_enchantment"|"nonland_permanent"
+- Kalastria Highborn: Unexpected token ''', ..."y' cost", 'condition"... is not valid JSON
 
 ## Skipped
 
-- dry run: 396
 - already scripted: 50
 - no abilities beyond keywords: 22
 - card type not supported yet: 49

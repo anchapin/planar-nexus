@@ -1,0 +1,10 @@
+{
+  "name": "Negate",
+  "oracle": "Counter target noncreature spell.",
+  "spell": [
+    {
+      "op": "Counter",
+      "target": "spell"
+    }
+  ]
+}
