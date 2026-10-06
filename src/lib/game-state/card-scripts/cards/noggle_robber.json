@@ -1,0 +1,30 @@
+{
+  "name": "Noggle Robber",
+  "oracle": "When this creature enters or dies, create a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+  "triggers": [
+    {
+      "text": "When this creature enters or dies, create a Treasure token.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "CreatePredefinedToken",
+          "token": "treasure",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "text": "When this creature enters or dies, create a Treasure token.",
+      "event": "dies",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "CreatePredefinedToken",
+          "token": "treasure",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

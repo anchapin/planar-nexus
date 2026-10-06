@@ -1,0 +1,20 @@
+{
+  "name": "Stark Industries Executive",
+  "oracle": "{2}, {T}: Create a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+  "activated": [
+    {
+      "text": "Create a Treasure token.",
+      "cost": {
+        "mana": "{2}",
+        "tap": true
+      },
+      "effects": [
+        {
+          "op": "CreatePredefinedToken",
+          "token": "treasure",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "Bake into a Pie",
+  "oracle": "Destroy target creature. Create a Food token. (It's an artifact with \"{2}, {T}, Sacrifice this token: You gain 3 life.\")",
+  "spell": [
+    {
+      "op": "Destroy",
+      "target": "creature"
+    },
+    {
+      "op": "CreatePredefinedToken",
+      "token": "food",
+      "count": 1
+    }
+  ]
+}

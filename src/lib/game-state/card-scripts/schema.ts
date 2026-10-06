@@ -10,6 +10,7 @@
  * targeted effect uses targets[0], the next targeted effect targets[1], etc.
  */
 import { z } from "zod";
+import { PREDEFINED_TOKEN_KINDS } from "./predefined-tokens";
 import { REMOVAL_TARGETS, TARGET_CONTROLLERS } from "./target-filters";
 
 const amount = z.number().int().min(0);
@@ -99,6 +100,18 @@ export const CreateTokenSchema = z
   .refine((t) => (t.color === undefined) !== (t.colors === undefined), {
     message: "set exactly one of color or colors",
   });
+
+/**
+ * A Treasure, Food or Clue token (CR 111.10, #2544). "Investigate" is one
+ * Clue. The token's ability is its rules text.
+ */
+export const CreatePredefinedTokenSchema = z
+  .object({
+    op: z.literal("CreatePredefinedToken"),
+    token: z.enum(PREDEFINED_TOKEN_KINDS),
+    count: z.number().int().min(1),
+  })
+  .strict();
 
 /**
  * Destroy/Exile targets (#2528). min_power/max_power bound a creature's power
@@ -217,6 +230,7 @@ export const EffectSchema = z.discriminatedUnion("op", [
   GainLifeSchema,
   LoseLifeSchema,
   CreateTokenSchema,
+  CreatePredefinedTokenSchema,
   DestroySchema,
   ExileSchema,
   TapSchema,

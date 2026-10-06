@@ -28,6 +28,7 @@ import { startDiscard } from "../keyword-actions/discard-choice";
 import { addCounters } from "../card-instance";
 import { copySpellOnStack } from "../spell-casting/resolve";
 import { getCardScript } from "./registry";
+import { PREDEFINED_TOKENS } from "./predefined-tokens";
 import {
   matchesController,
   matchesRemovalFilter,
@@ -292,6 +293,16 @@ function applyEffect(
           keywords,
           oracle_text: keywords.join(", "),
         },
+        effect.count,
+        ctx.controllerId,
+      );
+      return r.success ? r.state : state;
+    }
+    case "CreatePredefinedToken": {
+      const r = resolveTokenCreationEffect(
+        state,
+        sourceId,
+        PREDEFINED_TOKENS[effect.token],
         effect.count,
         ctx.controllerId,
       );

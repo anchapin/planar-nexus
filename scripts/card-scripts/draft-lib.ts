@@ -46,6 +46,8 @@ export const OP_REFERENCE: Record<string, string> = {
     '{"op":"LoseLife","amount":N,"who":"you"|"target_player"|"each_opponent"}',
   CreateToken:
     '{"op":"CreateToken","count":N,"power":N,"toughness":N,"color":"white"|"blue"|"black"|"red"|"green"|"colorless" OR "colors":["white","black"],"subtypes":["Thopter"],"artifact":true,"keywords":["flying"]} (creature tokens; exactly one of color/colors; artifact and keywords optional; evergreen keywords only; no enchantment tokens or token abilities)',
+  CreatePredefinedToken:
+    '{"op":"CreatePredefinedToken","token":"treasure"|"food"|"clue","count":N} (you create N Treasure, Food or Clue tokens; "investigate" is one Clue; not tapped tokens, not "its controller creates")',
   Destroy:
     '{"op":"Destroy","target":"creature"|"artifact"|"enchantment"|"artifact_or_enchantment"|"nonland_permanent","min_power":N,"max_power":N} (min_power/max_power optional, creature targets only: "creature with power 4 or greater" is min_power 4; controller "you"|"opponent" optional, as for DealDamage)',
   Exile:

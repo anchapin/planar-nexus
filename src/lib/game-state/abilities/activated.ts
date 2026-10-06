@@ -253,6 +253,21 @@ export function activateAbility(
       error: "Ability not found",
     };
   }
+  // "Add one mana of any color" needs a color choice, which goes through
+  // activateManaAbility (a Treasure, #2544). Refuse here before any cost is
+  // paid, so the source isn't sacrificed for no mana.
+  if (
+    isManaAbility(cardId, ability.effect) &&
+    /any (?:one )?color/i.test(ability.effect) &&
+    Object.keys(parseManaFromEffect(ability.effect)).length === 0
+  ) {
+    return {
+      success: false,
+      state,
+      description: "",
+      error: "Choose a color: activate it as a mana ability",
+    };
+  }
 
   // CR 602.2b / 601.2c: targets are checked before any cost is paid.
   const targetSpec = isManaAbility(cardId, ability.effect)

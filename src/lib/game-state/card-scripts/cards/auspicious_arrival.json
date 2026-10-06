@@ -1,0 +1,17 @@
+{
+  "name": "Auspicious Arrival",
+  "oracle": "Target creature gets +2/+2 until end of turn. Investigate. (Create a Clue token. It's an artifact with \"{2}, Sacrifice this token: Draw a card.\")",
+  "spell": [
+    {
+      "op": "Pump",
+      "power": 2,
+      "toughness": 2,
+      "target": "creature"
+    },
+    {
+      "op": "CreatePredefinedToken",
+      "token": "clue",
+      "count": 1
+    }
+  ]
+}
