@@ -13,7 +13,9 @@
           "power": 1,
           "toughness": 1,
           "color": "colorless",
-          "subtypes": ["Hero"]
+          "subtypes": [
+            "Hero"
+          ]
         }
       ]
     }
