@@ -1,0 +1,20 @@
+{
+  "name": "Frostbridge Guard",
+  "oracle": "{2}{W}, {T}: Tap target creature.",
+  "activated": [
+    {
+      "text": "Tap target creature.",
+      "cost": {
+        "mana": "{2}{W}",
+        "tap": true,
+        "sacrifice": false
+      },
+      "effects": [
+        {
+          "op": "Tap",
+          "target": "creature"
+        }
+      ]
+    }
+  ]
+}

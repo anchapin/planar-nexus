@@ -1,0 +1,34 @@
+{
+  "name": "Glamermite",
+  "oracle": "Flash\nFlying\nWhen this creature enters, choose one —\n• Tap target creature.\n• Untap target creature.",
+  "triggers": [
+    {
+      "text": "When this creature enters, choose one —",
+      "event": "etb",
+      "subject": "self",
+      "modes": {
+        "choose": 1,
+        "options": [
+          {
+            "text": "Tap target creature.",
+            "effects": [
+              {
+                "op": "Tap",
+                "target": "creature"
+              }
+            ]
+          },
+          {
+            "text": "Untap target creature.",
+            "effects": [
+              {
+                "op": "Untap",
+                "target": "creature"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

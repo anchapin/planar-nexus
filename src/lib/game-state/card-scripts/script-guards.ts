@@ -79,6 +79,8 @@ export function isTargetedEffect(effect: CardEffect): boolean {
       return effect.target === "creature";
     case "Destroy":
     case "Exile":
+    case "Tap":
+    case "Untap":
     case "Counter":
       return true;
     case "Draw":

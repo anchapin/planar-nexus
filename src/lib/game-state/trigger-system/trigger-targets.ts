@@ -223,7 +223,12 @@ function effectsTargetSpec(
         controller: effect.controller ?? "any",
       };
     }
-    if (effect.op === "Destroy" || effect.op === "Exile") {
+    if (
+      effect.op === "Destroy" ||
+      effect.op === "Exile" ||
+      effect.op === "Tap" ||
+      effect.op === "Untap"
+    ) {
       const filter: RemovalFilter = {
         target: effect.target,
         min_power: effect.min_power,
@@ -344,7 +349,11 @@ function pickModes(
     const legal = legalTargetsForSpec(state, spec, me, obj.sourceCardId);
     if (legal.length === 0) return { option, index, score: -1 };
     const hostile = option.effects.some(
-      (e) => e.op === "Destroy" || e.op === "Exile" || e.op === "DealDamage",
+      (e) =>
+        e.op === "Destroy" ||
+        e.op === "Exile" ||
+        e.op === "Tap" ||
+        e.op === "DealDamage",
     );
     const opposing = legal.some((id) => {
       const card = state.cards.get(id as CardInstanceId);

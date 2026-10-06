@@ -119,6 +119,15 @@ export const ExileSchema = z
   .object({ op: z.literal("Exile"), ...removalFields })
   .strict();
 
+/** Tap or untap target permanent (#2538). Same filters as Destroy/Exile. */
+export const TapSchema = z
+  .object({ op: z.literal("Tap"), ...removalFields })
+  .strict();
+
+export const UntapSchema = z
+  .object({ op: z.literal("Untap"), ...removalFields })
+  .strict();
+
 export const CounterSchema = z
   .object({ op: z.literal("Counter"), target: z.enum(["spell"]) })
   .strict();
@@ -205,6 +214,8 @@ export const EffectSchema = z.discriminatedUnion("op", [
   CreateTokenSchema,
   DestroySchema,
   ExileSchema,
+  TapSchema,
+  UntapSchema,
   CounterSchema,
   PumpSchema,
   PutCountersSchema,
