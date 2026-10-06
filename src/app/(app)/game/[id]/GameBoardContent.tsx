@@ -72,6 +72,7 @@ import {
   playLand,
   castSpell,
   activateManaAbility,
+  hasSacrificeManaAbility,
   activateAbility,
   getActivatableAbilities,
   formatManaPool,
@@ -1682,7 +1683,11 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
 
         // ----- ACTIVATION: Tap lands for mana -----
         if (hasPriority && card.controllerId === player.id) {
-          if (isLand(card) && !card.isTapped) {
+          if (
+            (isLand(card) ||
+              hasSacrificeManaAbility(card.cardData.oracle_text ?? "")) &&
+            !card.isTapped
+          ) {
             // Check if this land has an ability requiring basic land type choice (e.g., Multiversal Passage)
             if (requiresBasicLandTypeChoice(card)) {
               setBasicLandTypeChoice({

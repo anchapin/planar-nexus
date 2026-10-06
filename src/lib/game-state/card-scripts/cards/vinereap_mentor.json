@@ -1,0 +1,30 @@
+{
+  "name": "Vinereap Mentor",
+  "oracle": "When this creature enters or dies, create a Food token. (It's an artifact with \"{2}, {T}, Sacrifice this token: You gain 3 life.\")",
+  "triggers": [
+    {
+      "text": "When this creature enters or dies, create a Food token.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "CreatePredefinedToken",
+          "token": "food",
+          "count": 1
+        }
+      ]
+    },
+    {
+      "text": "When this creature enters or dies, create a Food token.",
+      "event": "dies",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "CreatePredefinedToken",
+          "token": "food",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

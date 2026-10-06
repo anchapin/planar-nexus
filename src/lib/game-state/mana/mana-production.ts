@@ -1,11 +1,17 @@
 import type { CardInstanceId, GameState, ManaPool, PlayerId } from "../types";
 import { isPriorityPlayer } from "../priority-guard";
 import { addMana, formatManaPool } from "./mana-pool";
+import { sacrificeCard } from "../keyword-actions/removal";
 
 export interface ManaAbilityOption {
   description: string;
   mana: Partial<ManaPool>;
   activationCondition?: string;
+  /**
+   * "{T}, Sacrifice this token: Add ..." (a Treasure, CR 111.10a): activating
+   * sacrifices the source (#2544).
+   */
+  sacrificeSelf?: boolean;
 }
 
 function checkActivationCondition(
@@ -169,6 +175,43 @@ export function parseManaAbility(oracleText: string): ManaAbilityOption[] {
     options.push(option);
   }
 
+  // "{T}, Sacrifice this token: Add one mana of any color." (Treasure, #2544)
+  const sacrificeMatch = text.match(
+    /\{t\},\s*sacrifice this (?:token|artifact):\s*add\s+([^.)]+)/i,
+  );
+  if (options.length === 0 && sacrificeMatch) {
+    const clause = sacrificeMatch[1].trim();
+    if (/any (?:one )?color/.test(clause)) {
+      return [
+        { description: "White", mana: { white: 1 }, sacrificeSelf: true },
+        { description: "Blue", mana: { blue: 1 }, sacrificeSelf: true },
+        { description: "Black", mana: { black: 1 }, sacrificeSelf: true },
+        { description: "Red", mana: { red: 1 }, sacrificeSelf: true },
+        { description: "Green", mana: { green: 1 }, sacrificeSelf: true },
+      ];
+    }
+    const mana = parseSymbols(clause);
+    if (Object.keys(mana).length > 0) {
+      return [
+        {
+          description:
+            formatManaPool({
+              colorless: 0,
+              white: 0,
+              blue: 0,
+              black: 0,
+              red: 0,
+              green: 0,
+              generic: 0,
+              ...mana,
+            }) || "Colorless",
+          mana,
+          sacrificeSelf: true,
+        },
+      ];
+    }
+  }
+
   if (options.length === 0) {
     const addMatch = text.match(/\{t\}:\s*add\s+([^.)]+)/i);
     if (!addMatch) return options;
@@ -288,6 +331,13 @@ export function activateManaAbility(
   updatedCards.set(cardId, { ...card, isTapped: true });
   newState = { ...newState, cards: updatedCards, lastModifiedAt: Date.now() };
 
+  // Sacrifice is part of the cost (CR 602.2b): the token goes to the
+  // graveyard and ceases to exist as a state-based action (CR 704.5d).
+  if (option.sacrificeSelf) {
+    const sacrificed = sacrificeCard(newState, cardId);
+    if (sacrificed.success) newState = sacrificed.state;
+  }
+
   const updatedPlayers = new Map(newState.players);
   const player = updatedPlayers.get(playerId);
   if (player) {
@@ -323,4 +373,12 @@ export function isManaAbility(
     lowerText.includes("produces");
 
   return producesMana;
+}
+
+/**
+ * True when a permanent's mana ability sacrifices it, like a Treasure
+ * (#2544). Boards route these through the mana-ability color choice.
+ */
+export function hasSacrificeManaAbility(oracleText: string): boolean {
+  return parseManaAbility(oracleText).some((o) => o.sacrificeSelf);
 }
