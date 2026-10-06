@@ -59,6 +59,8 @@ src-tauri/gen/
 !src/lib/game-state/card-scripts/cards/*.json
 # manamind simple-v1 parity replays exported from the Python ruleset (#2557)
 !src/ai/manamind/__tests__/fixtures/*.json
+# Exported manamind model schema served next to model.onnx (#2557)
+!public/models/manamind/*/model.schema.json
 # Generated card-script index is rebuilt before every dev/build/test/typecheck
 # (#2487); committing it forced every card PR to rebase on the index file.
 src/lib/game-state/card-scripts/cards/index.generated.ts
