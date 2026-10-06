@@ -25,7 +25,12 @@ import { destroyCard, exileCard } from "../keyword-actions/removal";
 import { addCounters } from "../card-instance";
 import { copySpellOnStack } from "../spell-casting/resolve";
 import { getCardScript } from "./registry";
-import { matchesRemovalFilter, type RemovalFilter } from "./target-filters";
+import {
+  matchesController,
+  matchesRemovalFilter,
+  type RemovalFilter,
+  type TargetController,
+} from "./target-filters";
 import {
   isPermanentScript,
   isTargetedEffect,
@@ -141,11 +146,34 @@ function creatureFor(
   state: GameState,
   target: "creature" | "self",
   ctx: EffectContext,
+  controller?: TargetController,
 ): CardInstanceId | undefined {
   const cardId =
     target === "self" ? ctx.sourceId : (ctx.target?.targetId as CardInstanceId);
   if (!cardId || !isOnBattlefield(state, cardId)) return undefined;
+  if (
+    target === "creature" &&
+    !controllerStillMatches(state, cardId, controller, ctx)
+  )
+    return undefined;
   return cardId;
+}
+
+/**
+ * A target that changed controller since it was chosen is illegal (CR
+ * 608.2b); "you control" is judged against the spell or ability's controller.
+ */
+function controllerStillMatches(
+  state: GameState,
+  targetId: string,
+  controller: TargetController | undefined,
+  ctx: EffectContext,
+): boolean {
+  if (!controller) return true;
+  const card = state.cards.get(targetId as CardInstanceId);
+  return (
+    Boolean(card) && matchesController(card!, controller, ctx.controllerId)
+  );
 }
 
 function applyEffect(
@@ -164,6 +192,11 @@ function applyEffect(
         return next;
       }
       if (!target) return state;
+      if (
+        effect.target === "creature" &&
+        !controllerStillMatches(state, target.targetId, effect.controller, ctx)
+      )
+        return state;
       return resolveStackObjectEffects(
         state,
         [
@@ -237,13 +270,21 @@ function applyEffect(
     }
     case "Destroy": {
       // A target that no longer matches is illegal: nothing happens (CR 608.2b).
-      if (!target || !targetStillMatches(state, target.targetId, effect))
+      if (
+        !target ||
+        !targetStillMatches(state, target.targetId, effect) ||
+        !controllerStillMatches(state, target.targetId, effect.controller, ctx)
+      )
         return state;
       const r = destroyCard(state, target.targetId as CardInstanceId);
       return r.success ? r.state : state;
     }
     case "Exile": {
-      if (!target || !targetStillMatches(state, target.targetId, effect))
+      if (
+        !target ||
+        !targetStillMatches(state, target.targetId, effect) ||
+        !controllerStillMatches(state, target.targetId, effect.controller, ctx)
+      )
         return state;
       const r = exileCard(state, target.targetId as CardInstanceId);
       return r.success ? r.state : state;
@@ -254,7 +295,7 @@ function applyEffect(
       return r.success ? r.state : state;
     }
     case "Pump": {
-      const cardId = creatureFor(state, effect.target, ctx);
+      const cardId = creatureFor(state, effect.target, ctx, effect.controller);
       if (!cardId) return state;
       const r = resolveEffect(
         state,
@@ -269,7 +310,7 @@ function applyEffect(
       return r.success ? r.state : state;
     }
     case "PutCounters": {
-      const cardId = creatureFor(state, effect.target, ctx);
+      const cardId = creatureFor(state, effect.target, ctx, effect.controller);
       const card = cardId ? state.cards.get(cardId) : undefined;
       if (!cardId || !card) return state;
       const cards = new Map(state.cards);

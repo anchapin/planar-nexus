@@ -39,7 +39,7 @@ export type DraftOutcome =
  */
 export const OP_REFERENCE: Record<string, string> = {
   DealDamage:
-    '{"op":"DealDamage","amount":N,"target":"any"|"creature"|"player"|"each_opponent"}',
+    '{"op":"DealDamage","amount":N,"target":"any"|"creature"|"player"|"each_opponent","controller":"you"|"opponent"} (controller optional, target creature only: "target creature you control" is "you", "an opponent controls" or "you don\'t control" is "opponent")',
   Draw: '{"op":"Draw","amount":N,"who":"you"|"target_player"}',
   GainLife: '{"op":"GainLife","amount":N,"who":"you"|"target_player"}',
   LoseLife:
@@ -47,13 +47,13 @@ export const OP_REFERENCE: Record<string, string> = {
   CreateToken:
     '{"op":"CreateToken","count":N,"power":N,"toughness":N,"color":"white"|"blue"|"black"|"red"|"green"|"colorless" OR "colors":["white","black"],"subtypes":["Thopter"],"artifact":true,"keywords":["flying"]} (creature tokens; exactly one of color/colors; artifact and keywords optional; evergreen keywords only; no enchantment tokens or token abilities)',
   Destroy:
-    '{"op":"Destroy","target":"creature"|"artifact"|"enchantment"|"artifact_or_enchantment"|"nonland_permanent","min_power":N,"max_power":N} (min_power/max_power optional, creature targets only: "creature with power 4 or greater" is min_power 4)',
+    '{"op":"Destroy","target":"creature"|"artifact"|"enchantment"|"artifact_or_enchantment"|"nonland_permanent","min_power":N,"max_power":N} (min_power/max_power optional, creature targets only: "creature with power 4 or greater" is min_power 4; controller "you"|"opponent" optional, as for DealDamage)',
   Exile:
     '{"op":"Exile","target":"creature"|"artifact"|"enchantment"|"artifact_or_enchantment"|"nonland_permanent","min_power":N,"max_power":N} (same targets as Destroy)',
   Counter: '{"op":"Counter","target":"spell"}',
-  Pump: '{"op":"Pump","power":N,"toughness":N,"target":"creature"|"self"} (until end of turn)',
+  Pump: '{"op":"Pump","power":N,"toughness":N,"target":"creature"|"self","controller":"you"|"opponent"} (until end of turn; controller optional, target creature only)',
   PutCounters:
-    '{"op":"PutCounters","counter":"+1/+1","amount":N,"target":"creature"|"self"}',
+    '{"op":"PutCounters","counter":"+1/+1","amount":N,"target":"creature"|"self","controller":"you"|"opponent"} (controller optional, target creature only)',
   Surveil: '{"op":"Surveil","amount":N}',
   CopySpell:
     '{"op":"CopySpell","gain":["wither"]} (cast triggers only: copy the spell that was cast, same targets; gain optional)',

@@ -212,12 +212,16 @@ function effectsTargetSpec(
   for (const effect of effects) {
     if (!isTargetedEffect(effect)) continue;
     const base = {
-      controller: "any" as const,
+      controller: "any" as TriggerTargetSpec["controller"],
       optional: false,
       excludeSource: false,
     };
     if (effect.op === "DealDamage" && effect.target !== "each_opponent") {
-      return { ...base, kind: effect.target };
+      return {
+        ...base,
+        kind: effect.target,
+        controller: effect.controller ?? "any",
+      };
     }
     if (effect.op === "Destroy" || effect.op === "Exile") {
       const filter: RemovalFilter = {
@@ -226,10 +230,14 @@ function effectsTargetSpec(
         max_power: effect.max_power,
       };
       const kind = effect.target === "creature" ? "creature" : "permanent";
-      return { ...base, kind, filter };
+      return { ...base, kind, filter, controller: effect.controller ?? "any" };
     }
     if (effect.op === "Pump" || effect.op === "PutCounters") {
-      return { ...base, kind: "creature" };
+      return {
+        ...base,
+        kind: "creature",
+        controller: effect.controller ?? "any",
+      };
     }
     if (
       effect.op === "Draw" ||
