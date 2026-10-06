@@ -1,0 +1,11 @@
+{
+  "name": "Stand Up for Yourself",
+  "oracle": "Destroy target creature with power 3 or greater.",
+  "spell": [
+    {
+      "op": "Destroy",
+      "target": "creature",
+      "min_power": 3
+    }
+  ]
+}

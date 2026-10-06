@@ -1,0 +1,19 @@
+{
+  "name": "Bogwater Lumaret",
+  "oracle": "Whenever this creature or another creature you control enters, you gain 1 life.",
+  "triggers": [
+    {
+      "text": "Whenever this creature or another creature you control enters, you gain 1 life.",
+      "event": "etb",
+      "subject": "any",
+      "controller": "you",
+      "effects": [
+        {
+          "op": "GainLife",
+          "amount": 1,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}

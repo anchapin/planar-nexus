@@ -1,0 +1,45 @@
+{
+  "name": "Silverquill Charm",
+  "oracle": "Choose one —\n• Put two +1/+1 counters on target creature.\n• Exile target creature with power 2 or less.\n• Each opponent loses 3 life and you gain 3 life.",
+  "modes": {
+    "choose": 1,
+    "options": [
+      {
+        "text": "Put two +1/+1 counters on target creature.",
+        "effects": [
+          {
+            "op": "PutCounters",
+            "counter": "+1/+1",
+            "amount": 2,
+            "target": "creature"
+          }
+        ]
+      },
+      {
+        "text": "Exile target creature with power 2 or less.",
+        "effects": [
+          {
+            "op": "Exile",
+            "target": "creature",
+            "max_power": 2
+          }
+        ]
+      },
+      {
+        "text": "Each opponent loses 3 life and you gain 3 life.",
+        "effects": [
+          {
+            "op": "LoseLife",
+            "amount": 3,
+            "who": "each_opponent"
+          },
+          {
+            "op": "GainLife",
+            "amount": 3,
+            "who": "you"
+          }
+        ]
+      }
+    ]
+  }
+}

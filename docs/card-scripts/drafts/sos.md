@@ -1,0 +1,393 @@
+# Card script drafts: SOS
+
+10 drafted (6 kept after review), 193 need new ops, 1 failed the schema, 67 skipped.
+
+Every draft is LLM-written and must be checked against the card before merge.
+
+## Review
+
+Kept after checking each draft against the card: Stand Up for Yourself, Muse's Encouragement, Unsubtle Mockery, Mindful Biomancer, Bogwater Lumaret, Silverquill Charm.
+
+Removed because the script ignores part of the card:
+
+- Essence Scatter: counters any spell; the card only counters creature spells (Counter has no spell-type filter yet).
+- Melancholic Poet: `targets: single` means "exactly one target", not "targets a creature".
+- Oracle's Restoration: pumps any creature; the card says target creature you control.
+- Grapple with Death: scripted as artifact or enchantment; the card says artifact or creature (no such removal target yet).
+
+## Drafted
+
+- Stand Up for Yourself
+- Essence Scatter
+- Muse's Encouragement
+- Melancholic Poet
+- Unsubtle Mockery
+- Mindful Biomancer
+- Oracle's Restoration
+- Bogwater Lumaret
+- Grapple with Death
+- Silverquill Charm
+
+## Missing ops
+
+- x costs (18): Together as One, Transcendent Archaic, Divergent Equation, Fractal Anomaly, Fractalize, Mathemagics, Procrastinate, Arcane Omens, Ancestral Anger, Slumbering Trudge, Snarl Song, Wild Hypothesis, Fix What's Broken, Geometer's Arthropod, Mind into Matter, Pterafractyl, Traumatic Critique, Vicious Rivalry
+- discard a card (6): Send in the Pest, Charging Strifeknight, Rubble Rouser, Pursue the Past, Stadium Tidalmage, Traumatic Critique
+- flashback cost (6): Antiquities on the Loose, Daydream, Dig Site Inventory, Practiced Offense, Duel Tactics, Tome Blast
+- conditional effect based on mana spent (5): Exhibition Tidecaller, Expressive Firedancer, Colorstorm Stallion, Elemental Mascot, Spectacular Skywhale
+- increment ability condition (mana spent vs power/toughness) (4): Pensive Professor, Tester of the Tangential, Ambitious Augmenter, Berta, Wise Extrapolator
+- put cards into hand (4): Flow State, Follow the Lumarets, Zimone's Experiment, Paradox Surveyor
+- add mana (3): Rubble Rouser, Tablet of Discovery, Rapturous Moment
+- converge mechanic (3): Together as One, Arcane Omens, Snarl Song
+- discard cards (3): Transcendent Archaic, Mind Roots, Rapturous Moment
+- exile target card from a graveyard (3): Ascendant Dustspeaker, Glorious Decay, Startled Relic Sloth
+- put cards on bottom of library in random order (3): Follow the Lumarets, Paradox Surveyor, Page, Loose Leaf
+- stun counters (3): Deluge Virtuoso, Homesickness, Procrastinate
+- additional cost to cast (2): Soaring Stoneglider, Seize the Spoils
+- choose one or both (2): Choreographed Sparks, Steal the Show
+- conditional effect (if you do) (2): Mica, Reader of Ruins, Killian's Confidence
+- conditional effects based on mana spent (2): Deluge Virtuoso, Thunderdrum Soloist
+- conditions (2): Fix What's Broken, Mind into Matter
+- conditions (if you gained life this turn) (2): Poisoner's Apprentice, Efflorescence
+- converge ability (enters with counters based on mana spent) (2): Magmablood Archaic, Wildgrowth Archaic
+- createtoken with multiple colors (2): Harsh Annotation, Additive Evolution
+- discard cost (2): Lorehold, the Historian, Page, Loose Leaf
+- exile a card from your graveyard (2): Heated Argument, Rubble Rouser
+- flashback (2): Molten Note, Pursue the Past
+- if you do (2): Rubble Rouser, Pursue the Past
+- look at top cards of library (2): Flow State, Follow the Lumarets
+- mana production effect (2): Mana Sculpt, Topiary Lecturer
+- mill a card (2): Tablet of Discovery, Ark of Hunger
+- put cards on bottom of library (2): Flow State, Zimone's Experiment
+- return card from graveyard to battlefield (2): Restoration Seminar, Lorehold Charm
+- return card from graveyard to hand (2): Summoned Dromedary, Killian's Confidence
+- return cards from graveyard to hand (2): Divergent Equation, Wisdom of Ages
+- return from graveyard to battlefield (2): Moseo, Vein's New Dean, Teacher's Pest
+- return permanent to hand (2): Prismari Charm, Proctor's Gaze
+- sacrifice a permanent (2): Tragedy Feaster, Witherbloom Charm
+- search library (2): Environmental Scientist, Planar Engineering
+- search library for card (2): Proctor's Gaze, Strixhaven Skycoach
+- shuffle library (2): Dina's Guidance, Proctor's Gaze
+- tap target creature (2): Rapier Wit, Fractal Mascot
+- targeting planeswalkers (2): End of the Hunt, Impractical Joke
+- ward cost: discard a card (2): Forum Necroscribe, Tragedy Feaster
+- whenever one or more cards leave your graveyard (2): Garrison Excavator, Ark of Hunger
+- 'when you cast this spell while you control a creature' is a condition on a cast trigger, 'you may copy this spell' is a conditional effect, 'each player sacrifices a creature of their choice' is a sacrifice effect not supported by the engine (1): Social Snub
+- ability affects multiple targets (each creature you control) (1): Stirring Hopesinger
+- ability cost reduction based on counters (1): Diary of Dreams
+- ability granting a triggered ability to creatures (1): Root Manipulation
+- ability to cast cards from zones other than hand (1): Nita, Forum Conciliator
+- ability to cast spells without paying their mana cost (1): Zaffai and the Tempests
+- ability to spend mana as though it were mana of any color (1): Nita, Forum Conciliator
+- add mana effect (1): Noxious Newt
+- add one mana of any color (1): Potioner's Trove
+- adding creature types to a non-creature permanent (1): Applied Geometry
+- additional costs (pay life) (1): Vicious Rivalry
+- affinity for creatures (cost reduction) (1): Witherbloom, the Balancer
+- allow players to play cards from exile until a specific duration (1): Suspend Aggression
+- any number of targets (1): Rabid Attack
+- at the beginning of each end step, if you put a counter on this creature this turn (conditional trigger based on turn history) (1): Fractal Tender
+- at the beginning of your end step (1): Primary Research
+- can't be blocked effect (1): Matterbending Mage
+- cascade (1): Quandrix, the Proof
+- cast card from exile (1): Practiced Scrollsmith
+- cast card from graveyard without paying mana cost (1): The Dawning Archaic
+- cast spells from exile without paying mana costs (1): Improvisation Capstone
+- casting a copy of a spell from exile without paying its mana cost (1): Decorum Dissertation
+- casting cards from graveyards (1): Flashback
+- casualty keyword (1): Silverquill, the Disputant
+- choice of keywords (double strike or lifelink) (1): Practiced Offense
+- choose the same mode more than once (1): Moment of Reckoning
+- choose up to four (1): Moment of Reckoning
+- choosing a card from a hand (1): Render Speechless
+- condition 'power or toughness 1 or less' on trigger (1): Arnyn, Deathbloom Botanist
+- condition check for total toughness (1): Orysa, Tide Choreographer
+- condition on death trigger (if it had counters) (1): Ambitious Augmenter
+- condition: activate only if you've cast an instant or sorcery spell this turn (1): Potioner's Trove
+- condition: if a creature died under your control this turn (1): Essenceknit Scholar
+- conditional activation based on hand size (1): Resonating Lute
+- conditional effect 'if you control a wizard' (1): Mana Sculpt
+- conditional effect 'if you do' (1): Aziza, Mage Tower Captain
+- conditional effect based on action taken (1): Heated Argument
+- conditional effect based on discard (1): Lorehold, the Historian
+- conditional effect based on game state (if you gained life this turn) (1): Lumaret's Favor
+- conditional effect based on graveyard contents (1): Flow State
+- conditional effect based on life gained (1): Follow the Lumarets
+- conditional effect based on previous spells cast (1): Burrog Barrage
+- conditional effect based on zone of origin (1): Antiquities on the Loose
+- conditional effects (if/instead) (1): Tackle Artist
+- conditional effects based on game state (if you gained life this turn) (1): Old-Growth Educator
+- conditional enters tapped (1): Slumbering Trudge
+- conditional mana cost reduction (1): Run Behind
+- conditional mana generation based on mana spent to cast a spell (1): Molten-Core Maestro
+- conditional mana restriction (1): Tablet of Discovery
+- conditional static effect (as long as you gained life this turn) (1): Thornfist Striker
+- conditional trigger (if you gained life this turn) (1): Moseo, Vein's New Dean
+- conditional trigger based on cards put into exile this turn (1): Ennis, Debate Moderator
+- conditional trigger effect: 'if a card left your graveyard this turn' (1): Living History
+- conditions ('if') (1): Withering Curse
+- conditions (as long as you gained life this turn) (1): Ulna Alley Shopkeep
+- conditions (if) (1): Foolish Fate
+- conditions (mana value x or less) (1): Vicious Rivalry
+- conditions (number of cards in graveyard) (1): Ancestral Anger
+- conditions (whenever you cast an instant or sorcery spell that targets a creature) (1): Rehearsed Debater
+- conditions based on game state (number of cards drawn this turn) (1): Fractal Anomaly
+- converge ability (1): Rancorous Archaic
+- converge ability (mana spent to cast) (1): Sundering Archaic
+- copy spell effect with target selection (1): Lumaret's Favor
+- copy spell with new targets (1): Mica, Reader of Ruins
+- copying a permanent (1): Applied Geometry
+- cost 'exile an instant or sorcery card from your graveyard' (1): Postmortem Professor
+- cost 'tap three untapped creatures you control' (1): Aziza, Mage Tower Captain
+- cost reduction based on board state (1): Orysa, Tide Choreographer
+- cost reduction based on graveyard contents (1): The Dawning Archaic
+- cost reduction based on graveyard state (1): Wilt in the Heat
+- cost reduction based on target state (1): Ajani's Response
+- cost reduction based on targeting conditions (1): Brush Off
+- counter target spell unless its controller pays {2} (1): Quandrix Charm
+- counters on permanents other than +1/+1 (1): Diary of Dreams
+- counting differently named lands (1): Emil, Vastlands Roamer
+- create a token that is a copy of a permanent (1): Colorstorm Stallion
+- create a treasure token (1): Seize the Spoils
+- create token that is a copy of another permanent (1): Echocasting Symposium
+- create tokens with multiple colors (1): Eternal Student
+- createtoken does not support granting haste to the token (1): Artistic Process
+- createtoken does not support multiple colors (1): Artistic Process
+- creatures gain trample (1): Lorehold Charm
+- crew ability (1): Strixhaven Skycoach
+- damage based on dynamic power value (1): Burrog Barrage
+- damage equal to number of cards in graveyard (1): Steal the Show
+- damage prevention effect (1): Impractical Joke
+- deal damage to one or two targets (1): Prismari Charm
+- delayed trigger 'at the beginning of your next main phase' (1): Mana Sculpt
+- destroy planeswalker (1): Erode
+- discard a card cost (1): Hardened Academic
+- discard a card unless condition (1): Muse Seeker
+- discard any number of cards (1): Colossus of the Blood Age
+- discard any number of cards, then draw that many cards (1): Steal the Show
+- discard as a cost (1): Visionary's Dance
+- discard effect (1): Arcane Omens
+- discard half cards (1): Pox Plague
+- discarding a hand (1): Borrowed Knowledge
+- discarding a specific chosen card (1): Render Speechless
+- doubling counters is not a supported operation (1): Growth Curve
+- draw a card (1): Glorious Decay
+- draw cards (1): Quick Study
+- draw that many cards plus one (1): Colossus of the Blood Age
+- drawing cards equal to a variable number (1): Borrowed Knowledge
+- dynamic x value based on life gained (1): Moseo, Vein's New Dean
+- effect 'put those counters on up to one target creature' is not supported (1): Scolding Administrator
+- effect 'return this card from your graveyard to the battlefield' (1): Postmortem Professor
+- effect 'you may choose new targets for the copy' (1): Aziza, Mage Tower Captain
+- effect that creates a token under the control of a target player (1): Harsh Annotation
+- effect: 'it can't block this turn' (1): Duel Tactics
+- effects dependent on conditions (1): Foolish Fate
+- enters with counters (1): Pterafractyl
+- enters with counters based on a variable (1): Slumbering Trudge
+- exile after resolution (1): Flashback
+- exile and return to battlefield effect (1): Daydream
+- exile card after casting from graveyard (1): Group Project
+- exile card from graveyard (1): Practiced Scrollsmith
+- exile cards from graveyard (1): Soaring Stoneglider
+- exile cards from library based on variable damage (1): Archaic's Agony
+- exile cards from library until condition met (1): Improvisation Capstone
+- exile multiple specific targets (target permanent and top card of library) (1): Suspend Aggression
+- exile self after resolution (1): Wisdom of Ages
+- exile self as part of spell resolution (1): Divergent Equation
+- exile target creature and return it at the beginning of the next end step (1): Ennis, Debate Moderator
+- exile this card from your graveyard (cost) (1): Eternal Student
+- exile this card from your graveyard as a cost (1): Stone Docent
+- exile top card of library (1): Elemental Mascot
+- exiling based on mana value (1): End of the Hunt
+- fight effect (1): Chelonian Tackle
+- first strike keyword gain (1): Interjection
+- flashback cost involving tapping multiple permanents (1): Group Project
+- flashback mechanic (1): Flashback
+- gaining a keyword until end of turn is not supported (1): Inkling Mascot
+- gaining an ability that triggers on death (1): Rabid Attack
+- gaining double strike (1): Expressive Firedancer
+- gaining keyword abilities via effects (1): Dig Site Inventory
+- gaining lifelink (1): Hardened Academic
+- granting abilities to cards in zones (1): Flashback
+- granting keywords (trample, indestructible) (1): Efflorescence
+- granting vigilance keyword via effect (1): Additive Evolution
+- growth counters (1): Comforting Counsel
+- hexproof (1): Chase Inspiration
+- hybrid mana in activation cost (1): Teacher's Pest
+- hybrid mana in cost (1): Killian's Confidence
+- if a card left your graveyard this turn (1): Primary Research
+- if it's your turn, put a stun counter on it (1): Rapier Wit
+- increment ability (conditional trigger based on mana spent) (1): Fractal Tender
+- increment ability condition and trigger (1): Topiary Lecturer
+- increment ability condition based on mana spent (1): Textbook Tabulator
+- indestructible (1): Masterful Flourish
+- infusion — this creature gets +2/+0 as long as you gained life this turn (1): Tenured Concocter
+- instant and sorcery spells you cast have affinity for creatures (static effect granting keyword/ability to spells) (1): Witherbloom, the Balancer
+- instant and sorcery spells you cast have storm (1): Prismari, the Inspiration
+- library manipulation effect (1): Run Behind
+- lifelink is not a supported keyword (1): Inkshape Demonstrator
+- look at cards and choose one to put into hand/graveyard (1): Visionary's Dance
+- look at the top n cards of your library (1): Paradox Surveyor
+- look at the top two cards of your library (1): Stress Dream
+- look at the top x cards of your library (1): Geometer's Arthropod
+- look at top cards (1): Zimone's Experiment
+- look at top x cards (1): Stirring Honormancer
+- lose half life (1): Pox Plague
+- losing colors and creature types (1): Fractalize
+- mana generation based on a creature's power (1): Molten-Core Maestro
+- mana production (1): Abstract Paintmage
+- mana production effects (1): Hydro-Channeler
+- mana restriction (1): Abstract Paintmage
+- mana restriction conditions (1): Hydro-Channeler
+- mana spent to cast a spell condition (1): Muse Seeker
+- mana value condition (1): Witherbloom Charm
+- mana value condition on target (1): Sundering Archaic
+- may effect (1): Transcendent Archaic
+- mill effect (1): Exhibition Tidecaller
+- miracle keyword/cost (1): Lorehold, the Historian
+- move counters effect (1): Tester of the Tangential
+- moving cards to library (1): Sundering Archaic
+- moving counters from one object to another (1): Ambitious Augmenter
+- paradigm ability (exile and cast from exile mechanics) (1): Decorum Dissertation
+- paradigm ability involves exile, casting from exile, and timing restrictions not supported by current ops (1): Germination Practicum
+- paradigm keyword/mechanic (1): Improvisation Capstone
+- paradigm mechanic (exile and cast from exile mechanics) (1): Echocasting Symposium
+- paradigm mechanic (exile/copy/cast from exile/timing restriction) (1): Restoration Seminar
+- pay mana as alternative cost (1): Soaring Stoneglider
+- planeswalker target for damage (1): Splatter Technique
+- play a card from graveyard (1): Tablet of Discovery
+- play card from exile (1): Elemental Mascot
+- play cards from exile until end of next turn (1): Archaic's Agony
+- pump effect with negative power/toughness (1): Last Gasp
+- pump with negative values (1): Poisoner's Apprentice
+- put a card from a graveyard onto the battlefield (1): Mind Roots
+- put a card from hand onto the battlefield (1): Mind into Matter
+- put a stun counter on it (1): Fractal Mascot
+- put card into hand (1): Page, Loose Leaf
+- put card into hand or graveyard (1): Dina's Guidance
+- put card onto battlefield tapped (1): Proctor's Gaze
+- put cards onto battlefield tapped (1): Zimone's Experiment
+- put cards onto the battlefield (1): Planar Engineering
+- put into hand (1): Environmental Scientist
+- put one into hand and rest into graveyard (1): Stirring Honormancer
+- put one of them into your hand (1): Geometer's Arthropod
+- put one of those cards into your hand and the other on the bottom of your library (1): Stress Dream
+- put the rest on the bottom of your library in a random order (1): Geometer's Arthropod
+- putcounters on a target creature (1): Additive Evolution
+- putting counters on a created token (1): Berta, Wise Extrapolator
+- repartee ability condition 'that targets a creature' is not supported by the 'cast' trigger fields (1): Informed Inkwright
+- replacement effect for cards moving to graveyard (1): Nita, Forum Conciliator
+- replacement effect for death (1): Wilt in the Heat
+- replacement effect for spell moving to graveyard (1): The Dawning Archaic
+- replacement effect for triggered ability (1): Spectacular Skywhale
+- return cards from graveyard to battlefield (1): Fix What's Broken
+- return target card from graveyard to battlefield (1): Primary Research
+- return target card from graveyard to hand (1): Zealous Lorecaster
+- return target cards from graveyard to hand (1): Pull from the Grave
+- return target creature card from your graveyard to the battlefield (1): Forum Necroscribe
+- return target creature card from your graveyard to the battlefield (effect) (1): Cauldron of Essence
+- return target nonland permanent card from your graveyard to the battlefield (1): Moment of Reckoning
+- return target nonland permanent to its owner's hand (1): Banishing Betrayal
+- return that card to the battlefield under its owner's control at the beginning of the next end step (1): Conciliator's Duelist
+- return to hand effect (1): Matterbending Mage
+- reveal a card (1): Dina's Guidance
+- reveal a card with a specific property (1): Paradox Surveyor
+- reveal card (1): Environmental Scientist
+- reveal cards (1): Zimone's Experiment
+- reveal cards from library (1): Follow the Lumarets
+- reveal cards from library until condition met (1): Page, Loose Leaf
+- revealing a hand (1): Render Speechless
+- sacrifice a creature (cost) (1): Cauldron of Essence
+- sacrifice a nontoken artifact (1): Lorehold Charm
+- sacrifice cost involving another creature (1): Nita, Forum Conciliator
+- sacrifice cost other than self (1): Planar Engineering
+- sacrifice half permanents (1): Pox Plague
+- sacrifice this creature as a cost (1): Shattered Acolyte
+- search library for a card (1): Dina's Guidance
+- search library for a card and put it onto the battlefield (1): Erode
+- set maximum hand size (1): Wisdom of Ages
+- setting base power and toughness (1): Applied Geometry
+- shuffle (1): Environmental Scientist
+- static ability 'this creature can't block' (1): Postmortem Professor
+- static effect based on counter condition (1): Comforting Counsel
+- static effect granting abilities to creatures (1): Root Manipulation
+- static effect granting an activated ability to lands (1): Resonating Lute
+- static effect granting keyword 'trample' to creatures with counters (1): Emil, Vastlands Roamer
+- static effect granting keyword to spells (1): Silverquill, the Disputant
+- static effect granting keyword to spells cast from hand (1): Quandrix, the Proof
+- static effects other than p/t and keywords (1): Fractalize
+- static effects other than p/t and keywords (all creatures get -2/-2) (1): Withering Curse
+- static/triggered effect scaling based on mana spent to cast a spell (1): Magmablood Archaic
+- stun counter rules text (1): Rapier Wit
+- surveil effect logic (1): Textbook Tabulator
+- surveil is an op but the oracle text includes reminder text and the card has an x cost (1): Wild Hypothesis
+- surveil is not supported as an effect of a triggered ability (1): Inkling Mascot
+- surveil then draw (1): Prismari Charm
+- tap target creatures (1): Homesickness
+- tap up to one target creature (1): Vibrant Outburst
+- target attacking creature (1): Living History
+- target creature card in graveyard (1): Moseo, Vein's New Dean
+- target creature has base power and toughness 5/5 until end of turn (1): Quandrix Charm
+- target planeswalker (1): Steal the Show
+- targeting a player to make a choice (1): End of the Hunt
+- targeting cards in graveyard (1): Flashback
+- targeting cards in graveyards (1): Sundering Archaic
+- targeting each creature a player controls (1): Practiced Offense
+- targeting multiple distinct types of targets (player and creature) in a single spell (1): Cost of Brilliance
+- targeting multiple specific subtypes simultaneously is not supported (1): Blech, Loafing Pest
+- targeting restriction for opponent's creature (1): Burrog Barrage
+- targeting/affecting multiple tokens based on subtype (1): Antiquities on the Loose
+- the card has three distinct targets, but the engine only supports 'spell' effects with a fixed number of targets defined by the engine's internal target resolution, and there is no mechanism to handle multiple independent targets in a single spell effect list (1): Dissection Practice
+- the copy gains haste and 'at the beginning of the end step, sacrifice this token.' (1): Choreographed Sparks
+- the effect 'target creature becomes prepared' and 'target creature becomes unprepared' are not defined in the provided operations (1): Biblioplex Tomekeeper
+- the trigger condition 'whenever you cast an instant or sorcery spell that targets a creature' requires a filter for the spell's targets that is not supported by the 'cast' event fields (1): Lecturing Scornmage
+- this spell can't be copied (1): Choreographed Sparks
+- timing restriction (beginning of each of your first main phases) (1): Decorum Dissertation
+- token abilities are not supported by createtoken (1): Pestbrood Sloth
+- token with ability (1): Essenceknit Scholar
+- token with triggered ability (1): Send in the Pest
+- trample keyword in static effect (1): Thornfist Striker
+- trigger 'whenever you cast an instant or sorcery spell that targets a creature' is not supported (1): Scolding Administrator
+- trigger condition 'if it had counters on it' is not supported (1): Scolding Administrator
+- trigger condition 'whenever one or more cards leave your graveyard' is not supported by the available event fields (1): Spirit Mascot
+- trigger condition 'whenever you gain life' is not supported (1): Blech, Loafing Pest
+- trigger condition: 'unless you gained life this turn' (1): Tragedy Feaster
+- trigger on counters being put on a permanent (1): Pensive Professor
+- trigger on gaining life (1): Pest Mascot
+- trigger: at the beginning of your end step (1): Essenceknit Scholar
+- triggered ability condition 'that targets a creature' is not supported (1): Inkshape Demonstrator
+- triggered ability on counters being put on a permanent (1): Berta, Wise Extrapolator
+- triggered ability with a condition (targets a creature) and a target (target creature you control) (1): Graduation Day
+- untap effect (1): Molten Note
+- up to one target (1): Cost of Brilliance
+- up to two targets (1): Pull from the Grave
+- ward {2} is not a supported keyword (1): Inkshape Demonstrator
+- ward cost (1): Thornfist Striker
+- ward cost (pay life) (1): Mica, Reader of Ruins
+- ward—pay 5 life (1): Prismari, the Inspiration
+- whenever one or more cards leave your graveyard trigger (1): Hardened Academic
+- whenever one or more cards leave your graveyard, this creature gets +1/+1 until end of turn (1): Owlin Historian
+- whenever this creature becomes the target of a spell or ability an opponent controls, you may draw a card (1): Tenured Concocter
+- x cost in activated ability (1): Tester of the Tangential
+- x cost in activation (1): Emil, Vastlands Roamer
+- x costs (mana spent to cast) (1): Molten Note
+- x costs based on mana spent (1): Archaic's Agony
+- x costs in effects (1): Aberrant Manawurm
+- x counters based on mana spent (1): Rancorous Archaic
+- x in mana cost trigger (1): Matterbending Mage
+- x is number of creatures you control (1): Stirring Honormancer
+- x mana cost in activation (1): Berta, Wise Extrapolator
+- x-value based on mana spent to cast a spell (1): Wildgrowth Archaic
+- you may choose new targets for the copy (1): Choreographed Sparks
+- you may play that card this turn (1): Ark of Hunger
+- you may put a land card from your hand onto the battlefield tapped (1): Embrace the Paradox
+
+## Failed the schema (not written)
+
+- Snooping Page: Unexpected token ''', ..." effect", 'combat da"... is not valid JSON
+
+## Skipped
+
+- already scripted: 7
+- layout prepare not supported yet: 36
+- card type not supported yet: 21
+- no abilities beyond keywords: 3
