@@ -1,0 +1,19 @@
+{
+  "name": "Kapow!",
+  "oracle": "Put a +1/+1 counter on target creature you control. It fights target creature an opponent controls. (Each deals damage equal to its power to the other.)",
+  "spell": [
+    {
+      "op": "PutCounters",
+      "counter": "+1/+1",
+      "amount": 1,
+      "target": "creature",
+      "controller": "you"
+    },
+    {
+      "op": "Fight",
+      "fighter": "it",
+      "target": "creature",
+      "controller": "opponent"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "name": "Huatli's Final Strike",
+  "oracle": "Target creature you control gets +1/+0 until end of turn. It deals damage equal to its power to target creature an opponent controls.",
+  "spell": [
+    {
+      "op": "Pump",
+      "power": 1,
+      "toughness": 0,
+      "target": "creature",
+      "controller": "you"
+    },
+    {
+      "op": "Bite",
+      "fighter": "it",
+      "target": "creature",
+      "controller": "opponent"
+    }
+  ]
+}

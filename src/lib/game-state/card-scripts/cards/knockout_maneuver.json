@@ -1,0 +1,19 @@
+{
+  "name": "Knockout Maneuver",
+  "oracle": "Put a +1/+1 counter on target creature you control, then it deals damage equal to its power to target creature an opponent controls.",
+  "spell": [
+    {
+      "op": "PutCounters",
+      "counter": "+1/+1",
+      "amount": 1,
+      "target": "creature",
+      "controller": "you"
+    },
+    {
+      "op": "Bite",
+      "fighter": "it",
+      "target": "creature",
+      "controller": "opponent"
+    }
+  ]
+}

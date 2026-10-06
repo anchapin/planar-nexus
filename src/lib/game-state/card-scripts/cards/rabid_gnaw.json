@@ -1,0 +1,19 @@
+{
+  "name": "Rabid Gnaw",
+  "oracle": "Target creature you control gets +1/+0 until end of turn. Then it deals damage equal to its power to target creature you don't control.",
+  "spell": [
+    {
+      "op": "Pump",
+      "power": 1,
+      "toughness": 0,
+      "target": "creature",
+      "controller": "you"
+    },
+    {
+      "op": "Bite",
+      "fighter": "it",
+      "target": "creature",
+      "controller": "opponent"
+    }
+  ]
+}

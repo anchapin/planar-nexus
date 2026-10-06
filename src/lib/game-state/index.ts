@@ -113,6 +113,8 @@ export {
   autoChooseAbilityModes,
   getSpellTargetSpec,
   getLegalSpellTargets,
+  getLegalSpellTargetsAt,
+  getSpellTargetSpecs,
   getActivatedAbilityTargetSpec,
   getLegalActivatedAbilityTargets,
   getLegalTargetIdsForChoice,

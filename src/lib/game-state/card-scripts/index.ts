@@ -6,6 +6,7 @@ export {
   TriggerSchema,
   isPermanentScript,
   isTargetedEffect,
+  effectTargetCount,
   modalEffects,
   modeChoiceError,
   modeLabelKey,

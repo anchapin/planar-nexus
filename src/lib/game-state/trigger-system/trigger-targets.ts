@@ -202,61 +202,94 @@ function scriptedAbilityModes(
 }
 
 /**
- * Target requirement of a list of scripted effects: the first targeted
- * effect decides it. null when none targets, or it targets something this
+ * Target requirements of one scripted effect, in the order its targets are
+ * chosen: [] when it doesn't target, null when it targets something this
  * module doesn't model (a spell on the stack, for example).
+ */
+function effectTargetSpecs(effect: CardEffect): TriggerTargetSpec[] | null {
+  if (!isTargetedEffect(effect)) return [];
+  const base = {
+    controller: "any" as TriggerTargetSpec["controller"],
+    optional: false,
+    excludeSource: false,
+  };
+  if (effect.op === "DealDamage" && effect.target !== "each_opponent") {
+    return [
+      { ...base, kind: effect.target, controller: effect.controller ?? "any" },
+    ];
+  }
+  if (
+    effect.op === "Destroy" ||
+    effect.op === "Exile" ||
+    effect.op === "Tap" ||
+    effect.op === "Untap" ||
+    effect.op === "ReturnToHand"
+  ) {
+    const filter: RemovalFilter = {
+      target: effect.target,
+      min_power: effect.min_power,
+      max_power: effect.max_power,
+    };
+    const kind = effect.target === "creature" ? "creature" : "permanent";
+    return [{ ...base, kind, filter, controller: effect.controller ?? "any" }];
+  }
+  if (effect.op === "Pump" || effect.op === "PutCounters") {
+    return [
+      { ...base, kind: "creature", controller: effect.controller ?? "any" },
+    ];
+  }
+  if (effect.op === "Fight" || effect.op === "Bite") {
+    // #2548: a targeted fighter (a creature you control) is chosen first.
+    const other: TriggerTargetSpec = {
+      ...base,
+      kind: "creature",
+      controller: effect.controller ?? "any",
+      optional: Boolean(effect.optional),
+      excludeSource: effect.fighter === "self",
+    };
+    return effect.fighter === "creature"
+      ? [{ ...base, kind: "creature", controller: "you" }, other]
+      : [other];
+  }
+  if (
+    effect.op === "Draw" ||
+    effect.op === "GainLife" ||
+    effect.op === "LoseLife" ||
+    effect.op === "Mill" ||
+    effect.op === "Discard"
+  ) {
+    return [{ ...base, kind: "player" }];
+  }
+  return null;
+}
+
+/**
+ * Target requirement of a list of scripted effects: the first targeted
+ * effect's first target decides it. null when none targets, or it targets
+ * something this module doesn't model (a spell on the stack, for example).
  */
 function effectsTargetSpec(
   effects: readonly CardEffect[],
 ): TriggerTargetSpec | null {
+  const first = effects.find(isTargetedEffect);
+  return first ? (effectTargetSpecs(first)?.[0] ?? null) : null;
+}
+
+/**
+ * Every target requirement of a list of scripted effects, in the order the
+ * targets are chosen and consumed (#2548). null when any targeted effect
+ * targets something this module doesn't model.
+ */
+function effectsTargetSpecList(
+  effects: readonly CardEffect[],
+): TriggerTargetSpec[] | null {
+  const out: TriggerTargetSpec[] = [];
   for (const effect of effects) {
-    if (!isTargetedEffect(effect)) continue;
-    const base = {
-      controller: "any" as TriggerTargetSpec["controller"],
-      optional: false,
-      excludeSource: false,
-    };
-    if (effect.op === "DealDamage" && effect.target !== "each_opponent") {
-      return {
-        ...base,
-        kind: effect.target,
-        controller: effect.controller ?? "any",
-      };
-    }
-    if (
-      effect.op === "Destroy" ||
-      effect.op === "Exile" ||
-      effect.op === "Tap" ||
-      effect.op === "Untap" ||
-      effect.op === "ReturnToHand"
-    ) {
-      const filter: RemovalFilter = {
-        target: effect.target,
-        min_power: effect.min_power,
-        max_power: effect.max_power,
-      };
-      const kind = effect.target === "creature" ? "creature" : "permanent";
-      return { ...base, kind, filter, controller: effect.controller ?? "any" };
-    }
-    if (effect.op === "Pump" || effect.op === "PutCounters") {
-      return {
-        ...base,
-        kind: "creature",
-        controller: effect.controller ?? "any",
-      };
-    }
-    if (
-      effect.op === "Draw" ||
-      effect.op === "GainLife" ||
-      effect.op === "LoseLife" ||
-      effect.op === "Mill" ||
-      effect.op === "Discard"
-    ) {
-      return { ...base, kind: "player" };
-    }
-    return null;
+    const specs = effectTargetSpecs(effect);
+    if (!specs) return null;
+    out.push(...specs);
   }
-  return null;
+  return out;
 }
 
 /**
@@ -436,6 +469,46 @@ export function scriptedSpellTargetSpec(
   const script = getCardScript(cardName);
   if (!script) return undefined;
   return effectsTargetSpec(scriptedSpellEffects(script, chosenModes));
+}
+
+/**
+ * Every target requirement of a spell in hand, in the order its targets are
+ * chosen (#2548). A scripted spell lists one per target its effects use
+ * (Rabid Bite: a creature you control, then a creature you don't control);
+ * an unscripted spell gives at most the one its oracle text names. [] when
+ * it doesn't target, or targets something this module doesn't model.
+ */
+export function getSpellTargetSpecs(
+  state: GameState,
+  cardId: CardInstanceId,
+  chosenModes?: readonly string[],
+): TriggerTargetSpec[] {
+  const card = state.cards.get(cardId);
+  if (!card) return [];
+  const script = getCardScript(card.cardData.name);
+  if (script)
+    return (
+      effectsTargetSpecList(scriptedSpellEffects(script, chosenModes)) ?? []
+    );
+  const spec = parseTriggerTargetSpec(card.cardData.oracle_text ?? "");
+  return spec ? [spec] : [];
+}
+
+/**
+ * Legal target ids for the spell's target number `index` (0-based), for a
+ * spell with several targets (#2548). Index 0 matches `getLegalSpellTargets`.
+ */
+export function getLegalSpellTargetsAt(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardInstanceId,
+  index: number,
+  chosenModes?: readonly string[],
+): string[] {
+  if (index === 0)
+    return getLegalSpellTargets(state, playerId, cardId, chosenModes);
+  const spec = getSpellTargetSpecs(state, cardId, chosenModes)[index];
+  return spec ? legalTargetsForSpec(state, spec, playerId, cardId) : [];
 }
 
 /** Legal target ids (cards and players) for casting a spell. */
@@ -659,6 +732,8 @@ export interface PendingTargetChoice {
   cardId?: string;
   /** With `cardId`, the activated ability choosing targets. */
   abilityIndex?: number;
+  /** A spell with several targets: which one is being chosen (#2548). */
+  targetIndex?: number;
 }
 
 /**
@@ -684,5 +759,10 @@ export function getLegalTargetIdsForChoice(
       choice.abilityIndex,
     );
   }
-  return getLegalSpellTargets(state, playerId, cardId);
+  return getLegalSpellTargetsAt(
+    state,
+    playerId,
+    cardId,
+    choice.targetIndex ?? 0,
+  );
 }

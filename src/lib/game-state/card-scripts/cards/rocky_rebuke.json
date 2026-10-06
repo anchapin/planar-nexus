@@ -1,0 +1,12 @@
+{
+  "name": "Rocky Rebuke",
+  "oracle": "Target creature you control deals damage equal to its power to target creature an opponent controls.",
+  "spell": [
+    {
+      "op": "Bite",
+      "fighter": "creature",
+      "target": "creature",
+      "controller": "opponent"
+    }
+  ]
+}
