@@ -46,8 +46,10 @@ export const OP_REFERENCE: Record<string, string> = {
     '{"op":"LoseLife","amount":N,"who":"you"|"target_player"|"each_opponent"}',
   CreateToken:
     '{"op":"CreateToken","count":N,"power":N,"toughness":N,"color":"white"|"blue"|"black"|"red"|"green"|"colorless" OR "colors":["white","black"],"subtypes":["Thopter"],"artifact":true,"keywords":["flying"]} (creature tokens; exactly one of color/colors; artifact and keywords optional; evergreen keywords only; no enchantment tokens or token abilities)',
-  Destroy: '{"op":"Destroy","target":"creature"}',
-  Exile: '{"op":"Exile","target":"creature"}',
+  Destroy:
+    '{"op":"Destroy","target":"creature"|"artifact"|"enchantment"|"artifact_or_enchantment"|"nonland_permanent","min_power":N,"max_power":N} (min_power/max_power optional, creature targets only: "creature with power 4 or greater" is min_power 4)',
+  Exile:
+    '{"op":"Exile","target":"creature"|"artifact"|"enchantment"|"artifact_or_enchantment"|"nonland_permanent","min_power":N,"max_power":N} (same targets as Destroy)',
   Counter: '{"op":"Counter","target":"spell"}',
   Pump: '{"op":"Pump","power":N,"toughness":N,"target":"creature"|"self"} (until end of turn)',
   PutCounters:

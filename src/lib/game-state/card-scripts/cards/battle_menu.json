@@ -1,0 +1,53 @@
+{
+  "name": "Battle Menu",
+  "oracle": "Choose one —\n• Attack — Create a 2/2 white Knight creature token.\n• Ability — Target creature gets +0/+4 until end of turn.\n• Magic — Destroy target creature with power 4 or greater.\n• Item — You gain 4 life.",
+  "modes": {
+    "choose": 1,
+    "options": [
+      {
+        "text": "Attack — Create a 2/2 white Knight creature token.",
+        "effects": [
+          {
+            "op": "CreateToken",
+            "count": 1,
+            "power": 2,
+            "toughness": 2,
+            "color": "white",
+            "subtypes": ["Knight"]
+          }
+        ]
+      },
+      {
+        "text": "Ability — Target creature gets +0/+4 until end of turn.",
+        "effects": [
+          {
+            "op": "Pump",
+            "power": 0,
+            "toughness": 4,
+            "target": "creature"
+          }
+        ]
+      },
+      {
+        "text": "Magic — Destroy target creature with power 4 or greater.",
+        "effects": [
+          {
+            "op": "Destroy",
+            "target": "creature",
+            "min_power": 4
+          }
+        ]
+      },
+      {
+        "text": "Item — You gain 4 life.",
+        "effects": [
+          {
+            "op": "GainLife",
+            "amount": 4,
+            "who": "you"
+          }
+        ]
+      }
+    ]
+  }
+}
