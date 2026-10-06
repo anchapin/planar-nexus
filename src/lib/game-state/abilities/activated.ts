@@ -505,7 +505,14 @@ export function activateAbility(
         isValid: true,
       })),
       chosenModes: [],
-      variableValues: new Map(),
+      // CR 107.3, #2559. Seed X from the source permanent's `xValue` so an
+      // X-cost creature's "{X}, {T}: ..." activation sees the same X the
+      // caster chose on cast. Falls back to an empty Map for non-X
+      // activations; `resolveScriptedEffects` defaults missing X to 0.
+      variableValues:
+        typeof card.xValue === "number"
+          ? new Map([["X", card.xValue]])
+          : new Map(),
       isCountered: false,
       timestamp: Date.now(),
       // CR 602: resolves from its own text; targets picked now or, when the

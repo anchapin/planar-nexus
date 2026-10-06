@@ -1,0 +1,19 @@
+{
+  "name": "Primal Might",
+  "oracle": "Target creature you control gets +X/+X until end of turn. Then it fights up to one target creature you don't control.",
+  "spell": [
+    {
+      "op": "Pump",
+      "power": "X",
+      "toughness": "X",
+      "target": "creature",
+      "controller": "you"
+    },
+    {
+      "op": "Fight",
+      "fighter": "it",
+      "target": "creature",
+      "controller": "opponent"
+    }
+  ]
+}

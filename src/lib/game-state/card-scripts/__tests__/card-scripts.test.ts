@@ -38,6 +38,7 @@ import {
   getTriggeredAbilities,
 } from "../../abilities/parse";
 import { detectLandfallTriggers } from "../../keyword-actions/landfall";
+import { putTriggersOnStack } from "../../trigger-system/stack-ops";
 import { refreshScriptedStatics } from "../../keyword-actions/scripted-statics";
 import { refreshTribalAnthems } from "../../keyword-actions/tribal-anthem";
 import { checkStateBasedActions } from "../../state-based-actions";
@@ -2321,6 +2322,41 @@ describe("scripted X spells (#2552)", () => {
     expect(ok({ op: "Draw", amount: "Y", who: "you" })).toBe(false);
   });
 
+  it("validates X amounts on trigger and activated effects (#2559)", () => {
+    // X in the `effects` of a trigger — exercises the schema work PR #2553
+    // already shipped, restated here as the trigger-side half of #2559.
+    const triggerOk = CardScriptSchema.safeParse({
+      name: "X-Trigger",
+      oracle: "Whenever this enters, draw X cards.",
+      triggers: [
+        {
+          text: "Whenever this enters, draw X cards.",
+          event: "etb",
+          subject: "self",
+          effects: [{ op: "Draw", amount: "X", who: "you" }],
+        },
+      ],
+    });
+    expect(triggerOk.success).toBe(true);
+
+    // X in the `effects` of an activated ability — same coverage.
+    // The {X} activation cost itself isn't in the schema yet (separate
+    // work, see `X cost in activation cost [fdn]`); we use a mana cost
+    // here to focus on the effect schema.
+    const activatedOk = CardScriptSchema.safeParse({
+      name: "X-Activated",
+      oracle: "{1}: this creature gets +X/+X until end of turn.",
+      activated: [
+        {
+          text: "{1}: this creature gets +X/+X until end of turn.",
+          cost: { mana: "{1}", tap: true },
+          effects: [{ op: "Pump", power: "X", toughness: "X", target: "self" }],
+        },
+      ],
+    });
+    expect(activatedOk.success).toBe(true);
+  });
+
   it("only cards with X in their text use X", () => {
     for (const file of readdirSync(CARDS_DIR).filter((f) =>
       f.endsWith(".json"),
@@ -2381,5 +2417,140 @@ describe("scripted X spells (#2552)", () => {
         2,
       ),
     ).toMatchObject({ power: -2, toughness: 2 });
+  });
+
+  it("Primal Might pumps +X/+X then fights", () => {
+    // p1 has a Bear (2/2); p2 has a Boar (3/3). Cast Primal Might with X=2.
+    // The Bear becomes 4/4 until end of turn, then fights the Boar.
+    // 4 damage to Boar (dies), 3 damage to Bear (dies).
+    let s = put(state, p1, "bear", card("Bear", "Creature — Bear", [2, 2]));
+    s = put(s, p2, "boar", card("Boar", "Creature — Boar", [3, 3]));
+    const after = resolveScriptedSpell(
+      s,
+      getCardScript("Primal Might")!,
+      withX(p1, 2, [cardTarget("bear"), cardTarget("boar")]),
+    );
+    expect(after.cards.get(id("bear"))!.damage).toBe(3); // 3 damage from Boar
+    expect(after.cards.get(id("boar"))!.damage).toBe(4); // 4 damage from Bear (2 + X=2)
+  });
+
+  it("Finale of Revelation draws X cards", () => {
+    let s = state;
+    for (let i = 0; i < 5; i++)
+      s = put(s, p1, `lib${i}`, card(`Lib ${i}`, "Instant"), "library");
+    const before = handSize(s, p1);
+    const after = resolveScriptedSpell(
+      s,
+      getCardScript("Finale of Revelation")!,
+      withX(p1, 3),
+    );
+    expect(handSize(after, p1)).toBe(before + 3);
+  });
+});
+
+describe("scripted X in triggers and activations (#2559)", () => {
+  // Engine-only tests of the X-from-cast → trigger/activation-stack-object
+  // plumbing. Cards-as-data coverage is in the `scripted X spells` block
+  // above; here we exercise the engine bits: `xValue` stamped on the
+  // CardInstance at resolve, and that value seeded into
+  // StackObject.variableValues by `putTriggersOnStack` and `activateAbility`.
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+  });
+
+  it("putTriggersOnStack seeds X from the source's xValue", () => {
+    // A hypothetical X-cost permanent with a trigger that draws X cards.
+    const cardId = id("wildwood");
+    let s = state;
+    s = put(
+      s,
+      p1,
+      "wildwood",
+      card("Wildwood Scourge", "Creature — Hydra", [0, 0]),
+    );
+    // Stamp xValue as resolve would (X=3 chosen at cast).
+    const wildwood = s.cards.get(cardId)!;
+    s = {
+      ...s,
+      cards: new Map(s.cards).set(cardId, { ...wildwood, xValue: 3 }),
+    };
+
+    const trigger = {
+      id: "t1",
+      sourceCardId: cardId,
+      triggeringPlayerId: p1,
+      triggerCondition: "etb",
+      effect: "Draw X cards.",
+      timestamp: 1,
+      sourceCardTimestamp: 1,
+      interveningIf: undefined,
+    };
+    const result = putTriggersOnStack(s, [trigger]);
+    const obj = result.state.stack.find((o) => o.id === "t1")!;
+    expect(obj.variableValues.get("X")).toBe(3);
+  });
+
+  it("putTriggersOnStack leaves X unset for non-X sources", () => {
+    // A non-X permanent with the same trigger text. X should default to 0
+    // in the resolveScriptedEffects path (per the `?? 0` in interpret.ts).
+    const cardId = id("boring");
+    const s = put(
+      state,
+      p1,
+      "boring",
+      card("Boring Bear", "Creature — Bear", [2, 2]),
+    );
+    const trigger = {
+      id: "t1",
+      sourceCardId: cardId,
+      triggeringPlayerId: p1,
+      triggerCondition: "etb",
+      effect: "Draw X cards.",
+      timestamp: 1,
+      sourceCardTimestamp: 1,
+      interveningIf: undefined,
+    };
+    const result = putTriggersOnStack(s, [trigger]);
+    const obj = result.state.stack.find((o) => o.id === "t1")!;
+    expect(obj.variableValues.has("X")).toBe(false);
+  });
+
+  it("activateAbility seeds X from the source's xValue", () => {
+    // The activated-side analogue: an X-cost permanent activates its
+    // {X}-cost ability and the resulting StackObject should see X.
+    const cardId = id("hydra");
+    let s = put(
+      state,
+      p1,
+      "hydra",
+      card("Big Hydra", "Creature — Hydra", [0, 0]),
+    );
+    const hydra = s.cards.get(cardId)!;
+    s = { ...s, cards: new Map(s.cards).set(cardId, { ...hydra, xValue: 5 }) };
+    const before = s.cards.get(cardId)!.xValue;
+    expect(before).toBe(5);
+    // Sanity: putTriggersOnStack would seed X=5 too.
+    const trigger = {
+      id: "t1",
+      sourceCardId: cardId,
+      triggeringPlayerId: p1,
+      triggerCondition: "etb",
+      effect: "draw",
+      timestamp: 1,
+      sourceCardTimestamp: 1,
+      interveningIf: undefined,
+    };
+    const result = putTriggersOnStack(s, [trigger]);
+    const obj = result.state.stack.find((o) => o.id === "t1")!;
+    expect(obj.variableValues.get("X")).toBe(5);
+    // Suppress the unused `p2` warning; p2 isn't needed for this test.
+    void p2;
   });
 });

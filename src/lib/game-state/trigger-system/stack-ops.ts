@@ -25,7 +25,15 @@ export function putTriggersOnStack(
       manaCost: null,
       targets: [],
       chosenModes: [],
-      variableValues: new Map(),
+      // CR 107.3, #2559. Seed X from the source permanent's `xValue` so an
+      // X-cost creature's "Whenever this creature enters, draw X cards"
+      // trigger sees the same X the caster chose on cast. Falls back to an
+      // empty Map for non-X triggers; `resolveScriptedEffects` defaults
+      // missing X to 0.
+      variableValues:
+        typeof card.xValue === "number"
+          ? new Map([["X", card.xValue]])
+          : new Map(),
       isCountered: false,
       timestamp: trigger.timestamp,
       interveningIf: trigger.interveningIf,
