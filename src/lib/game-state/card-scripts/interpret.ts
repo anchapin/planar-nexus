@@ -388,37 +388,17 @@ function searchMatches(
 }
 
 /**
- * A card instance whose `cardData` matches the search filter. The engine
- * matches against the ScryfallCard-shaped `cardData` (the same fields the
- * schema's filter describes), not against a CardInstance-only concept, so
- * the same filter works whether the card is in the library, hand, or
- * battlefield.
- */
-function libraryMatchExists(
-  state: GameState,
-  library: Zone,
-  filter: SearchLibraryFilter,
-): CardInstanceId | null {
-  for (const id of library.cardIds) {
-    const inst = state.cards.get(id);
-    if (!inst) continue;
-    if (searchMatches(inst.cardData, filter)) return id;
-  }
-  return null;
-}
-
-/**
  * Resolve a "search your library" effect (CR 603.9d, CR 608.2d, #2562). The
  * searcher is the controller or the previous targeted player. The library is
  * always shuffled afterwards, even if nothing was found.
  *
- * v1 limitation: only `count: 1` is supported; the chosen card is the first
- * match. "Up to N" search with the player choosing a card needs UI plumbing
- * and is a follow-up lane.
+ * "Up to N" (`count`, 1 or 2) takes the first N matches in library order;
+ * letting the player choose which cards needs UI plumbing and is a follow-up
+ * lane. Finding fewer than N is fine (CR 701.19b: a search for cards with a
+ * stated quality need not find them all).
  *
- * v1 also does not model "reveal" (the card simply moves into a public or
- * private zone) nor "put onto the battlefield tapped" (the card enters
- * untapped; an `EntersTapped` op is a follow-up). Both are noted in the PR.
+ * "Reveal" is not modelled (the card simply moves into its new zone).
+ * `tapped` puts battlefield cards onto the battlefield tapped (CR 110.5b).
  */
 function searchLibrary(
   state: GameState,
@@ -437,83 +417,80 @@ function searchLibrary(
   const library = state.zones.get(libraryKey);
   if (!library) return state;
 
-  // Find the first matching card. count: 1 is the only value the schema accepts
-  // in v1, so we do not loop; the schema is the single source of truth here.
-  const chosen = libraryMatchExists(state, library, effect.filter);
+  // Take the first `count` matching cards, in library order.
+  const count = effect.count ?? 1;
+  const chosen: CardInstanceId[] = [];
+  for (const id of library.cardIds) {
+    if (chosen.length >= count) break;
+    const inst = state.cards.get(id);
+    if (inst && searchMatches(inst.cardData, effect.filter)) chosen.push(id);
+  }
 
   // CR 603.9d / 608.2d: shuffle the library even if nothing was found.
-  const nextLibrary = shuffle ? shuffleZone(library) : library;
-
-  if (!chosen) {
-    const zones = new Map(state.zones);
-    zones.set(libraryKey, nextLibrary);
-    return { ...state, zones };
-  }
-
-  // Move the chosen card out of the library first, then into the destination,
-  // so a single move covers both the "removed from library" and "added to
-  // destination" steps regardless of destination semantics.
-  const withoutChosen: Zone = {
-    ...nextLibrary,
-    cardIds: nextLibrary.cardIds.filter((id) => id !== chosen),
-  };
-
-  // CR 400.3: cards put into a hand go to their owner's hand. The library
-  // card's owner is the searcher, so the destination zone key is well-defined.
-  const owner = state.cards.get(chosen)?.ownerId ?? searcher;
-  let destKey: string;
-  let position: "top" | "bottom" | undefined;
-  switch (destination) {
-    case "hand":
-      destKey = `${owner}-hand`;
-      break;
-    case "battlefield":
-      destKey = `${searcher}-battlefield`;
-      break;
-    case "library_top":
-      destKey = `${owner}-library`;
-      position = "top";
-      break;
-    case "library_bottom":
-      destKey = `${owner}-library`;
-      position = "bottom";
-      break;
-  }
-
-  // Back into the searcher's own library (Campus Guide: "shuffle and put that
-  // card on top"): place it in the already-shuffled library. Reading the
-  // destination from `state.zones` here would restore the unshuffled library
-  // and leave the card in it twice. The top of a zone is the last id.
-  const destZone =
-    destKey === libraryKey ? withoutChosen : state.zones.get(destKey);
-  if (!destZone) {
-    // No destination zone: we still need to remove the chosen card from the
-    // library (so it doesn't appear twice) and apply the shuffle. Refuse the
-    // move.
-    const zones = new Map(state.zones);
-    zones.set(libraryKey, withoutChosen);
-    return { ...state, zones };
-  }
-
+  let nextLibrary: Zone = shuffle ? shuffleZone(library) : library;
   const zones = new Map(state.zones);
-  if (destKey === libraryKey) {
-    zones.set(libraryKey, addCardToZone(withoutChosen, chosen, position));
-  } else {
-    const moved = moveCardBetweenZones(withoutChosen, destZone, chosen, position);
-    zones.set(libraryKey, moved.from);
-    zones.set(destKey, moved.to);
-  }
   const cards = new Map(state.cards);
-  const inst = cards.get(chosen);
-  if (inst) {
-    // "onto the battlefield tapped": the permanent enters tapped (CR 110.5b).
-    const entersTapped = destination === "battlefield" && effect.tapped === true;
-    cards.set(chosen, {
-      ...inst,
-      currentZoneKey: destKey,
-      ...(entersTapped ? { isTapped: true } : {}),
-    });
+  // "onto the battlefield tapped": the permanent enters tapped (CR 110.5b).
+  const entersTapped = destination === "battlefield" && effect.tapped === true;
+
+  for (const id of chosen) {
+    // Move the card out of the library first, then into the destination, so
+    // one move covers both steps regardless of destination semantics.
+    nextLibrary = {
+      ...nextLibrary,
+      cardIds: nextLibrary.cardIds.filter((c) => c !== id),
+    };
+
+    // CR 400.3: cards put into a hand go to their owner's hand. The library
+    // card's owner is the searcher, so the destination zone key is defined.
+    const owner = cards.get(id)?.ownerId ?? searcher;
+    let destKey: string;
+    let position: "top" | "bottom" | undefined;
+    switch (destination) {
+      case "hand":
+        destKey = `${owner}-hand`;
+        break;
+      case "battlefield":
+        destKey = `${searcher}-battlefield`;
+        break;
+      case "library_top":
+        destKey = `${owner}-library`;
+        position = "top";
+        break;
+      case "library_bottom":
+        destKey = `${owner}-library`;
+        position = "bottom";
+        break;
+    }
+
+    if (destKey === libraryKey) {
+      // Back into the same, already shuffled library (top or bottom). The
+      // top of a zone is the last id (getTopCard in zones.ts).
+      nextLibrary = addCardToZone(nextLibrary, id, position);
+      const inst = cards.get(id);
+      if (inst) cards.set(id, { ...inst, currentZoneKey: destKey });
+      continue;
+    }
+
+    const destZone = zones.get(destKey);
+    // No destination zone: the card has still left the library (so it does
+    // not appear twice); refuse the move.
+    if (!destZone) continue;
+
+    const moved = moveCardBetweenZones(nextLibrary, destZone, id, position);
+    nextLibrary = moved.from;
+    zones.set(destKey, moved.to);
+    const inst = cards.get(id);
+    if (inst) {
+      cards.set(id, {
+        ...inst,
+        currentZoneKey: destKey,
+        ...(entersTapped ? { isTapped: true } : {}),
+      });
+    }
   }
+
+  zones.set(libraryKey, nextLibrary);
   return { ...state, zones, cards };
 }
 
