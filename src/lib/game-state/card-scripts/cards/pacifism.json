@@ -1,0 +1,13 @@
+{
+  "name": "Pacifism",
+  "oracle": "Enchant creature\nEnchanted creature can't attack or block.",
+  "aura": {
+    "text": "Enchanted creature can't attack or block.",
+    "target": "creature",
+    "static": {
+      "text": "Enchanted creature can't attack or block.",
+      "restrictAttack": true,
+      "restrictBlock": true
+    }
+  }
+}

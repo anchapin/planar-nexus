@@ -104,6 +104,17 @@ export function canAttack(
     };
   }
 
+  // CR 303.4 / Pacifism-style scripted Auras (issue #2568): an attached
+  // Aura with `static.restrictAttack` forbids the enchanted permanent
+  // from attacking. The list of source Auras is refreshed by
+  // `refreshAuraBonuses` alongside `auraPT` / `auraKeywords`.
+  if (card.auraRestrictAttack && card.auraRestrictAttack.length > 0) {
+    return {
+      canAttack: false,
+      reason: `${card.auraRestrictAttack.join(", ")} prevents attacking`,
+    };
+  }
+
   // Must have a defender
   if (!defenderId) {
     return { canAttack: false, reason: "No defender specified" };
@@ -144,6 +155,16 @@ export function canBlock(
   // Must not be tapped
   if (blocker.isTapped) {
     return { canBlock: false, reason: "Creature is tapped" };
+  }
+
+  // CR 303.4 / Pacifism-style scripted Auras (issue #2568): an attached
+  // Aura with `static.restrictBlock` forbids the enchanted permanent
+  // from blocking. Mirrors the `canAttack` check above.
+  if (blocker.auraRestrictBlock && blocker.auraRestrictBlock.length > 0) {
+    return {
+      canBlock: false,
+      reason: `${blocker.auraRestrictBlock.join(", ")} prevents blocking`,
+    };
   }
 
   // If there's an attacker, check if it can be blocked (flying, reach, protection, etc.)

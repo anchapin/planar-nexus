@@ -1,6 +1,8 @@
 export {
   ActivatedSchema,
   AttachEquipmentSchema,
+  AuraSchema,
+  AuraStaticSchema,
   CardScriptSchema,
   EffectSchema,
   EquipmentSchema,
@@ -23,6 +25,8 @@ export type {
   CardEffect,
   CardScript,
   ScriptedActivated,
+  ScriptedAura,
+  ScriptedAuraStatic,
   ScriptedEquipment,
   ScriptedEquipmentStatic,
   ScriptedModes,

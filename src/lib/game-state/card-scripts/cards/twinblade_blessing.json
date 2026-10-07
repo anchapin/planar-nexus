@@ -1,0 +1,14 @@
+{
+  "name": "Twinblade Blessing",
+  "oracle": "Enchant creature\nEnchanted creature gets +1/+1 and has double strike.",
+  "aura": {
+    "text": "Enchanted creature gets +1/+1 and has double strike.",
+    "target": "creature",
+    "static": {
+      "text": "Enchanted creature gets +1/+1 and has double strike.",
+      "power": 1,
+      "toughness": 1,
+      "keywords": ["double strike"]
+    }
+  }
+}
