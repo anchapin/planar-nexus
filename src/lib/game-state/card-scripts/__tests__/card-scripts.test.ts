@@ -4510,7 +4510,13 @@ describe("SearchLibrary tapped + Solemn Simulacrum, Campus Guide fix (#2566)", (
     const zones = new Map(s.zones);
     zones.set(`${p1}-library`, { ...lib, cardIds: [] });
     s = { ...s, zones };
-    s = put(s, p1, "bear", card("Grizzly Bears", "Creature — Bear", [2, 2]), "library");
+    s = put(
+      s,
+      p1,
+      "bear",
+      card("Grizzly Bears", "Creature — Bear", [2, 2]),
+      "library",
+    );
     s = put(s, p1, "f1", card("Forest", "Basic Land — Forest"), "library");
     const out = resolveScriptedAbility(s, hartAbility("hart"))!;
     expect(battlefield(out, p1)).toContain(id("f1"));
