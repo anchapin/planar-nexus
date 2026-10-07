@@ -478,6 +478,79 @@ export function castSpell(
     // so the pre-cast state used for validation is not mutated.
     const escapeExiledCards: CardInstanceId[] = [];
 
+    // CR 702.126a - Improvise: "For each generic mana in this spell's total
+    // cost, you may tap an untapped artifact you control rather than pay that
+    // mana." It applies after the total cost is determined, so it combines
+    // with an alternative or additional cost (flashback, kicker, ...): the
+    // artifacts reduce whatever generic mana is left (#2481). Returns an
+    // error message, or null when every declared artifact was accepted.
+    const applyImprovise = (declared: CardInstanceId[]): string | null => {
+      const isCreatureSpell = (card.cardData.type_line || "")
+        .toLowerCase()
+        .includes("creature");
+      const hasImprovise =
+        parseImprovise(card.cardData.oracle_text || "").hasImprovise ||
+        (!isCreatureSpell &&
+          Array.from(state.zones.values()).some(
+            (z) =>
+              z.type === ZoneType.BATTLEFIELD &&
+              z.cardIds.some((id) => {
+                const p = state.cards.get(id);
+                return (
+                  !!p &&
+                  p.controllerId === playerId &&
+                  grantsNoncreatureImprovise(p.cardData.oracle_text || "")
+                );
+              }),
+          ));
+      if (!hasImprovise) {
+        return "Improvise: this spell doesn't have improvise.";
+      }
+      alternativeCostsUsed.push("improvise");
+      const seenArtifacts = new Set<CardInstanceId>();
+      for (const artifactId of declared) {
+        if (seenArtifacts.has(artifactId)) {
+          return "Improvise: an artifact cannot be tapped more than once to pay for the same spell.";
+        }
+        seenArtifacts.add(artifactId);
+        const artifact = state.cards.get(artifactId);
+        if (!artifact) {
+          return "Improvise: artifact not found.";
+        }
+        if (artifact.controllerId !== playerId) {
+          return "Improvise: tapped artifact must be controlled by the spell's controller.";
+        }
+        const azKey = artifact.currentZoneKey;
+        const az = azKey ? state.zones.get(azKey) : undefined;
+        if (
+          !az ||
+          az.type !== ZoneType.BATTLEFIELD ||
+          !az.cardIds.includes(artifactId)
+        ) {
+          return "Improvise: tapped artifact must be on the battlefield.";
+        }
+        if (
+          !(artifact.cardData.type_line || "")
+            .toLowerCase()
+            .includes("artifact")
+        ) {
+          return "Improvise: tapped permanent is not an artifact.";
+        }
+        if (artifact.isTapped) {
+          return "Improvise: artifact is already tapped.";
+        }
+        // Improvise pays generic mana only; tapping more artifacts than
+        // there is generic mana to pay is not allowed (CR 702.126a: "for
+        // each generic mana").
+        if (totalGeneric <= 0) {
+          return "Improvise: more artifacts declared than generic mana in the cost.";
+        }
+        totalGeneric--;
+        improviseTappedArtifacts.push(artifactId);
+      }
+      return null;
+    };
+
     if (alternativeCost) {
       switch (alternativeCost.type) {
         case "buyback": {
@@ -805,109 +878,14 @@ export function castSpell(
           break;
         }
         case "improvise": {
-          // CR 702.126a - Improvise: "For each generic mana in this spell's
-          // total cost, you may tap an untapped artifact you control rather
-          // than pay that mana." The spell has improvise either printed
-          // (Arc Reactor) or granted to noncreature spells by a permanent the
-          // caster controls (Ironheart, Clever Champion).
-          const isCreatureSpell = (card.cardData.type_line || "")
-            .toLowerCase()
-            .includes("creature");
-          const hasImprovise =
-            parseImprovise(card.cardData.oracle_text || "").hasImprovise ||
-            (!isCreatureSpell &&
-              Array.from(state.zones.values()).some(
-                (z) =>
-                  z.type === ZoneType.BATTLEFIELD &&
-                  z.cardIds.some((id) => {
-                    const p = state.cards.get(id);
-                    return (
-                      !!p &&
-                      p.controllerId === playerId &&
-                      grantsNoncreatureImprovise(p.cardData.oracle_text || "")
-                    );
-                  }),
-              ));
-          if (!hasImprovise) {
-            return {
-              success: false,
-              state,
-              error: "Improvise: this spell doesn't have improvise.",
-            };
-          }
-          alternativeCostsUsed.push("improvise");
-          const declared = alternativeCost.improviseArtifacts ?? [];
-          const seenArtifacts = new Set<CardInstanceId>();
-          for (const artifactId of declared) {
-            if (seenArtifacts.has(artifactId)) {
-              return {
-                success: false,
-                state,
-                error:
-                  "Improvise: an artifact cannot be tapped more than once to pay for the same spell.",
-              };
-            }
-            seenArtifacts.add(artifactId);
-            const artifact = state.cards.get(artifactId);
-            if (!artifact) {
-              return {
-                success: false,
-                state,
-                error: "Improvise: artifact not found.",
-              };
-            }
-            if (artifact.controllerId !== playerId) {
-              return {
-                success: false,
-                state,
-                error:
-                  "Improvise: tapped artifact must be controlled by the spell's controller.",
-              };
-            }
-            const azKey = artifact.currentZoneKey;
-            const az = azKey ? state.zones.get(azKey) : undefined;
-            if (
-              !az ||
-              az.type !== ZoneType.BATTLEFIELD ||
-              !az.cardIds.includes(artifactId)
-            ) {
-              return {
-                success: false,
-                state,
-                error: "Improvise: tapped artifact must be on the battlefield.",
-              };
-            }
-            if (
-              !(artifact.cardData.type_line || "")
-                .toLowerCase()
-                .includes("artifact")
-            ) {
-              return {
-                success: false,
-                state,
-                error: "Improvise: tapped permanent is not an artifact.",
-              };
-            }
-            if (artifact.isTapped) {
-              return {
-                success: false,
-                state,
-                error: "Improvise: artifact is already tapped.",
-              };
-            }
-            // Improvise pays generic mana only; tapping more artifacts than
-            // there is generic mana to pay is not allowed (CR 702.126a: "for
-            // each generic mana").
-            if (totalGeneric <= 0) {
-              return {
-                success: false,
-                state,
-                error:
-                  "Improvise: more artifacts declared than generic mana in the cost.",
-              };
-            }
-            totalGeneric--;
-            improviseTappedArtifacts.push(artifactId);
+          // The spell has improvise either printed (Arc Reactor) or granted
+          // to noncreature spells by a permanent the caster controls
+          // (Ironheart, Clever Champion). See applyImprovise above.
+          const improviseError = applyImprovise(
+            alternativeCost.improviseArtifacts ?? [],
+          );
+          if (improviseError) {
+            return { success: false, state, error: improviseError };
           }
           break;
         }
@@ -1110,6 +1088,20 @@ export function castSpell(
             }
           }
           break;
+        }
+      }
+      // #2481: improvise declared alongside another alternative or additional
+      // cost (flashback, buyback, convoke, ...) reduces the generic mana left
+      // in that total cost.
+      if (
+        alternativeCost.type !== "improvise" &&
+        (alternativeCost.improviseArtifacts?.length ?? 0) > 0
+      ) {
+        const improviseError = applyImprovise(
+          alternativeCost.improviseArtifacts ?? [],
+        );
+        if (improviseError) {
+          return { success: false, state, error: improviseError };
         }
       }
     }
