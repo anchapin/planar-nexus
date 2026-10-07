@@ -419,6 +419,32 @@ export const SearchLibrarySchema = z
   })
   .strict();
 
+/**
+ * Add mana to the controller's pool (#2565). Covers mana dorks and rocks:
+ * "{T}: Add {G}." is `{"amount":1,"colors":["G"]}`, "{T}: Add {G}{G}." is
+ * `{"amount":2,"colors":["G"]}`, "Add {R} or {G}." is
+ * `{"amount":1,"colors":["R","G"]}`, and "Add one mana of any color." is
+ * `{"amount":1,"colors":"any"}`.
+ *
+ * An activated ability with this op is a mana ability (CR 605.1a): it
+ * resolves immediately without using the stack, and the engine's mana
+ * ability path adds the mana (with a color choice when there is more
+ * than one option). There is no flag for this in the script.
+ *
+ * Out of scope for now: "spend this mana only on ..." restrictions, mana
+ * that depends on a count ("for each creature you control"), and mixed
+ * symbols like "{R}{G}". Cards with those wait for a follow-up.
+ */
+export const MANA_SYMBOLS = ["W", "U", "B", "R", "G", "C"] as const;
+
+export const AddManaSchema = z
+  .object({
+    op: z.literal("AddMana"),
+    amount: z.number().int().min(1).default(1),
+    colors: z.union([z.array(z.enum(MANA_SYMBOLS)).min(1), z.literal("any")]),
+  })
+  .strict();
+
 export const EffectSchema = z.discriminatedUnion("op", [
   DealDamageSchema,
   DrawSchema,
@@ -444,6 +470,7 @@ export const EffectSchema = z.discriminatedUnion("op", [
   SearchLibrarySchema,
   FightSchema,
   BiteSchema,
+  AddManaSchema,
 ]);
 
 /** True when no non-Discard effect follows a Discard (#2536). */
