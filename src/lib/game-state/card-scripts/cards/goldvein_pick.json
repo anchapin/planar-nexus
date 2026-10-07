@@ -1,0 +1,21 @@
+{
+  "name": "Goldvein Pick",
+  "oracle": "Equipped creature gets +1/+1. Equip {2} ({2}: Attach to target creature you control. Equip only as a sorcery.)",
+  "equipment": {
+    "text": "Equipped creature gets +1/+1. Equip {2}.",
+    "attachOnEnter": true,
+    "attachedStatic": {
+      "text": "Equipped creature gets +1/+1.",
+      "power": 1,
+      "toughness": 1
+    },
+    "equip": {
+      "text": "Equip {2}: Attach to target creature you control. Equip only as a sorcery.",
+      "cost": { "mana": "{2}", "tap": false, "sacrifice": false },
+      "timing": "sorcery",
+      "effects": [
+        { "op": "AttachEquipment", "target": "creature", "controller": "you" }
+      ]
+    }
+  }
+}

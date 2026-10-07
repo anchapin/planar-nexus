@@ -33,6 +33,7 @@ import { startDiscard } from "../keyword-actions/discard-choice";
 import { addCounters, isCreature } from "../card-instance";
 import { getEffectivePower } from "../evergreen-keywords";
 import { copySpellOnStack } from "../spell-casting/resolve";
+import { attachEquipment } from "../keyword-actions/equip";
 import { getCardScript } from "./registry";
 import { PREDEFINED_TOKENS } from "./predefined-tokens";
 import {
@@ -54,6 +55,7 @@ import type {
   ScriptedTrigger,
   SearchLibraryFilter,
 } from "./schema";
+import { EQUIPMENT_ATTACH_ON_ENTER_TEXT } from "./schema";
 
 interface EffectContext {
   controllerId: PlayerId;
@@ -134,6 +136,26 @@ function playerFor(
 
 function opponentsOf(state: GameState, playerId: PlayerId): PlayerId[] {
   return [...state.players.keys()].filter((p) => p !== playerId);
+}
+
+/**
+ * The first creature `playerId` controls on the battlefield. Used as the
+ * auto-pick target for `AttachEquipment` when the ability fires with no
+ * chosen target (e.g. the synthetic ETB attach for an Equipment, #2561).
+ * The order follows the battlefield zone, which the engine treats as
+ * timestamp-ordered.
+ */
+function firstControlledCreature(
+  state: GameState,
+  playerId: PlayerId,
+): CardInstanceId | undefined {
+  const zone = state.zones.get(`${playerId}-battlefield`);
+  if (!zone) return undefined;
+  for (const id of zone.cardIds) {
+    const card = state.cards.get(id);
+    if (card && isCreature(card)) return id;
+  }
+  return undefined;
 }
 
 function damagePlayer(
@@ -606,6 +628,37 @@ function applyEffect(
       const r = resolveCounterEffect(state, sourceId, target.targetId);
       return r.success ? r.state : state;
     }
+    case "AttachEquipment": {
+      // The source of the ability is the equipment; the target is a
+      // creature (usually the spell's chosen target). When the ability
+      // fires from a synthetic ETB with no chosen target, fall back to
+      // the first creature the equipment's controller controls on the
+      // battlefield (CR 301.5c, #2561): the "fizzle on no legal target"
+      // path the engine already uses elsewhere.
+      if (!sourceId) return state;
+      // `effect.controller` is the schema's "you"/"opponent" filter; the
+      // engine path is always "you" because an Equipment cannot attach to
+      // a creature its controller doesn't control.
+      if (effect.controller === "opponent") return state;
+      // `creatureFor` applies the controller filter and the "is on the
+      // battlefield" check for us. When the spell has no chosen target
+      // (e.g. the synthetic ETB attach), `ctx.target` is undefined and
+      // we fall back to the first creature the controller controls.
+      let cardId = creatureFor(state, effect.target, ctx, effect.controller);
+      if (!cardId) {
+        const fallback = firstControlledCreature(state, ctx.controllerId);
+        if (!fallback) return state;
+        cardId = fallback;
+      }
+      // CR 301.5c: the equipment's controller must control the target.
+      // `creatureFor` already enforces `controller === "you"`, but the
+      // synthetic-ETB fallback picks "the first creature the controller
+      // controls" directly, which the controller filter happens to also
+      // satisfy. The engine's `attachEquipment` is a low-level move and
+      // does not recheck, so we don't need to.
+      const r = attachEquipment(state, sourceId, cardId);
+      return r.success ? r.state : state;
+    }
     case "Pump": {
       const cardId = creatureFor(state, effect.target, ctx, effect.controller);
       if (!cardId) return state;
@@ -798,6 +851,21 @@ const sameText = (a: string, b: string) =>
   a.trim().toLowerCase() === b.trim().toLowerCase();
 
 /**
+ * The synthetic ETB trigger an Equipment with `attachOnEnter: true` adds
+ * to its scripted trigger list (#2561). The text is matched by
+ * `getScriptedAbility`, so the resolver recognizes the stack object as
+ * scripted and routes the `AttachEquipment` op. The same text is used by
+ * `getScriptedTriggeredAbilities` in `abilities/parse.ts` when emitting
+ * the parsed ability.
+ */
+const EQUIPMENT_ATTACH_ON_ENTER: ScriptedTrigger = {
+  text: EQUIPMENT_ATTACH_ON_ENTER_TEXT,
+  event: "etb",
+  subject: "self",
+  effects: [{ op: "AttachEquipment", target: "creature", controller: "you" }],
+};
+
+/**
  * The script entry of a triggered or activated ability on the stack, or
  * undefined when its source has no permanent script. Matched by the ability
  * text, which the stack object carries.
@@ -813,8 +881,13 @@ export function getScriptedAbility(
   const source = state.cards.get(stackObject.sourceCardId as CardInstanceId);
   const script = getCardScript(source?.cardData.name);
   if (!script || !isPermanentScript(script)) return undefined;
-  const abilities: readonly (ScriptedTrigger | ScriptedActivated)[] =
-    stackObject.triggered ? (script.triggers ?? []) : (script.activated ?? []);
+  const abilities: readonly (ScriptedTrigger | ScriptedActivated)[] = stackObject.triggered
+    ? (script.triggers ?? []).concat(
+        script.equipment?.attachOnEnter ? [EQUIPMENT_ATTACH_ON_ENTER] : [],
+      )
+    : (script.activated ?? []).concat(
+        script.equipment?.equip ? [script.equipment.equip] : [],
+      );
   return abilities.find((a) => sameText(a.text, stackObject.text));
 }
 

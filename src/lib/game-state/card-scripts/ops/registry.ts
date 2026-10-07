@@ -19,6 +19,7 @@
  * `EffectSchema.options` (#2551). Drift is impossible: if an op schema
  * exists here, its reference must exist too.
  */
+import { AttachEquipmentReference } from "./attach-equipment";
 import { BiteReference } from "./bite";
 import { CopySpellReference } from "./copy-spell";
 import { CounterReference } from "./counter";
@@ -57,6 +58,7 @@ export const OP_REFERENCES: readonly CardOpReference[] = [
   UntapReference,
   ReturnToHandReference,
   CounterReference,
+  AttachEquipmentReference,
   PumpReference,
   PutCountersReference,
   SurveilReference,
