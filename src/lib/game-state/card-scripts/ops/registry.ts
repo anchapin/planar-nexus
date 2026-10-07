@@ -37,6 +37,7 @@ import { MillReference } from "./mill";
 import { PumpReference } from "./pump";
 import { PutCountersReference } from "./put-counters";
 import { ReturnFromZoneReference } from "./return-from-zone";
+import { GrantKeywordReference } from "./grant-keyword";
 import { ReturnToHandReference } from "./return-to-hand";
 import { ScryReference } from "./scry";
 import { SearchLibraryReference } from "./search-library";
@@ -71,6 +72,7 @@ export const OP_REFERENCES: readonly CardOpReference[] = [
   SearchLibraryReference,
   FightReference,
   BiteReference,
+  GrantKeywordReference,
 ];
 
 /**

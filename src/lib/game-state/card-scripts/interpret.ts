@@ -34,6 +34,7 @@ import { addCounters, isCreature } from "../card-instance";
 import { getEffectivePower } from "../evergreen-keywords";
 import { copySpellOnStack } from "../spell-casting/resolve";
 import { attachEquipment } from "../keyword-actions/equip";
+import { addUntilEndOfTurnKeyword } from "../pt-until-end-of-turn";
 import { getCardScript } from "./registry";
 import { PREDEFINED_TOKENS } from "./predefined-tokens";
 import {
@@ -723,6 +724,18 @@ function applyEffect(
       );
       return r.success ? r.state : state;
     }
+    case "GrantKeyword": {
+      // "it" shares the previous targeted effect's target (resolved as
+      // ctx.target in resolveScriptedEffects), e.g. Adamant Will (#2567).
+      const cardId = creatureFor(
+        state,
+        effect.target === "self" ? "self" : "creature",
+        ctx,
+        effect.controller,
+      );
+      if (!cardId) return state;
+      return addUntilEndOfTurnKeyword(state, cardId, effect.keyword);
+    }
     case "PutCounters": {
       const cardId = creatureFor(state, effect.target, ctx, effect.controller);
       const card = cardId ? state.cards.get(cardId) : undefined;
@@ -897,6 +910,11 @@ export function resolveScriptedEffects(
       effect.fighter === "it"
     )
       fighter = previous;
+    if (effect.op === "GrantKeyword" && effect.target === "it") {
+      // No legal previous target: the grant does nothing (CR 608.2b).
+      if (!previous) continue;
+      target = previous;
+    }
     if (count > 0) {
       const taken = targets.slice(next, next + count);
       next += count;

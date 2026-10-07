@@ -114,6 +114,10 @@ export function hasIndestructibleKeyword(card: CardInstance): boolean {
   if (hasIndestructibleStrict(card)) {
     return true;
   }
+  // Granted until end of turn by a resolved effect (#2567).
+  if (card.untilEndOfTurnKeywords?.includes("indestructible")) {
+    return true;
+  }
   return oracleTextDeclaresOwnKeyword(
     "indestructible",
     card.cardData.oracle_text ?? "",

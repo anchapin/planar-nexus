@@ -42,6 +42,7 @@ import { putTriggersOnStack } from "../../trigger-system/stack-ops";
 import { refreshScriptedStatics } from "../../keyword-actions/scripted-statics";
 import { refreshTribalAnthems } from "../../keyword-actions/tribal-anthem";
 import { checkStateBasedActions } from "../../state-based-actions";
+import { clearUntilEndOfTurnPT } from "../../pt-until-end-of-turn";
 import { destroyCard } from "../../keyword-actions/removal";
 import {
   activateManaAbility,
@@ -4040,5 +4041,104 @@ describe("scripted ReturnFromZone (#2560)", () => {
       ),
     )!;
     expect(zoneOf(s3, "bear")).toBe(`${p1}-graveyard`);
+  });
+});
+
+describe("scripted GrantKeyword (#2567)", () => {
+  const fresh = () => {
+    const state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    const [p1, p2] = Array.from(state.players.keys());
+    const s = put(state, p2, "bear", card("Bear", "Creature — Bear", [2, 2]));
+    return { state: s, p1, p2 };
+  };
+  const ok = (effect: object) =>
+    CardScriptSchema.safeParse({ name: "X", oracle: "x", spell: [effect] })
+      .success;
+  const grant = (target: "creature" | "self" | "it") =>
+    ({
+      op: "GrantKeyword",
+      keyword: "indestructible",
+      target,
+      until: "end_of_turn",
+    }) as const;
+  const withDamage = (s: GameState, cardId: string, damage: number) => {
+    const cards = new Map(s.cards);
+    cards.set(id(cardId), { ...cards.get(id(cardId))!, damage });
+    return { ...s, cards };
+  };
+  const adamant = (s: GameState, p1: PlayerId, target = "bear") =>
+    resolveScriptedSpell(
+      s,
+      getCardScript("Adamant Will")!,
+      spell(p1, [cardTarget(target)]),
+    );
+
+  it("validates GrantKeyword", () => {
+    expect(ok(grant("creature"))).toBe(true);
+    expect(ok(grant("it"))).toBe(true);
+    expect(ok({ ...grant("creature"), controller: "you" })).toBe(true);
+    expect(ok({ ...grant("self"), controller: "you" })).toBe(false);
+    expect(ok({ ...grant("creature"), keyword: "flying" })).toBe(false);
+    expect(ok({ ...grant("creature"), until: "next_turn" })).toBe(false);
+    const { until: _until, ...noUntil } = grant("creature");
+    expect(ok(noUntil)).toBe(false);
+  });
+
+  it("only a creature target uses a target", () => {
+    expect(isTargetedEffect(grant("creature"))).toBe(true);
+    expect(isTargetedEffect(grant("self"))).toBe(false);
+    expect(isTargetedEffect(grant("it"))).toBe(false);
+    const effects = getCardScript("Adamant Will")!.spell!;
+    expect(effects.reduce((n, e) => n + effectTargetCount(e), 0)).toBe(1);
+  });
+
+  it("Adamant Will gives +2/+2 and indestructible to one target", () => {
+    const { state, p1 } = fresh();
+    const s = adamant(state, p1);
+    const bear = s.cards.get(id("bear"))!;
+    expect(getEffectivePower(bear)).toBe(4);
+    expect(getEffectiveToughness(bear)).toBe(4);
+    expect(hasKeyword(bear, "indestructible")).toBe(true);
+  });
+
+  it("the granted creature survives lethal damage and destroy (CR 702.12b)", () => {
+    const { state, p1, p2 } = fresh();
+    let s = withDamage(adamant(state, p1), "bear", 10);
+    s = checkStateBasedActions(s).state;
+    expect(battlefield(s, p2)).toContain(id("bear"));
+    s = destroyCard(s, id("bear")).state;
+    expect(battlefield(s, p2)).toContain(id("bear"));
+  });
+
+  it("the grant ends at cleanup, so lethal damage then kills it", () => {
+    const { state, p1, p2 } = fresh();
+    let s = clearUntilEndOfTurnPT(adamant(state, p1));
+    expect(hasKeyword(s.cards.get(id("bear"))!, "indestructible")).toBe(false);
+    s = checkStateBasedActions(withDamage(s, "bear", 2)).state;
+    expect(battlefield(s, p2)).not.toContain(id("bear"));
+    expect(s.zones.get(`${p2}-graveyard`)!.cardIds).toContain(id("bear"));
+  });
+
+  it('"it" grants nothing when the shared target is gone (CR 608.2b)', () => {
+    const { state, p1 } = fresh();
+    const s = adamant(state, p1, "nowhere");
+    expect(hasKeyword(s.cards.get(id("bear"))!, "indestructible")).toBe(false);
+  });
+
+  it("every GrantKeyword script's text says until end of turn", () => {
+    for (const f of readdirSync(CARDS_DIR).filter((x) => x.endsWith(".json"))) {
+      const script = JSON.parse(
+        readFileSync(join(CARDS_DIR, f), "utf8"),
+      ) as CardScript;
+      for (const e of scriptedSpellEffects(script)) {
+        if (e.op !== "GrantKeyword") continue;
+        expect([f, script.oracle.toLowerCase()]).toEqual([
+          f,
+          expect.stringContaining(`${e.keyword} until end of turn`),
+        ]);
+      }
+    }
   });
 });

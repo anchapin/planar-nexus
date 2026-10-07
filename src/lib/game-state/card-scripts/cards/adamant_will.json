@@ -1,0 +1,18 @@
+{
+  "name": "Adamant Will",
+  "oracle": "Target creature gets +2/+2 and gains indestructible until end of turn. (Damage and effects that say \"destroy\" don't destroy it.)",
+  "spell": [
+    {
+      "op": "Pump",
+      "power": 2,
+      "toughness": 2,
+      "target": "creature"
+    },
+    {
+      "op": "GrantKeyword",
+      "keyword": "indestructible",
+      "target": "it",
+      "until": "end_of_turn"
+    }
+  ]
+}
