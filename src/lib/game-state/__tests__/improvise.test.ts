@@ -261,6 +261,73 @@ describe("Improvise — casting", () => {
     expect(result.state.cards.get(t2.id)!.isTapped).toBe(true);
   });
 
+  it("improvise combines with flashback: artifacts pay the flashback cost's generic mana (#2481)", () => {
+    const fx = makeFixture();
+    let state = fx.state;
+    const aliceId = fx.aliceId;
+    putOnBattlefield(state, aliceId, ironheart());
+    const t1 = putOnBattlefield(state, aliceId, trinket("t1"));
+    const t2 = putOnBattlefield(state, aliceId, trinket("t2"));
+    const t3 = putOnBattlefield(state, aliceId, trinket("t3"));
+    // Dreams of Laguna (Standard): {1}{U} instant, Flashback {3}{U}.
+    const dreams = createCardInstance(
+      makeCard({
+        id: "dreams-of-laguna",
+        name: "Dreams of Laguna",
+        type_line: "Instant",
+        oracle_text:
+          "Surveil 1, then draw a card. (To surveil 1, look at the top card of your library. You may put it into your graveyard.)\nFlashback {3}{U} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+        mana_cost: "{1}{U}",
+        cmc: 2,
+        colors: ["U"],
+        color_identity: ["U"],
+      }),
+      aliceId,
+      aliceId,
+    );
+    dreams.currentZoneKey = `${aliceId}-graveyard`;
+    state.cards.set(dreams.id, dreams);
+    const grave = state.zones.get(`${aliceId}-graveyard`)!;
+    state.zones.set(`${aliceId}-graveyard`, {
+      ...grave,
+      cardIds: [...grave.cardIds, dreams.id],
+    });
+    // Only {U} in the pool: the three artifacts must cover the {3}.
+    state = addMana(state, aliceId, { blue: 1 });
+    const result = castSpell(state, aliceId, dreams.id, [], [], 0, false, {
+      type: "flashback",
+      improviseArtifacts: [t1.id, t2.id, t3.id],
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.success).toBe(true);
+    for (const t of [t1, t2, t3]) {
+      expect(result.state.cards.get(t.id)!.isTapped).toBe(true);
+    }
+    expect(result.state.players.get(aliceId)!.manaPool.blue).toBe(0);
+
+    // Without Ironheart the same flashback cast can't improvise.
+    const noGrant = makeFixture();
+    const u1 = putOnBattlefield(noGrant.state, noGrant.aliceId, trinket("u1"));
+    const dreams2 = createCardInstance(
+      dreams.cardData,
+      noGrant.aliceId,
+      noGrant.aliceId,
+    );
+    dreams2.currentZoneKey = `${noGrant.aliceId}-graveyard`;
+    noGrant.state.cards.set(dreams2.id, dreams2);
+    const g2 = noGrant.state.zones.get(`${noGrant.aliceId}-graveyard`)!;
+    noGrant.state.zones.set(`${noGrant.aliceId}-graveyard`, {
+      ...g2,
+      cardIds: [...g2.cardIds, dreams2.id],
+    });
+    expect(
+      castSpell(noGrant.state, noGrant.aliceId, dreams2.id, [], [], 0, false, {
+        type: "flashback",
+        improviseArtifacts: [u1.id],
+      }).error,
+    ).toMatch(/doesn't have improvise/);
+  });
+
   it("does not grant improvise to creature spells or without Ironheart", () => {
     const { state, aliceId } = makeFixture();
     const t1 = putOnBattlefield(state, aliceId, trinket("t1"));

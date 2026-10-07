@@ -293,7 +293,7 @@ export class ValidationService {
     // Get the card
     const data = action.data as {
       cardId?: string;
-      alternativeCost?: { type?: string };
+      alternativeCost?: { type?: string; improviseArtifacts?: unknown[] };
     };
     const cardId = data.cardId;
     if (!cardId) {
@@ -385,7 +385,9 @@ export class ValidationService {
     // as foretell/convoke/delve/spectacle).
     //
     // Improvise (CR 702.126) is a generic-only cost reduction like delve;
-    // castSpell applies it before the authoritative affordability check.
+    // castSpell applies it before the authoritative affordability check. It
+    // can also ride along with another alternative cost (#2481), so any cast
+    // that declares improvise artifacts skips the printed-cost precheck too.
     //
     // Mutate (CR 702.140) REPLACES the printed mana cost with the mutate cost
     // (an alternative cost). The authoritative affordability check happens in
@@ -398,7 +400,8 @@ export class ValidationService {
       altType !== "delve" &&
       altType !== "spectacle" &&
       altType !== "escape" &&
-      altType !== "mutate"
+      altType !== "mutate" &&
+      (data.alternativeCost?.improviseArtifacts?.length ?? 0) === 0
     ) {
       const manaValidation = this.validateManaCost(state, player, card);
       if (!manaValidation.isValid) {
