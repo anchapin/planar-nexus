@@ -165,6 +165,15 @@ export interface CardInstance {
    * has resolved (mirrors `flashback`).
    */
   kicked?: boolean;
+  /**
+   * Number of times the kicker (or multikicker, CR 702.85 #2594) cost was
+   * paid on the most recent cast. 0 for non-kicker casts; 1 for
+   * single-kicker; N for multikicker. The ETB "if kicked" trigger path
+   * (`trigger-system/stack-ops.ts`) reads this to stamp the trigger's
+   * `StackObject.timesKicked` so the interpreter's `if_kicked: N` gate
+   * fires the right tiered effect.
+   */
+  timesKicked?: number;
 
   // Prototype-specific (CR 702.152)
   /** Whether this permanent is currently in prototype form */

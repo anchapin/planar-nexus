@@ -16,15 +16,27 @@ import { REMOVAL_TARGETS, TARGET_CONTROLLERS } from "./target-filters";
 const amount = z.number().int().min(0);
 
 /**
- * Per-effect Kicker gate (CR 702.32, #2564). When set, the effect is applied
- * only when the spell was kicked (`stackObject.wasKicked === true` matches
- * the value). An unset value means the effect always applies. This is the
+ * Per-effect Kicker gate (CR 702.32, #2564, multikicker CR 702.85 #2594).
+ * When set, the effect is applied only when the spell was kicked the
+ * specified amount:
+ * - `true` — effect runs iff the spell was kicked at least once
+ *   (`stackObject.timesKicked >= 1`).
+ * - `false` — effect runs iff the spell was not kicked
+ *   (`stackObject.timesKicked === 0`). Used for the base of a
+ *   "kicker-replacement" pair (Burst Lightning's 2-damage branch).
+ * - `N` (positive integer) — effect runs iff the spell was kicked at
+ *   least N times. Lets a multikicker script layer tiered bonus effects
+ *   on a single spell: e.g. "if kicked twice or more, also draw a card"
+ *   (`if_kicked: 2`) on a spell whose base effect is
+ *   `if_kicked: true` with linear scaling.
+ *
+ * An unset value means the effect always applies. This is the
  * sibling-on-effect shape (not a wrapper union) so existing scripts that
  * don't care about kicker stay byte-compatible. Mirrors how
  * `CardScript.flashback` augments the schema for a single alternative cost
  * without restructuring the spell-effects array.
  */
-const ifKicked = z.boolean().optional();
+const ifKicked = z.union([z.boolean(), z.number().int().min(1)]).optional();
 
 /**
  * "X" (CR 107.3, #2552): the value chosen for X as the spell was cast
@@ -1034,17 +1046,24 @@ export const CardScriptSchema = z
      * Kicker (CR 702.32, #2564) — a single optional additional cost. "You may
      * pay an additional cost as you cast this spell. If you do, [its bonus
      * effect occurs]." `cost` is a mana-string in the same shape as
-     * `flashback.cost`. `count` is the number of times the cost may be paid
-     * (single-kicker default 1; multi-kicker is out of scope for this lane —
-     * see the PR notes). The cast flow charges the cost and stamps
-     * `card.kicked = true` when the player opts in; the interpreter then
-     * applies the script's effects whose `if_kicked: true` matches.
+     * `flashback.cost`. `count` is the number of times the cost may be paid:
+     * single-kicker is `count: 1` (the default); multikicker (CR 702.85,
+     * #2594) sets `count` to a positive integer (e.g. `count: 3` for
+     * "Multikicker {1}"). The cast flow charges `cost * count` mana and
+     * stamps `StackObject.timesKicked` (and the card's `timesKicked`) with
+     * the actual charge count; the interpreter then applies the script's
+     * effects whose `if_kicked` gate matches the count.
      */
     kicker: z
       .object({
         cost: z.string().regex(/^(\{(?:[0-9]+|[WUBRGC])\})+$/),
-        /** Always 1 today; reserved for a follow-up multi-kicker lane. */
-        count: z.literal(1).default(1),
+        /**
+         * Number of times the kicker cost may be paid. `1` (default) is
+         * single-kicker; `>= 2` is multikicker. Bounded to a positive
+         * integer; the engine itself enforces the practical upper bound
+         * from the player's available mana.
+         */
+        count: z.number().int().min(1).default(1),
       })
       .strict()
       .optional(),
@@ -1060,7 +1079,8 @@ export const CardScriptSchema = z
         kicker: z
           .object({
             cost: z.string().regex(/^(\{(?:[0-9]+|[WUBRGC])\})+$/),
-            count: z.literal(1).default(1),
+            /** 1 for single-kicker, >=2 for multikicker (see top-level kicker). */
+            count: z.number().int().min(1).default(1),
           })
           .strict()
           .optional(),

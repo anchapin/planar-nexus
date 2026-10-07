@@ -972,6 +972,29 @@ function returnFromZoneStillMatches(
   return true;
 }
 
+/**
+ * CR 702.32 / CR 702.85, #2564, #2594 — match a per-effect `if_kicked` gate
+ * against the actual charge count. Three shapes:
+ *   - `if_kicked: true`  — runs iff timesKicked >= 1
+ *   - `if_kicked: false` — runs iff timesKicked === 0
+ *   - `if_kicked: N`     — runs iff timesKicked >= N (N >= 1)
+ *
+ * Kept as a small named function (vs inlining) so the schema-style values
+ * `true` / `false` / `number` get a single source of truth for what "matches
+ * the gate" means; the caller still passes `wasKicked` (the boolean mirror)
+ * so a single-kicker stack with `wasKicked: true, timesKicked: 1` matches
+ * either a `true` gate or a numeric gate of `1`.
+ */
+function kickerGateMatches(
+  gate: boolean | number,
+  timesKicked: number,
+  wasKicked: boolean,
+): boolean {
+  if (typeof gate === "number") return timesKicked >= gate;
+  // Boolean gate: `true` matches any kick (>= 1); `false` matches no kick.
+  return gate === wasKicked;
+}
+
 export function resolveScriptedEffects(
   state: GameState,
   effects: readonly CardEffect[],
@@ -986,8 +1009,13 @@ export function resolveScriptedEffects(
   // `if_kicked: true` branch (the engine's existing `applyKickerBonus`
   // already scales the base amount by the bonus; the kicker-replacement
   // effect on the script just turns the bonus on and off).
-  const wasKicked =
-    stackObject.wasKicked === true || (stackObject.timesKicked ?? 0) > 0;
+  // CR 702.85, #2594: a multikicker spell stamps `timesKicked` with the
+  // actual charge count (0..N), not just 0/1. Tiered bonus effects use
+  // `if_kicked: N` (a positive integer) to gate on `timesKicked >= N`,
+  // so e.g. a "Multikicker {1}" spell can layer "if kicked 2+ times, also
+  // draw a card" alongside the always-scaling damage effect.
+  const timesKicked = stackObject.timesKicked ?? 0;
+  const wasKicked = stackObject.wasKicked === true || timesKicked > 0;
   let current = state;
   let next = 0;
   // The previous targeted effect's target, while it is still legal: what
@@ -995,12 +1023,19 @@ export function resolveScriptedEffects(
   let previous: Target | undefined;
   for (const effect of effects) {
     // CR 702.32 — per-effect Kicker gate. An effect whose `if_kicked` is
-    // set is applied only when the spell/ability was kicked (matching the
-    // boolean). When unset, the effect always applies. A common shape is
-    // a base effect (`if_kicked: false`) paired with a kicker-replacement
-    // effect (`if_kicked: true`); the gate below picks the one that
-    // matches the actual cast state.
-    if (effect.if_kicked !== undefined && effect.if_kicked !== wasKicked) {
+    // set is applied only when the spell/ability was kicked the right
+    // amount. The three shapes:
+    //   - `if_kicked: true`  — runs iff timesKicked >= 1
+    //   - `if_kicked: false` — runs iff timesKicked === 0
+    //   - `if_kicked: N`     — runs iff timesKicked >= N (N >= 1)
+    // When unset, the effect always applies. A common shape is a base
+    // effect (`if_kicked: false`) paired with a kicker-replacement effect
+    // (`if_kicked: true`); the gate below picks the one that matches the
+    // actual cast state.
+    if (
+      effect.if_kicked !== undefined &&
+      !kickerGateMatches(effect.if_kicked, timesKicked, wasKicked)
+    ) {
       // A skipped effect still consumes its target slot from the stack
       // object's targets list, EVEN for the base of a kicker-replacement
       // pair — that way the kicked variant can inherit the base's target
