@@ -2,8 +2,9 @@
 
 /**
  * Simple mode (#2557): manamind's simple ruleset (Forests and vanilla
- * creatures, no stack, two identical 40-card decks) against the Easy manamind
- * opponent. You are player 0; the Easy opponent is player 1.
+ * creatures, no stack, two identical 40-card decks) against a manamind
+ * opponent: Easy, Medium, Hard or Expert (#2573). You are player 0; the
+ * opponent is player 1 and searches only what it can see.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -31,7 +32,12 @@ import {
   loadSimplePolicyModel,
   type SimplePolicyModel,
 } from "@/ai/manamind/simple-model";
-import { chooseEasyMove } from "@/ai/manamind/easy-agent";
+import {
+  chooseTierMove,
+  SIMPLE_TIER_ORDER,
+  SIMPLE_TIERS,
+  type SimpleTier,
+} from "@/ai/manamind/simple-tiers";
 import { describeSimpleMove } from "@/ai/manamind/describe-move";
 
 const HUMAN = 0 as const;
@@ -130,6 +136,8 @@ export default function SimpleModePage() {
   const [model, setModel] = useState<SimplePolicyModel | null>(null);
   const [status, setStatus] = useState<ModelStatus>("loading");
   const [log, setLog] = useState<string[]>([]);
+  const [tier, setTier] = useState<SimpleTier>("easy");
+  const spec = SIMPLE_TIERS[tier];
   const thinking = useRef(false);
 
   const load = useCallback(() => {
@@ -166,9 +174,9 @@ export default function SimpleModePage() {
     if (thinking.current) return;
     thinking.current = true;
     const timer = setTimeout(() => {
-      chooseEasyMove(game, model)
+      chooseTierMove(game, model, tier)
         .then(({ move }) => {
-          play(game, "Easy", move);
+          play(game, SIMPLE_TIERS[tier].label, move);
         })
         .finally(() => {
           thinking.current = false;
@@ -178,7 +186,7 @@ export default function SimpleModePage() {
       clearTimeout(timer);
       thinking.current = false;
     };
-  }, [game, model, over, play]);
+  }, [game, model, over, play, tier]);
 
   // A move you have no choice about is made for you.
   useEffect(() => {
@@ -191,6 +199,12 @@ export default function SimpleModePage() {
     setLog([]);
   };
 
+  const chooseTier = (next: SimpleTier) => {
+    if (next === tier) return;
+    setTier(next);
+    newGame();
+  };
+
   const winner = game && over ? simpleWinner(game) : null;
 
   return (
@@ -198,15 +212,40 @@ export default function SimpleModePage() {
       <div className="space-y-1">
         <h1 className="text-2xl font-bold">Simple mode</h1>
         <p className="text-sm text-muted-foreground">
-          Forests and vanilla creatures against the Easy manamind opponent. No
-          stack, no abilities: play lands, cast creatures, attack and block.
+          Forests and vanilla creatures against a manamind opponent. No stack,
+          no abilities: play lands, cast creatures, attack and block.
         </p>
       </div>
 
-      {status === "loading" && <p role="status">Loading the Easy opponent…</p>}
+      <div className="space-y-2">
+        <div
+          role="radiogroup"
+          aria-label="Opponent strength"
+          className="flex flex-wrap gap-2"
+          data-testid="simple-tiers"
+        >
+          {SIMPLE_TIER_ORDER.map((t) => (
+            <Button
+              key={t}
+              size="sm"
+              role="radio"
+              aria-checked={t === tier}
+              variant={t === tier ? "default" : "outline"}
+              onClick={() => chooseTier(t)}
+            >
+              {SIMPLE_TIERS[t].label}
+            </Button>
+          ))}
+        </div>
+        <p className="text-sm text-muted-foreground">
+          {spec.description} Changing the opponent starts a new game.
+        </p>
+      </div>
+
+      {status === "loading" && <p role="status">Loading the opponent…</p>}
       {status === "error" && (
         <div role="alert" className="flex items-center gap-2">
-          <span>The Easy opponent couldn&apos;t load.</span>
+          <span>The opponent couldn&apos;t load.</span>
           <Button size="sm" variant="outline" onClick={load}>
             Try again
           </Button>
@@ -216,7 +255,7 @@ export default function SimpleModePage() {
       {game && (
         <>
           <PlayerPanel
-            label="Easy opponent"
+            label={`${spec.label} opponent`}
             player={game.players[OPPONENT]}
             showHand={false}
             testId="simple-opponent"
@@ -236,12 +275,12 @@ export default function SimpleModePage() {
                   {winner === HUMAN
                     ? "You win!"
                     : winner === OPPONENT
-                      ? "Easy wins."
+                      ? `${spec.label} wins.`
                       : "Draw."}
                 </span>
               ) : !humanToAct ? (
                 <span className="text-sm text-muted-foreground">
-                  Easy is thinking…
+                  {spec.label} is thinking…
                 </span>
               ) : null}
               <Button
