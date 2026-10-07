@@ -2821,6 +2821,48 @@ describe("Combat System - Deathtouch and Indestructible (#669)", () => {
       );
       expect(shouldHaveFirstStrikeStep(dsBlk.state)).toBe(true);
     });
+
+    it("first strike granted after blockers are declared still strikes first (#2552)", () => {
+      // Pedal to the Metal on an attacker after blocks: the declaration
+      // flags say no first strike, but the creature has it now.
+      const { state, aliceId, bobId } = setupGameWithCreatures(
+        [{ name: "Attacker", power: 3, toughness: 2 }],
+        [{ name: "Blocker", power: 2, toughness: 2 }],
+      );
+      const attackerId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
+      const blockerId = state.zones.get(`${bobId}-battlefield`)!.cardIds[0];
+      state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+      const attackResult = declareAttackers(state, [
+        { cardId: attackerId, defenderId: bobId },
+      ]);
+      attackResult.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+      const blockResult = declareBlockers(
+        attackResult.state,
+        new Map([[attackerId, [blockerId]]]),
+      );
+      expect(shouldHaveFirstStrikeStep(blockResult.state)).toBe(false);
+
+      const cards = new Map(blockResult.state.cards);
+      cards.set(attackerId, {
+        ...cards.get(attackerId)!,
+        untilEndOfTurnKeywords: ["first strike"],
+      });
+      const granted = { ...blockResult.state, cards };
+      expect(shouldHaveFirstStrikeStep(granted)).toBe(true);
+
+      const { firstStrike, regular } = runBothDamageSteps(granted);
+      // The blocker dies in the first-strike step and never hits back.
+      expect(
+        firstStrike.state.zones.get(`${bobId}-graveyard`)!.cardIds,
+      ).toContain(blockerId);
+      expect(firstStrike.state.cards.get(attackerId)!.damage).toBe(0);
+      // The attacker already dealt its damage, so it sits out the regular
+      // step (no second hit on the defending player).
+      expect(regular.state.players.get(bobId)!.life).toBe(20);
+      expect(
+        regular.state.zones.get(`${aliceId}-battlefield`)!.cardIds,
+      ).toContain(attackerId);
+    });
   });
 });
 

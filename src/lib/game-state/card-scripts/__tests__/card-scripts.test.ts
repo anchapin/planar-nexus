@@ -2445,6 +2445,17 @@ describe("scripted X spells (#2552)", () => {
     expect(after.cards.get(id("boar"))!.damage).toBe(4); // 4 damage from Bear (2 + X=2)
   });
 
+  it("Pedal to the Metal gives +X/+0 and first strike to one target", () => {
+    let s = put(state, p1, "bear", card("Bear", "Creature — Bear", [2, 2]));
+    const script = getCardScript("Pedal to the Metal")!;
+    expect(script.spell!.reduce((n, e) => n + effectTargetCount(e), 0)).toBe(1);
+    s = resolveScriptedSpell(s, script, withX(p1, 3, [cardTarget("bear")]));
+    const bear = s.cards.get(id("bear"))!;
+    expect(getEffectivePower(bear)).toBe(5);
+    expect(getEffectiveToughness(bear)).toBe(2);
+    expect(hasKeyword(bear, "first strike")).toBe(true);
+  });
+
   it("Finale of Revelation draws X cards", () => {
     let s = state;
     for (let i = 0; i < 5; i++)
