@@ -1,0 +1,12 @@
+{
+  "name": "Bushwhack",
+  "oracle": "Search your library for a basic land card or a creature card with mana value 1, reveal it, put it into your hand, then shuffle.",
+  "spell": [
+    {
+      "op": "SearchLibrary",
+      "filter": { "basic_land": true },
+      "destination": "hand",
+      "shuffle": true
+    }
+  ]
+}

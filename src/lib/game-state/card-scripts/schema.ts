@@ -276,6 +276,75 @@ export const CopySpellSchema = z
   })
   .strict();
 
+/**
+ * "Search your library for a [filter], reveal, [put into hand/battlefield/top/bottom],
+ *  shuffle" (CR 603.9d / 608.2d, #2562). The searcher is `who`: the controller
+ *  by default, or the previous targeted player for `target_player` spells.
+ *
+ * The filter is a single object whose keys AND together (`{creature: true, mv_le: 1}`
+ *  means a creature with mana value ≤ 1). For "basic land OR creature with MV 1"
+ *  style filters the LLM picks the first matching key — full disjunction is a
+ *  follow-up lane.
+ *
+ * `destination` defaults to hand. `shuffle` defaults to true and is mandatory
+ *  by CR: even a search that finds nothing still shuffles.
+ *
+ * `count` defaults to 1 and is the only value accepted in v1; "up to N" search
+ *  needs UI choice plumbing and is a follow-up.
+ *
+ * v1 limitations (noted in the PR): "reveal" is not modeled (the card simply
+ *  moves into a private or public zone, or onto the library), and "put it onto
+ *  the battlefield tapped" is not modeled (the card enters untapped).
+ */
+const SearchLibraryFilterSchema = z
+  .object({
+    basic_land: z.literal(true).optional(),
+    land: z.literal(true).optional(),
+    creature: z.literal(true).optional(),
+    artifact: z.literal(true).optional(),
+    enchantment: z.literal(true).optional(),
+    instant_or_sorcery: z.literal(true).optional(),
+    /** Mana value ≤ N. */
+    mv_le: z.number().int().min(0).optional(),
+    /** Mana value = N. */
+    mv_eq: z.number().int().min(0).optional(),
+    /** Exact English card name (case-insensitive). */
+    name: z.string().min(1).optional(),
+    /** A single color (W/U/B/R/G). */
+    color: z.enum(["W", "U", "B", "R", "G"]).optional(),
+  })
+  .strict()
+  .refine(
+    (f) =>
+      f.basic_land !== undefined ||
+      f.land !== undefined ||
+      f.creature !== undefined ||
+      f.artifact !== undefined ||
+      f.enchantment !== undefined ||
+      f.instant_or_sorcery !== undefined ||
+      f.mv_le !== undefined ||
+      f.mv_eq !== undefined ||
+      f.name !== undefined ||
+      f.color !== undefined,
+    { message: "filter needs at least one key" },
+  );
+
+/** Inferred shape of the `filter` field on a `SearchLibrary` effect (#2562). */
+export type SearchLibraryFilter = z.infer<typeof SearchLibraryFilterSchema>;
+
+export const SearchLibrarySchema = z
+  .object({
+    op: z.literal("SearchLibrary"),
+    who: z.enum(["you", "target_player"]).default("you"),
+    filter: SearchLibraryFilterSchema,
+    destination: z
+      .enum(["hand", "battlefield", "library_top", "library_bottom"])
+      .default("hand"),
+    shuffle: z.boolean().default(true),
+    count: z.literal(1).default(1),
+  })
+  .strict();
+
 export const EffectSchema = z.discriminatedUnion("op", [
   DealDamageSchema,
   DrawSchema,
@@ -296,6 +365,7 @@ export const EffectSchema = z.discriminatedUnion("op", [
   MillSchema,
   DiscardSchema,
   CopySpellSchema,
+  SearchLibrarySchema,
   FightSchema,
   BiteSchema,
 ]);

@@ -1,0 +1,40 @@
+{
+  "name": "Micromancer",
+  "oracle": "When Micromancer enters the battlefield, choose one —\n• Search your library for an instant or sorcery card with mana value 1, put it into your hand, then shuffle.\n• Create a 1/1 blue Wizard creature token.",
+  "triggers": [
+    {
+      "text": "When Micromancer enters the battlefield, choose one —",
+      "event": "etb",
+      "subject": "self",
+      "modes": {
+        "choose": 1,
+        "options": [
+          {
+            "text": "Search your library for an instant or sorcery card with mana value 1, put it into your hand, then shuffle.",
+            "effects": [
+              {
+                "op": "SearchLibrary",
+                "filter": { "instant_or_sorcery": true, "mv_eq": 1 },
+                "destination": "hand",
+                "shuffle": true
+              }
+            ]
+          },
+          {
+            "text": "Create a 1/1 blue Wizard creature token.",
+            "effects": [
+              {
+                "op": "CreateToken",
+                "count": 1,
+                "power": 1,
+                "toughness": 1,
+                "color": "blue",
+                "subtypes": ["Wizard"]
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

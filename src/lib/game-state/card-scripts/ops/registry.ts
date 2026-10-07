@@ -37,6 +37,7 @@ import { PumpReference } from "./pump";
 import { PutCountersReference } from "./put-counters";
 import { ReturnToHandReference } from "./return-to-hand";
 import { ScryReference } from "./scry";
+import { SearchLibraryReference } from "./search-library";
 import { SurveilReference } from "./surveil";
 import { TapReference } from "./tap";
 import { UntapReference } from "./untap";
@@ -63,6 +64,7 @@ export const OP_REFERENCES: readonly CardOpReference[] = [
   MillReference,
   DiscardReference,
   CopySpellReference,
+  SearchLibraryReference,
   FightReference,
   BiteReference,
 ];

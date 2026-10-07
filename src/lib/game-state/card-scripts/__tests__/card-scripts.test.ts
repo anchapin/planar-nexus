@@ -2554,3 +2554,488 @@ describe("scripted X in triggers and activations (#2559)", () => {
     void p2;
   });
 });
+
+describe("scripted SearchLibrary (#2562)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+    // Start from known empty libraries so the tests can pick a hand.
+    const zones = new Map(state.zones);
+    for (const p of [p1, p2]) {
+      const key = `${p}-library`;
+      zones.set(key, { ...zones.get(key)!, cardIds: [] });
+      const handKey = `${p}-hand`;
+      zones.set(handKey, { ...zones.get(handKey)!, cardIds: [] });
+    }
+    state = { ...state, zones };
+  });
+
+  const library = (st: GameState, p: PlayerId) =>
+    st.zones.get(`${p}-library`)!.cardIds;
+  const hand = (st: GameState, p: PlayerId) =>
+    st.zones.get(`${p}-hand`)!.cardIds;
+  const battlefield = (st: GameState, p: PlayerId) =>
+    st.zones.get(`${p}-battlefield`)!.cardIds;
+
+  const makeAbility = (
+    sourceCardId: string,
+    text: string,
+    kind: "triggered" | "activated",
+    targets: Target[] = [],
+    chosenModes: string[] = [],
+  ) =>
+    ({
+      id: "ab-1",
+      type: "ability",
+      sourceCardId: id(sourceCardId),
+      controllerId: p1,
+      text,
+      targets,
+      triggered: kind === "triggered",
+      activated: kind === "activated",
+      chosenModes,
+    }) as unknown as StackObject;
+
+  const searchScript = (effect: object): CardScript =>
+    CardScriptSchema.parse({
+      name: "Search Test",
+      oracle: "x",
+      spell: [effect],
+    });
+
+  it("validates SearchLibrary shapes", () => {
+    const ok = (effect: object) =>
+      CardScriptSchema.safeParse({ name: "X", oracle: "x", spell: [effect] })
+        .success;
+    // Defaults: hand destination, you as searcher, shuffle true, count 1.
+    expect(ok({ op: "SearchLibrary", filter: { basic_land: true } })).toBe(
+      true,
+    );
+    expect(
+      ok({
+        op: "SearchLibrary",
+        who: "target_player",
+        filter: { creature: true, mv_le: 1 },
+        destination: "hand",
+      }),
+    ).toBe(true);
+    expect(
+      ok({
+        op: "SearchLibrary",
+        filter: { instant_or_sorcery: true, mv_eq: 1 },
+        destination: "battlefield",
+        shuffle: false,
+        count: 1,
+      }),
+    ).toBe(true);
+    // Reject: empty filter (no key set).
+    expect(ok({ op: "SearchLibrary", filter: {} })).toBe(false);
+    // Reject: missing `who` AND missing `filter` AND unknown op name.
+    expect(ok({ op: "SearchLibrary" })).toBe(false);
+    // Reject: who that isn't allowed.
+    expect(
+      ok({ op: "SearchLibrary", who: "each_opponent", filter: { land: true } }),
+    ).toBe(false);
+    // Reject: destination that isn't allowed.
+    expect(
+      ok({
+        op: "SearchLibrary",
+        filter: { land: true },
+        destination: "graveyard",
+      }),
+    ).toBe(false);
+    // Reject: count > 1 (v1 limitation).
+    expect(ok({ op: "SearchLibrary", filter: { land: true }, count: 2 })).toBe(
+      false,
+    );
+    // Reject: extra fields (strict).
+    expect(
+      ok({
+        op: "SearchLibrary",
+        filter: { land: true },
+        unknown: 1,
+      }),
+    ).toBe(false);
+  });
+
+  it("moves the first matching basic land from library to hand and shuffles", () => {
+    // Library: [Bear, Island, Forest]; first match is Island (basic land).
+    state = put(
+      state,
+      p1,
+      "bear",
+      card("Bear", "Creature — Bear", [2, 2]),
+      "library",
+    );
+    state = put(
+      state,
+      p1,
+      "island",
+      card("Island", "Basic Land — Island"),
+      "library",
+    );
+    state = put(
+      state,
+      p1,
+      "forest",
+      card("Forest", "Basic Land — Forest"),
+      "library",
+    );
+    const before = library(state, p1);
+    const s = resolveScriptedSpell(
+      state,
+      searchScript({ op: "SearchLibrary", filter: { basic_land: true } }),
+      spell(p1),
+    );
+    // The first basic land in library order is "island".
+    expect(hand(s, p1)).toContain(id("island"));
+    // The library no longer contains "island" but still has bear and forest.
+    expect(library(s, p1)).not.toContain(id("island"));
+    expect(library(s, p1).length).toBe(before.length - 1);
+    // The card's currentZoneKey tracks the move.
+    expect(s.cards.get(id("island"))!.currentZoneKey).toBe(`${p1}-hand`);
+    // Shuffle means the remaining cards can appear in any order, but the set
+    // is the same.
+    expect(new Set(library(s, p1))).toEqual(
+      new Set([id("bear"), id("forest")]),
+    );
+  });
+
+  it("puts the chosen card onto the battlefield when destination is battlefield", () => {
+    state = put(
+      state,
+      p1,
+      "bear",
+      card("Bear", "Creature — Bear", [2, 2]),
+      "library",
+    );
+    state = put(
+      state,
+      p1,
+      "forest",
+      card("Forest", "Basic Land — Forest"),
+      "library",
+    );
+    const before = library(state, p1);
+    const s = resolveScriptedSpell(
+      state,
+      searchScript({
+        op: "SearchLibrary",
+        filter: { basic_land: true },
+        destination: "battlefield",
+      }),
+      spell(p1),
+    );
+    // The basic land is on the battlefield, not in the library.
+    expect(battlefield(s, p1)).toContain(id("forest"));
+    expect(library(s, p1)).not.toContain(id("forest"));
+    expect(library(s, p1).length).toBe(before.length - 1);
+    expect(s.cards.get(id("forest"))!.currentZoneKey).toBe(`${p1}-battlefield`);
+  });
+
+  it("places the chosen card on top of the library for library_top", () => {
+    state = put(
+      state,
+      p1,
+      "bear",
+      card("Bear", "Creature — Bear", [2, 2]),
+      "library",
+    );
+    state = put(
+      state,
+      p1,
+      "island",
+      card("Island", "Basic Land — Island"),
+      "library",
+    );
+    const s = resolveScriptedSpell(
+      state,
+      searchScript({
+        op: "SearchLibrary",
+        filter: { basic_land: true },
+        destination: "library_top",
+        shuffle: false,
+      }),
+      spell(p1),
+    );
+    // The basic land is now the top of the library.
+    const newLibrary = library(s, p1);
+    expect(newLibrary[newLibrary.length - 1]).toBe(id("island"));
+    expect(library(s, p1)).toContain(id("bear"));
+    expect(s.cards.get(id("island"))!.currentZoneKey).toBe(`${p1}-library`);
+  });
+
+  it("shuffles the library even when no match is found", () => {
+    state = put(
+      state,
+      p1,
+      "bear",
+      card("Bear", "Creature — Bear", [2, 2]),
+      "library",
+    );
+    state = put(
+      state,
+      p1,
+      "giant",
+      card("Giant", "Creature — Giant", [4, 4]),
+      "library",
+    );
+    const before = library(state, p1);
+    const s = resolveScriptedSpell(
+      state,
+      searchScript({
+        op: "SearchLibrary",
+        filter: { basic_land: true },
+      }),
+      spell(p1),
+    );
+    // Library is intact; hand is empty; the library was still processed.
+    expect(library(s, p1).sort()).toEqual([...before].sort());
+    expect(hand(s, p1)).toEqual([]);
+  });
+
+  it("ANDs the filter keys (creature + mv_le: 1)", () => {
+    // Library: [Bear(cmc 0), Drake(cmc 1), Bird(cmc 2)]. The first match for
+    // "creature with mana value ≤ 1" is Bear (creature + cmc 0 ≤ 1). Bird
+    // (cmc 2) is too expensive.
+    state = put(
+      state,
+      p1,
+      "bear",
+      { ...card("Bear", "Creature — Bear", [2, 2]), cmc: 0 },
+      "library",
+    );
+    state = put(
+      state,
+      p1,
+      "drake",
+      { ...card("Drake", "Creature — Drake", [2, 2]), cmc: 1 },
+      "library",
+    );
+    state = put(
+      state,
+      p1,
+      "bird",
+      { ...card("Bird", "Creature — Bird", [1, 1]), cmc: 2 },
+      "library",
+    );
+    const s = resolveScriptedSpell(
+      state,
+      searchScript({
+        op: "SearchLibrary",
+        filter: { creature: true, mv_le: 1 },
+      }),
+      spell(p1),
+    );
+    // The first match is Bear (index 0).
+    expect(hand(s, p1)).toContain(id("bear"));
+    // Bird was too expensive to be a match.
+    expect(library(s, p1)).toContain(id("bird"));
+    expect(library(s, p1)).not.toContain(id("bear"));
+  });
+
+  it("matches instant_or_sorcery + mv_eq: 1", () => {
+    // Library: [Cancel(Instant, cmc 3), Opt(Instant, cmc 1), Giant(Creature)].
+    // First match for "instant or sorcery with mana value = 1" is Opt.
+    state = put(
+      state,
+      p1,
+      "cancel",
+      { ...card("Cancel", "Instant"), cmc: 3 },
+      "library",
+    );
+    state = put(
+      state,
+      p1,
+      "opt",
+      { ...card("Opt", "Instant"), cmc: 1 },
+      "library",
+    );
+    state = put(
+      state,
+      p1,
+      "giant",
+      card("Giant", "Creature — Giant", [4, 4]),
+      "library",
+    );
+    const s = resolveScriptedSpell(
+      state,
+      searchScript({
+        op: "SearchLibrary",
+        filter: { instant_or_sorcery: true, mv_eq: 1 },
+      }),
+      spell(p1),
+    );
+    expect(hand(s, p1)).toContain(id("opt"));
+    expect(library(s, p1)).not.toContain(id("opt"));
+  });
+
+  it("searches a target_player when who is target_player", () => {
+    state = put(
+      state,
+      p2,
+      "island",
+      card("Island", "Basic Land — Island"),
+      "library",
+    );
+    state = put(
+      state,
+      p2,
+      "bear",
+      card("Bear", "Creature — Bear", [2, 2]),
+      "library",
+    );
+    const s = resolveScriptedSpell(
+      state,
+      searchScript({
+        op: "SearchLibrary",
+        who: "target_player",
+        filter: { basic_land: true },
+      }),
+      spell(p1, [playerTarget(p2)]),
+    );
+    // The target player's library has been searched.
+    expect(hand(s, p2)).toContain(id("island"));
+    expect(library(s, p2)).not.toContain(id("island"));
+    // The controller's hand is unchanged.
+    expect(hand(s, p1)).toEqual([]);
+  });
+
+  it("Campus Guide's ETB puts a basic land onto the battlefield", () => {
+    // The permanent itself is on the battlefield (the ETB fires from there).
+    state = put(
+      state,
+      p1,
+      "guide",
+      card("Campus Guide", "Creature — Human Cleric", [1, 1]),
+    );
+    state = put(
+      state,
+      p1,
+      "island",
+      card("Island", "Basic Land — Island"),
+      "library",
+    );
+    state = put(
+      state,
+      p1,
+      "giant",
+      card("Giant", "Creature — Giant", [4, 4]),
+      "library",
+    );
+    const s = resolveScriptedAbility(
+      state,
+      makeAbility(
+        "guide",
+        "When Campus Guide enters the battlefield, search your library for a basic land card, put it onto the battlefield tapped, then shuffle.",
+        "triggered",
+      ),
+    )!;
+    // The first basic land ("island") is on the battlefield.
+    expect(battlefield(s, p1)).toContain(id("island"));
+    expect(library(s, p1)).not.toContain(id("island"));
+    expect(s.cards.get(id("island"))!.currentZoneKey).toBe(`${p1}-battlefield`);
+  });
+
+  it("Bushwhack puts a basic land into your hand", () => {
+    state = put(
+      state,
+      p1,
+      "bear",
+      card("Bear", "Creature — Bear", [2, 2]),
+      "library",
+    );
+    state = put(
+      state,
+      p1,
+      "forest",
+      card("Forest", "Basic Land — Forest"),
+      "library",
+    );
+    const s = resolveScriptedSpell(
+      state,
+      getCardScript("Bushwhack")!,
+      spell(p1),
+    );
+    expect(hand(s, p1)).toContain(id("forest"));
+    expect(library(s, p1)).not.toContain(id("forest"));
+  });
+
+  it("Micromancer's first mode (search) finds an instant with MV 1", () => {
+    state = put(
+      state,
+      p1,
+      "micro",
+      card("Micromancer", "Creature — Human Wizard", [2, 2]),
+    );
+    state = put(
+      state,
+      p1,
+      "opt",
+      { ...card("Opt", "Instant"), cmc: 1 },
+      "library",
+    );
+    state = put(
+      state,
+      p1,
+      "cancel",
+      { ...card("Cancel", "Instant"), cmc: 3 },
+      "library",
+    );
+    const modeText =
+      "Search your library for an instant or sorcery card with mana value 1, put it into your hand, then shuffle.";
+    const s = resolveScriptedAbility(
+      state,
+      makeAbility(
+        "micro",
+        "When Micromancer enters the battlefield, choose one —",
+        "triggered",
+        [],
+        [modeText],
+      ),
+    )!;
+    expect(hand(s, p1)).toContain(id("opt"));
+    expect(library(s, p1)).not.toContain(id("opt"));
+  });
+
+  it("Micromancer's second mode creates a Wizard token without searching", () => {
+    state = put(
+      state,
+      p1,
+      "micro",
+      card("Micromancer", "Creature — Human Wizard", [2, 2]),
+    );
+    state = put(
+      state,
+      p1,
+      "opt",
+      { ...card("Opt", "Instant"), cmc: 1 },
+      "library",
+    );
+    const before = battlefield(state, p1).length;
+    const modeText = "Create a 1/1 blue Wizard creature token.";
+    const s = resolveScriptedAbility(
+      state,
+      makeAbility(
+        "micro",
+        "When Micromancer enters the battlefield, choose one —",
+        "triggered",
+        [],
+        [modeText],
+      ),
+    )!;
+    // The library is untouched; a token is created.
+    expect(library(s, p1)).toContain(id("opt"));
+    expect(battlefield(s, p1).length).toBe(before + 1);
+    const token = s.zones
+      .get(`${p1}-battlefield`)!
+      .cardIds.find((cid) => s.cards.get(cid)!.isToken)!;
+    expect(s.cards.get(token)!.cardData.name).toBe("Wizard");
+  });
+});
