@@ -1314,12 +1314,24 @@ describe("controller filter on targets (#2532)", () => {
         { op: "Exile", target: "nonland_permanent", controller: "opponent" },
       ],
     });
+    // Restore the shared registry afterwards: under `--randomize` a leaked
+    // extra script makes "registers every script file" see one card too many.
     registerCardScripts([...RAW_CARD_SCRIPTS, script]);
-    state = put(state, p1, "zap", card("Test Removal", "Instant"), "library");
-    expect(getLegalSpellTargets(state, p1, id("zap")).sort()).toEqual([
-      "rock",
-      "theirs",
-    ]);
+    try {
+      state = put(
+        state,
+        p1,
+        "zap",
+        card("Test Removal", "Instant"),
+        "library",
+      );
+      expect(getLegalSpellTargets(state, p1, id("zap")).sort()).toEqual([
+        "rock",
+        "theirs",
+      ]);
+    } finally {
+      registerCardScripts(RAW_CARD_SCRIPTS);
+    }
   });
 
   it("does nothing if the target changed controller before resolution", () => {
