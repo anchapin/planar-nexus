@@ -70,7 +70,12 @@ jobs:
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
-    needs: [test, lint, typecheck]
+    # PR-696 (#695) gated E2E on fast checks for early cancellation. `test`
+    # (~5m) is not fast: chaining it here put Test -> E2E -> Build in series
+    # (~13m30s typical merge wait). E2E now starts once lint + typecheck pass
+    # (~1.5m) and runs alongside Test. Build still needs both, and both stay
+    # required checks, so merge gating is unchanged.
+    needs: [lint, typecheck]
     # Issue #1433: engage the Tauri dev-fallback shim so the desktop code
     # paths are taken against the dev server. The flag is a build-time
     # NEXT_PUBLIC_* value inlined by Next, so it must be present in the env
