@@ -11,6 +11,14 @@
  * Mana is counted as the pool plus what untapped lands can produce
  * (`tapLandsForCost`), so a spell is listed only when it can be paid now.
  *
+ * Combat is listed per creature: `listAttackerOptions` gives each creature
+ * that can attack and the defenders it may attack (opponents and their
+ * planeswalkers); `listBlockerOptions` gives each creature that can block
+ * and the attackers it may block. A declaration is a set of those picks,
+ * applied with `applyAttackDeclaration` / `applyBlockDeclaration`, which
+ * call `declareAttackers` / `declareBlockers` and so enforce the
+ * whole-declaration rules (menace's two-blocker minimum, for example).
+ *
  * Not covered yet (listed as the plain cast, or skipped): X spells (skipped),
  * modal mode selection, kicker and alternative costs, casting from zones
  * other than hand, and targeted loyalty abilities (skipped). Those land in
@@ -37,6 +45,14 @@ import {
 } from "./trigger-system/trigger-targets";
 import { tapLandsForCost } from "./keyword-actions/hand-activations";
 import { passPriority } from "./game-state";
+import {
+  canAttack,
+  canBlock,
+  getAvailableAttackers,
+  getAvailableBlockers,
+} from "./combat/queries";
+import { declareAttackers, declareBlockers } from "./combat/declaration";
+import { Phase } from "./types";
 
 /** Cap on target combinations listed for one multi-target spell. */
 export const MAX_TARGET_COMBINATIONS = 64;
@@ -289,4 +305,146 @@ export function applyPriorityChoice(
         : { success: false, state, error: r.error };
     }
   }
+}
+
+/** A creature that can attack, with every defender it may attack. */
+export interface AttackerOption {
+  cardId: CardInstanceId;
+  defenders: (PlayerId | CardInstanceId)[];
+}
+
+/** A creature that can block, with every attacker it may block. */
+export interface BlockerOption {
+  cardId: CardInstanceId;
+  attackers: CardInstanceId[];
+}
+
+export interface AttackAssignment {
+  cardId: CardInstanceId;
+  defenderId: PlayerId | CardInstanceId;
+}
+
+export interface BlockAssignment {
+  blockerId: CardInstanceId;
+  attackerId: CardInstanceId;
+}
+
+function isPlaneswalkerCard(state: GameState, cardId: CardInstanceId) {
+  const typeLine = state.cards.get(cardId)?.cardData.type_line ?? "";
+  return /\bplaneswalker\b/i.test(typeLine);
+}
+
+/** Players and planeswalkers `playerId` may attack. */
+function possibleDefenders(
+  state: GameState,
+  playerId: PlayerId,
+): (PlayerId | CardInstanceId)[] {
+  const out: (PlayerId | CardInstanceId)[] = [];
+  for (const opponentId of state.players.keys()) {
+    if (opponentId === playerId) continue;
+    out.push(opponentId);
+    for (const cardId of zoneCards(state, opponentId, "battlefield")) {
+      if (isPlaneswalkerCard(state, cardId)) out.push(cardId);
+    }
+  }
+  return out;
+}
+
+/**
+ * Creatures the active player may attack with, each with its legal
+ * defenders. Empty outside their beginning of combat / declare attackers
+ * step, or once attackers are declared.
+ */
+export function listAttackerOptions(
+  state: GameState,
+  playerId: PlayerId,
+): AttackerOption[] {
+  if (state.turn.activePlayerId !== playerId) return [];
+  const phase = state.turn.currentPhase;
+  if (phase !== Phase.BEGIN_COMBAT && phase !== Phase.DECLARE_ATTACKERS) {
+    return [];
+  }
+  if (state.combat.attackers.length > 0) return [];
+  const defenders = possibleDefenders(state, playerId);
+  const out: AttackerOption[] = [];
+  for (const cardId of getAvailableAttackers(state, playerId)) {
+    const legal = defenders.filter(
+      (d) => canAttack(state, cardId, d).canAttack,
+    );
+    if (legal.length > 0) out.push({ cardId, defenders: legal });
+  }
+  return out;
+}
+
+/** True when `attackerId` is attacking `playerId` or one of their walkers. */
+function attacksPlayer(
+  state: GameState,
+  defenderId: PlayerId | CardInstanceId,
+  playerId: PlayerId,
+): boolean {
+  if (defenderId === playerId) return true;
+  return (
+    state.cards.get(defenderId as CardInstanceId)?.controllerId === playerId
+  );
+}
+
+/**
+ * Creatures `playerId` may block with, each with the attackers it may
+ * block. Empty when nothing is attacking them.
+ */
+export function listBlockerOptions(
+  state: GameState,
+  playerId: PlayerId,
+): BlockerOption[] {
+  if (!state.combat.inCombatPhase) return [];
+  const attackers = state.combat.attackers
+    .filter((a) => attacksPlayer(state, a.defenderId, playerId))
+    .map((a) => a.cardId);
+  if (attackers.length === 0) return [];
+  const out: BlockerOption[] = [];
+  for (const cardId of getAvailableBlockers(state, playerId)) {
+    if (state.cards.get(cardId)?.controllerId !== playerId) continue;
+    const legal = attackers.filter((a) => canBlock(state, cardId, a).canBlock);
+    if (legal.length > 0) out.push({ cardId, attackers: legal });
+  }
+  return out;
+}
+
+/**
+ * Declare attackers. An empty list is a legal "no attack" and leaves the
+ * state as it is.
+ */
+export function applyAttackDeclaration(
+  state: GameState,
+  assignments: AttackAssignment[],
+): ApplyChoiceResult {
+  if (assignments.length === 0) return { success: true, state };
+  const r = declareAttackers(state, assignments);
+  if (!r.success || (r.errors && r.errors.length > 0)) {
+    return { success: false, state, error: r.errors?.join("; ") };
+  }
+  return { success: true, state: r.state };
+}
+
+/**
+ * Declare blockers. An empty list is a legal "no blocks" and leaves the
+ * state as it is.
+ */
+export function applyBlockDeclaration(
+  state: GameState,
+  assignments: BlockAssignment[],
+): ApplyChoiceResult {
+  if (assignments.length === 0) return { success: true, state };
+  const byAttacker = new Map<CardInstanceId, CardInstanceId[]>();
+  for (const { blockerId, attackerId } of assignments) {
+    byAttacker.set(attackerId, [
+      ...(byAttacker.get(attackerId) ?? []),
+      blockerId,
+    ]);
+  }
+  const r = declareBlockers(state, byAttacker);
+  if (!r.success || (r.errors && r.errors.length > 0)) {
+    return { success: false, state, error: r.errors?.join("; ") };
+  }
+  return { success: true, state: r.state };
 }
