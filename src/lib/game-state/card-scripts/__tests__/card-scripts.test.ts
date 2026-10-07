@@ -56,6 +56,9 @@ import { declareAttackers } from "../../combat/declaration";
 import { passPriority } from "../../game-state";
 import { resolveWaitingChoice } from "../../spell-casting/choices";
 import { Phase } from "../../types";
+import { refreshAuraBonuses } from "../../keyword-actions/aura-bonus";
+import { attachAura } from "../../keyword-actions/enchant";
+import { canAttack, canBlock } from "../../combat/queries";
 import { createInitialGameState, startGame } from "../../game-state";
 import { createCardInstance } from "../../card-instance";
 import {
@@ -4531,3 +4534,202 @@ describe("SearchLibrary tapped + Solemn Simulacrum, Campus Guide fix (#2566)", (
     expect(hart.activated.map((a) => a.text)).toEqual([HART]);
   });
 });
+
+/**
+ * Scripted Auras (CR 702.5 / 303.4, issue #2568). The schema's
+ * `aura.static` rides the same `refreshAuraBonuses` path as the engine's
+ * oracle-text Aura bonuses, so a single SBA pass writes the enchanted
+ * permanent's `auraPT` / `auraKeywords` / `auraRestrictAttack` /
+ * `auraRestrictBlock` from both sources simultaneously.
+ */
+describe("scripted auras (#2568)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+  });
+
+  it("validates the aura schema and rejects a bad target", () => {
+    const base = { name: "X", oracle: "x" };
+    const okAura = (aura: object) =>
+      CardScriptSchema.safeParse({ ...base, aura }).success;
+    expect(
+      okAura({
+        text: "Enchanted creature gets +1/+1.",
+        target: "creature",
+        static: {
+          text: "Enchanted creature gets +1/+1.",
+          power: 1,
+          toughness: 1,
+        },
+      }),
+    ).toBe(true);
+    expect(
+      okAura({
+        text: "Enchanted creature can't attack.",
+        target: "creature",
+        static: {
+          text: "Enchanted creature can't attack.",
+          restrictAttack: true,
+        },
+      }),
+    ).toBe(true);
+    // bad target enum
+    expect(
+      okAura({
+        text: "t",
+        target: "invalid",
+        static: { text: "t", power: 1, toughness: 1 },
+      }),
+    ).toBe(false);
+    // aura + equipment on the same card is rejected
+    expect(
+      CardScriptSchema.safeParse({
+        ...base,
+        aura: {
+          text: "t",
+          static: { text: "t", power: 1, toughness: 1 },
+        },
+        equipment: {
+          text: "t",
+          attachedStatic: { text: "t", power: 1, toughness: 1 },
+          equip: {
+            text: "Equip {1}",
+            cost: { mana: "{1}" },
+            effects: [
+              { op: "AttachEquipment", target: "creature", controller: "you" },
+            ],
+          },
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("aura static needs power/toughness, keywords, or a restriction", () => {
+    const base = {
+      name: "X",
+      oracle: "x",
+      aura: { text: "t", static: { text: "t" } },
+    };
+    expect(CardScriptSchema.safeParse(base).success).toBe(false);
+  });
+
+  it("Pacifism forbids attack and block while attached", () => {
+    const pacifismName = "Pacifism";
+    expect(getCardScript(pacifismName)?.aura?.static).toBeDefined();
+    let s = put(state, p1, "bear", card("Bear", "Creature \u2014 Bear", [3, 3]));
+    // Strip summoning sickness so the bear could otherwise attack/block.
+    {
+      const cards = new Map(s.cards);
+      const bear = cards.get(id("bear"))!;
+      cards.set(id("bear"), { ...bear, hasSummoningSickness: false });
+      s = { ...s, cards };
+    }
+    s = put(s, p1, "pacifism", card(pacifismName, "Enchantment \u2014 Aura"));
+    // Simulate the aura ETB attach: the engine's `attachAura` keeps both
+    // `attachedToId` and `attachedCardIds` in sync; the SBA pass then
+    // refreshes the host's bonuses.
+    s = attachAura(s, id("pacifism"), id("bear"));
+    s = refreshAuraBonuses(s);
+    const host = s.cards.get(id("bear"))!;
+    expect(host.auraRestrictAttack).toEqual(["Pacifism"]);
+    expect(host.auraRestrictBlock).toEqual(["Pacifism"]);
+    expect(canAttack(s, id("bear"), p2).canAttack).toBe(false);
+    expect(canBlock(s, id("bear"), id("attacker")).canBlock).toBe(false);
+    // The restriction is removed when the aura leaves the battlefield.
+    const zones = new Map(s.zones);
+    const bf = zones.get(`${p1}-battlefield`)!;
+    zones.set(`${p1}-battlefield`, {
+      ...bf,
+      cardIds: bf.cardIds.filter((c) => c !== id("pacifism")),
+    });
+    const after = refreshAuraBonuses({ ...s, zones });
+    expect(after.cards.get(id("bear"))!.auraRestrictAttack).toBeUndefined();
+    expect(canAttack(after, id("bear"), p2).canAttack).toBe(true);
+  });
+
+  it("Twinblade Blessing gives +1/+1 and double strike", () => {
+    let s = put(
+      state,
+      p1,
+      "bear",
+      card("Grizzly Bears", "Creature \u2014 Bear", [2, 2]),
+    );
+    s = put(
+      s,
+      p1,
+      "blessing",
+      card("Twinblade Blessing", "Enchantment \u2014 Aura"),
+    );
+    s = attachAura(s, id("blessing"), id("bear"));
+    s = refreshAuraBonuses(s);
+    const host = s.cards.get(id("bear"))!;
+    expect(host.auraPT).toEqual({ power: 1, toughness: 1 });
+    expect(host.auraKeywords).toEqual(["double strike"]);
+    expect(getEffectivePower(host)).toBe(3);
+    expect(getEffectiveToughness(host)).toBe(3);
+    expect(hasKeyword(host, "double strike")).toBe(true);
+  });
+
+  it("Witness Protection gives -1/-1 and forbids attack", () => {
+    let s = put(
+      state,
+      p1,
+      "bear",
+      card("Grizzly Bears", "Creature \u2014 Bear", [2, 2]),
+    );
+    s = put(
+      s,
+      p1,
+      "witness",
+      card("Witness Protection", "Enchantment \u2014 Aura"),
+    );
+    s = attachAura(s, id("witness"), id("bear"));
+    s = refreshAuraBonuses(s);
+    const host = s.cards.get(id("bear"))!;
+    expect(host.auraPT).toEqual({ power: -1, toughness: -1 });
+    expect(host.auraRestrictAttack).toEqual(["Witness Protection"]);
+    expect(getEffectivePower(host)).toBe(1);
+    expect(getEffectiveToughness(host)).toBe(1);
+    expect(canAttack(s, id("bear"), p2).canAttack).toBe(false);
+    // Witness Protection does not restrict blocking (Pacifism does).
+    expect(host.auraRestrictBlock).toBeUndefined();
+    expect(canBlock(s, id("bear"), id("attacker")).canBlock).toBe(true);
+  });
+
+  it("scripted and oracle-text aura bonuses stack on the same target", () => {
+    // Ethereal Armor's "Enchanted creature gets +1/+1 and has first strike"
+    // is the engine's oracle-text Aura path. Twinblade Blessing is the
+    // scripted path. The bear is enchanted by both; the bonuses should
+    // add to (2, 2) and double-strike + first-strike both land.
+    let s = put(
+      state,
+      p1,
+      "bear",
+      card("Grizzly Bears", "Creature \u2014 Bear", [2, 2]),
+    );
+    s = put(s, p1, "armor", {
+      ...card("Ethereal Armor", "Enchantment \u2014 Aura"),
+      oracle_text:
+        "Enchant creature\nEnchanted creature gets +1/+1 and has first strike.",
+    } as ScryfallCard);
+    s = attachAura(s, id("armor"), id("bear"));
+    s = put(
+      s,
+      p1,
+      "blessing",
+      card("Twinblade Blessing", "Enchantment \u2014 Aura"),
+    );
+    s = attachAura(s, id("blessing"), id("bear"));
+    s = refreshAuraBonuses(s);
+    const host = s.cards.get(id("bear"))!;
+    expect(host.auraPT).toEqual({ power: 2, toughness: 2 });
+    expect(host.auraKeywords?.sort()).toEqual(["double strike", "first strike"]);
+  });
+});
+
