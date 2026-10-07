@@ -36,6 +36,7 @@ import { copySpellOnStack } from "../spell-casting/resolve";
 import { attachEquipment } from "../keyword-actions/equip";
 import { addUntilEndOfTurnKeyword } from "../pt-until-end-of-turn";
 import { getCardScript } from "./registry";
+import { addMana } from "../mana/mana-pool";
 import { PREDEFINED_TOKENS } from "./predefined-tokens";
 import {
   matchesController,
@@ -486,6 +487,16 @@ function searchLibrary(
   return { ...state, zones, cards };
 }
 
+/** Script mana symbol to the engine's mana pool field (#2565). */
+const MANA_POOL_KEY = {
+  W: "white",
+  U: "blue",
+  B: "black",
+  R: "red",
+  G: "green",
+  C: "colorless",
+} as const;
+
 function applyEffect(
   state: GameState,
   scripted: CardEffect,
@@ -533,6 +544,16 @@ function applyEffect(
         player,
       );
       return r.success ? r.state : state;
+    }
+    case "AddMana": {
+      // A single fixed color resolves here: a triggered or spell "add
+      // {R}" (#2565). Activated mana abilities never reach the stack
+      // (CR 605.3a); with a color choice ("any", or "{R} or {G}") they
+      // go through the mana ability path, which asks for the color.
+      if (effect.colors === "any" || effect.colors.length !== 1) return state;
+      return addMana(state, ctx.controllerId, {
+        [MANA_POOL_KEY[effect.colors[0]]]: effect.amount,
+      });
     }
     case "GainLife": {
       const player = playerFor(effect.who, ctx);

@@ -50,6 +50,7 @@ import {
   parseManaAbility,
 } from "../../mana";
 import { activateAbility } from "../../abilities/activated";
+import { parseManaFromEffect } from "../../abilities/mana";
 import { PREDEFINED_TOKENS } from "../predefined-tokens";
 import { declareAttackers } from "../../combat/declaration";
 import { passPriority } from "../../game-state";
@@ -1315,12 +1316,18 @@ describe("controller filter on targets (#2532)", () => {
         { op: "Exile", target: "nonland_permanent", controller: "opponent" },
       ],
     });
+    // Restore the shared registry afterwards: under `--randomize` a leaked
+    // extra script makes "registers every script file" see one card too many.
     registerCardScripts([...RAW_CARD_SCRIPTS, script]);
-    state = put(state, p1, "zap", card("Test Removal", "Instant"), "library");
-    expect(getLegalSpellTargets(state, p1, id("zap")).sort()).toEqual([
-      "rock",
-      "theirs",
-    ]);
+    try {
+      state = put(state, p1, "zap", card("Test Removal", "Instant"), "library");
+      expect(getLegalSpellTargets(state, p1, id("zap")).sort()).toEqual([
+        "rock",
+        "theirs",
+      ]);
+    } finally {
+      registerCardScripts(RAW_CARD_SCRIPTS);
+    }
   });
 
   it("does nothing if the target changed controller before resolution", () => {
@@ -2645,9 +2652,9 @@ describe("scripted ReturnFromZone (#2560)", () => {
         count: 1,
       }),
     ).toBe(true);
-    expect(
-      ok({ op: "ReturnFromZone", from: "exile", to: "battlefield" }),
-    ).toBe(false);
+    expect(ok({ op: "ReturnFromZone", from: "exile", to: "battlefield" })).toBe(
+      false,
+    );
     expect(
       ok({
         op: "ReturnFromZone",
@@ -2701,9 +2708,11 @@ describe("scripted ReturnFromZone (#2560)", () => {
     // Move the source version into the graveyard via destroyCard so the
     // source matches the script's sourceCardId on the stack object.
     s = destroyCard(s, id("skel-on-bf")).state;
-    const skelInYard = s.zones.get(`${p1}-graveyard`)!.cardIds.find(
-      (cid) => s.cards.get(cid)!.cardData.name === "Reassembling Skeleton",
-    )!;
+    const skelInYard = s.zones
+      .get(`${p1}-graveyard`)!
+      .cardIds.find(
+        (cid) => s.cards.get(cid)!.cardData.name === "Reassembling Skeleton",
+      )!;
     s = resolveScriptedAbility(
       s,
       ability(
@@ -2725,7 +2734,10 @@ describe("scripted ReturnFromZone (#2560)", () => {
       card("Sun-Blessed Healer", "Creature — Human Cleric", [2, 2]),
     );
     s = inGraveyard(s, p1, "cub", card("Cub", "Creature — Cat", [1, 1]));
-    s = inGraveyard(s, p1, "bear", { ...card("Bear", "Creature — Bear", [3, 3]), cmc: 3 });
+    s = inGraveyard(s, p1, "bear", {
+      ...card("Bear", "Creature — Bear", [3, 3]),
+      cmc: 3,
+    });
     const s2 = resolveScriptedAbility(
       s,
       ability(
@@ -2903,7 +2915,10 @@ describe("scripted ReturnFromZone (#2560)", () => {
       card("Alesha, Who Laughs at Fate", "Creature — Human Warrior", [3, 2]),
     );
     s = inGraveyard(s, p1, "cub", card("Cub", "Creature — Cat", [1, 1]));
-    s = inGraveyard(s, p1, "bear", { ...card("Bear", "Creature — Bear", [3, 3]), cmc: 3 });
+    s = inGraveyard(s, p1, "bear", {
+      ...card("Bear", "Creature — Bear", [3, 3]),
+      cmc: 3,
+    });
     const s2 = resolveScriptedAbility(
       s,
       ability(
@@ -3017,9 +3032,9 @@ describe("scripted ReturnFromZone (#2560)", () => {
         count: 1,
       }),
     ).toBe(true);
-    expect(
-      ok({ op: "ReturnFromZone", from: "exile", to: "battlefield" }),
-    ).toBe(false);
+    expect(ok({ op: "ReturnFromZone", from: "exile", to: "battlefield" })).toBe(
+      false,
+    );
     expect(
       ok({
         op: "ReturnFromZone",
@@ -3073,9 +3088,11 @@ describe("scripted ReturnFromZone (#2560)", () => {
     // Move the source version into the graveyard via destroyCard so the
     // source matches the script's sourceCardId on the stack object.
     s = destroyCard(s, id("skel-on-bf")).state;
-    const skelInYard = s.zones.get(`${p1}-graveyard`)!.cardIds.find(
-      (cid) => s.cards.get(cid)!.cardData.name === "Reassembling Skeleton",
-    )!;
+    const skelInYard = s.zones
+      .get(`${p1}-graveyard`)!
+      .cardIds.find(
+        (cid) => s.cards.get(cid)!.cardData.name === "Reassembling Skeleton",
+      )!;
     s = resolveScriptedAbility(
       s,
       ability(
@@ -3097,7 +3114,10 @@ describe("scripted ReturnFromZone (#2560)", () => {
       card("Sun-Blessed Healer", "Creature — Human Cleric", [2, 2]),
     );
     s = inGraveyard(s, p1, "cub", card("Cub", "Creature — Cat", [1, 1]));
-    s = inGraveyard(s, p1, "bear", { ...card("Bear", "Creature — Bear", [3, 3]), cmc: 3 });
+    s = inGraveyard(s, p1, "bear", {
+      ...card("Bear", "Creature — Bear", [3, 3]),
+      cmc: 3,
+    });
     const s2 = resolveScriptedAbility(
       s,
       ability(
@@ -3275,7 +3295,10 @@ describe("scripted ReturnFromZone (#2560)", () => {
       card("Alesha, Who Laughs at Fate", "Creature — Human Warrior", [3, 2]),
     );
     s = inGraveyard(s, p1, "cub", card("Cub", "Creature — Cat", [1, 1]));
-    s = inGraveyard(s, p1, "bear", { ...card("Bear", "Creature — Bear", [3, 3]), cmc: 3 });
+    s = inGraveyard(s, p1, "bear", {
+      ...card("Bear", "Creature — Bear", [3, 3]),
+      cmc: 3,
+    });
     const s2 = resolveScriptedAbility(
       s,
       ability(
@@ -3389,9 +3412,9 @@ describe("scripted ReturnFromZone (#2560)", () => {
         count: 1,
       }),
     ).toBe(true);
-    expect(
-      ok({ op: "ReturnFromZone", from: "exile", to: "battlefield" }),
-    ).toBe(false);
+    expect(ok({ op: "ReturnFromZone", from: "exile", to: "battlefield" })).toBe(
+      false,
+    );
     expect(
       ok({
         op: "ReturnFromZone",
@@ -3445,9 +3468,11 @@ describe("scripted ReturnFromZone (#2560)", () => {
     // Move the source version into the graveyard via destroyCard so the
     // source matches the script's sourceCardId on the stack object.
     s = destroyCard(s, id("skel-on-bf")).state;
-    const skelInYard = s.zones.get(`${p1}-graveyard`)!.cardIds.find(
-      (cid) => s.cards.get(cid)!.cardData.name === "Reassembling Skeleton",
-    )!;
+    const skelInYard = s.zones
+      .get(`${p1}-graveyard`)!
+      .cardIds.find(
+        (cid) => s.cards.get(cid)!.cardData.name === "Reassembling Skeleton",
+      )!;
     s = resolveScriptedAbility(
       s,
       ability(
@@ -3469,7 +3494,10 @@ describe("scripted ReturnFromZone (#2560)", () => {
       card("Sun-Blessed Healer", "Creature — Human Cleric", [2, 2]),
     );
     s = inGraveyard(s, p1, "cub", card("Cub", "Creature — Cat", [1, 1]));
-    s = inGraveyard(s, p1, "bear", { ...card("Bear", "Creature — Bear", [3, 3]), cmc: 3 });
+    s = inGraveyard(s, p1, "bear", {
+      ...card("Bear", "Creature — Bear", [3, 3]),
+      cmc: 3,
+    });
     const s2 = resolveScriptedAbility(
       s,
       ability(
@@ -3647,7 +3675,10 @@ describe("scripted ReturnFromZone (#2560)", () => {
       card("Alesha, Who Laughs at Fate", "Creature — Human Warrior", [3, 2]),
     );
     s = inGraveyard(s, p1, "cub", card("Cub", "Creature — Cat", [1, 1]));
-    s = inGraveyard(s, p1, "bear", { ...card("Bear", "Creature — Bear", [3, 3]), cmc: 3 });
+    s = inGraveyard(s, p1, "bear", {
+      ...card("Bear", "Creature — Bear", [3, 3]),
+      cmc: 3,
+    });
     const s2 = resolveScriptedAbility(
       s,
       ability(
@@ -3761,9 +3792,9 @@ describe("scripted ReturnFromZone (#2560)", () => {
         count: 1,
       }),
     ).toBe(true);
-    expect(
-      ok({ op: "ReturnFromZone", from: "exile", to: "battlefield" }),
-    ).toBe(false);
+    expect(ok({ op: "ReturnFromZone", from: "exile", to: "battlefield" })).toBe(
+      false,
+    );
     expect(
       ok({
         op: "ReturnFromZone",
@@ -3817,9 +3848,11 @@ describe("scripted ReturnFromZone (#2560)", () => {
     // Move the source version into the graveyard via destroyCard so the
     // source matches the script's sourceCardId on the stack object.
     s = destroyCard(s, id("skel-on-bf")).state;
-    const skelInYard = s.zones.get(`${p1}-graveyard`)!.cardIds.find(
-      (cid) => s.cards.get(cid)!.cardData.name === "Reassembling Skeleton",
-    )!;
+    const skelInYard = s.zones
+      .get(`${p1}-graveyard`)!
+      .cardIds.find(
+        (cid) => s.cards.get(cid)!.cardData.name === "Reassembling Skeleton",
+      )!;
     s = resolveScriptedAbility(
       s,
       ability(
@@ -3841,7 +3874,10 @@ describe("scripted ReturnFromZone (#2560)", () => {
       card("Sun-Blessed Healer", "Creature — Human Cleric", [2, 2]),
     );
     s = inGraveyard(s, p1, "cub", card("Cub", "Creature — Cat", [1, 1]));
-    s = inGraveyard(s, p1, "bear", { ...card("Bear", "Creature — Bear", [3, 3]), cmc: 3 });
+    s = inGraveyard(s, p1, "bear", {
+      ...card("Bear", "Creature — Bear", [3, 3]),
+      cmc: 3,
+    });
     const s2 = resolveScriptedAbility(
       s,
       ability(
@@ -4019,7 +4055,10 @@ describe("scripted ReturnFromZone (#2560)", () => {
       card("Alesha, Who Laughs at Fate", "Creature — Human Warrior", [3, 2]),
     );
     s = inGraveyard(s, p1, "cub", card("Cub", "Creature — Cat", [1, 1]));
-    s = inGraveyard(s, p1, "bear", { ...card("Bear", "Creature — Bear", [3, 3]), cmc: 3 });
+    s = inGraveyard(s, p1, "bear", {
+      ...card("Bear", "Creature — Bear", [3, 3]),
+      cmc: 3,
+    });
     const s2 = resolveScriptedAbility(
       s,
       ability(
@@ -4041,6 +4080,134 @@ describe("scripted ReturnFromZone (#2560)", () => {
       ),
     )!;
     expect(zoneOf(s3, "bear")).toBe(`${p1}-graveyard`);
+  });
+});
+
+describe("scripted AddMana (#2565)", () => {
+  const fresh = () => {
+    const state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    return { state, p1: Array.from(state.players.keys())[0] };
+  };
+
+  const ok = (effect: object, where: "spell" | "activated" = "spell") =>
+    CardScriptSchema.safeParse(
+      where === "spell"
+        ? { name: "X", oracle: "x", spell: [effect] }
+        : {
+            name: "X",
+            oracle: "x",
+            activated: [
+              {
+                text: "Add {G}.",
+                cost: { tap: true, sacrifice: false },
+                effects: [effect],
+              },
+            ],
+          },
+    ).success;
+
+  it("validates AddMana", () => {
+    expect(ok({ op: "AddMana", amount: 1, colors: ["G"] }, "activated")).toBe(
+      true,
+    );
+    expect(ok({ op: "AddMana", colors: "any" }, "activated")).toBe(true);
+    expect(ok({ op: "AddMana", amount: 1, colors: ["R", "G"] })).toBe(true);
+    expect(ok({ op: "AddMana", amount: 0, colors: ["G"] })).toBe(false);
+    expect(ok({ op: "AddMana", amount: 1, colors: [] })).toBe(false);
+    expect(ok({ op: "AddMana", amount: 1, colors: ["X"] })).toBe(false);
+    // Spending restrictions aren't enforced yet, so they can't be scripted.
+    expect(
+      ok({ op: "AddMana", amount: 1, colors: "any", restrict: "creatures" }),
+    ).toBe(false);
+  });
+
+  it("is not a targeted effect", () => {
+    expect(isTargetedEffect({ op: "AddMana", amount: 1, colors: ["G"] })).toBe(
+      false,
+    );
+  });
+
+  it("adds a fixed color to the controller's pool when it resolves", () => {
+    const { p1, state: s0 } = fresh();
+    const s = resolveScriptedSpell(
+      s0,
+      {
+        name: "X",
+        oracle: "x",
+        spell: [{ op: "AddMana", amount: 2, colors: ["R"] }],
+      } as CardScript,
+      spell(p1),
+    );
+    expect(s.players.get(p1)!.manaPool.red).toBe(2);
+    expect(s.players.get(p1)!.manaPool.green).toBe(0);
+  });
+
+  it("Llanowar Elves taps for {G} as a mana ability, without the stack", () => {
+    expect(getCardScript("Llanowar Elves")).toBeDefined();
+    const { p1, state: s0 } = fresh();
+    let s = put(
+      s0,
+      p1,
+      "elves",
+      card("Llanowar Elves", "Creature — Elf Druid", [1, 1]),
+    );
+    const cards = new Map(s.cards);
+    cards.set(id("elves"), {
+      ...cards.get(id("elves"))!,
+      hasSummoningSickness: false,
+    });
+    s = { ...s, cards };
+    const stackBefore = s.zones.get("stack")?.cardIds.length ?? 0;
+
+    const r = activateAbility(s, p1, id("elves"), 0);
+    expect(r.success).toBe(true);
+    expect(r.state.players.get(p1)!.manaPool.green).toBe(1);
+    expect(r.state.cards.get(id("elves"))!.isTapped).toBe(true);
+    expect(r.state.zones.get("stack")?.cardIds.length ?? 0).toBe(stackBefore);
+  });
+
+  it("summoning-sick Llanowar Elves can't tap for mana (CR 302.6)", () => {
+    const { p1, state: s0 } = fresh();
+    const s = put(
+      s0,
+      p1,
+      "elves",
+      card("Llanowar Elves", "Creature — Elf Druid", [1, 1]),
+    );
+    const r = activateAbility(s, p1, id("elves"), 0);
+    expect(r.success).toBe(false);
+    expect(r.state.players.get(p1)!.manaPool.green).toBe(0);
+  });
+
+  it("every AddMana script's ability text agrees with its op", () => {
+    const symbolKey = {
+      W: "white",
+      U: "blue",
+      B: "black",
+      R: "red",
+      G: "green",
+      C: "colorless",
+    } as const;
+    for (const name of listScriptedCardNames()) {
+      for (const a of getCardScript(name)!.activated ?? []) {
+        for (const e of a.effects ?? []) {
+          if (e.op !== "AddMana") continue;
+          if (e.colors === "any" || e.colors.length > 1) {
+            expect([name, /any (?:one )?color| or \{/i.test(a.text)]).toEqual([
+              name,
+              true,
+            ]);
+          } else {
+            expect([name, parseManaFromEffect(a.text)]).toEqual([
+              name,
+              { [symbolKey[e.colors[0]]]: e.amount },
+            ]);
+          }
+        }
+      }
+    }
   });
 });
 
