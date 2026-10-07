@@ -1,0 +1,31 @@
+{
+  "name": "Boros Charm",
+  "oracle": "Choose one —\n• Boros Charm deals 4 damage to target creature or planeswalker.\n• Permanents you control gain indestructible until end of turn.",
+  "modes": {
+    "choose": 1,
+    "options": [
+      {
+        "text": "Boros Charm deals 4 damage to target creature or planeswalker.",
+        "effects": [
+          {
+            "op": "DealDamage",
+            "amount": 4,
+            "target": "creature"
+          }
+        ]
+      },
+      {
+        "text": "Permanents you control gain indestructible until end of turn.",
+        "effects": [
+          {
+            "op": "GrantKeyword",
+            "keyword": "indestructible",
+            "target": "creature",
+            "controller": "you",
+            "until": "end_of_turn"
+          }
+        ]
+      }
+    ]
+  }
+}
