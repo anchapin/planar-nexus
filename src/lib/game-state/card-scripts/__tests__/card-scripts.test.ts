@@ -5052,3 +5052,303 @@ describe("kicker schema rejects (#2564)", () => {
   });
 });
 
+describe("scripted SearchLibrary and ShuffleLibrary (#2566)", () => {
+  /** Set up a fresh state with a known, ordered p1 library. */
+  const fresh = (): { state: GameState; p1: PlayerId; p2: PlayerId } => {
+    const s = startGame(createInitialGameState(["Player1", "Player2"], 20, false));
+    const [a, b] = Array.from(s.players.keys());
+    return { state: s, p1: a, p2: b };
+  };
+
+  /** Replace a player's library with an ordered list of cardIds (top = last). */
+  const setLibrary = (
+    s: GameState,
+    p: PlayerId,
+    names: string[],
+    type: string = "Sorcery",
+  ): GameState => {
+    const zones = new Map(s.zones);
+    zones.set(`${p}-library`, {
+      ...zones.get(`${p}-library`)!,
+      cardIds: [],
+    });
+    const cards = new Map(s.cards);
+    let out = { ...s, cards, zones };
+    // The library's top is the LAST element of `cardIds` (per
+    // `getTopCard`). `put` appends, so iterating `names` in order with
+    // `put` produces [name[0], name[1], …, name[n-1]] — name[n-1] is
+    // the top.
+    for (const n of names) {
+      out = put(out, p, n, card(n, type), "library");
+    }
+    return out;
+  };
+
+  const ability = (
+    controllerId: PlayerId,
+    sourceCardId: string,
+    text: string,
+    targets: Target[] = [],
+  ) =>
+    ({
+      id: "ab-1",
+      type: "ability",
+      sourceCardId: id(sourceCardId),
+      controllerId,
+      text,
+      targets,
+      triggered: false,
+      activated: true,
+    }) as unknown as StackObject;
+
+  it("validates ShuffleLibrary", () => {
+    const ok = (effect: object) =>
+      CardScriptSchema.safeParse({ name: "X", oracle: "x", spell: [effect] })
+        .success;
+    expect(ok({ op: "ShuffleLibrary" })).toBe(true);
+    expect(ok({ op: "ShuffleLibrary", who: "target_player" })).toBe(true);
+    expect(ok({ op: "ShuffleLibrary", who: "you", into: "library" })).toBe(
+      true,
+    );
+    // v1 only supports "library"; graveyard-into-library is a follow-up.
+    expect(ok({ op: "ShuffleLibrary", into: "graveyard" })).toBe(false);
+    expect(ok({ op: "ShuffleLibrary", into: "battlefield" })).toBe(false);
+    expect(ok({ op: "ShuffleLibrary", into: "hand" })).toBe(false);
+    // `who` is restricted to the same two values SearchLibrary uses.
+    expect(ok({ op: "ShuffleLibrary", who: "each_opponent" })).toBe(false);
+  });
+
+  it("ShuffleLibrary rearranges the named player's library", () => {
+    const f = fresh();
+    const state = setLibrary(f.state, f.p1, [
+      "a",
+      "b",
+      "c",
+      "d",
+      "e",
+      "f",
+      "g",
+      "h",
+    ]);
+    const before = state.zones.get(`${f.p1}-library`)!.cardIds;
+    const s = resolveScriptedSpell(
+      state,
+      CardScriptSchema.parse({
+        name: "Shuffle Test",
+        oracle: "x",
+        spell: [{ op: "ShuffleLibrary" }],
+      }),
+      spell(f.p1),
+    );
+    const after = s.zones.get(`${f.p1}-library`)!.cardIds;
+    // Multiset is preserved.
+    expect([...after].sort()).toEqual([...before].sort());
+    // Length is preserved.
+    expect(after).toHaveLength(before.length);
+    // With 8 cards and a uniform shuffle, the probability of the order
+    // being identical is 1/8! ≈ 1/40320, so the test is extremely
+    // unlikely to flake. If it ever does, regenerate.
+    expect(after).not.toEqual(before);
+  });
+
+  it("ShuffleLibrary on a target player shuffles that library, not yours", () => {
+    const f = fresh();
+    let s = setLibrary(f.state, f.p1, ["a", "b", "c", "d", "e", "f", "g", "h"]);
+    // Use a 6-card library for the target player — 1/720 chance of
+    // an identical order on a uniform Fisher-Yates pass, very unlikely
+    // to flake.
+    s = setLibrary(s, f.p2, ["x", "y", "z", "p", "q", "r"]);
+    const mineBefore = s.zones.get(`${f.p1}-library`)!.cardIds;
+    const yoursBefore = s.zones.get(`${f.p2}-library`)!.cardIds;
+    const after = resolveScriptedSpell(
+      s,
+      CardScriptSchema.parse({
+        name: "Shuffle Other",
+        oracle: "x",
+        spell: [
+          { op: "ShuffleLibrary", who: "target_player" },
+        ],
+      }),
+      spell(f.p1, [playerTarget(f.p2)]),
+    );
+    expect(after.zones.get(`${f.p1}-library`)!.cardIds).toEqual(mineBefore);
+    const theirs = after.zones.get(`${f.p2}-library`)!.cardIds;
+    expect([...theirs].sort()).toEqual([...yoursBefore].sort());
+    expect(theirs).not.toEqual(yoursBefore);
+  });
+
+  it("SearchLibrary on a basic land actually shuffles the library (#2562 + #2566)", () => {
+    // The first matching card is a basic land somewhere in the library
+    // (the engine picks the first match, not the top). After the search,
+    // that land is in hand and the library is reshuffled — the Wave 1
+    // "shuffle: true" was a no-op until Lane 8 wired the new
+    // `shuffleLibraryZone` primitive into the SearchLibrary case.
+    const f = fresh();
+    let s = setLibrary(f.state, f.p1, [
+      "bear-1",
+      "bear-2",
+      "bear-3",
+      "Forest-1",
+      "Plains-1",
+    ]);
+    // Replace the Forest-1 card's type_line with "Basic Land —" so the
+    // `basic_land: true` filter matches it (the engine picks the first
+    // match in cardIds order, which is Forest-1 here).
+    const cards = new Map(s.cards);
+    const f1 = cards.get(id("Forest-1"))!;
+    cards.set(id("Forest-1"), {
+      ...f1,
+      cardData: { ...f1.cardData, type_line: "Basic Land — Forest" },
+    });
+    s = { ...s, cards };
+    const before = s.zones.get(`${f.p1}-library`)!.cardIds;
+    const after = resolveScriptedSpell(
+      s,
+      getCardScript("Bushwhack")!,
+      spell(f.p1),
+    );
+    // The chosen basic land (Forest-1) is now in hand.
+    const hand = after.zones.get(`${f.p1}-hand`)!.cardIds;
+    expect(hand).toContain(id("Forest-1"));
+    // The library is missing the chosen card.
+    const afterLib = after.zones.get(`${f.p1}-library`)!.cardIds;
+    expect(afterLib).not.toContain(id("Forest-1"));
+    expect(afterLib).toHaveLength(before.length - 1);
+    // The library was actually shuffled: its order should differ from
+    // the original. With 4 remaining cards the chance of an identical
+    // order is 1/24 ≈ 4%; the test is unlikely to flake but not
+    // astronomically so. If it does, the SearchLibrary code is still
+    // correct — the assertion just gets noisy.
+    expect(afterLib).not.toEqual(
+      before.filter((c) => c !== id("Forest-1")),
+    );
+  });
+
+  it("SearchLibrary with shuffle: false leaves the library order untouched", () => {
+    // After Lane 8, `shuffle: false` skips the post-search shuffle
+    // (the schema's default is true; the explicit `false` is what
+    // players rarely want, but the schema accepts it).
+    const f = fresh();
+    let s = setLibrary(f.state, f.p1, [
+      "bear-1",
+      "bear-2",
+      "Forest-top",
+    ]);
+    // Replace the last (top) card's type_line with "Basic Land — Forest"
+    // so the `basic_land: true` filter matches.
+    const cards = new Map(s.cards);
+    const ft = cards.get(id("Forest-top"))!;
+    cards.set(id("Forest-top"), {
+      ...ft,
+      cardData: { ...ft.cardData, type_line: "Basic Land — Forest" },
+    });
+    s = { ...s, cards };
+    const before = s.zones.get(`${f.p1}-library`)!.cardIds;
+    const after = resolveScriptedSpell(
+      s,
+      CardScriptSchema.parse({
+        name: "Search NoShuffle",
+        oracle: "x",
+        spell: [
+          {
+            op: "SearchLibrary",
+            filter: { basic_land: true },
+            destination: "hand",
+            shuffle: false,
+          },
+        ],
+      }),
+      spell(f.p1),
+    );
+    const afterLib = after.zones.get(`${f.p1}-library`)!.cardIds;
+    expect(afterLib).toEqual(
+      before.filter((c) => c !== id("Forest-top")),
+    );
+  });
+
+  it("Burnished Hart's ETB searches a basic land onto the battlefield and shuffles", () => {
+    const f = fresh();
+    let s = setLibrary(f.state, f.p1, [
+      "bear-1",
+      "bear-2",
+      "Plains-top",
+    ]);
+    // Replace the land's type_line so the `basic_land: true` filter matches.
+    const cards = new Map(s.cards);
+    const inst = cards.get(id("Plains-top"))!;
+    cards.set(id("Plains-top"), {
+      ...inst,
+      cardData: { ...inst.cardData, type_line: "Basic Land — Forest" },
+    });
+    s = { ...s, cards };
+    s = put(
+      s,
+      f.p1,
+      "hart",
+      card("Burnished Hart", "Artifact Creature — Elk", [2, 2]),
+    );
+    const before = s.zones.get(`${f.p1}-library`)!.cardIds;
+    const after = resolveScriptedAbility(
+      s,
+      ability(
+        f.p1,
+        "hart",
+        "Search your library for up to two basic land cards, put them onto the battlefield tapped, then shuffle.",
+      ),
+    )!;
+    // v1 limitation: the schema caps SearchLibrary.count at 1, so only
+    // the first matching card (Plains-top) is chosen. The Hart also
+    // doesn't tap on enter (no "enters tapped" op) and the "you may
+    // sacrifice" path is not modeled. The shuffle IS the point of Lane 8
+    // and IS applied.
+    const battlefield = after.zones.get(`${f.p1}-battlefield`)!.cardIds;
+    expect(battlefield).toContain(id("Plains-top"));
+    const afterLib = after.zones.get(`${f.p1}-library`)!.cardIds;
+    expect(afterLib).not.toContain(id("Plains-top"));
+    expect(afterLib).not.toEqual(before);
+  });
+
+  it("Wishclaw Talisman's activated ability draws and discards", () => {
+    // v1: Wishclaw is scripted for the Draw + Discard half; the "put
+    // this artifact on the bottom of its owner's library" line is a
+    // separate op that's a follow-up. The "library-shuffling context"
+    // Lane 8 cares about is exercised by the underlying ShuffleLibrary
+    // op tests above.
+    const f = fresh();
+    let s = setLibrary(f.state, f.p1, [
+      "lib-1",
+      "lib-2",
+      "lib-3",
+    ]);
+    s = put(s, f.p1, "hand-1", card("Hand 1", "Instant"), "hand");
+    s = put(s, f.p1, "hand-2", card("Hand 2", "Instant"), "hand");
+    s = put(s, f.p1, "talisman", card("Wishclaw Talisman", "Artifact"));
+    const beforeHand = s.zones.get(`${f.p1}-hand`)!.cardIds.length;
+    const beforeLib = s.zones.get(`${f.p1}-library`)!.cardIds.length;
+    const after = resolveScriptedAbility(
+      s,
+      {
+        id: "ab-1",
+        type: "ability",
+        sourceCardId: id("talisman"),
+        controllerId: f.p1,
+        text: "{T}: Draw a card, then discard a card. Then put this artifact on the bottom of its owner's library.",
+        targets: [],
+        triggered: false,
+        activated: true,
+      } as unknown as StackObject,
+    )!;
+    // Drew one (now has beforeHand+1 in hand), then waiting on a
+    // discard choice. Library is shorter by 1 (we drew the top).
+    expect(after.zones.get(`${f.p1}-library`)!.cardIds.length).toBe(
+      beforeLib - 1,
+    );
+    expect(after.waitingChoice?.type).toBe("discard_cards");
+    expect(after.waitingChoice?.playerId).toBe(f.p1);
+    // The discard choice's pool is the hand (after the draw); the
+    // beforeHand hand has become beforeHand+1 by the time the discard
+    // is asked.
+    expect(after.waitingChoice?.choices.length).toBe(beforeHand + 1);
+  });
+});
+

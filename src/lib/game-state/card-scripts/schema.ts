@@ -545,6 +545,23 @@ export const AddManaSchema = z
   })
   .strict();
 
+/**
+ * "Shuffle [a player's] library" (CR 701.20, #2566). The standalone
+ * shuffle op covers cards whose only effect is to shuffle (rare, but
+ * every search-style spell ALSO needs the post-search shuffle — the
+ * `SearchLibrary` op's `shuffle: true` field handles that). For now
+ * only `into: "library"` is supported: "shuffle your graveyard into
+ * your library" is a follow-up variant.
+ */
+export const ShuffleLibrarySchema = z
+  .object({
+    op: z.literal("ShuffleLibrary"),
+    who: z.enum(["you", "target_player"]).default("you"),
+    into: z.literal("library").default("library"),
+    if_kicked: ifKicked,
+  })
+  .strict();
+
 export const EffectSchema = z.discriminatedUnion("op", [
   DealDamageSchema,
   DrawSchema,
@@ -568,6 +585,7 @@ export const EffectSchema = z.discriminatedUnion("op", [
   DiscardSchema,
   CopySpellSchema,
   SearchLibrarySchema,
+  ShuffleLibrarySchema,
   FightSchema,
   BiteSchema,
   AddManaSchema,

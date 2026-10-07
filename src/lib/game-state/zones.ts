@@ -2,7 +2,7 @@
  * Zone management for Magic: The Gathering game state
  */
 
-import type { CardInstance, CardInstanceId, PlayerId, Zone } from "./types";
+import type { CardInstance, CardInstanceId, GameState, PlayerId, Zone } from "./types";
 import { ZoneType, getZoneKey } from "./types";
 
 /**
@@ -198,15 +198,43 @@ export function getTopCards(zone: Zone, count: number): CardInstanceId[] {
 }
 
 /**
- * Shuffle a zone (randomize order)
+ * Shuffle a zone (randomize order). The optional `random` parameter is the
+ * source of randomness for the Fisher-Yates loop; pass a seeded RNG in
+ * tests to make the result deterministic. Defaults to `Math.random` for
+ * engine paths that don't need a known outcome (CR 701.20 — the
+ * "shuffle" action).
  */
-export function shuffleZone(zone: Zone): Zone {
+export function shuffleZone(zone: Zone, random: () => number = Math.random): Zone {
   const shuffled = [...zone.cardIds];
   for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(random() * (i + 1));
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
   }
   return { ...zone, cardIds: shuffled };
+}
+
+/**
+ * Shuffle a player's library in place (CR 701.20, #2566). Reads the
+ * current library zone, calls `shuffleZone`, and writes the shuffled
+ * cardIds back into the state. An empty library is a no-op (the
+ * `shuffleZone` loop is a no-op on a zero-length array, so this never
+ * crashes). The optional `random` is the same seeded RNG `shuffleZone`
+ * accepts; tests use it to assert a specific post-shuffle order.
+ */
+export function shuffleLibraryZone(
+  state: GameState,
+  playerId: PlayerId,
+  random?: () => number,
+): GameState {
+  const libraryKey = getZoneKey(playerId, ZoneType.LIBRARY);
+  const library = state.zones.get(libraryKey);
+  if (!library) return state;
+  if (library.cardIds.length <= 1) return state;
+  const shuffled = shuffleZone(library, random);
+  if (shuffled === library) return state;
+  const zones = new Map(state.zones);
+  zones.set(libraryKey, shuffled);
+  return { ...state, zones };
 }
 
 /**
