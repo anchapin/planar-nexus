@@ -20,6 +20,7 @@ import { isCreature, getPower, getToughness } from "../card-instance";
 import { canTargetCard } from "../targeting-validation";
 import { getActivatedAbilities } from "../abilities/parse";
 import { getCardScript } from "../card-scripts/registry";
+import { getScriptedAbilityEffects } from "../card-scripts/interpret";
 import {
   isPermanentScript,
   isTargetedEffect,
@@ -34,7 +35,12 @@ import {
 } from "../card-scripts/target-filters";
 
 export type TriggerTargetKind =
-  "creature" | "permanent" | "player" | "opponent" | "any";
+  | "creature"
+  | "permanent"
+  | "player"
+  | "opponent"
+  | "any"
+  | "graveyard_card";
 
 export interface TriggerTargetSpec {
   kind: TriggerTargetKind;
@@ -46,6 +52,11 @@ export interface TriggerTargetSpec {
   excludeSource: boolean;
   /** Scripted Destroy/Exile: which permanents qualify (#2528). */
   filter?: RemovalFilter;
+  /** Scripted ReturnFromZone: which cards in the chosen graveyard qualify (#2560). */
+  graveyardFilter?: {
+    creature?: boolean;
+    mv_le?: number;
+  };
 }
 
 export interface ChooseTriggerTargetsResult {
@@ -121,6 +132,32 @@ function battlefieldCreatures(state: GameState): CardInstance[] {
   return out;
 }
 
+/**
+ * Cards in a single player's graveyard (#2560): used by ReturnFromZone
+ * target selection. Filters by creature and mana value the way
+ * `returnFromZoneStillMatches` does at resolution time.
+ */
+function graveyardCards(
+  state: GameState,
+  ownerId: PlayerId,
+  filter: { creature?: boolean; mv_le?: number } | undefined,
+): CardInstance[] {
+  const zone = state.zones.get(`${ownerId}-graveyard`);
+  if (!zone) return [];
+  const out: CardInstance[] = [];
+  for (const id of zone.cardIds) {
+    const card = state.cards.get(id);
+    if (!card) continue;
+    if (filter?.creature === true && !isCreature(card)) continue;
+    if (filter?.mv_le !== undefined) {
+      const cmc = card.cardData.cmc ?? 0;
+      if (cmc > filter.mv_le) continue;
+    }
+    out.push(card);
+  }
+  return out;
+}
+
 /** Legal target ids (cards and players) for a target requirement in `text`. */
 function legalTargetsFor(
   state: GameState,
@@ -165,6 +202,18 @@ function legalTargetsForSpec(
       if (spec.excludeSource && card.id === sourceCardId) continue;
       if (source && !canTargetCard(card, source, controllerId).valid) continue;
       ids.push(card.id);
+    }
+  }
+  if (spec.kind === "graveyard_card") {
+    // #2560: a card in the named player's graveyard.
+    const graveyardOwner =
+      spec.controller === "you"
+        ? controllerId
+        : [...state.players.keys()].find((p) => p !== controllerId);
+    if (graveyardOwner) {
+      for (const card of graveyardCards(state, graveyardOwner, spec.graveyardFilter)) {
+        ids.push(card.id);
+      }
     }
   }
   if (
@@ -238,6 +287,20 @@ function effectTargetSpecs(effect: CardEffect): TriggerTargetSpec[] | null {
       { ...base, kind: "creature", controller: effect.controller ?? "any" },
     ];
   }
+  if (effect.op === "ReturnFromZone") {
+    // #2560: a card in a graveyard, narrowed by the effect's filter.
+    return [
+      {
+        ...base,
+        kind: "graveyard_card",
+        controller: effect.filter?.controller ?? "you",
+        graveyardFilter: {
+          creature: effect.filter?.creature,
+          mv_le: effect.filter?.mv_le,
+        },
+      },
+    ];
+  }
   if (effect.op === "Fight" || effect.op === "Bite") {
     // #2548: a targeted fighter (a creature you control) is chosen first.
     const other: TriggerTargetSpec = {
@@ -294,7 +357,8 @@ function effectsTargetSpecList(
 
 /**
  * Target requirement of a triggered or activated ability on the stack. A
- * scripted modal ability targets what its chosen modes target; anything else
+ * scripted modal ability targets what its chosen modes target; a scripted
+ * non-modal ability targets what its effects target (#2560). Anything else
  * is read from its text.
  */
 function abilityTargetSpec(
@@ -304,6 +368,11 @@ function abilityTargetSpec(
   const modal = scriptedAbilityModes(state, obj);
   if (modal)
     return effectsTargetSpec(modalEffects(modal.modes, obj.chosenModes));
+  const scriptedEffects = getScriptedAbilityEffects(state, obj);
+  if (scriptedEffects) {
+    const spec = effectsTargetSpec(scriptedEffects);
+    if (spec) return spec;
+  }
   return parseTriggerTargetSpec(obj.text);
 }
 

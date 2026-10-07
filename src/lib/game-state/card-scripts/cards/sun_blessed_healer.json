@@ -1,0 +1,24 @@
+{
+  "name": "Sun-Blessed Healer",
+  "oracle": "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+  "triggers": [
+    {
+      "text": "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "ReturnFromZone",
+          "from": "graveyard",
+          "to": "battlefield",
+          "target": "card",
+          "filter": {
+            "creature": true,
+            "mv_le": 2,
+            "controller": "you"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -53,8 +53,6 @@ import { PREDEFINED_TOKENS } from "../predefined-tokens";
 import { declareAttackers } from "../../combat/declaration";
 import { passPriority } from "../../game-state";
 import { resolveWaitingChoice } from "../../spell-casting/choices";
-import { castSpell, resolveTopOfStack } from "../../spell-casting";
-import { addMana } from "../../mana";
 import { Phase } from "../../types";
 import { createInitialGameState, startGame } from "../../game-state";
 import { createCardInstance } from "../../card-instance";
@@ -2557,383 +2555,1490 @@ describe("scripted X in triggers and activations (#2559)", () => {
   });
 });
 
-describe("scripted Flashback (#2563, CR 702.143)", () => {
-  // Schema: the `flashback` field is optional on CardScriptSchema; when set
-  // it MUST have a mana cost string and `destinations.on_resolution` of
-  // "exile" (the only valid destination per CR 702.143a). The
-  // `CardScriptSchema` test loop already exercises the happy path, so here
-  // we test the boundary conditions.
-
-  it("CardScriptSchema accepts a flashback field with cost + destinations", () => {
-    const ok = CardScriptSchema.safeParse({
-      name: "Test Flashback",
-      oracle: "Draw a card. Flashback {2}{U} ...",
-      spell: [{ op: "Draw", amount: 1, who: "you" }],
-      flashback: {
-        cost: "{2}{U}",
-        destinations: { on_resolution: "exile" },
-      },
-    });
-    expect(ok.success).toBe(true);
-  });
-
-  it("CardScriptSchema rejects a flashback field without cost", () => {
-    const result = CardScriptSchema.safeParse({
-      name: "Test Flashback No Cost",
-      oracle: "Draw a card. Flashback ...",
-      spell: [{ op: "Draw", amount: 1, who: "you" }],
-      flashback: {
-        destinations: { on_resolution: "exile" },
-      },
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it("CardScriptSchema rejects a flashback field with a non-exile destination", () => {
-    // CR 702.143a: flashback always exiles. Anything other than "exile" is
-    // invalid and the schema must reject it.
-    const result = CardScriptSchema.safeParse({
-      name: "Test Flashback Wrong Dest",
-      oracle: "Draw a card. Flashback ...",
-      spell: [{ op: "Draw", amount: 1, who: "you" }],
-      flashback: {
-        cost: "{2}{U}",
-        destinations: { on_resolution: "graveyard" },
-      },
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it("CardScriptSchema rejects flashback on a permanent (only instants/sorceries)", () => {
-    const result = CardScriptSchema.safeParse({
-      name: "Permanent With Flashback",
-      oracle: "Flashback {2}{U}",
-      triggers: [
-        {
-          text: "When this creature enters, draw a card.",
-          event: "etb",
-          subject: "self",
-          effects: [{ op: "Draw", amount: 1, who: "you" }],
-        },
-      ],
-      flashback: {
-        cost: "{2}{U}",
-        destinations: { on_resolution: "exile" },
-      },
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it("CardScriptSchema rejects an empty flashback cost (no mana symbols)", () => {
-    const result = CardScriptSchema.safeParse({
-      name: "Test Flashback Empty",
-      oracle: "Draw a card. Flashback ...",
-      spell: [{ op: "Draw", amount: 1, who: "you" }],
-      flashback: {
-        cost: "",
-        destinations: { on_resolution: "exile" },
-      },
-    });
-    expect(result.success).toBe(false);
-  });
-
-  // The scripted card JSONs cover the engine's per-card "what does the spell
-  // do" path. The full cast+resolve cycle through `castSpell` +
-  // `resolveTopOfStack` is the engine's "does the card actually go to exile
-  // on resolution" path (the redirect that issue #2563 was missing). We
-  // exercise both halves for each of the three hand-checked cards.
-
+describe("scripted ReturnFromZone (#2560)", () => {
   let state: GameState;
   let p1: PlayerId;
+  let p2: PlayerId;
 
-  beforeEach(() => {
-    state = startGame(createInitialGameState(["P1", "P2"], 20, false));
-    [p1] = Array.from(state.players.keys());
-    state = {
-      ...state,
-      turn: {
-        ...state.turn,
-        currentPhase: Phase.PRECOMBAT_MAIN,
-        activePlayerId: p1,
-      },
-      stack: [],
-      priorityPlayerId: p1,
-    };
-  });
-
-  // Helper: make a ScryfallCard for a flashback spell. The card must have
-  // a name that matches the script registry (case-insensitive), a type
-  // line so resolveTopOfStack can pick a destination zone, and oracle
-  // text that includes "Flashback" so the cost parser fires.
-  const makeFlashbackCard = (
-    name: string,
-    typeLine: string,
-    manaCost: string,
-    oracleText: string,
-  ): ScryfallCard =>
-    ({
-      id: `mock-${name.toLowerCase().replace(/\s+/g, "-")}`,
-      name,
-      type_line: typeLine,
-      oracle_text: oracleText,
-      mana_cost: manaCost,
-      cmc: 0,
-      colors: [],
-      color_identity: [],
-      keywords: [],
-      legalities: { standard: "legal" },
-      layout: "normal",
-    }) as unknown as ScryfallCard;
-
-  // Helper: put a card directly into a player's graveyard. The full
-  // cast-from-graveyard path needs the card to be in the graveyard zone,
-  // not in hand.
-  const putInGraveyard = (
+  /** Place a card directly into a player's graveyard. */
+  const inGraveyard = (
     s: GameState,
     playerId: PlayerId,
-    cardId: CardInstanceId,
-    cardData: ScryfallCard,
+    cardId: string,
+    data: ScryfallCard,
   ): GameState => {
-    const ci = createCardInstance(cardData, playerId, playerId, {
-      id: cardId,
-      currentZoneKey: `${playerId}-graveyard`,
-    });
+    const key = `${playerId}-graveyard`;
     const cards = new Map(s.cards);
-    cards.set(cardId, ci);
+    cards.set(
+      id(cardId),
+      createCardInstance(data, playerId, playerId, {
+        id: id(cardId),
+        currentZoneKey: key,
+      }),
+    );
     const zones = new Map(s.zones);
-    const yard = zones.get(`${playerId}-graveyard`)!;
-    zones.set(`${playerId}-graveyard`, {
-      ...yard,
-      cardIds: [...yard.cardIds, cardId],
-    });
+    const z = zones.get(key)!;
+    zones.set(key, { ...z, cardIds: [...z.cardIds, id(cardId)] });
     return { ...s, cards, zones };
   };
 
-  it("Think Twice (FDN 165) — cast from hand: lands in graveyard", () => {
-    const cardData = makeFlashbackCard(
-      "Think Twice",
-      "Instant",
-      "{1}{U}",
-      "Draw a card. Flashback {2}{U} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+  const zoneOf = (s: GameState, c: string) =>
+    Array.from(s.zones.entries()).find(([, z]) =>
+      z.cardIds.includes(id(c)),
+    )?.[0];
+
+  const ability = (
+    sourceCardId: string,
+    text: string,
+    kind: "triggered" | "activated",
+    targets: Target[] = [],
+  ) =>
+    ({
+      id: "ab-rfz",
+      type: "ability",
+      sourceCardId: id(sourceCardId),
+      controllerId: p1,
+      text,
+      targets,
+      triggered: kind === "triggered",
+      activated: kind === "activated",
+    }) as unknown as StackObject;
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
     );
-    const ci = createCardInstance(cardData, p1, p1);
-    let s: GameState = { ...state, cards: new Map(state.cards).set(ci.id, ci) };
-    const hand = s.zones.get(`${p1}-hand`)!;
-    s = {
-      ...s,
-      zones: new Map(s.zones).set(`${p1}-hand`, {
-        ...hand,
-        cardIds: [...hand.cardIds, ci.id],
+    [p1, p2] = Array.from(state.players.keys());
+  });
+
+  it("validates ReturnFromZone with the simple and filtered shapes", () => {
+    const ok = (effect: object) =>
+      CardScriptSchema.safeParse({ name: "X", oracle: "x", spell: [effect] })
+        .success;
+    expect(
+      ok({ op: "ReturnFromZone", from: "graveyard", to: "battlefield" }),
+    ).toBe(true);
+    expect(
+      ok({
+        op: "ReturnFromZone",
+        from: "graveyard",
+        to: "battlefield",
+        target: "card",
       }),
-    };
-    s = addMana(s, p1, { blue: 1, generic: 1 });
-    const cast = castSpell(s, p1, ci.id);
-    expect(cast.success).toBe(true);
-    const resolved = resolveTopOfStack(cast.state);
-    // Regular cast (no flashback): card goes to graveyard.
-    expect(resolved.zones.get(`${p1}-graveyard`)!.cardIds).toContain(ci.id);
-    expect(resolved.zones.get(`${p1}-exile`)!.cardIds).not.toContain(ci.id);
+    ).toBe(true);
+    expect(
+      ok({
+        op: "ReturnFromZone",
+        from: "graveyard",
+        to: "battlefield",
+        target: "card",
+        filter: { creature: true, mv_le: 2, controller: "you" },
+      }),
+    ).toBe(true);
+    expect(
+      ok({
+        op: "ReturnFromZone",
+        from: "graveyard",
+        to: "battlefield",
+        target: "card",
+        count: 1,
+      }),
+    ).toBe(true);
+    expect(
+      ok({ op: "ReturnFromZone", from: "exile", to: "battlefield" }),
+    ).toBe(false);
+    expect(
+      ok({
+        op: "ReturnFromZone",
+        from: "graveyard",
+        to: "battlefield",
+        target: "card",
+        filter: { creature: "yes" },
+      }),
+    ).toBe(false);
+    expect(
+      ok({
+        op: "ReturnFromZone",
+        from: "graveyard",
+        to: "battlefield",
+        target: "card",
+        filter: { mv_le: -1 },
+      }),
+    ).toBe(false);
+    expect(
+      isTargetedEffect({
+        op: "ReturnFromZone",
+        from: "graveyard",
+        to: "battlefield",
+        target: "card",
+      }),
+    ).toBe(true);
+    expect(
+      effectTargetCount({
+        op: "ReturnFromZone",
+        from: "graveyard",
+        to: "battlefield",
+        target: "card",
+      }),
+    ).toBe(1);
   });
 
-  it("Think Twice — cast from graveyard with flashback: lands in exile", () => {
-    const cardData = makeFlashbackCard(
-      "Think Twice",
-      "Instant",
-      "{1}{U}",
-      "Draw a card. Flashback {2}{U} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+  it("Reassembling Skeleton's activated ability returns the Skeleton to the battlefield", () => {
+    // The Skeleton is in p1's graveyard (it died); the ability targets it.
+    let s = inGraveyard(
+      state,
+      p1,
+      "skel",
+      card("Reassembling Skeleton", "Creature — Skeleton", [1, 1]),
     );
-    const cardId = id("think-twice");
-    let s = putInGraveyard(state, p1, cardId, cardData);
-    s = addMana(s, p1, { blue: 1, generic: 2 });
-    const cast = castSpell(s, p1, cardId, [], [], 0, false, {
-      type: "flashback",
-    });
-    expect(cast.success).toBe(true);
-    // Sanity: the cast stamped "flashback" on the alternativeCostsUsed log.
-    expect(cast.state.stack[0].alternativeCostsUsed).toContain("flashback");
-    const resolved = resolveTopOfStack(cast.state);
-    // CR 702.143a: the spell resolves then is exiled (not put in graveyard).
-    expect(resolved.zones.get(`${p1}-exile`)!.cardIds).toContain(cardId);
-    expect(resolved.zones.get(`${p1}-graveyard`)!.cardIds).not.toContain(
-      cardId,
-    );
-    // The card's `flashback` flag is set for introspection.
-    expect(resolved.cards.get(cardId)!.flashback).toBe(true);
-  });
-
-  it("Tome Blast (SOS 135) — flashback cast: deal 2 damage, then exile", () => {
-    // Test the DealDamage + flashback redirect combo. Target an opponent.
-    const [, p2] = Array.from(state.players.keys());
-    const cardData = makeFlashbackCard(
-      "Tome Blast",
-      "Sorcery",
-      "{1}{R}",
-      "Tome Blast deals 2 damage to any target. Flashback {4}{R} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
-    );
-    const cardId = id("tome-blast");
-    let s = putInGraveyard(state, p1, cardId, cardData);
-    s = addMana(s, p1, { red: 1, generic: 4 });
-    const cast = castSpell(
+    s = put(
       s,
       p1,
-      cardId,
-      [{ type: "player", targetId: p2, isValid: true }],
-      [],
-      0,
-      false,
-      { type: "flashback" },
+      "skel-on-bf",
+      card("Reassembling Skeleton", "Creature — Skeleton", [1, 1]),
     );
-    if (!cast.success) {
-      throw new Error(`cast failed: ${cast.error}`);
-    }
-    expect(cast.success).toBe(true);
-    const resolved = resolveTopOfStack(cast.state);
-    // 2 damage to p2.
-    expect(resolved.players.get(p2)!.life).toBe(18);
-    // Card exiled, not in graveyard.
-    expect(resolved.zones.get(`${p1}-exile`)!.cardIds).toContain(cardId);
-    expect(resolved.zones.get(`${p1}-graveyard`)!.cardIds).not.toContain(
-      cardId,
-    );
+    // Move the source version into the graveyard via destroyCard so the
+    // source matches the script's sourceCardId on the stack object.
+    s = destroyCard(s, id("skel-on-bf")).state;
+    const skelInYard = s.zones.get(`${p1}-graveyard`)!.cardIds.find(
+      (cid) => s.cards.get(cid)!.cardData.name === "Reassembling Skeleton",
+    )!;
+    s = resolveScriptedAbility(
+      s,
+      ability(
+        skelInYard,
+        "Return Reassembling Skeleton from your graveyard to the battlefield.",
+        "activated",
+        [{ type: "card", targetId: skelInYard, isValid: true }],
+      ),
+    )!;
+    expect(zoneOf(s, skelInYard)).toBe(`${p1}-battlefield`);
+    expect(s.cards.get(id(skelInYard))!.hasSummoningSickness).toBe(true);
   });
 
-  it("Faithless Looting (TDC 213) — flashback cast: draw 2, discard 2, exile", () => {
-    // Test the Draw + Discard sequence + flashback redirect combo. We
-    // build a self-contained fixture because `startGame`'s default
-    // library is just string ids with no backing `CardInstance`, which
-    // would break `discardCards` / `moveCardToZone` for the discard
-    // step (it tries to look up the card in `state.cards` and find
-    // nothing).
-    const cardData = makeFlashbackCard(
-      "Faithless Looting",
-      "Sorcery",
-      "{R}",
-      "Draw two cards, then discard two cards. Flashback {2}{R} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+  it("Sun-Blessed Healer's ETB returns a creature card with MV 2 or less", () => {
+    let s = put(
+      state,
+      p1,
+      "healer",
+      card("Sun-Blessed Healer", "Creature — Human Cleric", [2, 2]),
     );
-    const cardId = id("faithless-looting");
-    const dummy = (i: number, name: string): ScryfallCard =>
-      ({
-        id: `${name}-${i}`,
-        name,
-        type_line: "Instant",
-        oracle_text: "",
-        mana_cost: "",
-        cmc: 0,
-        colors: [],
-        color_identity: [],
-        keywords: [],
-        legalities: { standard: "legal" },
-        layout: "normal",
-      }) as unknown as ScryfallCard;
-    // Wipe the default deck-card string ids from the hand and library.
-    let s: GameState = {
-      ...state,
-      zones: new Map(state.zones)
-        .set(`${p1}-hand`, {
-          ...state.zones.get(`${p1}-hand`)!,
-          cardIds: [],
-        })
-        .set(`${p1}-library`, {
-          ...state.zones.get(`${p1}-library`)!,
-          cardIds: [],
-        }),
-    };
-    // Library: 4 real cards.
-    for (let i = 0; i < 4; i++) {
-      const ci = createCardInstance(dummy(i, `Library Card ${i}`), p1, p1, {
-        id: `lib-${i}` as CardInstanceId,
-        currentZoneKey: `${p1}-library`,
-      });
-      s = {
-        ...s,
-        cards: new Map(s.cards).set(ci.id, ci),
-        zones: new Map(s.zones).set(`${p1}-library`, {
-          ...s.zones.get(`${p1}-library`)!,
-          cardIds: [...s.zones.get(`${p1}-library`)!.cardIds, ci.id],
-        }),
-      };
-    }
-    // Hand: 3 real cards to discard.
-    for (let i = 0; i < 3; i++) {
-      const ci = createCardInstance(dummy(100 + i, `Hand Card ${i}`), p1, p1, {
-        id: `hand-${i}` as CardInstanceId,
-        currentZoneKey: `${p1}-hand`,
-      });
-      s = {
-        ...s,
-        cards: new Map(s.cards).set(ci.id, ci),
-        zones: new Map(s.zones).set(`${p1}-hand`, {
-          ...s.zones.get(`${p1}-hand`)!,
-          cardIds: [...s.zones.get(`${p1}-hand`)!.cardIds, ci.id],
-        }),
-      };
-    }
-    // Place Faithless Looting in the graveyard.
-    const ci = createCardInstance(cardData, p1, p1, {
-      id: cardId,
-      currentZoneKey: `${p1}-graveyard`,
+    s = inGraveyard(s, p1, "cub", card("Cub", "Creature — Cat", [1, 1]));
+    s = inGraveyard(s, p1, "bear", { ...card("Bear", "Creature — Bear", [3, 3]), cmc: 3 });
+    const s2 = resolveScriptedAbility(
+      s,
+      ability(
+        "healer",
+        "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+        "triggered",
+        [cardTarget("cub")],
+      ),
+    )!;
+    expect(zoneOf(s2, "cub")).toBe(`${p1}-battlefield`);
+    // The bear (MV 3) is filtered out: it stays in the graveyard even if
+    // targeted.
+    const s3 = resolveScriptedAbility(
+      s,
+      ability(
+        "healer",
+        "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+        "triggered",
+        [cardTarget("bear")],
+      ),
+    )!;
+    expect(zoneOf(s3, "bear")).toBe(`${p1}-graveyard`);
+  });
+
+  it("does nothing when the target is no longer in a graveyard (CR 608.2b)", () => {
+    const s0 = inGraveyard(
+      state,
+      p1,
+      "cub",
+      card("Cub", "Creature — Cat", [1, 1]),
+    );
+    const s = resolveScriptedAbility(
+      s0,
+      ability(
+        "healer" as string,
+        "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+        "triggered",
+        // Target a card that's not in any graveyard.
+        [{ type: "card", targetId: "ghost", isValid: true }],
+      ),
+    );
+    // The ability is from a non-scripted source — scripted resolution
+    // returns undefined and the state is unchanged from the input.
+    expect(s).toBeUndefined();
+  });
+
+  it("does nothing when the target was moved out of the graveyard", () => {
+    // Place the cub in the graveyard, then move it to the battlefield so
+    // the same id is no longer in any graveyard: the resolution must skip
+    // the effect (CR 608.2b).
+    let s = put(
+      state,
+      p1,
+      "healer",
+      card("Sun-Blessed Healer", "Creature — Human Cleric", [2, 2]),
+    );
+    s = inGraveyard(s, p1, "cub", card("Cub", "Creature — Cat", [1, 1]));
+    // Hand-roll the move: pull cub out of p1's graveyard, push it into
+    // p1's battlefield, update currentZoneKey.
+    const cards = new Map(s.cards);
+    const cub = cards.get(id("cub"))!;
+    const bfKey = `${p1}-battlefield`;
+    cards.set(id("cub"), { ...cub, currentZoneKey: bfKey });
+    const zones = new Map(s.zones);
+    const bf = zones.get(bfKey)!;
+    const yard = zones.get(`${p1}-graveyard`)!;
+    zones.set(bfKey, { ...bf, cardIds: [...bf.cardIds, id("cub")] });
+    zones.set(`${p1}-graveyard`, {
+      ...yard,
+      cardIds: yard.cardIds.filter((cid) => cid !== id("cub")),
     });
-    s = {
-      ...s,
-      cards: new Map(s.cards).set(cardId, ci),
-      zones: new Map(s.zones).set(`${p1}-graveyard`, {
-        ...s.zones.get(`${p1}-graveyard`)!,
-        cardIds: [...s.zones.get(`${p1}-graveyard`)!.cardIds, cardId],
+    s = { ...s, cards, zones };
+    const s2 = resolveScriptedAbility(
+      s,
+      ability(
+        "healer",
+        "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+        "triggered",
+        [cardTarget("cub")],
+      ),
+    )!;
+    // CR 608.2b: the target is no longer in a graveyard, so nothing happens.
+    expect(zoneOf(s2, "cub")).toBe(`${p1}-battlefield`);
+  });
+
+  it("rejects picking an opponent's graveyard card when controller is you", () => {
+    let s = put(
+      state,
+      p1,
+      "healer",
+      card("Sun-Blessed Healer", "Creature — Human Cleric", [2, 2]),
+    );
+    s = inGraveyard(s, p2, "cub", card("Cub", "Creature — Cat", [1, 1]));
+    const s2 = resolveScriptedAbility(
+      s,
+      ability(
+        "healer",
+        "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+        "triggered",
+        [cardTarget("cub")],
+      ),
+    )!;
+    // The cub is in p2's graveyard, but the filter says "you" — no move.
+    expect(zoneOf(s2, "cub")).toBe(`${p2}-graveyard`);
+  });
+
+  it("AI picks a legal target in your graveyard, ignoring your non-creatures", () => {
+    let s = put(
+      state,
+      p1,
+      "healer",
+      card("Sun-Blessed Healer", "Creature — Human Cleric", [2, 2]),
+    );
+    s = inGraveyard(s, p1, "rock", card("Rock", "Artifact"));
+    s = inGraveyard(s, p1, "cub", card("Cub", "Creature — Cat", [1, 1]));
+    s = autoChooseTriggerTargets(
+      {
+        ...s,
+        stack: [
+          {
+            id: "ab-rfz",
+            type: "ability",
+            sourceCardId: id("healer"),
+            controllerId: p1,
+            text: "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+            targets: [],
+            chosenModes: [],
+            triggered: true,
+            activated: false,
+          } as unknown as StackObject,
+        ],
+      },
+      p1,
+    );
+    const obj = s.stack[0];
+    expect(obj.targets.map((t) => t.targetId)).toEqual([id("cub")]);
+  });
+
+  it("an 'enters with N counters' card still gets them when returned", () => {
+    // A Wildwood Scourge-style card: "This creature enters with two +1/+1
+    // counters on it." The engine's `applyEntersWithCounters` runs as the
+    // card moves onto the battlefield, including via ReturnFromZone.
+    let s = put(
+      state,
+      p1,
+      "healer",
+      card("Sun-Blessed Healer", "Creature — Human Cleric", [2, 2]),
+    );
+    s = inGraveyard(s, p1, "cub", {
+      ...card("Cub", "Creature — Cat", [1, 1]),
+      oracle_text: "This creature enters with two +1/+1 counters on it.",
+    });
+    s = resolveScriptedAbility(
+      s,
+      ability(
+        "healer",
+        "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+        "triggered",
+        [cardTarget("cub")],
+      ),
+    )!;
+    expect(zoneOf(s, "cub")).toBe(`${p1}-battlefield`);
+    const cub = s.cards.get(id("cub"))!;
+    const counters = cub.counters.filter((c) => c.type === "+1/+1");
+    expect(counters.reduce((sum, c) => sum + c.count, 0)).toBe(2);
+    expect(getEffectivePower(cub)).toBe(3);
+    expect(getEffectiveToughness(cub)).toBe(3);
+  });
+
+  it("Alesha's attack trigger returns a creature card with MV 2 or less", () => {
+    let s = put(
+      state,
+      p1,
+      "alesha",
+      card("Alesha, Who Laughs at Fate", "Creature — Human Warrior", [3, 2]),
+    );
+    s = inGraveyard(s, p1, "cub", card("Cub", "Creature — Cat", [1, 1]));
+    s = inGraveyard(s, p1, "bear", { ...card("Bear", "Creature — Bear", [3, 3]), cmc: 3 });
+    const s2 = resolveScriptedAbility(
+      s,
+      ability(
+        "alesha",
+        "Whenever Alesha attacks, you may pay {W}{U}{B}. If you do, return target creature card with mana value 2 or less from your graveyard to the battlefield tapped and attacking.",
+        "triggered",
+        [cardTarget("cub")],
+      ),
+    )!;
+    expect(zoneOf(s2, "cub")).toBe(`${p1}-battlefield`);
+    // The bear (MV 3) is filtered out.
+    const s3 = resolveScriptedAbility(
+      s,
+      ability(
+        "alesha",
+        "Whenever Alesha attacks, you may pay {W}{U}{B}. If you do, return target creature card with mana value 2 or less from your graveyard to the battlefield tapped and attacking.",
+        "triggered",
+        [cardTarget("bear")],
+      ),
+    )!;
+    expect(zoneOf(s3, "bear")).toBe(`${p1}-graveyard`);
+  });
+});
+
+describe("scripted ReturnFromZone (#2560)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+
+  /** Place a card directly into a player's graveyard. */
+  const inGraveyard = (
+    s: GameState,
+    playerId: PlayerId,
+    cardId: string,
+    data: ScryfallCard,
+  ): GameState => {
+    const key = `${playerId}-graveyard`;
+    const cards = new Map(s.cards);
+    cards.set(
+      id(cardId),
+      createCardInstance(data, playerId, playerId, {
+        id: id(cardId),
+        currentZoneKey: key,
       }),
-    };
-    s = addMana(s, p1, { red: 1, generic: 2 });
-    const cast = castSpell(s, p1, cardId, [], [], 0, false, {
-      type: "flashback",
-    });
-    if (!cast.success) {
-      throw new Error(`cast failed: ${cast.error}`);
-    }
-    expect(cast.success).toBe(true);
-    // Discard is interactive: the resolution pauses on a `waitingChoice`.
-    const paused = resolveTopOfStack(cast.state);
-    expect(paused.waitingChoice).not.toBeNull();
-    expect(paused.waitingChoice!.type).toBe("discard_cards");
-    expect(paused.waitingChoice!.minChoices).toBe(2);
-    const picked: string[] = paused.waitingChoice!.choices
-      .slice(0, 2)
-      .map((c) => c.value)
-      .filter((v): v is string => typeof v === "string");
-    const choiceResult = resolveWaitingChoice(paused, p1, picked);
-    if (!choiceResult.success) {
-      throw new Error(
-        `resolveWaitingChoice failed: ${choiceResult.error ?? "(no error)"}`,
-      );
-    }
-    // resolveWaitingChoice answers the discard but does not finish the
-    // spell resolution — call resolveTopOfStack again to move the card
-    // off the stack into its flashback destination (exile).
-    const resolved = resolveTopOfStack(choiceResult.state);
-    // Card exiled, not in graveyard.
-    expect(resolved.zones.get(`${p1}-exile`)!.cardIds).toContain(cardId);
-    expect(resolved.zones.get(`${p1}-graveyard`)!.cardIds).not.toContain(
-      cardId,
     );
-    // Net hand: 3 starting + 2 drawn - 2 discarded = 3.
-    expect(resolved.zones.get(`${p1}-hand`)!.cardIds.length).toBe(3);
+    const zones = new Map(s.zones);
+    const z = zones.get(key)!;
+    zones.set(key, { ...z, cardIds: [...z.cardIds, id(cardId)] });
+    return { ...s, cards, zones };
+  };
+
+  const zoneOf = (s: GameState, c: string) =>
+    Array.from(s.zones.entries()).find(([, z]) =>
+      z.cardIds.includes(id(c)),
+    )?.[0];
+
+  const ability = (
+    sourceCardId: string,
+    text: string,
+    kind: "triggered" | "activated",
+    targets: Target[] = [],
+  ) =>
+    ({
+      id: "ab-rfz",
+      type: "ability",
+      sourceCardId: id(sourceCardId),
+      controllerId: p1,
+      text,
+      targets,
+      triggered: kind === "triggered",
+      activated: kind === "activated",
+    }) as unknown as StackObject;
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
   });
 
-  it("a non-flashback spell cast from graveyard is rejected", () => {
-    // CR 702.143a: only a card with Flashback may be cast from the
-    // graveyard via flashback. The engine's cast-from-graveyard branch
-    // requires `alternativeCost.type === "flashback"` AND the card must
-    // have a parseable Flashback cost. A vanilla instant with no
-    // flashback text should be rejected.
-    const cardData = makeFlashbackCard(
-      "Vanilla Instant",
-      "Instant",
-      "{U}",
-      "Counterspell.",
+  it("validates ReturnFromZone with the simple and filtered shapes", () => {
+    const ok = (effect: object) =>
+      CardScriptSchema.safeParse({ name: "X", oracle: "x", spell: [effect] })
+        .success;
+    expect(
+      ok({ op: "ReturnFromZone", from: "graveyard", to: "battlefield" }),
+    ).toBe(true);
+    expect(
+      ok({
+        op: "ReturnFromZone",
+        from: "graveyard",
+        to: "battlefield",
+        target: "card",
+      }),
+    ).toBe(true);
+    expect(
+      ok({
+        op: "ReturnFromZone",
+        from: "graveyard",
+        to: "battlefield",
+        target: "card",
+        filter: { creature: true, mv_le: 2, controller: "you" },
+      }),
+    ).toBe(true);
+    expect(
+      ok({
+        op: "ReturnFromZone",
+        from: "graveyard",
+        to: "battlefield",
+        target: "card",
+        count: 1,
+      }),
+    ).toBe(true);
+    expect(
+      ok({ op: "ReturnFromZone", from: "exile", to: "battlefield" }),
+    ).toBe(false);
+    expect(
+      ok({
+        op: "ReturnFromZone",
+        from: "graveyard",
+        to: "battlefield",
+        target: "card",
+        filter: { creature: "yes" },
+      }),
+    ).toBe(false);
+    expect(
+      ok({
+        op: "ReturnFromZone",
+        from: "graveyard",
+        to: "battlefield",
+        target: "card",
+        filter: { mv_le: -1 },
+      }),
+    ).toBe(false);
+    expect(
+      isTargetedEffect({
+        op: "ReturnFromZone",
+        from: "graveyard",
+        to: "battlefield",
+        target: "card",
+      }),
+    ).toBe(true);
+    expect(
+      effectTargetCount({
+        op: "ReturnFromZone",
+        from: "graveyard",
+        to: "battlefield",
+        target: "card",
+      }),
+    ).toBe(1);
+  });
+
+  it("Reassembling Skeleton's activated ability returns the Skeleton to the battlefield", () => {
+    // The Skeleton is in p1's graveyard (it died); the ability targets it.
+    let s = inGraveyard(
+      state,
+      p1,
+      "skel",
+      card("Reassembling Skeleton", "Creature — Skeleton", [1, 1]),
     );
-    const cardId = id("vanilla-instant");
-    const s = putInGraveyard(state, p1, cardId, cardData);
-    const cast = castSpell(s, p1, cardId, [], [], 0, false, {
-      type: "flashback",
+    s = put(
+      s,
+      p1,
+      "skel-on-bf",
+      card("Reassembling Skeleton", "Creature — Skeleton", [1, 1]),
+    );
+    // Move the source version into the graveyard via destroyCard so the
+    // source matches the script's sourceCardId on the stack object.
+    s = destroyCard(s, id("skel-on-bf")).state;
+    const skelInYard = s.zones.get(`${p1}-graveyard`)!.cardIds.find(
+      (cid) => s.cards.get(cid)!.cardData.name === "Reassembling Skeleton",
+    )!;
+    s = resolveScriptedAbility(
+      s,
+      ability(
+        skelInYard,
+        "Return Reassembling Skeleton from your graveyard to the battlefield.",
+        "activated",
+        [{ type: "card", targetId: skelInYard, isValid: true }],
+      ),
+    )!;
+    expect(zoneOf(s, skelInYard)).toBe(`${p1}-battlefield`);
+    expect(s.cards.get(id(skelInYard))!.hasSummoningSickness).toBe(true);
+  });
+
+  it("Sun-Blessed Healer's ETB returns a creature card with MV 2 or less", () => {
+    let s = put(
+      state,
+      p1,
+      "healer",
+      card("Sun-Blessed Healer", "Creature — Human Cleric", [2, 2]),
+    );
+    s = inGraveyard(s, p1, "cub", card("Cub", "Creature — Cat", [1, 1]));
+    s = inGraveyard(s, p1, "bear", { ...card("Bear", "Creature — Bear", [3, 3]), cmc: 3 });
+    const s2 = resolveScriptedAbility(
+      s,
+      ability(
+        "healer",
+        "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+        "triggered",
+        [cardTarget("cub")],
+      ),
+    )!;
+    expect(zoneOf(s2, "cub")).toBe(`${p1}-battlefield`);
+    // The bear (MV 3) is filtered out: it stays in the graveyard even if
+    // targeted.
+    const s3 = resolveScriptedAbility(
+      s,
+      ability(
+        "healer",
+        "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+        "triggered",
+        [cardTarget("bear")],
+      ),
+    )!;
+    expect(zoneOf(s3, "bear")).toBe(`${p1}-graveyard`);
+  });
+
+  it("does nothing when the target is no longer in a graveyard (CR 608.2b)", () => {
+    const s0 = inGraveyard(
+      state,
+      p1,
+      "cub",
+      card("Cub", "Creature — Cat", [1, 1]),
+    );
+    const s = resolveScriptedAbility(
+      s0,
+      ability(
+        "healer" as string,
+        "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+        "triggered",
+        // Target a card that's not in any graveyard.
+        [{ type: "card", targetId: "ghost", isValid: true }],
+      ),
+    );
+    // The ability is from a non-scripted source — scripted resolution
+    // returns undefined and the state is unchanged from the input.
+    expect(s).toBeUndefined();
+  });
+
+  it("does nothing when the target was moved out of the graveyard", () => {
+    // Place the cub in the graveyard, then move it to the battlefield so
+    // the same id is no longer in any graveyard: the resolution must skip
+    // the effect (CR 608.2b).
+    let s = put(
+      state,
+      p1,
+      "healer",
+      card("Sun-Blessed Healer", "Creature — Human Cleric", [2, 2]),
+    );
+    s = inGraveyard(s, p1, "cub", card("Cub", "Creature — Cat", [1, 1]));
+    // Hand-roll the move: pull cub out of p1's graveyard, push it into
+    // p1's battlefield, update currentZoneKey.
+    const cards = new Map(s.cards);
+    const cub = cards.get(id("cub"))!;
+    const bfKey = `${p1}-battlefield`;
+    cards.set(id("cub"), { ...cub, currentZoneKey: bfKey });
+    const zones = new Map(s.zones);
+    const bf = zones.get(bfKey)!;
+    const yard = zones.get(`${p1}-graveyard`)!;
+    zones.set(bfKey, { ...bf, cardIds: [...bf.cardIds, id("cub")] });
+    zones.set(`${p1}-graveyard`, {
+      ...yard,
+      cardIds: yard.cardIds.filter((cid) => cid !== id("cub")),
     });
-    expect(cast.success).toBe(false);
+    s = { ...s, cards, zones };
+    const s2 = resolveScriptedAbility(
+      s,
+      ability(
+        "healer",
+        "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+        "triggered",
+        [cardTarget("cub")],
+      ),
+    )!;
+    // CR 608.2b: the target is no longer in a graveyard, so nothing happens.
+    expect(zoneOf(s2, "cub")).toBe(`${p1}-battlefield`);
+  });
+
+  it("rejects picking an opponent's graveyard card when controller is you", () => {
+    let s = put(
+      state,
+      p1,
+      "healer",
+      card("Sun-Blessed Healer", "Creature — Human Cleric", [2, 2]),
+    );
+    s = inGraveyard(s, p2, "cub", card("Cub", "Creature — Cat", [1, 1]));
+    const s2 = resolveScriptedAbility(
+      s,
+      ability(
+        "healer",
+        "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+        "triggered",
+        [cardTarget("cub")],
+      ),
+    )!;
+    // The cub is in p2's graveyard, but the filter says "you" — no move.
+    expect(zoneOf(s2, "cub")).toBe(`${p2}-graveyard`);
+  });
+
+  it("AI picks a legal target in your graveyard, ignoring your non-creatures", () => {
+    let s = put(
+      state,
+      p1,
+      "healer",
+      card("Sun-Blessed Healer", "Creature — Human Cleric", [2, 2]),
+    );
+    s = inGraveyard(s, p1, "rock", card("Rock", "Artifact"));
+    s = inGraveyard(s, p1, "cub", card("Cub", "Creature — Cat", [1, 1]));
+    s = autoChooseTriggerTargets(
+      {
+        ...s,
+        stack: [
+          {
+            id: "ab-rfz",
+            type: "ability",
+            sourceCardId: id("healer"),
+            controllerId: p1,
+            text: "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+            targets: [],
+            chosenModes: [],
+            triggered: true,
+            activated: false,
+          } as unknown as StackObject,
+        ],
+      },
+      p1,
+    );
+    const obj = s.stack[0];
+    expect(obj.targets.map((t) => t.targetId)).toEqual([id("cub")]);
+  });
+
+  it("an 'enters with N counters' card still gets them when returned", () => {
+    // A Wildwood Scourge-style card: "This creature enters with two +1/+1
+    // counters on it." The engine's `applyEntersWithCounters` runs as the
+    // card moves onto the battlefield, including via ReturnFromZone.
+    let s = put(
+      state,
+      p1,
+      "healer",
+      card("Sun-Blessed Healer", "Creature — Human Cleric", [2, 2]),
+    );
+    s = inGraveyard(s, p1, "cub", {
+      ...card("Cub", "Creature — Cat", [1, 1]),
+      oracle_text: "This creature enters with two +1/+1 counters on it.",
+    });
+    s = resolveScriptedAbility(
+      s,
+      ability(
+        "healer",
+        "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+        "triggered",
+        [cardTarget("cub")],
+      ),
+    )!;
+    expect(zoneOf(s, "cub")).toBe(`${p1}-battlefield`);
+    const cub = s.cards.get(id("cub"))!;
+    const counters = cub.counters.filter((c) => c.type === "+1/+1");
+    expect(counters.reduce((sum, c) => sum + c.count, 0)).toBe(2);
+    expect(getEffectivePower(cub)).toBe(3);
+    expect(getEffectiveToughness(cub)).toBe(3);
+  });
+
+  it("Alesha's attack trigger returns a creature card with MV 2 or less", () => {
+    let s = put(
+      state,
+      p1,
+      "alesha",
+      card("Alesha, Who Laughs at Fate", "Creature — Human Warrior", [3, 2]),
+    );
+    s = inGraveyard(s, p1, "cub", card("Cub", "Creature — Cat", [1, 1]));
+    s = inGraveyard(s, p1, "bear", { ...card("Bear", "Creature — Bear", [3, 3]), cmc: 3 });
+    const s2 = resolveScriptedAbility(
+      s,
+      ability(
+        "alesha",
+        "Whenever Alesha attacks, you may pay {W}{U}{B}. If you do, return target creature card with mana value 2 or less from your graveyard to the battlefield tapped and attacking.",
+        "triggered",
+        [cardTarget("cub")],
+      ),
+    )!;
+    expect(zoneOf(s2, "cub")).toBe(`${p1}-battlefield`);
+    // The bear (MV 3) is filtered out.
+    const s3 = resolveScriptedAbility(
+      s,
+      ability(
+        "alesha",
+        "Whenever Alesha attacks, you may pay {W}{U}{B}. If you do, return target creature card with mana value 2 or less from your graveyard to the battlefield tapped and attacking.",
+        "triggered",
+        [cardTarget("bear")],
+      ),
+    )!;
+    expect(zoneOf(s3, "bear")).toBe(`${p1}-graveyard`);
+  });
+});
+
+describe("scripted ReturnFromZone (#2560)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+
+  /** Place a card directly into a player's graveyard. */
+  const inGraveyard = (
+    s: GameState,
+    playerId: PlayerId,
+    cardId: string,
+    data: ScryfallCard,
+  ): GameState => {
+    const key = `${playerId}-graveyard`;
+    const cards = new Map(s.cards);
+    cards.set(
+      id(cardId),
+      createCardInstance(data, playerId, playerId, {
+        id: id(cardId),
+        currentZoneKey: key,
+      }),
+    );
+    const zones = new Map(s.zones);
+    const z = zones.get(key)!;
+    zones.set(key, { ...z, cardIds: [...z.cardIds, id(cardId)] });
+    return { ...s, cards, zones };
+  };
+
+  const zoneOf = (s: GameState, c: string) =>
+    Array.from(s.zones.entries()).find(([, z]) =>
+      z.cardIds.includes(id(c)),
+    )?.[0];
+
+  const ability = (
+    sourceCardId: string,
+    text: string,
+    kind: "triggered" | "activated",
+    targets: Target[] = [],
+  ) =>
+    ({
+      id: "ab-rfz",
+      type: "ability",
+      sourceCardId: id(sourceCardId),
+      controllerId: p1,
+      text,
+      targets,
+      triggered: kind === "triggered",
+      activated: kind === "activated",
+    }) as unknown as StackObject;
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+  });
+
+  it("validates ReturnFromZone with the simple and filtered shapes", () => {
+    const ok = (effect: object) =>
+      CardScriptSchema.safeParse({ name: "X", oracle: "x", spell: [effect] })
+        .success;
+    expect(
+      ok({ op: "ReturnFromZone", from: "graveyard", to: "battlefield" }),
+    ).toBe(true);
+    expect(
+      ok({
+        op: "ReturnFromZone",
+        from: "graveyard",
+        to: "battlefield",
+        target: "card",
+      }),
+    ).toBe(true);
+    expect(
+      ok({
+        op: "ReturnFromZone",
+        from: "graveyard",
+        to: "battlefield",
+        target: "card",
+        filter: { creature: true, mv_le: 2, controller: "you" },
+      }),
+    ).toBe(true);
+    expect(
+      ok({
+        op: "ReturnFromZone",
+        from: "graveyard",
+        to: "battlefield",
+        target: "card",
+        count: 1,
+      }),
+    ).toBe(true);
+    expect(
+      ok({ op: "ReturnFromZone", from: "exile", to: "battlefield" }),
+    ).toBe(false);
+    expect(
+      ok({
+        op: "ReturnFromZone",
+        from: "graveyard",
+        to: "battlefield",
+        target: "card",
+        filter: { creature: "yes" },
+      }),
+    ).toBe(false);
+    expect(
+      ok({
+        op: "ReturnFromZone",
+        from: "graveyard",
+        to: "battlefield",
+        target: "card",
+        filter: { mv_le: -1 },
+      }),
+    ).toBe(false);
+    expect(
+      isTargetedEffect({
+        op: "ReturnFromZone",
+        from: "graveyard",
+        to: "battlefield",
+        target: "card",
+      }),
+    ).toBe(true);
+    expect(
+      effectTargetCount({
+        op: "ReturnFromZone",
+        from: "graveyard",
+        to: "battlefield",
+        target: "card",
+      }),
+    ).toBe(1);
+  });
+
+  it("Reassembling Skeleton's activated ability returns the Skeleton to the battlefield", () => {
+    // The Skeleton is in p1's graveyard (it died); the ability targets it.
+    let s = inGraveyard(
+      state,
+      p1,
+      "skel",
+      card("Reassembling Skeleton", "Creature — Skeleton", [1, 1]),
+    );
+    s = put(
+      s,
+      p1,
+      "skel-on-bf",
+      card("Reassembling Skeleton", "Creature — Skeleton", [1, 1]),
+    );
+    // Move the source version into the graveyard via destroyCard so the
+    // source matches the script's sourceCardId on the stack object.
+    s = destroyCard(s, id("skel-on-bf")).state;
+    const skelInYard = s.zones.get(`${p1}-graveyard`)!.cardIds.find(
+      (cid) => s.cards.get(cid)!.cardData.name === "Reassembling Skeleton",
+    )!;
+    s = resolveScriptedAbility(
+      s,
+      ability(
+        skelInYard,
+        "Return Reassembling Skeleton from your graveyard to the battlefield.",
+        "activated",
+        [{ type: "card", targetId: skelInYard, isValid: true }],
+      ),
+    )!;
+    expect(zoneOf(s, skelInYard)).toBe(`${p1}-battlefield`);
+    expect(s.cards.get(id(skelInYard))!.hasSummoningSickness).toBe(true);
+  });
+
+  it("Sun-Blessed Healer's ETB returns a creature card with MV 2 or less", () => {
+    let s = put(
+      state,
+      p1,
+      "healer",
+      card("Sun-Blessed Healer", "Creature — Human Cleric", [2, 2]),
+    );
+    s = inGraveyard(s, p1, "cub", card("Cub", "Creature — Cat", [1, 1]));
+    s = inGraveyard(s, p1, "bear", { ...card("Bear", "Creature — Bear", [3, 3]), cmc: 3 });
+    const s2 = resolveScriptedAbility(
+      s,
+      ability(
+        "healer",
+        "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+        "triggered",
+        [cardTarget("cub")],
+      ),
+    )!;
+    expect(zoneOf(s2, "cub")).toBe(`${p1}-battlefield`);
+    // The bear (MV 3) is filtered out: it stays in the graveyard even if
+    // targeted.
+    const s3 = resolveScriptedAbility(
+      s,
+      ability(
+        "healer",
+        "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+        "triggered",
+        [cardTarget("bear")],
+      ),
+    )!;
+    expect(zoneOf(s3, "bear")).toBe(`${p1}-graveyard`);
+  });
+
+  it("does nothing when the target is no longer in a graveyard (CR 608.2b)", () => {
+    const s0 = inGraveyard(
+      state,
+      p1,
+      "cub",
+      card("Cub", "Creature — Cat", [1, 1]),
+    );
+    const s = resolveScriptedAbility(
+      s0,
+      ability(
+        "healer" as string,
+        "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+        "triggered",
+        // Target a card that's not in any graveyard.
+        [{ type: "card", targetId: "ghost", isValid: true }],
+      ),
+    );
+    // The ability is from a non-scripted source — scripted resolution
+    // returns undefined and the state is unchanged from the input.
+    expect(s).toBeUndefined();
+  });
+
+  it("does nothing when the target was moved out of the graveyard", () => {
+    // Place the cub in the graveyard, then move it to the battlefield so
+    // the same id is no longer in any graveyard: the resolution must skip
+    // the effect (CR 608.2b).
+    let s = put(
+      state,
+      p1,
+      "healer",
+      card("Sun-Blessed Healer", "Creature — Human Cleric", [2, 2]),
+    );
+    s = inGraveyard(s, p1, "cub", card("Cub", "Creature — Cat", [1, 1]));
+    // Hand-roll the move: pull cub out of p1's graveyard, push it into
+    // p1's battlefield, update currentZoneKey.
+    const cards = new Map(s.cards);
+    const cub = cards.get(id("cub"))!;
+    const bfKey = `${p1}-battlefield`;
+    cards.set(id("cub"), { ...cub, currentZoneKey: bfKey });
+    const zones = new Map(s.zones);
+    const bf = zones.get(bfKey)!;
+    const yard = zones.get(`${p1}-graveyard`)!;
+    zones.set(bfKey, { ...bf, cardIds: [...bf.cardIds, id("cub")] });
+    zones.set(`${p1}-graveyard`, {
+      ...yard,
+      cardIds: yard.cardIds.filter((cid) => cid !== id("cub")),
+    });
+    s = { ...s, cards, zones };
+    const s2 = resolveScriptedAbility(
+      s,
+      ability(
+        "healer",
+        "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+        "triggered",
+        [cardTarget("cub")],
+      ),
+    )!;
+    // CR 608.2b: the target is no longer in a graveyard, so nothing happens.
+    expect(zoneOf(s2, "cub")).toBe(`${p1}-battlefield`);
+  });
+
+  it("rejects picking an opponent's graveyard card when controller is you", () => {
+    let s = put(
+      state,
+      p1,
+      "healer",
+      card("Sun-Blessed Healer", "Creature — Human Cleric", [2, 2]),
+    );
+    s = inGraveyard(s, p2, "cub", card("Cub", "Creature — Cat", [1, 1]));
+    const s2 = resolveScriptedAbility(
+      s,
+      ability(
+        "healer",
+        "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+        "triggered",
+        [cardTarget("cub")],
+      ),
+    )!;
+    // The cub is in p2's graveyard, but the filter says "you" — no move.
+    expect(zoneOf(s2, "cub")).toBe(`${p2}-graveyard`);
+  });
+
+  it("AI picks a legal target in your graveyard, ignoring your non-creatures", () => {
+    let s = put(
+      state,
+      p1,
+      "healer",
+      card("Sun-Blessed Healer", "Creature — Human Cleric", [2, 2]),
+    );
+    s = inGraveyard(s, p1, "rock", card("Rock", "Artifact"));
+    s = inGraveyard(s, p1, "cub", card("Cub", "Creature — Cat", [1, 1]));
+    s = autoChooseTriggerTargets(
+      {
+        ...s,
+        stack: [
+          {
+            id: "ab-rfz",
+            type: "ability",
+            sourceCardId: id("healer"),
+            controllerId: p1,
+            text: "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+            targets: [],
+            chosenModes: [],
+            triggered: true,
+            activated: false,
+          } as unknown as StackObject,
+        ],
+      },
+      p1,
+    );
+    const obj = s.stack[0];
+    expect(obj.targets.map((t) => t.targetId)).toEqual([id("cub")]);
+  });
+
+  it("an 'enters with N counters' card still gets them when returned", () => {
+    // A Wildwood Scourge-style card: "This creature enters with two +1/+1
+    // counters on it." The engine's `applyEntersWithCounters` runs as the
+    // card moves onto the battlefield, including via ReturnFromZone.
+    let s = put(
+      state,
+      p1,
+      "healer",
+      card("Sun-Blessed Healer", "Creature — Human Cleric", [2, 2]),
+    );
+    s = inGraveyard(s, p1, "cub", {
+      ...card("Cub", "Creature — Cat", [1, 1]),
+      oracle_text: "This creature enters with two +1/+1 counters on it.",
+    });
+    s = resolveScriptedAbility(
+      s,
+      ability(
+        "healer",
+        "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+        "triggered",
+        [cardTarget("cub")],
+      ),
+    )!;
+    expect(zoneOf(s, "cub")).toBe(`${p1}-battlefield`);
+    const cub = s.cards.get(id("cub"))!;
+    const counters = cub.counters.filter((c) => c.type === "+1/+1");
+    expect(counters.reduce((sum, c) => sum + c.count, 0)).toBe(2);
+    expect(getEffectivePower(cub)).toBe(3);
+    expect(getEffectiveToughness(cub)).toBe(3);
+  });
+
+  it("Alesha's attack trigger returns a creature card with MV 2 or less", () => {
+    let s = put(
+      state,
+      p1,
+      "alesha",
+      card("Alesha, Who Laughs at Fate", "Creature — Human Warrior", [3, 2]),
+    );
+    s = inGraveyard(s, p1, "cub", card("Cub", "Creature — Cat", [1, 1]));
+    s = inGraveyard(s, p1, "bear", { ...card("Bear", "Creature — Bear", [3, 3]), cmc: 3 });
+    const s2 = resolveScriptedAbility(
+      s,
+      ability(
+        "alesha",
+        "Whenever Alesha attacks, you may pay {W}{U}{B}. If you do, return target creature card with mana value 2 or less from your graveyard to the battlefield tapped and attacking.",
+        "triggered",
+        [cardTarget("cub")],
+      ),
+    )!;
+    expect(zoneOf(s2, "cub")).toBe(`${p1}-battlefield`);
+    // The bear (MV 3) is filtered out.
+    const s3 = resolveScriptedAbility(
+      s,
+      ability(
+        "alesha",
+        "Whenever Alesha attacks, you may pay {W}{U}{B}. If you do, return target creature card with mana value 2 or less from your graveyard to the battlefield tapped and attacking.",
+        "triggered",
+        [cardTarget("bear")],
+      ),
+    )!;
+    expect(zoneOf(s3, "bear")).toBe(`${p1}-graveyard`);
+  });
+});
+
+describe("scripted ReturnFromZone (#2560)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+
+  /** Place a card directly into a player's graveyard. */
+  const inGraveyard = (
+    s: GameState,
+    playerId: PlayerId,
+    cardId: string,
+    data: ScryfallCard,
+  ): GameState => {
+    const key = `${playerId}-graveyard`;
+    const cards = new Map(s.cards);
+    cards.set(
+      id(cardId),
+      createCardInstance(data, playerId, playerId, {
+        id: id(cardId),
+        currentZoneKey: key,
+      }),
+    );
+    const zones = new Map(s.zones);
+    const z = zones.get(key)!;
+    zones.set(key, { ...z, cardIds: [...z.cardIds, id(cardId)] });
+    return { ...s, cards, zones };
+  };
+
+  const zoneOf = (s: GameState, c: string) =>
+    Array.from(s.zones.entries()).find(([, z]) =>
+      z.cardIds.includes(id(c)),
+    )?.[0];
+
+  const ability = (
+    sourceCardId: string,
+    text: string,
+    kind: "triggered" | "activated",
+    targets: Target[] = [],
+  ) =>
+    ({
+      id: "ab-rfz",
+      type: "ability",
+      sourceCardId: id(sourceCardId),
+      controllerId: p1,
+      text,
+      targets,
+      triggered: kind === "triggered",
+      activated: kind === "activated",
+    }) as unknown as StackObject;
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+  });
+
+  it("validates ReturnFromZone with the simple and filtered shapes", () => {
+    const ok = (effect: object) =>
+      CardScriptSchema.safeParse({ name: "X", oracle: "x", spell: [effect] })
+        .success;
+    expect(
+      ok({ op: "ReturnFromZone", from: "graveyard", to: "battlefield" }),
+    ).toBe(true);
+    expect(
+      ok({
+        op: "ReturnFromZone",
+        from: "graveyard",
+        to: "battlefield",
+        target: "card",
+      }),
+    ).toBe(true);
+    expect(
+      ok({
+        op: "ReturnFromZone",
+        from: "graveyard",
+        to: "battlefield",
+        target: "card",
+        filter: { creature: true, mv_le: 2, controller: "you" },
+      }),
+    ).toBe(true);
+    expect(
+      ok({
+        op: "ReturnFromZone",
+        from: "graveyard",
+        to: "battlefield",
+        target: "card",
+        count: 1,
+      }),
+    ).toBe(true);
+    expect(
+      ok({ op: "ReturnFromZone", from: "exile", to: "battlefield" }),
+    ).toBe(false);
+    expect(
+      ok({
+        op: "ReturnFromZone",
+        from: "graveyard",
+        to: "battlefield",
+        target: "card",
+        filter: { creature: "yes" },
+      }),
+    ).toBe(false);
+    expect(
+      ok({
+        op: "ReturnFromZone",
+        from: "graveyard",
+        to: "battlefield",
+        target: "card",
+        filter: { mv_le: -1 },
+      }),
+    ).toBe(false);
+    expect(
+      isTargetedEffect({
+        op: "ReturnFromZone",
+        from: "graveyard",
+        to: "battlefield",
+        target: "card",
+      }),
+    ).toBe(true);
+    expect(
+      effectTargetCount({
+        op: "ReturnFromZone",
+        from: "graveyard",
+        to: "battlefield",
+        target: "card",
+      }),
+    ).toBe(1);
+  });
+
+  it("Reassembling Skeleton's activated ability returns the Skeleton to the battlefield", () => {
+    // The Skeleton is in p1's graveyard (it died); the ability targets it.
+    let s = inGraveyard(
+      state,
+      p1,
+      "skel",
+      card("Reassembling Skeleton", "Creature — Skeleton", [1, 1]),
+    );
+    s = put(
+      s,
+      p1,
+      "skel-on-bf",
+      card("Reassembling Skeleton", "Creature — Skeleton", [1, 1]),
+    );
+    // Move the source version into the graveyard via destroyCard so the
+    // source matches the script's sourceCardId on the stack object.
+    s = destroyCard(s, id("skel-on-bf")).state;
+    const skelInYard = s.zones.get(`${p1}-graveyard`)!.cardIds.find(
+      (cid) => s.cards.get(cid)!.cardData.name === "Reassembling Skeleton",
+    )!;
+    s = resolveScriptedAbility(
+      s,
+      ability(
+        skelInYard,
+        "Return Reassembling Skeleton from your graveyard to the battlefield.",
+        "activated",
+        [{ type: "card", targetId: skelInYard, isValid: true }],
+      ),
+    )!;
+    expect(zoneOf(s, skelInYard)).toBe(`${p1}-battlefield`);
+    expect(s.cards.get(id(skelInYard))!.hasSummoningSickness).toBe(true);
+  });
+
+  it("Sun-Blessed Healer's ETB returns a creature card with MV 2 or less", () => {
+    let s = put(
+      state,
+      p1,
+      "healer",
+      card("Sun-Blessed Healer", "Creature — Human Cleric", [2, 2]),
+    );
+    s = inGraveyard(s, p1, "cub", card("Cub", "Creature — Cat", [1, 1]));
+    s = inGraveyard(s, p1, "bear", { ...card("Bear", "Creature — Bear", [3, 3]), cmc: 3 });
+    const s2 = resolveScriptedAbility(
+      s,
+      ability(
+        "healer",
+        "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+        "triggered",
+        [cardTarget("cub")],
+      ),
+    )!;
+    expect(zoneOf(s2, "cub")).toBe(`${p1}-battlefield`);
+    // The bear (MV 3) is filtered out: it stays in the graveyard even if
+    // targeted.
+    const s3 = resolveScriptedAbility(
+      s,
+      ability(
+        "healer",
+        "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+        "triggered",
+        [cardTarget("bear")],
+      ),
+    )!;
+    expect(zoneOf(s3, "bear")).toBe(`${p1}-graveyard`);
+  });
+
+  it("does nothing when the target is no longer in a graveyard (CR 608.2b)", () => {
+    const s0 = inGraveyard(
+      state,
+      p1,
+      "cub",
+      card("Cub", "Creature — Cat", [1, 1]),
+    );
+    const s = resolveScriptedAbility(
+      s0,
+      ability(
+        "healer" as string,
+        "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+        "triggered",
+        // Target a card that's not in any graveyard.
+        [{ type: "card", targetId: "ghost", isValid: true }],
+      ),
+    );
+    // The ability is from a non-scripted source — scripted resolution
+    // returns undefined and the state is unchanged from the input.
+    expect(s).toBeUndefined();
+  });
+
+  it("does nothing when the target was moved out of the graveyard", () => {
+    // Place the cub in the graveyard, then move it to the battlefield so
+    // the same id is no longer in any graveyard: the resolution must skip
+    // the effect (CR 608.2b).
+    let s = put(
+      state,
+      p1,
+      "healer",
+      card("Sun-Blessed Healer", "Creature — Human Cleric", [2, 2]),
+    );
+    s = inGraveyard(s, p1, "cub", card("Cub", "Creature — Cat", [1, 1]));
+    // Hand-roll the move: pull cub out of p1's graveyard, push it into
+    // p1's battlefield, update currentZoneKey.
+    const cards = new Map(s.cards);
+    const cub = cards.get(id("cub"))!;
+    const bfKey = `${p1}-battlefield`;
+    cards.set(id("cub"), { ...cub, currentZoneKey: bfKey });
+    const zones = new Map(s.zones);
+    const bf = zones.get(bfKey)!;
+    const yard = zones.get(`${p1}-graveyard`)!;
+    zones.set(bfKey, { ...bf, cardIds: [...bf.cardIds, id("cub")] });
+    zones.set(`${p1}-graveyard`, {
+      ...yard,
+      cardIds: yard.cardIds.filter((cid) => cid !== id("cub")),
+    });
+    s = { ...s, cards, zones };
+    const s2 = resolveScriptedAbility(
+      s,
+      ability(
+        "healer",
+        "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+        "triggered",
+        [cardTarget("cub")],
+      ),
+    )!;
+    // CR 608.2b: the target is no longer in a graveyard, so nothing happens.
+    expect(zoneOf(s2, "cub")).toBe(`${p1}-battlefield`);
+  });
+
+  it("rejects picking an opponent's graveyard card when controller is you", () => {
+    let s = put(
+      state,
+      p1,
+      "healer",
+      card("Sun-Blessed Healer", "Creature — Human Cleric", [2, 2]),
+    );
+    s = inGraveyard(s, p2, "cub", card("Cub", "Creature — Cat", [1, 1]));
+    const s2 = resolveScriptedAbility(
+      s,
+      ability(
+        "healer",
+        "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+        "triggered",
+        [cardTarget("cub")],
+      ),
+    )!;
+    // The cub is in p2's graveyard, but the filter says "you" — no move.
+    expect(zoneOf(s2, "cub")).toBe(`${p2}-graveyard`);
+  });
+
+  it("AI picks a legal target in your graveyard, ignoring your non-creatures", () => {
+    let s = put(
+      state,
+      p1,
+      "healer",
+      card("Sun-Blessed Healer", "Creature — Human Cleric", [2, 2]),
+    );
+    s = inGraveyard(s, p1, "rock", card("Rock", "Artifact"));
+    s = inGraveyard(s, p1, "cub", card("Cub", "Creature — Cat", [1, 1]));
+    s = autoChooseTriggerTargets(
+      {
+        ...s,
+        stack: [
+          {
+            id: "ab-rfz",
+            type: "ability",
+            sourceCardId: id("healer"),
+            controllerId: p1,
+            text: "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+            targets: [],
+            chosenModes: [],
+            triggered: true,
+            activated: false,
+          } as unknown as StackObject,
+        ],
+      },
+      p1,
+    );
+    const obj = s.stack[0];
+    expect(obj.targets.map((t) => t.targetId)).toEqual([id("cub")]);
+  });
+
+  it("an 'enters with N counters' card still gets them when returned", () => {
+    // A Wildwood Scourge-style card: "This creature enters with two +1/+1
+    // counters on it." The engine's `applyEntersWithCounters` runs as the
+    // card moves onto the battlefield, including via ReturnFromZone.
+    let s = put(
+      state,
+      p1,
+      "healer",
+      card("Sun-Blessed Healer", "Creature — Human Cleric", [2, 2]),
+    );
+    s = inGraveyard(s, p1, "cub", {
+      ...card("Cub", "Creature — Cat", [1, 1]),
+      oracle_text: "This creature enters with two +1/+1 counters on it.",
+    });
+    s = resolveScriptedAbility(
+      s,
+      ability(
+        "healer",
+        "When this creature enters, you may return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+        "triggered",
+        [cardTarget("cub")],
+      ),
+    )!;
+    expect(zoneOf(s, "cub")).toBe(`${p1}-battlefield`);
+    const cub = s.cards.get(id("cub"))!;
+    const counters = cub.counters.filter((c) => c.type === "+1/+1");
+    expect(counters.reduce((sum, c) => sum + c.count, 0)).toBe(2);
+    expect(getEffectivePower(cub)).toBe(3);
+    expect(getEffectiveToughness(cub)).toBe(3);
+  });
+
+  it("Alesha's attack trigger returns a creature card with MV 2 or less", () => {
+    let s = put(
+      state,
+      p1,
+      "alesha",
+      card("Alesha, Who Laughs at Fate", "Creature — Human Warrior", [3, 2]),
+    );
+    s = inGraveyard(s, p1, "cub", card("Cub", "Creature — Cat", [1, 1]));
+    s = inGraveyard(s, p1, "bear", { ...card("Bear", "Creature — Bear", [3, 3]), cmc: 3 });
+    const s2 = resolveScriptedAbility(
+      s,
+      ability(
+        "alesha",
+        "Whenever Alesha attacks, you may pay {W}{U}{B}. If you do, return target creature card with mana value 2 or less from your graveyard to the battlefield tapped and attacking.",
+        "triggered",
+        [cardTarget("cub")],
+      ),
+    )!;
+    expect(zoneOf(s2, "cub")).toBe(`${p1}-battlefield`);
+    // The bear (MV 3) is filtered out.
+    const s3 = resolveScriptedAbility(
+      s,
+      ability(
+        "alesha",
+        "Whenever Alesha attacks, you may pay {W}{U}{B}. If you do, return target creature card with mana value 2 or less from your graveyard to the battlefield tapped and attacking.",
+        "triggered",
+        [cardTarget("bear")],
+      ),
+    )!;
+    expect(zoneOf(s3, "bear")).toBe(`${p1}-graveyard`);
   });
 });
