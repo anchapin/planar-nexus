@@ -54,3 +54,4 @@ export * from "./keyword-actions/converge";
 export * from "./keyword-actions/enters";
 export * from "./keyword-actions/enters-with-counters";
 export * from "./keyword-actions/fight";
+export * from "./keyword-actions/granted-keywords";

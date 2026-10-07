@@ -1,0 +1,20 @@
+{
+  "name": "Make a Stand",
+  "oracle": "Creatures you control get +1/+1 and gain indestructible until end of turn.",
+  "spell": [
+    {
+      "op": "Pump",
+      "power": 1,
+      "toughness": 1,
+      "target": "creature",
+      "controller": "you"
+    },
+    {
+      "op": "GrantKeyword",
+      "keyword": "indestructible",
+      "target": "creature",
+      "controller": "you",
+      "until": "end_of_turn"
+    }
+  ]
+}

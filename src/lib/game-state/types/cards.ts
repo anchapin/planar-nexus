@@ -297,6 +297,20 @@ export interface CardInstance {
    * `resolveTopOfStack`, so damage it deals sees them.
    */
   resolvingSpellKeywords?: string[];
+  /**
+   * Keywords granted "until end of turn" by a spell or ability's resolved
+   * `GrantKeyword` op (issue #2567). Stored separately from
+   * `auraKeywords`/`equipmentKeywords`/`scriptStaticKeywords` so the
+   * cleanup step can drop the entire field without re-walking Auras or
+   * Equipment. Consulted by `hasKeyword` alongside the other keyword
+   * arrays; cleared at the cleanup step via
+   * `clearGrantedKeywordsUntilEot`.
+   *
+   * CR 611.2a — a "grants X until end of turn" effect creates a continuous
+   * effect that ends at the cleanup step (CR 514.2). The cleanup mirrors
+   * the contract used by `untilEndOfTurnPT`.
+   */
+  grantedKeywordsUntilEot?: string[];
 
   // Renown keyword (CR 702.100)
   /**
