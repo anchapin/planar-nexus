@@ -144,17 +144,19 @@ test.describe("Draft Mode - Draft Complete Flow", () => {
     // + the Build Deck button. Asserting on these elements proves
     // the page read the session (no "Session not found" error path,
     // no redirect back to /draft).
+    // #2485: 3s was too tight for a cold webkit load; the failure
+    // screenshot shows the full page rendered just after the timeout.
     await expect(
       page.getByRole("heading", { name: /Draft Complete/i }),
     ).toBeVisible({
-      timeout: 3000,
+      timeout: 10_000,
     });
     await expect(page.getByText(/42 Cards Picked/i).first()).toBeVisible({
-      timeout: 2000,
+      timeout: 5000,
     });
     await expect(
       page.getByRole("button", { name: /Build Deck/i }).first(),
-    ).toBeVisible({ timeout: 2000 });
+    ).toBeVisible({ timeout: 5000 });
   });
 
   test("DRFT-09: Build Deck button navigates to deck builder", async ({
