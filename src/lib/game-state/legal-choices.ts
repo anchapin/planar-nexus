@@ -219,7 +219,10 @@ export function listPriorityChoices(
 ): PriorityChoice[] {
   if (!isPriorityPlayer(state, playerId)) return [];
   const choices: PriorityChoice[] = [{ kind: "pass" }];
-  const landOk = canPlayLand(state, playerId);
+  // playLand also requires it to be the player's own turn (canPlayLand
+  // checks timing and land drops but not whose turn it is).
+  const landOk =
+    state.turn.activePlayerId === playerId && canPlayLand(state, playerId);
   for (const cardId of zoneCards(state, playerId, "hand")) {
     if (isLandCard(state, cardId)) {
       if (landOk) choices.push({ kind: "play_land", cardId });
