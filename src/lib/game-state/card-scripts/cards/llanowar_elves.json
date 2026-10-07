@@ -1,0 +1,20 @@
+{
+  "name": "Llanowar Elves",
+  "oracle": "{T}: Add {G}.",
+  "activated": [
+    {
+      "text": "Add {G}.",
+      "cost": {
+        "tap": true,
+        "sacrifice": false
+      },
+      "effects": [
+        {
+          "op": "AddMana",
+          "amount": 1,
+          "colors": ["G"]
+        }
+      ]
+    }
+  ]
+}
