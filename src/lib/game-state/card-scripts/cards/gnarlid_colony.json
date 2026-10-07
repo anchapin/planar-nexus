@@ -1,0 +1,23 @@
+{
+  "name": "Gnarlid Colony",
+  "oracle": "This creature enters with two +1/+1 counters on it.\nKicker {3}\nWhen this creature enters, if it was kicked, target creature gets -2/-0 until end of turn.",
+  "triggers": [
+    {
+      "text": "When this creature enters, if it was kicked, target creature gets -2/-0 until end of turn.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "Pump",
+          "power": -2,
+          "toughness": 0,
+          "target": "creature",
+          "if_kicked": true
+        }
+      ]
+    }
+  ],
+  "kicker": {
+    "cost": "{3}"
+  }
+}

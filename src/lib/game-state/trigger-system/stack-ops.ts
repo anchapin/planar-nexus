@@ -37,6 +37,13 @@ export function putTriggersOnStack(
       isCountered: false,
       timestamp: trigger.timestamp,
       interveningIf: trigger.interveningIf,
+      // CR 702.32, #2564: a permanent's "when this creature enters, if it
+      // was kicked" trigger fires only when the cast was kicked. The card
+      // instance's `kicked` flag is stamped by `castSpell` and survives
+      // onto the battlefield; the trigger's `StackObject` carries the same
+      // value so the interpreter can gate the effect via `if_kicked`.
+      wasKicked: card.kicked === true,
+      timesKicked: card.kicked === true ? 1 : 0,
     };
     const spellCardId = trigger.context?.spellCardId;
     if (spellCardId) {

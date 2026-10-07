@@ -15,6 +15,7 @@ import { Phase, ZoneType } from "../types";
 import { moveCardBetweenZones } from "../zones";
 import { isPriorityPlayer } from "../priority-guard";
 import { spendMana, getSpellManaCost } from "../mana";
+import { parseManaCost } from "../oracle-text-parser/mana-cost";
 import { countColorsSpent, isConvergeX } from "../keyword-actions/converge";
 import { ValidationService } from "../validation-service";
 import { hasSplitSecondOnStack } from "../auto-pass-priority";
@@ -418,15 +419,31 @@ export function castSpell(
     // during resolution (see `StackObject.timesKicked`).
     let kickerChargeCount = 0;
     if (effectiveIsKicked) {
-      const kickerInfo = parseKicker(card.cardData.oracle_text || "");
-      if (kickerInfo.hasKicker && kickerInfo.kickerCost) {
+      // CR 702.32, #2564: a scripted card declares its kicker cost on the
+      // script (`kicker.cost`); the oracle-text parser is the legacy path
+      // for cards without a script. Script wins so the engine doesn't
+      // depend on a regex parse of the card's printed text. If neither
+      // declares a kicker cost, the kicker is a no-op and the flag is
+      // still recorded on the StackObject (mirrors the legacy path's
+      // behavior — a caller-declared `isKicked: true` on a non-kicker
+      // card retains its intent for introspection).
+      const cardScript = getCardScript(card.cardData.name);
+      const scriptedKickerCost = cardScript?.kicker?.cost;
+      let kickerCost: ReturnType<typeof parseKicker>["kickerCost"] = null;
+      if (scriptedKickerCost) {
+        kickerCost = parseManaCost(scriptedKickerCost);
+      } else {
+        const kickerInfo = parseKicker(card.cardData.oracle_text || "");
+        kickerCost = kickerInfo.kickerCost;
+      }
+      if (kickerCost) {
         const n = effectiveTimesKicked;
-        totalGeneric += kickerInfo.kickerCost.generic * n;
-        totalWhite += kickerInfo.kickerCost.white * n;
-        totalBlue += kickerInfo.kickerCost.blue * n;
-        totalBlack += kickerInfo.kickerCost.black * n;
-        totalRed += kickerInfo.kickerCost.red * n;
-        totalGreen += kickerInfo.kickerCost.green * n;
+        totalGeneric += kickerCost.generic * n;
+        totalWhite += kickerCost.white * n;
+        totalBlue += kickerCost.blue * n;
+        totalBlack += kickerCost.black * n;
+        totalRed += kickerCost.red * n;
+        totalGreen += kickerCost.green * n;
         alternativeCostsUsed.push("kicker");
         kickerChargeCount = n;
       }
@@ -1348,6 +1365,20 @@ export function castSpell(
       updatedCards.set(cardId, {
         ...card,
         flashback: true,
+        currentZoneKey: "stack",
+      });
+    } else if (kickerChargeCount > 0) {
+      // CR 702.32, #2564 — Kicker: stamp the card with the `kicked` flag
+      // so a permanent's ETB "if kicked" trigger can read it after the
+      // card has resolved onto the battlefield. Mirrors the `flashback`
+      // pattern: the engine's authoritative signal is
+      // `StackObject.wasKicked` / `timesKicked`; the card-instance flag is
+      // the persistence mirror that survives on the battlefield after
+      // resolution.
+      updatedCards = new Map(currentState.cards);
+      updatedCards.set(cardId, {
+        ...card,
+        kicked: true,
         currentZoneKey: "stack",
       });
     }

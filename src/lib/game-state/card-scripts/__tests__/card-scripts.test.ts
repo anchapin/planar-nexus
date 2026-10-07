@@ -4732,4 +4732,323 @@ describe("scripted auras (#2568)", () => {
     expect(host.auraKeywords?.sort()).toEqual(["double strike", "first strike"]);
   });
 });
+describe("scripted AddMana (#2565)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+  });
+
+  /** Bypass CR 302.6 summoning sickness on a test creature (Llanowar Elves). */
+  const ready = (s: GameState, cardId: string): GameState => {
+    const cards = new Map(s.cards);
+    cards.set(id(cardId), {
+      ...cards.get(id(cardId))!,
+      hasSummoningSickness: false,
+    });
+    return { ...s, cards };
+  };
+
+  const ability = (
+    sourceCardId: string,
+    text: string,
+    kind: "triggered" | "activated",
+  ) =>
+    ({
+      id: "ab-mana",
+      type: "ability",
+      sourceCardId: id(sourceCardId),
+      controllerId: p1,
+      text,
+      targets: [],
+      triggered: kind === "triggered",
+      activated: kind === "activated",
+    }) as unknown as StackObject;
+
+  it("validates AddMana with the simple and any-color shapes", () => {
+    const ok = (effect: object) =>
+      CardScriptSchema.safeParse({ name: "X", oracle: "x", spell: [effect] })
+        .success;
+    // The mana dork shape.
+    expect(ok({ op: "AddMana", amount: 1, colors: ["G"] })).toBe(true);
+    // The Hedron Archive shape.
+    expect(ok({ op: "AddMana", amount: 1, colors: ["C"] })).toBe(true);
+    // The Gilded Lotus shape — any color, multi-amount.
+    expect(ok({ op: "AddMana", amount: 3, colors: "any" })).toBe(true);
+  });
+
+  it("rejects unknown color codes and mixed any/array colors", () => {
+    const bad = (effect: object) =>
+      CardScriptSchema.safeParse({ name: "X", oracle: "x", spell: [effect] })
+        .success;
+    // 'Y' is not a CR 106 mana color.
+    expect(bad({ op: "AddMana", amount: 1, colors: ["Y"] })).toBe(false);
+    // Mixing the array and 'any' literal is not allowed.
+    expect(bad({ op: "AddMana", amount: 1, colors: ["R", "any"] })).toBe(false);
+    // Empty array is not allowed.
+    expect(bad({ op: "AddMana", amount: 1, colors: [] })).toBe(false);
+    // Extra fields are rejected by the strict() check.
+    expect(bad({ op: "AddMana", amount: 1, colors: ["G"], extra: 1 })).toBe(
+      false,
+    );
+  });
+
+  it("Llanowar Elves' tap ability adds one green mana", () => {
+    let s0 = put(
+      state,
+      p1,
+      "elves",
+      card("Llanowar Elves", "Creature — Elf Druid", [1, 1]),
+    );
+    s0 = ready(s0, "elves");
+    const s = resolveScriptedAbility(
+      s0,
+      ability("elves", "Add {G}.", "activated"),
+    )!;
+    expect(s.players.get(p1)!.manaPool.green).toBe(1);
+    expect(s.players.get(p2)!.manaPool.green).toBe(0);
+  });
+
+  it("Llanowar Elves' activation through the engine adds one green mana", () => {
+    let s0 = put(
+      state,
+      p1,
+      "elves",
+      card("Llanowar Elves", "Creature — Elf Druid", [1, 1]),
+    );
+    s0 = ready(s0, "elves");
+    const r = activateAbility(s0, p1, id("elves"), 0);
+    expect(r.success).toBe(true);
+    expect(r.state.players.get(p1)!.manaPool.green).toBe(1);
+    expect(r.state.cards.get(id("elves"))!.isTapped).toBe(true);
+  });
+
+  it("Hedron Archive's tap ability adds one colorless mana", () => {
+    const s0 = put(
+      state,
+      p1,
+      "archive",
+      card("Hedron Archive", "Artifact", [0, 0]),
+    );
+    const s = resolveScriptedAbility(
+      s0,
+      ability("archive", "Add {C}.", "activated"),
+    )!;
+    expect(s.players.get(p1)!.manaPool.colorless).toBe(1);
+  });
+
+  it("Hedron Archive's sacrifice ability draws two cards", () => {
+    const s0 = put(
+      state,
+      p1,
+      "archive",
+      card("Hedron Archive", "Artifact", [0, 0]),
+    );
+    const before = s0.zones.get(`${p1}-hand`)!.cardIds.length;
+    const s = resolveScriptedAbility(
+      s0,
+      ability("archive", "Draw two cards.", "activated"),
+    )!;
+    expect(s.zones.get(`${p1}-hand`)!.cardIds.length).toBe(before + 2);
+  });
+
+  it("Gilded Lotus' tap ability leaves the color choice for the mana-ability path", () => {
+    // The scripted interpreter returns state unchanged for "any" colors
+    // (CR 605.3a: the color choice is the player's via the mana-ability
+    // path, not the scripted path). The engine's `activateAbility` is
+    // what surfaces the choice — see the test below.
+    const s0 = put(
+      state,
+      p1,
+      "lotus",
+      card("Gilded Lotus", "Artifact", [0, 0]),
+    );
+    const s = resolveScriptedAbility(
+      s0,
+      ability("lotus", "Add three mana of any one color.", "activated"),
+    );
+    expect(s).toBeDefined();
+    expect(s!.players.get(p1)!.manaPool).toEqual({
+      white: 0,
+      blue: 0,
+      black: 0,
+      red: 0,
+      green: 0,
+      colorless: 0,
+      generic: 0,
+    });
+  });
+
+  it("Gilded Lotus' activation refuses the 'any one color' choice and asks the player to pick", () => {
+    const s0 = put(
+      state,
+      p1,
+      "lotus",
+      card("Gilded Lotus", "Artifact", [0, 0]),
+    );
+    const r = activateAbility(s0, p1, id("lotus"), 0);
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/choose a color/i);
+    expect(r.state.cards.get(id("lotus"))!.isTapped).toBe(false);
+  });
+});
+
+describe("kicker scripts (#2564)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+  });
+
+  // Divine Resilience: instant; +1/+0 + lifelink, and if kicked, also +1/+0.
+  it("Divine Resilience un-kicked: +1/+0 and lifelink, no second pump", () => {
+    const s0 = put(state, p1, "bear", card("Bear", "Creature — Bear", [2, 2]));
+    const s = resolveScriptedSpell(
+      s0,
+      getCardScript("Divine Resilience")!,
+      spell(p1, [cardTarget("bear")]),
+    );
+    const bear = s.cards.get(id("bear"))!;
+    expect(getEffectivePower(bear)).toBe(3);
+    expect(getEffectiveToughness(bear)).toBe(2);
+    expect(hasKeyword(bear, "lifelink")).toBe(true);
+  });
+
+  it("Divine Resilience kicked: +1/+0 + lifelink, then another +1/+0", () => {
+    const s0 = put(state, p1, "bear", card("Bear", "Creature — Bear", [2, 2]));
+    const s = resolveScriptedSpell(s0, getCardScript("Divine Resilience")!, {
+      ...spell(p1, [cardTarget("bear")]),
+      wasKicked: true,
+      timesKicked: 1,
+    });
+    const bear = s.cards.get(id("bear"))!;
+    expect(getEffectivePower(bear)).toBe(4);
+    expect(getEffectiveToughness(bear)).toBe(2);
+    expect(hasKeyword(bear, "lifelink")).toBe(true);
+  });
+
+  it("Burst Lightning un-kicked: 2 damage", () => {
+    const before = state.players.get(p2)!.life;
+    const s = resolveScriptedSpell(
+      state,
+      getCardScript("Burst Lightning")!,
+      spell(p1, [playerTarget(p2)]),
+    );
+    expect(s.players.get(p2)!.life).toBe(before - 2);
+  });
+
+  it("Burst Lightning kicked: 4 damage (CR 702.33d instead replaces 2)", () => {
+    const before = state.players.get(p2)!.life;
+    const s = resolveScriptedSpell(state, getCardScript("Burst Lightning")!, {
+      ...spell(p1, [playerTarget(p2)]),
+      wasKicked: true,
+      timesKicked: 1,
+    });
+    expect(s.players.get(p2)!.life).toBe(before - 4);
+  });
+
+  it("Gnarlid Colony ETB un-kicked: no pump", () => {
+    let s = put(
+      state,
+      p1,
+      "gnarlid",
+      card("Gnarlid Colony", "Creature — Beast", [2, 2]),
+    );
+    s = put(s, p2, "bear", card("Bear", "Creature — Bear", [2, 2]));
+    const s2 = resolveScriptedAbility(s, {
+      id: "ab-gnarlid",
+      type: "ability",
+      sourceCardId: id("gnarlid"),
+      controllerId: p1,
+      text: "When this creature enters, if it was kicked, target creature gets -2/-0 until end of turn.",
+      targets: [cardTarget("bear")],
+      triggered: true,
+    } as unknown as StackObject)!;
+    expect(getEffectivePower(s2.cards.get(id("bear"))!)).toBe(2);
+  });
+
+  it("Gnarlid Colony ETB kicked: -2/-0 to the chosen creature", () => {
+    let s = put(
+      state,
+      p1,
+      "gnarlid",
+      card("Gnarlid Colony", "Creature — Beast", [2, 2]),
+    );
+    s = put(s, p2, "bear", card("Bear", "Creature — Bear", [2, 2]));
+    const s2 = resolveScriptedAbility(s, {
+      id: "ab-gnarlid",
+      type: "ability",
+      sourceCardId: id("gnarlid"),
+      controllerId: p1,
+      text: "When this creature enters, if it was kicked, target creature gets -2/-0 until end of turn.",
+      targets: [cardTarget("bear")],
+      triggered: true,
+      wasKicked: true,
+      timesKicked: 1,
+    } as unknown as StackObject)!;
+    expect(getEffectivePower(s2.cards.get(id("bear"))!)).toBe(0);
+    expect(getEffectiveToughness(s2.cards.get(id("bear"))!)).toBe(2);
+  });
+});
+
+describe("kicker schema rejects (#2564)", () => {
+  const base = {
+    name: "Kicker Reject Test",
+    oracle: "Test card.",
+  };
+
+  it("rejects a kicker without a mana cost", () => {
+    const result = CardScriptSchema.safeParse({
+      ...base,
+      spell: [{ op: "DealDamage", amount: 1, target: "any" }],
+      kicker: { cost: "" },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a kicker with a multi-kicker (array) shape", () => {
+    const result = CardScriptSchema.safeParse({
+      ...base,
+      spell: [{ op: "DealDamage", amount: 1, target: "any" }],
+      kicker: [{ cost: "{1}" }],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts a kicker with a single mana-string cost", () => {
+    const result = CardScriptSchema.safeParse({
+      ...base,
+      spell: [{ op: "DealDamage", amount: 1, target: "any" }],
+      kicker: { cost: "{1}{W}" },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts an effect with if_kicked: true", () => {
+    const result = CardScriptSchema.safeParse({
+      ...base,
+      spell: [
+        { op: "DealDamage", amount: 2, target: "any", if_kicked: false },
+        {
+          op: "DealDamage",
+          amount: 4,
+          target: "any",
+          kickedAmount: 4,
+          if_kicked: true,
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+});
 
