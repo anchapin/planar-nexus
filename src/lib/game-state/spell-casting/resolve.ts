@@ -481,18 +481,26 @@ function resolveSpellCompletion(
       let destinationZone: string;
       if (typeLine.includes("instant") || typeLine.includes("sorcery")) {
         // Instants and sorceries go to graveyard — UNLESS they were cast
-        // with Escape (CR 702.138c): "If a resolving spell cast with escape
-        // would be put into a zone other than the stack or the battlefield,
-        // exile it instead." Permanents cast with escape still enter the
-        // battlefield normally (the same rule says "other than ... the
-        // battlefield"); the exile-instead-of-graveyard replacement for
-        // escaped permanents that later die is a separate replacement-effect
-        // concern, not handled here.
+        // with Escape (CR 702.138c) or Flashback (CR 702.143a):
+        //   - Escape: "If a resolving spell cast with escape would be put
+        //     into a zone other than the stack or the battlefield, exile it
+        //     instead." Permanents cast with escape still enter the
+        //     battlefield normally (the same rule says "other than ... the
+        //     battlefield"); the exile-instead-of-graveyard replacement for
+        //     escaped permanents that later die is a separate replacement-
+        //     effect concern, not handled here.
+        //   - Flashback: "If you do [cast it from the graveyard for its
+        //     flashback cost], exile it instead of putting it anywhere else
+        //     any time it would leave the stack." For instants/sorceries
+        //     this means exile instead of graveyard on resolution.
         const wasEscaped =
           stackObject.alternativeCostsUsed?.includes("escape") ?? false;
-        destinationZone = wasEscaped
-          ? `${card.controllerId}-exile`
-          : `${card.controllerId}-graveyard`;
+        const wasFlashback =
+          stackObject.alternativeCostsUsed?.includes("flashback") ?? false;
+        destinationZone =
+          wasEscaped || wasFlashback
+            ? `${card.controllerId}-exile`
+            : `${card.controllerId}-graveyard`;
       } else {
         // Permanents go to battlefield
         destinationZone = `${card.controllerId}-battlefield`;
@@ -748,9 +756,27 @@ function resolveSpellCompletion(
           }
         }
 
-        // CR 702.66 - Flashback: Card goes to exile instead of graveyard
+        // CR 702.143a - Flashback: the spell's effects resolve normally; the
+        // exile-instead-of-graveyard redirect is applied in the destination-
+        // zone branch above (line ~481). The card's `flashback` flag is
+        // stamped here for introspection / replay (mirrors the `blitz` stamp
+        // above) so callers can observe that the flashback alternative was
+        // actually used even after the StackObject is gone.
         if (stackObject.alternativeCostsUsed?.includes("flashback")) {
-          // Flashback spells resolve normally
+          const flashbackCard = currentState.cards.get(
+            stackObject.sourceCardId!,
+          );
+          if (flashbackCard) {
+            const updatedCards = new Map(currentState.cards);
+            updatedCards.set(stackObject.sourceCardId!, {
+              ...flashbackCard,
+              flashback: true,
+            });
+            currentState = {
+              ...currentState,
+              cards: updatedCards,
+            };
+          }
         }
 
         // CR 702.84 - Cascade: after the spell has moved to its destination zone,

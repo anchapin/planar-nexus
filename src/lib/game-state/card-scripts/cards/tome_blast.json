@@ -1,0 +1,17 @@
+{
+  "name": "Tome Blast",
+  "oracle": "Tome Blast deals 2 damage to any target. Flashback {4}{R} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+  "spell": [
+    {
+      "op": "DealDamage",
+      "amount": 2,
+      "target": "any"
+    }
+  ],
+  "flashback": {
+    "cost": "{4}{R}",
+    "destinations": {
+      "on_resolution": "exile"
+    }
+  }
+}

@@ -687,6 +687,29 @@ export const CardScriptSchema = z
      * attacks" trigger).
      */
     equipment: EquipmentSchema.optional(),
+    /**
+     * Flashback (CR 702.143) — an alternative cost: "you may cast this card
+     * from your graveyard for its flashback cost. If you do, exile it instead
+     * of putting it anywhere else any time it would leave the stack." Only
+     * legal on instants and sorceries (the same set `spell`/`modes`
+     * describes); the engine reads the cost from `cost` when the player
+     * chooses the flashback alternative, and applies the exile redirect on
+     * resolution via `StackObject.alternativeCostsUsed`. `destinations` is
+     * fixed to "exile" — flashback always exiles (CR 702.143a).
+     */
+    flashback: z
+      .object({
+        cost: z
+          .string()
+          .regex(/^(\{(?:[0-9]+|[WUBRGC])\})+$/),
+        destinations: z
+          .object({
+            on_resolution: z.literal("exile"),
+          })
+          .strict(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .refine(
@@ -709,7 +732,14 @@ export const CardScriptSchema = z
   )
   .refine((s) => !(s.spell && s.modes), {
     message: "a spell script has spell or modes, not both",
-  });
+  })
+  .refine(
+    (s) =>
+      s.flashback === undefined ||
+      s.spell !== undefined ||
+      s.modes !== undefined,
+    { message: "flashback is only for instant or sorcery scripts" },
+  );
 
 export type CardEffect = z.infer<typeof EffectSchema>;
 export type CardScript = z.infer<typeof CardScriptSchema>;

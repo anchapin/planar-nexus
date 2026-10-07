@@ -142,6 +142,17 @@ export interface CardInstance {
    */
   foretoldTurn?: number;
 
+  // Flashback-specific (CR 702.143)
+  /**
+   * Whether this card is currently being cast for its flashback cost (CR
+   * 702.143a). Set when the flashback alternative cost is paid; the engine
+   * uses the `alternativeCostsUsed` array on the StackObject for the actual
+   * zone redirect on resolution, so this field is purely informational /
+   * for introspection (mirrors `foretold`). Cleared when the card leaves the
+   * stack.
+   */
+  flashback?: boolean;
+
   // Prototype-specific (CR 702.152)
   /** Whether this permanent is currently in prototype form */
   isPrototype: boolean;

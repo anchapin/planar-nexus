@@ -1,0 +1,22 @@
+{
+  "name": "Faithless Looting",
+  "oracle": "Draw two cards, then discard two cards. Flashback {2}{R} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+  "spell": [
+    {
+      "op": "Draw",
+      "amount": 2,
+      "who": "you"
+    },
+    {
+      "op": "Discard",
+      "amount": 2,
+      "who": "you"
+    }
+  ],
+  "flashback": {
+    "cost": "{2}{R}",
+    "destinations": {
+      "on_resolution": "exile"
+    }
+  }
+}
