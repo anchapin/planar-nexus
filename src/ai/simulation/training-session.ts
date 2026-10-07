@@ -28,6 +28,7 @@ import {
   checkStateBasedActionsFromGameState as checkStateBasedActions,
   createInitialGameState,
   getPendingDecision,
+  layerSystem,
   listAttackerOptions,
   listBlockerOptions,
   listDecisionAnswers,
@@ -160,6 +161,12 @@ export class TrainingSession {
       steps: 0,
       limit: null,
     };
+    // Combat reads power and toughness through the module-level layer
+    // system, which keeps per-card overrides and a characteristics cache
+    // keyed on a hash of every override it has ever seen. Nothing clears it
+    // between games, so a long run grows it without bound (the #2612
+    // 1,000-game run hit the heap limit near game 620). Start each game clean.
+    layerSystem.clear();
     const state = this.engine(() => {
       let s = createInitialGameState(["p1", "p2"], 20, false);
       const [p1, p2] = Array.from(s.players.keys());
