@@ -11,6 +11,7 @@ import type {
   PlayerId,
   StackObject,
   Target,
+  Zone,
 } from "../types";
 import {
   resolveCardDrawEffect,
@@ -27,7 +28,7 @@ import {
   moveCardToZone,
 } from "../keyword-actions/removal";
 import { tapCardAction, untapCardAction } from "../keyword-actions/damage-tap";
-import { millCards } from "../zones";
+import { millCards, moveCardBetweenZones, shuffleZone } from "../zones";
 import { startDiscard } from "../keyword-actions/discard-choice";
 import { addCounters, isCreature } from "../card-instance";
 import { getEffectivePower } from "../evergreen-keywords";
@@ -51,6 +52,7 @@ import type {
   CardScript,
   ScriptedActivated,
   ScriptedTrigger,
+  SearchLibraryFilter,
 } from "./schema";
 
 interface EffectContext {
@@ -280,6 +282,166 @@ function fight(
   if (effect.op === "Fight")
     next = creatureDamage(next, otherId, fighterId, otherPower);
   return next;
+}
+
+/**
+ * True when `cardData` matches every set key of `filter`. A "basic land" is a
+ * land whose `type_line` includes "Basic" (CR 305.9). The other type checks
+ * delegate to the engine's `is…` helpers, which read `type_line` and respect
+ * the crewed-Vehicle / turn-form cases.
+ */
+function searchMatches(
+  cardData: { type_line: string; cmc: number; name: string; colors: string[] },
+  filter: SearchLibraryFilter,
+): boolean {
+  if (filter.basic_land && !/basic/i.test(cardData.type_line)) return false;
+  if (filter.land && !/land/i.test(cardData.type_line)) return false;
+  if (filter.creature && !/creature/i.test(cardData.type_line)) return false;
+  if (filter.artifact && !/artifact/i.test(cardData.type_line)) return false;
+  if (filter.enchantment && !/enchantment/i.test(cardData.type_line))
+    return false;
+  if (filter.instant_or_sorcery) {
+    const t = cardData.type_line.toLowerCase();
+    if (!t.includes("instant") && !t.includes("sorcery")) return false;
+  }
+  if (filter.mv_le !== undefined && cardData.cmc > filter.mv_le) return false;
+  if (filter.mv_eq !== undefined && cardData.cmc !== filter.mv_eq) return false;
+  if (
+    filter.name &&
+    cardData.name.toLowerCase() !== filter.name.toLowerCase()
+  ) {
+    return false;
+  }
+  if (filter.color) {
+    const want = filter.color;
+    const map: Record<string, string> = {
+      W: "W",
+      U: "U",
+      B: "B",
+      R: "R",
+      G: "G",
+    };
+    const wantLower = map[want].toLowerCase();
+    const has = (cardData.colors ?? [])
+      .map((c) => c.toLowerCase())
+      .includes(wantLower);
+    if (!has) return false;
+  }
+  return true;
+}
+
+/**
+ * A card instance whose `cardData` matches the search filter. The engine
+ * matches against the ScryfallCard-shaped `cardData` (the same fields the
+ * schema's filter describes), not against a CardInstance-only concept, so
+ * the same filter works whether the card is in the library, hand, or
+ * battlefield.
+ */
+function libraryMatchExists(
+  state: GameState,
+  library: Zone,
+  filter: SearchLibraryFilter,
+): CardInstanceId | null {
+  for (const id of library.cardIds) {
+    const inst = state.cards.get(id);
+    if (!inst) continue;
+    if (searchMatches(inst.cardData, filter)) return id;
+  }
+  return null;
+}
+
+/**
+ * Resolve a "search your library" effect (CR 603.9d, CR 608.2d, #2562). The
+ * searcher is the controller or the previous targeted player. The library is
+ * always shuffled afterwards, even if nothing was found.
+ *
+ * v1 limitation: only `count: 1` is supported; the chosen card is the first
+ * match. "Up to N" search with the player choosing a card needs UI plumbing
+ * and is a follow-up lane.
+ *
+ * v1 also does not model "reveal" (the card simply moves into a public or
+ * private zone) nor "put onto the battlefield tapped" (the card enters
+ * untapped; an `EntersTapped` op is a follow-up). Both are noted in the PR.
+ */
+function searchLibrary(
+  state: GameState,
+  effect: Extract<CardEffect, { op: "SearchLibrary" }>,
+  ctx: EffectContext,
+): GameState {
+  // Card scripts are stored without zod parsing (#1814) so the schema's
+  // `.default(...)` rules do not run; fill them in here. This is the same
+  // gap that the schema covers on the app/AI side.
+  const who = effect.who ?? "you";
+  const destination = effect.destination ?? "hand";
+  const shuffle = effect.shuffle ?? true;
+  const searcher = playerFor(who, ctx);
+  if (!searcher) return state;
+  const libraryKey = `${searcher}-library`;
+  const library = state.zones.get(libraryKey);
+  if (!library) return state;
+
+  // Find the first matching card. count: 1 is the only value the schema accepts
+  // in v1, so we do not loop; the schema is the single source of truth here.
+  const chosen = libraryMatchExists(state, library, effect.filter);
+
+  // CR 603.9d / 608.2d: shuffle the library even if nothing was found.
+  const nextLibrary = shuffle ? shuffleZone(library) : library;
+
+  if (!chosen) {
+    const zones = new Map(state.zones);
+    zones.set(libraryKey, nextLibrary);
+    return { ...state, zones };
+  }
+
+  // Move the chosen card out of the library first, then into the destination,
+  // so a single move covers both the "removed from library" and "added to
+  // destination" steps regardless of destination semantics.
+  const withoutChosen: Zone = {
+    ...nextLibrary,
+    cardIds: nextLibrary.cardIds.filter((id) => id !== chosen),
+  };
+
+  // CR 400.3: cards put into a hand go to their owner's hand. The library
+  // card's owner is the searcher, so the destination zone key is well-defined.
+  const owner = state.cards.get(chosen)?.ownerId ?? searcher;
+  let destKey: string;
+  let position: "top" | "bottom" | undefined;
+  switch (destination) {
+    case "hand":
+      destKey = `${owner}-hand`;
+      break;
+    case "battlefield":
+      destKey = `${searcher}-battlefield`;
+      break;
+    case "library_top":
+      destKey = `${owner}-library`;
+      position = "top";
+      break;
+    case "library_bottom":
+      destKey = `${owner}-library`;
+      position = "bottom";
+      break;
+  }
+
+  const destZone = state.zones.get(destKey);
+  if (!destZone) {
+    // No destination zone: we still need to remove the chosen card from the
+    // library (so it doesn't appear twice) and apply the shuffle. Refuse the
+    // move.
+    const zones = new Map(state.zones);
+    zones.set(libraryKey, withoutChosen);
+    return { ...state, zones };
+  }
+
+  const moved = moveCardBetweenZones(withoutChosen, destZone, chosen, position);
+
+  const zones = new Map(state.zones);
+  zones.set(libraryKey, moved.from);
+  zones.set(destKey, moved.to);
+  const cards = new Map(state.cards);
+  const inst = cards.get(chosen);
+  if (inst) cards.set(chosen, { ...inst, currentZoneKey: destKey });
+  return { ...state, zones, cards };
 }
 
 function applyEffect(
@@ -515,6 +677,8 @@ function applyEffect(
     }
     case "CopySpell":
       return copyTriggeringSpell(state, effect.gain ?? [], ctx);
+    case "SearchLibrary":
+      return searchLibrary(state, effect, ctx);
     case "Fight":
     case "Bite":
       return fight(state, effect, ctx);

@@ -91,6 +91,7 @@ export function isTargetedEffect(effect: CardEffect): boolean {
     case "LoseLife":
     case "Mill":
     case "Discard":
+    case "SearchLibrary":
       return effect.who === "target_player";
     default:
       return false;
