@@ -59,7 +59,9 @@ export function hasKeyword(card: CardInstance, keyword: string): boolean {
   if (card.equipmentKeywords?.includes(keyword.toLowerCase())) return true;
   // Granted by a scripted static ability (issue #2496).
   if (card.scriptStaticKeywords?.includes(keyword.toLowerCase())) return true;
-  // Granted until end of turn by a resolved effect (issue #2567).
+  // Granted "until end of turn" by a resolved spell or ability
+  // (e.g. Divine Resilience's lifelink, #2564). Cleared at end of turn
+  // by `clearUntilEndOfTurnKeywords`.
   if (card.untilEndOfTurnKeywords?.includes(keyword.toLowerCase())) return true;
   // A keyword granted only by a threshold clause counts only while
   // threshold is active (issue #2300).

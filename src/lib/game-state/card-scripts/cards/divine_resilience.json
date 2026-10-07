@@ -1,0 +1,25 @@
+{
+  "name": "Divine Resilience",
+  "oracle": "Target creature you control gets +1/+0 and gains lifelink until end of turn. Kicker {1}{W} (You may pay an additional {1}{W} as you cast this spell.)\nIf this spell was kicked, that creature also gets +1/+0 until end of turn.",
+  "spell": [
+    {
+      "op": "Pump",
+      "power": 1,
+      "toughness": 0,
+      "target": "creature",
+      "controller": "you",
+      "keywords": ["lifelink"]
+    },
+    {
+      "op": "Pump",
+      "power": 1,
+      "toughness": 0,
+      "target": "creature",
+      "controller": "you",
+      "if_kicked": true
+    }
+  ],
+  "kicker": {
+    "cost": "{1}{W}"
+  }
+}

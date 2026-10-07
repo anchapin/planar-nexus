@@ -3,6 +3,7 @@
  */
 
 import { clearUntilEndOfTurnPT } from "../pt-until-end-of-turn";
+import { clearUntilEndOfTurnKeywords } from "../pt-until-end-of-turn";
 import type {
   CardInstanceId,
   CardInstance,
@@ -679,6 +680,12 @@ function advanceToNextPhase(state: GameState): GameState {
 
     // CR 611.2a / 514.2: "gets +X/+Y until end of turn" effects end.
     updatedCards = clearUntilEndOfTurnPT({
+      ...resultState,
+      cards: updatedCards,
+    }).cards;
+
+    // CR 611.2a / 514.2: "gains KEYWORD until end of turn" effects end.
+    updatedCards = clearUntilEndOfTurnKeywords({
       ...resultState,
       cards: updatedCards,
     }).cards;
