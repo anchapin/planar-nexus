@@ -5292,11 +5292,17 @@ describe("scripted SearchLibrary and ShuffleLibrary (#2566)", () => {
     });
     s = { ...s, cards };
     const before = s.zones.get(`${f.p1}-library`)!.cardIds;
-    const after = resolveScriptedSpell(
-      s,
-      getCardScript("Bushwhack")!,
-      spell(f.p1),
-    );
+    // Pin the shuffle's randomness: with Math.random() = 0 every
+    // Fisher-Yates step swaps with index 0, which never leaves 4 cards in
+    // their original order. Unpinned, the identical-order case (1/24) made
+    // this test flake in CI.
+    const randomSpy = jest.spyOn(Math, "random").mockReturnValue(0);
+    let after: typeof s;
+    try {
+      after = resolveScriptedSpell(s, getCardScript("Bushwhack")!, spell(f.p1));
+    } finally {
+      randomSpy.mockRestore();
+    }
     // The chosen basic land (Forest-1) is now in hand.
     const hand = after.zones.get(`${f.p1}-hand`)!.cardIds;
     expect(hand).toContain(id("Forest-1"));
@@ -5304,11 +5310,8 @@ describe("scripted SearchLibrary and ShuffleLibrary (#2566)", () => {
     const afterLib = after.zones.get(`${f.p1}-library`)!.cardIds;
     expect(afterLib).not.toContain(id("Forest-1"));
     expect(afterLib).toHaveLength(before.length - 1);
-    // The library was actually shuffled: its order should differ from
-    // the original. With 4 remaining cards the chance of an identical
-    // order is 1/24 ≈ 4%; the test is unlikely to flake but not
-    // astronomically so. If it does, the SearchLibrary code is still
-    // correct — the assertion just gets noisy.
+    // The library was actually shuffled: its order differs from the
+    // original (deterministic with the pinned randomness above).
     expect(afterLib).not.toEqual(before.filter((c) => c !== id("Forest-1")));
   });
 
