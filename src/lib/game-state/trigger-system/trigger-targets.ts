@@ -319,7 +319,8 @@ function effectTargetSpecs(effect: CardEffect): TriggerTargetSpec[] | null {
     effect.op === "GainLife" ||
     effect.op === "LoseLife" ||
     effect.op === "Mill" ||
-    effect.op === "Discard"
+    effect.op === "Discard" ||
+    effect.op === "ShuffleLibrary"
   ) {
     return [{ ...base, kind: "player" }];
   }

@@ -32,6 +32,7 @@ import {
   addCardToZone,
   millCards,
   moveCardBetweenZones,
+  shuffleLibraryZone,
   shuffleZone,
 } from "../zones";
 import { startDiscard } from "../keyword-actions/discard-choice";
@@ -854,6 +855,12 @@ function applyEffect(
       return copyTriggeringSpell(state, effect.gain ?? [], ctx);
     case "SearchLibrary":
       return searchLibrary(state, effect, ctx);
+    case "ShuffleLibrary": {
+      const who = effect.who ?? "you";
+      const player = playerFor(who, ctx);
+      if (!player) return state;
+      return shuffleLibraryZone(state, player);
+    }
     case "Fight":
     case "Bite":
       return fight(state, effect, ctx);

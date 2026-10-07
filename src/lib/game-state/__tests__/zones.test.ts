@@ -48,11 +48,18 @@ import {
   reorderCards,
   revealZone,
   setZoneVisibility,
+  shuffleLibraryZone,
   shuffleZone,
   zoneContainsCard,
 } from "../zones";
 import { ZoneType, getZoneKey } from "../types";
-import type { CardInstance, CardInstanceId, PlayerId, Zone } from "../types";
+import type {
+  CardInstance,
+  CardInstanceId,
+  GameState,
+  PlayerId,
+  Zone,
+} from "../types";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -564,6 +571,122 @@ describe("shuffleZone", () => {
     const base = stockedZone(ZoneType.LIBRARY, PLAYER_A);
     shuffleZone(base);
     expect(base.cardIds).toEqual(["c1", "c2", "c3"]);
+  });
+
+  it("uses a seeded RNG when one is passed (#2566)", () => {
+    // A controller that yields j = i for every iteration (a no-swap) is
+    // the simplest way to assert determinism: a Fisher-Yates loop with
+    // j = i leaves the array untouched. We hand-build the controller so
+    // the assertion is unambiguous; using a constant return value would
+    // produce surprising swaps (e.g. `() => 0` swaps position 0 with
+    // every other slot).
+    const z = zone(ZoneType.LIBRARY, PLAYER_A, ids("a", "b", "c", "d", "e"));
+    let iter = 0;
+    const noSwap = () => {
+      // i descends from 4 to 1; we return the value that floors to i.
+      // (i+1) * (i/(i+1) + 0.5/(i+1)) is awkward; just compute the
+      // exact value we want for each call.
+      const i = z.cardIds.length - 1 - iter++;
+      return i / (i + 1) + 1e-9;
+    };
+    expect(shuffleZone(z, noSwap).cardIds).toEqual(["a", "b", "c", "d", "e"]);
+    // A second pass with the same RNG produces the same output.
+    iter = 0;
+    const noSwap2 = () => {
+      const i = z.cardIds.length - 1 - iter++;
+      return i / (i + 1) + 1e-9;
+    };
+    expect(shuffleZone(z, noSwap2).cardIds).toEqual(["a", "b", "c", "d", "e"]);
+  });
+
+  it("produces different orderings for different seeds (#2566)", () => {
+    // Two different seeded RNGs are expected to usually produce different
+    // orderings on a 6-card library. The probability of a tie on a
+    // Fisher-Yates pass is ~ 1/720, so a flaked run is extremely rare;
+    // we just rerun the test if it happens.
+    const base = ids("a", "b", "c", "d", "e", "f");
+    // LCG: keep it simple, no need for real seeded RNG quality.
+    const lcg = (seed: number) => () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed / 0x7fffffff;
+    };
+    const a = shuffleZone(
+      zone(ZoneType.LIBRARY, PLAYER_A, base),
+      lcg(1),
+    ).cardIds;
+    const b = shuffleZone(
+      zone(ZoneType.LIBRARY, PLAYER_A, base),
+      lcg(2),
+    ).cardIds;
+    expect(a).not.toEqual(b);
+    expect([...a].sort()).toEqual([...b].sort());
+  });
+});
+
+// ---------------------------------------------------------------------------
+// shuffleLibraryZone (CR 701.20, #2566)
+// ---------------------------------------------------------------------------
+
+describe("shuffleLibraryZone", () => {
+  it("shuffles the named player's library in place", () => {
+    const zones = new Map<string, Zone>();
+    zones.set(
+      getZoneKey(PLAYER_A, ZoneType.LIBRARY),
+      zone(ZoneType.LIBRARY, PLAYER_A, ids("a", "b", "c", "d", "e")),
+    );
+    zones.set(
+      getZoneKey(PLAYER_B, ZoneType.LIBRARY),
+      zone(ZoneType.LIBRARY, PLAYER_B, ids("x", "y", "z")),
+    );
+    const state: GameState = { zones } as unknown as GameState;
+    const next = shuffleLibraryZone(state, PLAYER_A);
+    const library = next.zones.get(getZoneKey(PLAYER_A, ZoneType.LIBRARY))!;
+    expect([...library.cardIds].sort()).toEqual(["a", "b", "c", "d", "e"]);
+    // PLAYER_B's library is untouched.
+    expect(next.zones.get(getZoneKey(PLAYER_B, ZoneType.LIBRARY))!.cardIds).toEqual(
+      ["x", "y", "z"],
+    );
+  });
+
+  it("returns the same state when the player has no library zone", () => {
+    const zones = new Map<string, Zone>();
+    const state: GameState = { zones } as unknown as GameState;
+    expect(shuffleLibraryZone(state, PLAYER_A)).toBe(state);
+  });
+
+  it("returns the same state when the library has 0 or 1 cards", () => {
+    for (const cards of [[], ["only"]]) {
+      const zones = new Map<string, Zone>();
+      zones.set(
+        getZoneKey(PLAYER_A, ZoneType.LIBRARY),
+        zone(ZoneType.LIBRARY, PLAYER_A, ids(...cards)),
+      );
+      const state: GameState = { zones } as unknown as GameState;
+      const next = shuffleLibraryZone(state, PLAYER_A);
+      expect(next).toBe(state);
+    }
+  });
+
+  it("uses a seeded RNG for deterministic tests", () => {
+    const zones = new Map<string, Zone>();
+    const base = ids("a", "b", "c", "d", "e", "f", "g", "h");
+    zones.set(
+      getZoneKey(PLAYER_A, ZoneType.LIBRARY),
+      zone(ZoneType.LIBRARY, PLAYER_A, base),
+    );
+    const state: GameState = { zones } as unknown as GameState;
+    // Same LCG, same seed → same shuffle, regardless of the call order
+    // or which player we're shuffling.
+    const lcg = (seed: number) => () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed / 0x7fffffff;
+    };
+    const a = shuffleLibraryZone(state, PLAYER_A, lcg(42));
+    const b = shuffleLibraryZone(state, PLAYER_A, lcg(42));
+    const aLib = a.zones.get(getZoneKey(PLAYER_A, ZoneType.LIBRARY))!.cardIds;
+    const bLib = b.zones.get(getZoneKey(PLAYER_A, ZoneType.LIBRARY))!.cardIds;
+    expect(aLib).toEqual(bLib);
+    expect(aLib).not.toEqual(base);
   });
 });
 

@@ -42,6 +42,7 @@ import { GrantKeywordReference } from "./grant-keyword";
 import { ReturnToHandReference } from "./return-to-hand";
 import { ScryReference } from "./scry";
 import { SearchLibraryReference } from "./search-library";
+import { ShuffleLibraryReference } from "./shuffle-library";
 import { SurveilReference } from "./surveil";
 import { TapReference } from "./tap";
 import { UntapReference } from "./untap";
@@ -71,6 +72,7 @@ export const OP_REFERENCES: readonly CardOpReference[] = [
   DiscardReference,
   CopySpellReference,
   SearchLibraryReference,
+  ShuffleLibraryReference,
   FightReference,
   BiteReference,
   AddManaReference,
