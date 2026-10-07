@@ -182,6 +182,42 @@ export const ReturnToHandSchema = z
   .strict();
 
 /**
+ * Return a card from a non-battlefield zone to the battlefield (#2560).
+ * Currently only `from: "graveyard"` and `to: "battlefield"` are supported,
+ * covering the 46 cards in the op frontier (BLB/FDN/FIN/MKM/SOS/TDC).
+ *
+ * The `target` is a card in the chosen graveyard. `filter` narrows which
+ * cards may be picked: `creature` (only creatures), `mv_le` (mana value
+ * at most N — "creature card with mana value 2 or less"), and `controller`
+ * ("you" for your graveyard, "opponent" for an opponent's). The card
+ * returns under its owner's control (CR 400.3), fires ETB triggers
+ * normally, and gets "enters with" counters via the engine's
+ * `applyEntersWithCounters` (CR 614.1c).
+ *
+ * `count` is the number of cards to return. With the default of 1, the
+ * player picks a single target card; the effect does not silently move
+ * others. Only `count: 1` is exercised by today's 46 cards.
+ */
+export const ReturnFromZoneSchema = z
+  .object({
+    op: z.literal("ReturnFromZone"),
+    from: z.literal("graveyard"),
+    to: z.literal("battlefield"),
+    /** Required when a `filter` is set (the script's targetable card). */
+    target: z.literal("card").optional(),
+    filter: z
+      .object({
+        creature: z.literal(true).optional(),
+        mv_le: z.number().int().min(0).optional(),
+        controller: z.enum(TARGET_CONTROLLERS).optional(),
+      })
+      .strict()
+      .optional(),
+    count: xCount.optional(),
+  })
+  .strict();
+
+/**
  * Fight and Bite (#2548). Fight (CR 701.14): the fighter and the target
  * creature each deal damage equal to their power to the other. Bite: only the
  * fighter deals damage ("deals damage equal to its power to target creature").
@@ -395,6 +431,7 @@ export const EffectSchema = z.discriminatedUnion("op", [
   TapSchema,
   UntapSchema,
   ReturnToHandSchema,
+  ReturnFromZoneSchema,
   CounterSchema,
   AttachEquipmentSchema,
   PumpSchema,

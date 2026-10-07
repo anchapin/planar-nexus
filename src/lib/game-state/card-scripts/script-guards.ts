@@ -83,6 +83,7 @@ export function isTargetedEffect(effect: CardEffect): boolean {
     case "Tap":
     case "Untap":
     case "ReturnToHand":
+    case "ReturnFromZone":
     case "Counter":
     case "Fight":
     case "Bite":

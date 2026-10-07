@@ -1,0 +1,24 @@
+{
+  "name": "Alesha, Who Laughs at Fate",
+  "oracle": "First strike\nWhenever Alesha attacks, you may pay {W}{U}{B}. If you do, return target creature card with mana value 2 or less from your graveyard to the battlefield tapped and attacking.",
+  "triggers": [
+    {
+      "text": "Whenever Alesha attacks, you may pay {W}{U}{B}. If you do, return target creature card with mana value 2 or less from your graveyard to the battlefield tapped and attacking.",
+      "event": "attacks",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "ReturnFromZone",
+          "from": "graveyard",
+          "to": "battlefield",
+          "target": "card",
+          "filter": {
+            "creature": true,
+            "mv_le": 2,
+            "controller": "you"
+          }
+        }
+      ]
+    }
+  ]
+}

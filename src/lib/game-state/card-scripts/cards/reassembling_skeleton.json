@@ -1,0 +1,26 @@
+{
+  "name": "Reassembling Skeleton",
+  "oracle": "{1}{B}: Return Reassembling Skeleton from your graveyard to the battlefield. (It can't be cast as a spell.)",
+  "activated": [
+    {
+      "text": "Return Reassembling Skeleton from your graveyard to the battlefield.",
+      "cost": {
+        "mana": "{1}{B}",
+        "tap": false,
+        "sacrifice": false
+      },
+      "effects": [
+        {
+          "op": "ReturnFromZone",
+          "from": "graveyard",
+          "to": "battlefield",
+          "target": "card",
+          "filter": {
+            "creature": true,
+            "controller": "you"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -124,6 +124,25 @@ function targetStillLegal(state: GameState, target: Target): boolean {
   return false;
 }
 
+/**
+ * Per-effect target legality: most effects want their target on the
+ * battlefield (the default `targetStillLegal`). ReturnFromZone targets a
+ * card in a graveyard (#2560), so its target is legal as long as the card
+ * exists in the right graveyard.
+ */
+function effectTargetLegal(
+  state: GameState,
+  target: Target,
+  effect: CardEffect,
+  ctx: EffectContext,
+): boolean {
+  if (effect.op === "ReturnFromZone") {
+    if (target.type !== "card") return false;
+    return returnFromZoneStillMatches(state, target.targetId, effect, ctx);
+  }
+  return targetStillLegal(state, target);
+}
+
 function playerFor(
   who: "you" | "target_player",
   ctx: EffectContext,
@@ -623,6 +642,36 @@ function applyEffect(
       );
       return r.success ? r.state : state;
     }
+    case "ReturnFromZone": {
+      // #2560: return a card from a non-battlefield zone to the battlefield.
+      // The target is a card in the chosen graveyard; we move it with
+      // `moveCardToZone`, which already fires ETB triggers (Renown, Tribute,
+      // scripted) and applies "enters with" counters (CR 614.1c).
+      if (!target) return state;
+      if (!returnFromZoneStillMatches(state, target.targetId, effect, ctx))
+        return state;
+      const cardId = target.targetId as CardInstanceId;
+      // CR 400.3: a card put onto the battlefield by a player different
+      // from its owner is controlled by the player putting it there. The
+      // engine's `moveCardToZone` uses `card.controllerId` to pick the
+      // destination battlefield, so we transfer control to the effect's
+      // controller when the card's current controller differs (the
+      // "from an opponent's graveyard" path).
+      const card = state.cards.get(cardId);
+      if (!card) return state;
+      const prepared =
+        card.controllerId !== ctx.controllerId
+          ? {
+              ...state,
+              cards: new Map(state.cards).set(cardId, {
+                ...card,
+                controllerId: ctx.controllerId,
+              }),
+            }
+          : state;
+      const r = moveCardToZone(prepared, cardId, "battlefield");
+      return r.success ? r.state : state;
+    }
     case "Counter": {
       if (!target) return state;
       const r = resolveCounterEffect(state, sourceId, target.targetId);
@@ -782,6 +831,50 @@ function targetStillMatches(
   return Boolean(card) && matchesRemovalFilter(card!, filter);
 }
 
+/**
+ * True when `cardId` is still in the chosen graveyard and still matches
+ * the ReturnFromZone filter (#2560). The card is in the graveyard under
+ * the player named by the filter's `controller` (default "you" = the
+ * ability's controller). The filter narrows by creature and mana value.
+ *
+ * A graveyard card's owner is the player whose graveyard it sits in (CR
+ * 404.1, CR 400.3): even a stolen card returns to its owner's graveyard
+ * on death. We use `ownerId` to find the right graveyard, not
+ * `controllerId` (which on a card in a graveyard is normally the same as
+ * the owner, but the engine doesn't guarantee that).
+ */
+function returnFromZoneStillMatches(
+  state: GameState,
+  cardId: string,
+  effect: Extract<CardEffect, { op: "ReturnFromZone" }>,
+  ctx: EffectContext,
+): boolean {
+  const card = state.cards.get(cardId as CardInstanceId);
+  if (!card) return false;
+  const filterController = effect.filter?.controller ?? "you";
+  // The graveyard to inspect: the ability's controller for "you", the
+  // first opponent (in two-player games, "opponent" is unambiguous) for
+  // "opponent".
+  const graveyardOwner =
+    filterController === "you"
+      ? ctx.controllerId
+      : opponentsOf(state, ctx.controllerId)[0];
+  if (!graveyardOwner) return false;
+  // The card must actually be in that player's graveyard. The "controller"
+  // side of the filter is about whose graveyard to search; the card's
+  // owner is the graveyard's owner (CR 404.1).
+  if (card.ownerId !== graveyardOwner) return false;
+  const graveyardKey = `${graveyardOwner}-graveyard`;
+  const graveyard = state.zones.get(graveyardKey);
+  if (!graveyard?.cardIds.includes(cardId as CardInstanceId)) return false;
+  if (effect.filter?.creature === true && !isCreature(card)) return false;
+  if (effect.filter?.mv_le !== undefined) {
+    const cmc = card.cardData.cmc ?? 0;
+    if (cmc > effect.filter.mv_le) return false;
+  }
+  return true;
+}
+
 export function resolveScriptedEffects(
   state: GameState,
   effects: readonly CardEffect[],
@@ -807,9 +900,16 @@ export function resolveScriptedEffects(
     if (count > 0) {
       const taken = targets.slice(next, next + count);
       next += count;
+      const ctxForLegality: EffectContext = {
+        controllerId: stackObject.controllerId as PlayerId,
+        sourceId: (stackObject.sourceCardId as CardInstanceId) || undefined,
+        kickerBonus,
+        x,
+        triggeringStackObjectId: stackObject.triggeringStackObjectId,
+      };
       const legal =
         taken.length === count &&
-        taken.every((t) => targetStillLegal(current, t));
+        taken.every((t) => effectTargetLegal(current, t, effect, ctxForLegality));
       previous = legal ? taken[0] : undefined;
       if (!legal) continue;
       target = taken[count - 1];
