@@ -55,6 +55,8 @@ import { isThresholdOnlyKeyword } from "./keyword-actions/threshold";
 export function hasKeyword(card: CardInstance, keyword: string): boolean {
   // Granted by an attached Aura (issue #2464).
   if (card.auraKeywords?.includes(keyword.toLowerCase())) return true;
+  // Granted by an attached Equipment (issue #2561).
+  if (card.equipmentKeywords?.includes(keyword.toLowerCase())) return true;
   // Granted by a scripted static ability (issue #2496).
   if (card.scriptStaticKeywords?.includes(keyword.toLowerCase())) return true;
   // A keyword granted only by a threshold clause counts only while
@@ -888,6 +890,9 @@ export function getEffectivePower(card: CardInstance): number {
   power += card.tribalAnthemPT?.power || 0;
   // Aura statics ("Enchanted creature gets +N/+N", issue #2453), layer 7c.
   power += card.auraPT?.power || 0;
+  // Scripted Equipment statics ("Equipped creature gets +N/+N", #2561),
+  // layer 7c.
+  power += card.equipmentPT?.power || 0;
   // Scripted static anthems (issue #2496), layer 7c.
   power += card.scriptStaticPT?.power || 0;
   // Domain characteristic-defining ability (CR 604.3), layer 7a.
@@ -923,6 +928,7 @@ export function getEffectiveToughness(card: CardInstance): number {
   toughness += card.thresholdAnthemPT?.toughness || 0;
   toughness += card.tribalAnthemPT?.toughness || 0;
   toughness += card.auraPT?.toughness || 0;
+  toughness += card.equipmentPT?.toughness || 0;
   toughness += card.scriptStaticPT?.toughness || 0;
 
   return Math.max(0, toughness);

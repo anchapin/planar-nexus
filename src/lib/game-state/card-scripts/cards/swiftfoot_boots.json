@@ -1,0 +1,20 @@
+{
+  "name": "Swiftfoot Boots",
+  "oracle": "Equipped creature has hexproof and haste. Equip {1} ({1}: Attach to target creature you control. Equip only as a sorcery.)",
+  "equipment": {
+    "text": "Equipped creature has hexproof and haste. Equip {1}.",
+    "attachOnEnter": true,
+    "attachedStatic": {
+      "text": "Equipped creature has hexproof and haste.",
+      "keywords": ["hexproof", "haste"]
+    },
+    "equip": {
+      "text": "Equip {1}: Attach to target creature you control. Equip only as a sorcery.",
+      "cost": { "mana": "{1}", "tap": false, "sacrifice": false },
+      "timing": "sorcery",
+      "effects": [
+        { "op": "AttachEquipment", "target": "creature", "controller": "you" }
+      ]
+    }
+  }
+}

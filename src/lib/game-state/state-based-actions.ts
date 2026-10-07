@@ -42,6 +42,7 @@ import { refreshTribalAnthems } from "./keyword-actions/tribal-anthem";
 import { refreshAuraBonuses } from "./keyword-actions/aura-bonus";
 import { refreshScriptedStatics } from "./keyword-actions/scripted-statics";
 import { refreshTurnCreatureForms } from "./keyword-actions/ninjutsu";
+import { refreshEquipmentBonuses } from "./keyword-actions/equipment-bonus";
 import { isAuraIllegallyAttached } from "./keyword-actions/enchant";
 
 // Helper functions to check card types
@@ -83,16 +84,20 @@ export function checkStateBasedActions(
     // Tribal lords ("Other Dragons you control get +1/+1") depend on the board.
     // Kaito's creature form depends on whose turn it is and his loyalty.
     // Aura statics (Ethereal Armor) depend on what is attached (#2453).
+    // Scripted Equipment statics (Swiftfoot Boots, #2561) depend on the
+    // equipment being attached to a creature.
     // Scripted statics ("Creatures you control get +1/+1", #2496).
     let updatedState = refreshScriptedStatics(
-      refreshAuraBonuses(
-        refreshTribalAnthems(
-          refreshDomainPower(
-            refreshThresholdBonuses(
-              refreshTurnCreatureForms({
-                ...state,
-                cards: new Map(state.cards),
-              }),
+      refreshEquipmentBonuses(
+        refreshAuraBonuses(
+          refreshTribalAnthems(
+            refreshDomainPower(
+              refreshThresholdBonuses(
+                refreshTurnCreatureForms({
+                  ...state,
+                  cards: new Map(state.cards),
+                }),
+              ),
             ),
           ),
         ),

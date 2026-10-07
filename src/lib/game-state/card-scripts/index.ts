@@ -1,7 +1,12 @@
 export {
   ActivatedSchema,
+  AttachEquipmentSchema,
   CardScriptSchema,
   EffectSchema,
+  EquipmentSchema,
+  EquipmentStaticSchema,
+  EQUIPMENT_ATTACH_ON_ENTER_TEXT,
+  EQUIPMENT_KEYWORDS,
   ModesSchema,
   TriggerSchema,
   isPermanentScript,
@@ -15,9 +20,11 @@ export {
   scriptedSpellEffects,
 } from "./schema";
 export type {
-  CardScript,
   CardEffect,
+  CardScript,
   ScriptedActivated,
+  ScriptedEquipment,
+  ScriptedEquipmentStatic,
   ScriptedModes,
   ScriptedTrigger,
 } from "./schema";

@@ -222,6 +222,20 @@ export interface CardInstance {
    */
   auraKeywords?: string[];
   /**
+   * Summed static bonus from Equipment attached to this creature, e.g.
+   * Swiftfoot Boots' hexproof+haste (issue #2561). Maintained by
+   * `refreshEquipmentBonuses`. Kept separate from `auraPT` so a future
+   * "lose all abilities" effect can drop Auras without dropping the
+   * equipment that grants trample.
+   */
+  equipmentPT?: { power: number; toughness: number };
+  /**
+   * Keywords granted by Equipment attached to this creature (issue #2561).
+   * Maintained by `refreshEquipmentBonuses`. See `equipmentPT` for why
+   * the field is separate from `auraKeywords`.
+   */
+  equipmentKeywords?: string[];
+  /**
    * Summed P/T from scripted static abilities on the battlefield, e.g. Anthem
    * of Champions (issue #2496). Maintained by `refreshScriptedStatics`.
    */

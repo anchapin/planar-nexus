@@ -9,6 +9,7 @@ import type {
   ScriptedActivated,
   ScriptedTrigger,
 } from "../card-scripts/schema";
+import { EQUIPMENT_ATTACH_ON_ENTER_TEXT } from "../card-scripts/schema";
 import type {
   ParsedActivatedAbility,
   ParsedTriggeredAbility,
@@ -114,7 +115,25 @@ export function getScriptedTriggeredAbilities(
   card: ScryfallCard,
 ): ParsedTriggeredAbility[] | undefined {
   const script = permanentScript(card);
-  return script ? (script.triggers ?? []).map(scriptedTrigger) : undefined;
+  if (!script) return undefined;
+  const out = (script.triggers ?? []).map(scriptedTrigger);
+  // Equipment with `attachOnEnter: true` (#2561): a synthetic ETB trigger
+  // attaches it to a creature the controller picks. The text matches the
+  // interpreter's `getScriptedAbility`, so the resolver recognizes the
+  // stack object as scripted and routes the `AttachEquipment` op.
+  if (script.equipment?.attachOnEnter) {
+    out.push(
+      scriptedTrigger({
+        text: EQUIPMENT_ATTACH_ON_ENTER_TEXT,
+        event: "etb",
+        subject: "self",
+        effects: [
+          { op: "AttachEquipment", target: "creature", controller: "you" },
+        ],
+      }),
+    );
+  }
+  return out;
 }
 
 export function getActivatedAbilities(

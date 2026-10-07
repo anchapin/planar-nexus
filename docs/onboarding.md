@@ -41,7 +41,11 @@ Source of truth: `npx jest --listTests | wc -l` for the suite count, and `npm te
 <!-- TEST_COUNT:START -->
 
 **Test suites:** 661
+<<<<<<< HEAD
 **Test cases:** 13275 (13268 passed + 7 skipped)
+=======
+**Test cases:** 13273 (13266 passed + 7 skipped)
+>>>>>>> d80b653e (feat(card-scripts): add equipment support and 3 fdn scripts (#2561))
 **Snapshots:** 3
 <!-- TEST_COUNT:END -->
 

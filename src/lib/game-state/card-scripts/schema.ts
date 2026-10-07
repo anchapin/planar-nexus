@@ -91,6 +91,28 @@ export const TOKEN_KEYWORDS = [
   "defender",
 ] as const;
 
+/**
+ * Keywords an Equipment or Aura may grant the equipped/enchanted creature
+ * (issue #2561). Broader than `TOKEN_KEYWORDS`: equipment commonly grants
+ * hexproof, double strike, and indestructible too. Kept to evergreens only;
+ * new entries must also be supported in the engine's `hasKeyword` and
+ * `parseAuraKeywords` paths.
+ */
+export const EQUIPMENT_KEYWORDS = [
+  "flying",
+  "vigilance",
+  "trample",
+  "haste",
+  "lifelink",
+  "deathtouch",
+  "reach",
+  "first strike",
+  "double strike",
+  "menace",
+  "hexproof",
+  "indestructible",
+] as const;
+
 export const CreateTokenSchema = z
   .object({
     op: z.literal("CreateToken"),
@@ -195,6 +217,22 @@ export const BiteSchema = z
 
 export const CounterSchema = z
   .object({ op: z.literal("Counter"), target: z.enum(["spell"]) })
+  .strict();
+
+/**
+ * Attach an Equipment (or other permanent) to a creature. The source of the
+ * ability is the equipment; the target is always a creature you control
+ * (CR 301.5c, #2561). When the op has no chosen target — e.g. an ETB
+ * auto-attach that hasn't been aimed — the interpreter picks the first
+ * creature the source's controller controls on the battlefield, like the
+ * engine's `attachEquipment` "no target" fizzle path.
+ */
+export const AttachEquipmentSchema = z
+  .object({
+    op: z.literal("AttachEquipment"),
+    target: z.enum(["creature"]),
+    controller,
+  })
   .strict();
 
 export const PumpSchema = z
@@ -358,6 +396,7 @@ export const EffectSchema = z.discriminatedUnion("op", [
   UntapSchema,
   ReturnToHandSchema,
   CounterSchema,
+  AttachEquipmentSchema,
   PumpSchema,
   PutCountersSchema,
   SurveilSchema,
@@ -558,6 +597,71 @@ export const StaticSchema = z
     message: "a static needs power/toughness or keywords",
   });
 
+/**
+ * The static ability an Equipment grants the equipped creature (issue
+ * #2561). Layer 6 (keywords) and layer 7c (P/T), per CR 613.3 — same shape
+ * as Aura bonuses in `refreshAuraBonuses`. No `affects`: the host is
+ * whichever creature `attachedToId` points at.
+ */
+export const EquipmentStaticSchema = z
+  .object({
+    /** The static's oracle sentence, for review and drift checks. */
+    text: z.string().min(1),
+    power: z.number().int().optional(),
+    toughness: z.number().int().optional(),
+    keywords: z.array(z.enum(EQUIPMENT_KEYWORDS)).min(1).optional(),
+  })
+  .strict()
+  .refine((s) => (s.power === undefined) === (s.toughness === undefined), {
+    message: "set both power and toughness, or neither",
+  })
+  .refine((s) => s.power !== undefined || s.keywords, {
+    message: "an equipment static needs power/toughness or keywords",
+  });
+
+/**
+ * An Equipment card (CR 301.5, #2561). Has exactly one `Equip` activated
+ * ability ("{cost}: Attach this permanent to target creature you control.
+ * Activate only as a sorcery", CR 702.6) and grants a static bonus to the
+ * equipped creature. By default, the Equipment auto-attaches on ETB to a
+ * creature the controller picks; the engine's existing `attachEquipment`
+ * does the move and `refreshEquipmentBonuses` rewrites the host's bonuses.
+ */
+export const EquipmentSchema = z
+  .object({
+    /** The card's equip-related oracle text, for review and drift checks. */
+    text: z.string().min(1),
+    attachedStatic: EquipmentStaticSchema,
+    /**
+     * Whether the Equipment auto-attaches to a creature you control when it
+     * enters the battlefield. The default `true` matches Auras (CR 303.4f)
+     * and the "comes into play attached" wording some Equipment use; the
+     * engine accepts `false` for cards that need an explicit Equip before
+     * any bonus lands, like the rare Equipment with no "Equipped creature
+     * gets ..." line and only a triggered ability that cares about its
+     * host. The lane's chosen default is `true` (the prompt for #2561).
+     */
+    attachOnEnter: z.boolean().default(true),
+    /**
+     * The "Equip {cost}" activated ability. The `text` of this ability is
+     * what the engine's `getEquipCost` parses when reading oracle text; the
+     * scripted `effects` is the interpreter's `AttachEquipment` op.
+     */
+    equip: ActivatedSchema,
+  })
+  .strict();
+
+/**
+ * The synthetic ETB trigger an Equipment with `attachOnEnter: true` adds
+ * to its scripted trigger list (#2561). The text is matched by
+ * `getScriptedAbility`, so the resolver recognizes the stack object as
+ * scripted and routes the `AttachEquipment` op. The same text is used by
+ * `getScriptedTriggeredAbilities` in `abilities/parse.ts` when emitting
+ * the parsed ability.
+ */
+export const EQUIPMENT_ATTACH_ON_ENTER_TEXT =
+  "When this Equipment enters, attach it to target creature you control.";
+
 export const CardScriptSchema = z
   .object({
     /** Exact English card name, as on Scryfall. */
@@ -574,14 +678,33 @@ export const CardScriptSchema = z
     activated: z.array(ActivatedSchema).min(1).optional(),
     /** A permanent's static abilities (the full list when present). */
     statics: z.array(StaticSchema).min(1).optional(),
+    /**
+     * An Equipment card (issue #2561). When set, the card has an
+     * attached-creature static and an "Equip" activated ability; the schema
+     * fills in the equip ability and the auto-attach-on-ETB flag. May
+     * coexist with `triggers` and `statics` for equipment that also has
+     * other abilities (e.g. Goldvein Pick's "whenever equipped creature
+     * attacks" trigger).
+     */
+    equipment: EquipmentSchema.optional(),
   })
   .strict()
-  .refine((s) => s.spell || s.modes || s.triggers || s.activated || s.statics, {
-    message:
-      "a card script needs spell, modes, triggers, activated, or statics",
-  })
   .refine(
-    (s) => !((s.spell || s.modes) && (s.triggers || s.activated || s.statics)),
+    (s) =>
+      s.spell ||
+      s.modes ||
+      s.triggers ||
+      s.activated ||
+      s.statics ||
+      s.equipment,
+    {
+      message:
+        "a card script needs spell, modes, triggers, activated, statics, or equipment",
+    },
+  )
+  .refine(
+    (s) =>
+      !((s.spell || s.modes) && (s.triggers || s.activated || s.statics)),
     { message: "a spell script can't also have permanent abilities" },
   )
   .refine((s) => !(s.spell && s.modes), {
@@ -594,6 +717,8 @@ export type ScriptedTrigger = z.infer<typeof TriggerSchema>;
 export type ScriptedActivated = z.infer<typeof ActivatedSchema>;
 export type ScriptedStatic = z.infer<typeof StaticSchema>;
 export type ScriptedModes = z.infer<typeof ModesSchema>;
+export type ScriptedEquipment = z.infer<typeof EquipmentSchema>;
+export type ScriptedEquipmentStatic = z.infer<typeof EquipmentStaticSchema>;
 
 export {
   isPermanentScript,
