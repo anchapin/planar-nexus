@@ -1,0 +1,92 @@
+name: Training Acceptance
+
+# Issue #2612: a random agent plays seeded games through the headless
+# training session (src/ai/simulation/training-session.ts) and fails on any
+# rules error, stall (turn or step limit), or replay drift.
+#
+# - Pull requests that touch the engine or the training interface: 200 games
+#   (about 6 minutes), every 50th game replayed and fingerprint-checked.
+# - Nightly and manual runs: the full 1,000-game acceptance bar (about
+#   35 minutes).
+#
+# Runs on GitHub-hosted runners only; never on the self-hosted training box.
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'src/lib/game-state/**'
+      - 'src/ai/simulation/**'
+      - 'scripts/training-*.ts'
+      - '.github/workflows/training-acceptance.yml'
+  schedule:
+    - cron: '43 5 * * *'
+  workflow_dispatch:
+    inputs:
+      games:
+        description: Number of seeded games to play
+        required: false
+        default: '1000'
+      replay_every:
+        description: Replay and fingerprint-check every Nth game (0 = off)
+        required: false
+        default: '50'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  random-games:
+    name: Training Random Games
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
+
+      # Issue #2487: the card-script index is gitignored build output.
+      - name: Regenerate card-script index
+        run: npx tsx scripts/build-card-script-index.ts
+
+      - name: Play seeded random games
+        env:
+          GAMES: ${{ github.event_name == 'pull_request' && '200' || inputs.games || '1000' }}
+          REPLAY_EVERY: ${{ inputs.replay_every || '50' }}
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: |
+          set -o pipefail
+          echo "Playing $GAMES games, replaying every $REPLAY_EVERY"
+          npx tsx scripts/training-random-games.ts "$GAMES" "$REPLAY_EVERY" | tee training-random-games.json
+
+      - name: Write job summary
+        if: always()
+        run: |
+          {
+            echo "### Training acceptance (#2612)"
+            echo
+            echo '```json'
+            cat training-random-games.json 2>/dev/null || echo "no output"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: training-random-games
+          path: training-random-games.json
+          if-no-files-found: ignore
+          retention-days: 14
