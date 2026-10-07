@@ -205,7 +205,44 @@ export function simpleWinner(state: SimpleGameState): 0 | 1 | null {
   return null;
 }
 
-const isCreature = (c: SimpleCard) => !c.isLand;
+/**
+ * Placeholder for a card the viewer can't see (manamind `HIDDEN_CARD_NAME`).
+ * It is neither a land nor a creature, so it can never be played.
+ */
+export const HIDDEN_CARD_NAME = "<hidden>";
+
+export function hiddenSimpleCard(): SimpleCard {
+  return {
+    name: HIDDEN_CARD_NAME,
+    cmc: 0,
+    isLand: false,
+    power: null,
+    toughness: null,
+    tapped: false,
+    summoningSick: false,
+    attacking: false,
+  };
+}
+
+export const isHiddenCard = (c: SimpleCard) => c.name === HIDDEN_CARD_NAME;
+
+/**
+ * What `viewer` may see, as manamind's `observe`: both libraries and the
+ * opponent's hand become hidden placeholders; zone sizes are kept.
+ */
+export function observeSimpleState(
+  state: SimpleGameState,
+  viewer: 0 | 1,
+): SimpleGameState {
+  const seen = cloneSimpleState(state);
+  seen.players.forEach((p, i) => {
+    p.library = p.library.map(hiddenSimpleCard);
+    if (i !== viewer) p.hand = p.hand.map(hiddenSimpleCard);
+  });
+  return seen;
+}
+
+const isCreature = (c: SimpleCard) => !c.isLand && !isHiddenCard(c);
 
 export function availableMana(player: SimplePlayer): number {
   return player.battlefield.filter((c) => c.isLand && !c.tapped).length;
