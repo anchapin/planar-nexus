@@ -481,7 +481,15 @@ function searchLibrary(
   zones.set(destKey, moved.to);
   const cards = new Map(state.cards);
   const inst = cards.get(chosen);
-  if (inst) cards.set(chosen, { ...inst, currentZoneKey: destKey });
+  if (inst) {
+    // "onto the battlefield tapped": the permanent enters tapped (CR 110.5b).
+    const entersTapped = destination === "battlefield" && effect.tapped === true;
+    cards.set(chosen, {
+      ...inst,
+      currentZoneKey: destKey,
+      ...(entersTapped ? { isTapped: true } : {}),
+    });
+  }
   return { ...state, zones, cards };
 }
 

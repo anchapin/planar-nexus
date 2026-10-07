@@ -4042,3 +4042,114 @@ describe("scripted ReturnFromZone (#2560)", () => {
     expect(zoneOf(s3, "bear")).toBe(`${p1}-graveyard`);
   });
 });
+
+describe("SearchLibrary tapped + Solemn Simulacrum, Campus Guide fix (#2566)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+
+  const ability = (sourceCardId: string, text: string) =>
+    ({
+      id: "ab-search",
+      type: "ability",
+      sourceCardId: id(sourceCardId),
+      controllerId: p1,
+      text,
+      targets: [],
+      triggered: true,
+      activated: false,
+    }) as unknown as StackObject;
+
+  const SOLEMN_ETB =
+    "When this creature enters, you may search your library for a basic land card, put that card onto the battlefield tapped, then shuffle.";
+  const SOLEMN_DIES = "When this creature dies, you may draw a card.";
+  const CAMPUS_ETB =
+    "When this creature enters, you may search your library for a basic land card, reveal it, then shuffle and put that card on top.";
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1] = Array.from(state.players.keys());
+  });
+
+  it("validates SearchLibrary's tapped flag", () => {
+    const ok = (effect: object) =>
+      CardScriptSchema.safeParse({ name: "X", oracle: "x", spell: [effect] })
+        .success;
+    const base = {
+      op: "SearchLibrary",
+      filter: { basic_land: true },
+      destination: "battlefield",
+    };
+    expect(ok({ ...base, tapped: true })).toBe(true);
+    expect(ok(base)).toBe(true);
+    expect(ok({ ...base, tapped: "yes" })).toBe(false);
+  });
+
+  it("Solemn Simulacrum's ETB puts a basic land onto the battlefield tapped", () => {
+    let s = put(
+      state,
+      p1,
+      "solemn",
+      card("Solemn Simulacrum", "Artifact Creature — Golem", [2, 2]),
+    );
+    s = put(s, p1, "lib-bear", card("Grizzly Bears", "Creature — Bear", [2, 2]), "library");
+    s = put(s, p1, "lib-forest", card("Forest", "Basic Land — Forest"), "library");
+    const libBefore = s.zones.get(`${p1}-library`)!.cardIds.length;
+    const out = resolveScriptedAbility(s, ability("solemn", SOLEMN_ETB))!;
+    expect(battlefield(out, p1)).toContain(id("lib-forest"));
+    expect(out.cards.get(id("lib-forest"))!.isTapped).toBe(true);
+    expect(out.cards.get(id("lib-forest"))!.currentZoneKey).toBe(
+      `${p1}-battlefield`,
+    );
+    const lib = out.zones.get(`${p1}-library`)!.cardIds;
+    expect(lib).toHaveLength(libBefore - 1);
+    expect(lib).toContain(id("lib-bear"));
+  });
+
+  it("Solemn Simulacrum's dies trigger draws a card", () => {
+    let s = put(
+      state,
+      p1,
+      "solemn",
+      card("Solemn Simulacrum", "Artifact Creature — Golem", [2, 2]),
+    );
+    s = put(s, p1, "lib-top", card("Island", "Basic Land — Island"), "library");
+    const handBefore = s.zones.get(`${p1}-hand`)!.cardIds.length;
+    const out = resolveScriptedAbility(s, ability("solemn", SOLEMN_DIES))!;
+    expect(out.zones.get(`${p1}-hand`)!.cardIds).toHaveLength(handBefore + 1);
+  });
+
+  it("Campus Guide's ETB puts the basic land on top of the library, not onto the battlefield", () => {
+    let s = put(
+      state,
+      p1,
+      "guide",
+      card("Campus Guide", "Artifact Creature — Golem", [2, 1]),
+    );
+    s = put(s, p1, "lib-forest", card("Forest", "Basic Land — Forest"), "library");
+    s = put(s, p1, "lib-bear", card("Grizzly Bears", "Creature — Bear", [2, 2]), "library");
+    const out = resolveScriptedAbility(s, ability("guide", CAMPUS_ETB))!;
+    expect(battlefield(out, p1)).not.toContain(id("lib-forest"));
+    const lib = out.zones.get(`${p1}-library`)!.cardIds;
+    // The top of a library is the last id (getTopCard, zones.ts).
+    expect(lib[lib.length - 1]).toBe(id("lib-forest"));
+  });
+
+  it("Solemn Simulacrum and Campus Guide scripts match Scryfall's oracle", () => {
+    const read = (f: string) =>
+      JSON.parse(readFileSync(join(CARDS_DIR, f), "utf8")) as {
+        oracle: string;
+        triggers: { text: string }[];
+      };
+    const solemn = read("solemn_simulacrum.json");
+    expect(solemn.oracle).toBe(`${SOLEMN_ETB}\n${SOLEMN_DIES}`);
+    expect(solemn.triggers.map((t) => t.text)).toEqual([
+      SOLEMN_ETB,
+      SOLEMN_DIES,
+    ]);
+    const campus = read("campus_guide.json");
+    expect(campus.oracle).toBe(CAMPUS_ETB);
+    expect(campus.triggers.map((t) => t.text)).toEqual([CAMPUS_ETB]);
+  });
+});
