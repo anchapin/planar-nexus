@@ -114,8 +114,19 @@ export function hasIndestructibleKeyword(card: CardInstance): boolean {
   if (hasIndestructibleStrict(card)) {
     return true;
   }
-  // Granted until end of turn by a resolved effect (#2567).
-  if (card.untilEndOfTurnKeywords?.includes("indestructible")) {
+  // Granted by another source (CR 702.12b: indestructible from any source
+  // stops destruction). These fields are stored lowercase and mirror the
+  // granted-keyword arms of `hasKeyword` in evergreen-keywords.ts (#2586):
+  //   - until end of turn by a resolved effect (#2567)
+  //   - an attached Aura (#2464)
+  //   - an attached Equipment (#2561)
+  //   - a scripted static ability (#2496)
+  if (
+    card.untilEndOfTurnKeywords?.includes("indestructible") ||
+    card.auraKeywords?.includes("indestructible") ||
+    card.equipmentKeywords?.includes("indestructible") ||
+    card.scriptStaticKeywords?.includes("indestructible")
+  ) {
     return true;
   }
   return oracleTextDeclaresOwnKeyword(
