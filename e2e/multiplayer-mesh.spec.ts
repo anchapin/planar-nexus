@@ -226,10 +226,10 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
   }) => {
     // #2485: on webkit peers C/D sometimes record nothing at all (got 0 of
     // 3), the same lost-page-state failure as the mid-game join test below,
-    // not a timing problem. Quarantined on webkit until that is root-caused.
+    // not a timing problem. Quarantined on webkit; fix tracked in #2604.
     test.fixme(
       browserName === "webkit",
-      "webkit mesh peers lose received state mid-test (#2485) - quarantined",
+      "webkit mesh peers lose received state mid-test - quarantined, fix tracked in #2604",
     );
     // Rebuild the mesh with peer B configured as a "slow" link.
     const { host, peerB, peerC, peerD, close } = await createFourPeers(browser);
@@ -526,10 +526,10 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
     // #2485: on webkit peer D's page navigates mid-test ("Execution context
     // was destroyed"), wiping window.__peer; the log shows IndexedDB
     // "closed database" errors around it. A longer wait can't help because
-    // the received state is gone. Quarantined on webkit until root-caused.
+    // the received state is gone. Quarantined on webkit; fix tracked in #2604.
     test.fixme(
       browserName === "webkit",
-      "webkit peer page reloads mid-test and loses state (#2485) - quarantined",
+      "webkit peer page reloads mid-test and loses state - quarantined, fix tracked in #2604",
     );
     // Same 4-peer setup as the broadcast test above, plus two turns and a
     // late link-up, so it needs the same budget. On firefox it was cut off at
