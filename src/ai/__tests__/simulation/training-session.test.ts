@@ -89,6 +89,46 @@ describe("TrainingSession (#2612)", () => {
     expect(session.fingerprint()).toBe(branchEnd);
   }, 60_000);
 
+  it("save/restore round-trips at every point of random play (#2613)", () => {
+    // Property: for random games across all three matchups, saving at
+    // any step, wandering off on a random branch, and restoring gives
+    // back exactly the saved game; replaying that branch reproduces it.
+    // Save keeps a reference to the immutable state, so this also checks
+    // that no engine call mutates a state it was handed.
+    const archetypes = ["aggro", "midrange", "control"] as const;
+    let checks = 0;
+    for (let seed = 21; seed <= 23; seed++) {
+      const session = new TrainingSession();
+      session.reset(
+        seed,
+        trainingDeck(archetypes[seed % 3]),
+        trainingDeck(archetypes[(seed + 1) % 3]),
+      );
+      const random = mulberry32(seed);
+      let prompt = session.legalChoices();
+      let step = 0;
+      while (prompt.kind !== "game_over") {
+        if (step % 40 === 0) {
+          const atSave = session.fingerprint();
+          const handle = session.save();
+          const branch = playRandom(session, seed * 1000 + step, 30);
+          const branchEnd = session.fingerprint();
+          session.restore(handle);
+          expect(session.fingerprint()).toBe(atSave);
+          replay(session, branch);
+          expect(session.fingerprint()).toBe(branchEnd);
+          session.restore(handle);
+          session.release(handle);
+          prompt = session.legalChoices();
+          checks++;
+        }
+        prompt = session.step(randomAction(prompt, random));
+        step++;
+      }
+    }
+    expect(checks).toBeGreaterThan(10);
+  }, 120_000);
+
   it("rejects an option that is not listed", () => {
     const session = newSession(8);
     const prompt = session.legalChoices();
