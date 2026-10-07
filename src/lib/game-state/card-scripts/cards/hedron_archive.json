@@ -1,0 +1,35 @@
+{
+  "name": "Hedron Archive",
+  "oracle": "{T}: Add {C}.\n{2}, {T}, Sacrifice this artifact: Draw two cards.",
+  "activated": [
+    {
+      "text": "Add {C}.",
+      "cost": {
+        "tap": true,
+        "sacrifice": false
+      },
+      "effects": [
+        {
+          "op": "AddMana",
+          "amount": 1,
+          "colors": ["C"]
+        }
+      ]
+    },
+    {
+      "text": "Draw two cards.",
+      "cost": {
+        "mana": "{2}",
+        "tap": true,
+        "sacrifice": true
+      },
+      "effects": [
+        {
+          "op": "Draw",
+          "amount": 2,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}

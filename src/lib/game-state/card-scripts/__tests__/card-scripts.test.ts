@@ -4648,4 +4648,169 @@ describe("scripted auras (#2568)", () => {
     expect(host.auraKeywords?.sort()).toEqual(["double strike", "first strike"]);
   });
 });
+describe("scripted AddMana (#2565)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+  });
+
+  /** Bypass CR 302.6 summoning sickness on a test creature (Llanowar Elves). */
+  const ready = (s: GameState, cardId: string): GameState => {
+    const cards = new Map(s.cards);
+    cards.set(id(cardId), {
+      ...cards.get(id(cardId))!,
+      hasSummoningSickness: false,
+    });
+    return { ...s, cards };
+  };
+
+  const ability = (
+    sourceCardId: string,
+    text: string,
+    kind: "triggered" | "activated",
+  ) =>
+    ({
+      id: "ab-mana",
+      type: "ability",
+      sourceCardId: id(sourceCardId),
+      controllerId: p1,
+      text,
+      targets: [],
+      triggered: kind === "triggered",
+      activated: kind === "activated",
+    }) as unknown as StackObject;
+
+  it("validates AddMana with the simple and any-color shapes", () => {
+    const ok = (effect: object) =>
+      CardScriptSchema.safeParse({ name: "X", oracle: "x", spell: [effect] })
+        .success;
+    // The mana dork shape.
+    expect(ok({ op: "AddMana", amount: 1, colors: ["G"] })).toBe(true);
+    // The Hedron Archive shape.
+    expect(ok({ op: "AddMana", amount: 1, colors: ["C"] })).toBe(true);
+    // The Gilded Lotus shape — any color, multi-amount.
+    expect(ok({ op: "AddMana", amount: 3, colors: "any" })).toBe(true);
+  });
+
+  it("rejects unknown color codes and mixed any/array colors", () => {
+    const bad = (effect: object) =>
+      CardScriptSchema.safeParse({ name: "X", oracle: "x", spell: [effect] })
+        .success;
+    // 'Y' is not a CR 106 mana color.
+    expect(bad({ op: "AddMana", amount: 1, colors: ["Y"] })).toBe(false);
+    // Mixing the array and 'any' literal is not allowed.
+    expect(bad({ op: "AddMana", amount: 1, colors: ["R", "any"] })).toBe(false);
+    // Empty array is not allowed.
+    expect(bad({ op: "AddMana", amount: 1, colors: [] })).toBe(false);
+    // Extra fields are rejected by the strict() check.
+    expect(bad({ op: "AddMana", amount: 1, colors: ["G"], extra: 1 })).toBe(
+      false,
+    );
+  });
+
+  it("Llanowar Elves' tap ability adds one green mana", () => {
+    let s0 = put(
+      state,
+      p1,
+      "elves",
+      card("Llanowar Elves", "Creature — Elf Druid", [1, 1]),
+    );
+    s0 = ready(s0, "elves");
+    const s = resolveScriptedAbility(
+      s0,
+      ability("elves", "Add {G}.", "activated"),
+    )!;
+    expect(s.players.get(p1)!.manaPool.green).toBe(1);
+    expect(s.players.get(p2)!.manaPool.green).toBe(0);
+  });
+
+  it("Llanowar Elves' activation through the engine adds one green mana", () => {
+    let s0 = put(
+      state,
+      p1,
+      "elves",
+      card("Llanowar Elves", "Creature — Elf Druid", [1, 1]),
+    );
+    s0 = ready(s0, "elves");
+    const r = activateAbility(s0, p1, id("elves"), 0);
+    expect(r.success).toBe(true);
+    expect(r.state.players.get(p1)!.manaPool.green).toBe(1);
+    expect(r.state.cards.get(id("elves"))!.isTapped).toBe(true);
+  });
+
+  it("Hedron Archive's tap ability adds one colorless mana", () => {
+    const s0 = put(
+      state,
+      p1,
+      "archive",
+      card("Hedron Archive", "Artifact", [0, 0]),
+    );
+    const s = resolveScriptedAbility(
+      s0,
+      ability("archive", "Add {C}.", "activated"),
+    )!;
+    expect(s.players.get(p1)!.manaPool.colorless).toBe(1);
+  });
+
+  it("Hedron Archive's sacrifice ability draws two cards", () => {
+    const s0 = put(
+      state,
+      p1,
+      "archive",
+      card("Hedron Archive", "Artifact", [0, 0]),
+    );
+    const before = s0.zones.get(`${p1}-hand`)!.cardIds.length;
+    const s = resolveScriptedAbility(
+      s0,
+      ability("archive", "Draw two cards.", "activated"),
+    )!;
+    expect(s.zones.get(`${p1}-hand`)!.cardIds.length).toBe(before + 2);
+  });
+
+  it("Gilded Lotus' tap ability leaves the color choice for the mana-ability path", () => {
+    // The scripted interpreter returns state unchanged for "any" colors
+    // (CR 605.3a: the color choice is the player's via the mana-ability
+    // path, not the scripted path). The engine's `activateAbility` is
+    // what surfaces the choice — see the test below.
+    const s0 = put(
+      state,
+      p1,
+      "lotus",
+      card("Gilded Lotus", "Artifact", [0, 0]),
+    );
+    const s = resolveScriptedAbility(
+      s0,
+      ability("lotus", "Add three mana of any one color.", "activated"),
+    );
+    expect(s).toBeDefined();
+    expect(s!.players.get(p1)!.manaPool).toEqual({
+      white: 0,
+      blue: 0,
+      black: 0,
+      red: 0,
+      green: 0,
+      colorless: 0,
+      generic: 0,
+    });
+  });
+
+  it("Gilded Lotus' activation refuses the 'any one color' choice and asks the player to pick", () => {
+    const s0 = put(
+      state,
+      p1,
+      "lotus",
+      card("Gilded Lotus", "Artifact", [0, 0]),
+    );
+    const r = activateAbility(s0, p1, id("lotus"), 0);
+    expect(r.success).toBe(false);
+    expect(r.error).toMatch(/choose a color/i);
+    expect(r.state.cards.get(id("lotus"))!.isTapped).toBe(false);
+  });
+});
 
