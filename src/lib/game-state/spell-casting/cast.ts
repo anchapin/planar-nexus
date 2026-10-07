@@ -1366,11 +1366,16 @@ export function castSpell(
       // pattern: the engine's authoritative signal is
       // `StackObject.wasKicked` / `timesKicked`; the card-instance flag is
       // the persistence mirror that survives on the battlefield after
-      // resolution.
+      // resolution. CR 702.85, #2594 — multikicker: also stamp
+      // `timesKicked` with the actual charge count so an ETB "if kicked
+      // 2+ times" trigger (or any tiered effect gated on
+      // `if_kicked: N` in the script) can read the count after the spell
+      // has resolved.
       updatedCards = new Map(currentState.cards);
       updatedCards.set(cardId, {
         ...card,
         kicked: true,
+        timesKicked: kickerChargeCount,
         currentZoneKey: "stack",
       });
     }
