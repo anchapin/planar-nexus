@@ -134,6 +134,8 @@ export * from "./phasing";
 export { shouldAutoPassPriority } from "./auto-pass-priority";
 export type { AutoPassContext } from "./auto-pass-priority";
 export * from "./priority-guard";
+// #2612: legal-choice listing for the headless training interface.
+export * from "./legal-choices";
 // #1710: the remaining engine modules join the barrel surface. Collision
 // analysis ran over all of them; the disambiguation block below wins over
 // `*` for any overlapping names (drawCards, canAttack, canBlock, …).
