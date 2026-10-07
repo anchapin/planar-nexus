@@ -4,6 +4,9 @@
  */
 import {
   applyAttackDeclaration,
+  applyDecisionAnswer,
+  getPendingDecision,
+  listDecisionAnswers,
   applyBlockDeclaration,
   applyPriorityChoice,
   listAttackerOptions,
@@ -16,6 +19,8 @@ import {
   type GameState,
   type PlayerId,
   type PriorityChoice,
+  type StackObject,
+  type WaitingChoice,
 } from "@/lib/game-state";
 import {
   buildDeck,
@@ -327,5 +332,139 @@ describe("combat choices (#2612)", () => {
       success: true,
       state: g.state,
     });
+  });
+});
+
+function discardChoice(
+  state: GameState,
+  playerId: PlayerId,
+  type: "discard_to_hand_size" | "discard_cards",
+  amount: number,
+): WaitingChoice {
+  return {
+    type,
+    playerId,
+    stackObjectId: null,
+    prompt: `Discard ${amount}`,
+    choices: handOf(state, playerId).map((cardId) => ({
+      label: cardId,
+      value: cardId,
+      isValid: true,
+    })),
+    minChoices: amount,
+    maxChoices: amount,
+    presentedAt: 0,
+  };
+}
+
+function triggerOnStack(
+  state: GameState,
+  controllerId: PlayerId,
+  text: string,
+): GameState {
+  const obj = {
+    id: "trigger-test",
+    type: "ability",
+    triggered: true,
+    sourceCardId: null,
+    controllerId,
+    name: "triggered ability",
+    text,
+    manaCost: null,
+    targets: [],
+    chosenModes: [],
+    variableValues: new Map(),
+    isCountered: false,
+    timestamp: 0,
+  } as StackObject;
+  return { ...state, stack: [...state.stack, obj] };
+}
+
+describe("mid-game decisions (#2612)", () => {
+  it("reports nothing pending at an ordinary priority stop", () => {
+    const { state, p1 } = newGame(11);
+    expect(getPendingDecision(state)).toBeNull();
+    expect(listDecisionAnswers(state, p1)).toEqual([]);
+  });
+
+  it.each(["discard_to_hand_size", "discard_cards"] as const)(
+    "lists every %s pick of the right size and applies each",
+    (type) => {
+      const { state: game, p1, p2 } = newGame(12);
+      // Cleanup only accepts a discard while the hand is over maximum size,
+      // so draw two extra cards first (7 + 2 = 9, discard 2).
+      const library = game.zones.get(`${p1}-library`)!;
+      const handZone = game.zones.get(`${p1}-hand`)!;
+      const zones = new Map(game.zones);
+      zones.set(`${p1}-library`, {
+        ...library,
+        cardIds: library.cardIds.slice(2),
+      });
+      zones.set(`${p1}-hand`, {
+        ...handZone,
+        cardIds: [...handZone.cardIds, ...library.cardIds.slice(0, 2)],
+      });
+      const cards = new Map(game.cards);
+      for (const cardId of library.cardIds.slice(0, 2)) {
+        cards.set(cardId, {
+          ...cards.get(cardId)!,
+          currentZoneKey: `${p1}-hand`,
+        } as typeof cards extends Map<string, infer C> ? C : never);
+      }
+      const base = { ...game, zones, cards };
+      const hand = handOf(base, p1);
+      expect(hand.length).toBeGreaterThan(7);
+      const state = {
+        ...base,
+        waitingChoice: discardChoice(base, p1, type, 2),
+      };
+
+      expect(getPendingDecision(state)).toMatchObject({
+        kind: "waiting_choice",
+        playerId: p1,
+        choiceType: type,
+      });
+      expect(listDecisionAnswers(state, p2)).toEqual([]);
+      const answers = listDecisionAnswers(state, p1);
+      const n = hand.length;
+      expect(answers).toHaveLength((n * (n - 1)) / 2);
+
+      for (const answer of answers) {
+        const r = applyDecisionAnswer(state, p1, answer);
+        expect(r.error).toBeUndefined();
+        expect(r.success).toBe(true);
+        expect(r.state.waitingChoice).toBeNull();
+        expect(handOf(r.state, p1)).toHaveLength(n - 2);
+      }
+    },
+  );
+
+  it("lists one answer per legal target for a triggered ability", () => {
+    const { state: base, p1, p2 } = newGame(13);
+    const state = triggerOnStack(
+      base,
+      p1,
+      "When this enters, it deals 1 damage to target player.",
+    );
+    expect(getPendingDecision(state)).toMatchObject({
+      kind: "trigger_targets",
+      playerId: p1,
+      stackObjectId: "trigger-test",
+    });
+    expect(listDecisionAnswers(state, p2)).toEqual([]);
+
+    const answers = listDecisionAnswers(state, p1);
+    const targets = answers.map((a) =>
+      a.kind === "trigger_targets" ? a.targets : null,
+    );
+    expect(targets).toEqual(expect.arrayContaining([[p1], [p2]]));
+    expect(targets).not.toContainEqual([]);
+
+    for (const answer of answers) {
+      const r = applyDecisionAnswer(state, p1, answer);
+      expect(r.success).toBe(true);
+      expect(getPendingDecision(r.state)).toBeNull();
+    }
+    expect(applyDecisionAnswer(state, p2, answers[0]).success).toBe(false);
   });
 });
