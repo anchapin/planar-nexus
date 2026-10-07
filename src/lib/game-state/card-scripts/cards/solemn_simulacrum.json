@@ -1,0 +1,34 @@
+{
+  "name": "Solemn Simulacrum",
+  "oracle": "When this creature enters, you may search your library for a basic land card, put that card onto the battlefield tapped, then shuffle.\nWhen this creature dies, you may draw a card.",
+  "triggers": [
+    {
+      "text": "When this creature enters, you may search your library for a basic land card, put that card onto the battlefield tapped, then shuffle.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "SearchLibrary",
+          "filter": {
+            "basic_land": true
+          },
+          "destination": "battlefield",
+          "tapped": true,
+          "shuffle": true
+        }
+      ]
+    },
+    {
+      "text": "When this creature dies, you may draw a card.",
+      "event": "dies",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "Draw",
+          "amount": 1,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}

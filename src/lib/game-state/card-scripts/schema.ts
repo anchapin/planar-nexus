@@ -445,6 +445,11 @@ export const SearchLibrarySchema = z
       .default("hand"),
     shuffle: z.boolean().default(true),
     count: z.literal(1).default(1),
+    /**
+     * "put it onto the battlefield tapped" (Solemn Simulacrum). Only read
+     * when `destination` is "battlefield"; ignored for other destinations.
+     */
+    tapped: z.boolean().optional(),
   })
   .strict();
 

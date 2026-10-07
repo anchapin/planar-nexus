@@ -1,16 +1,18 @@
 {
   "name": "Campus Guide",
-  "oracle": "When Campus Guide enters the battlefield, search your library for a basic land card, put it onto the battlefield tapped, then shuffle.",
+  "oracle": "When this creature enters, you may search your library for a basic land card, reveal it, then shuffle and put that card on top.",
   "triggers": [
     {
-      "text": "When Campus Guide enters the battlefield, search your library for a basic land card, put it onto the battlefield tapped, then shuffle.",
+      "text": "When this creature enters, you may search your library for a basic land card, reveal it, then shuffle and put that card on top.",
       "event": "etb",
       "subject": "self",
       "effects": [
         {
           "op": "SearchLibrary",
-          "filter": { "basic_land": true },
-          "destination": "battlefield",
+          "filter": {
+            "basic_land": true
+          },
+          "destination": "library_top",
           "shuffle": true
         }
       ]

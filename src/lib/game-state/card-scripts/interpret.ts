@@ -28,7 +28,12 @@ import {
   moveCardToZone,
 } from "../keyword-actions/removal";
 import { tapCardAction, untapCardAction } from "../keyword-actions/damage-tap";
-import { millCards, moveCardBetweenZones, shuffleZone } from "../zones";
+import {
+  addCardToZone,
+  millCards,
+  moveCardBetweenZones,
+  shuffleZone,
+} from "../zones";
 import { startDiscard } from "../keyword-actions/discard-choice";
 import { addCounters, isCreature } from "../card-instance";
 import { getEffectivePower } from "../evergreen-keywords";
@@ -466,7 +471,12 @@ function searchLibrary(
       break;
   }
 
-  const destZone = state.zones.get(destKey);
+  // Back into the searcher's own library (Campus Guide: "shuffle and put that
+  // card on top"): place it in the already-shuffled library. Reading the
+  // destination from `state.zones` here would restore the unshuffled library
+  // and leave the card in it twice. The top of a zone is the last id.
+  const destZone =
+    destKey === libraryKey ? withoutChosen : state.zones.get(destKey);
   if (!destZone) {
     // No destination zone: we still need to remove the chosen card from the
     // library (so it doesn't appear twice) and apply the shuffle. Refuse the
@@ -476,14 +486,25 @@ function searchLibrary(
     return { ...state, zones };
   }
 
-  const moved = moveCardBetweenZones(withoutChosen, destZone, chosen, position);
-
   const zones = new Map(state.zones);
-  zones.set(libraryKey, moved.from);
-  zones.set(destKey, moved.to);
+  if (destKey === libraryKey) {
+    zones.set(libraryKey, addCardToZone(withoutChosen, chosen, position));
+  } else {
+    const moved = moveCardBetweenZones(withoutChosen, destZone, chosen, position);
+    zones.set(libraryKey, moved.from);
+    zones.set(destKey, moved.to);
+  }
   const cards = new Map(state.cards);
   const inst = cards.get(chosen);
-  if (inst) cards.set(chosen, { ...inst, currentZoneKey: destKey });
+  if (inst) {
+    // "onto the battlefield tapped": the permanent enters tapped (CR 110.5b).
+    const entersTapped = destination === "battlefield" && effect.tapped === true;
+    cards.set(chosen, {
+      ...inst,
+      currentZoneKey: destKey,
+      ...(entersTapped ? { isTapped: true } : {}),
+    });
+  }
   return { ...state, zones, cards };
 }
 
