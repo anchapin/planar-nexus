@@ -4446,4 +4446,82 @@ describe("SearchLibrary tapped + Solemn Simulacrum, Campus Guide fix (#2566)", (
     expect(campus.oracle).toBe(CAMPUS_ETB);
     expect(campus.triggers.map((t) => t.text)).toEqual([CAMPUS_ETB]);
   });
+
+  const HART =
+    "Search your library for up to two basic land cards, put them onto the battlefield tapped, then shuffle.";
+  const hartAbility = (sourceCardId: string) =>
+    ({
+      id: "ab-hart",
+      type: "ability",
+      sourceCardId: id(sourceCardId),
+      controllerId: p1,
+      text: HART,
+      targets: [],
+      triggered: false,
+      activated: true,
+    }) as unknown as StackObject;
+
+  it("validates SearchLibrary's count (1 or 2)", () => {
+    const ok = (count: unknown) =>
+      CardScriptSchema.safeParse({
+        name: "X",
+        oracle: "x",
+        spell: [{ op: "SearchLibrary", filter: { basic_land: true }, count }],
+      }).success;
+    expect(ok(1)).toBe(true);
+    expect(ok(2)).toBe(true);
+    expect(ok(0)).toBe(false);
+    expect(ok(3)).toBe(false);
+    expect(ok(1.5)).toBe(false);
+  });
+
+  it("Burnished Hart puts up to two basic lands onto the battlefield tapped", () => {
+    let s = put(
+      state,
+      p1,
+      "hart",
+      card("Burnished Hart", "Artifact Creature — Elk", [2, 2]),
+    );
+    s = put(s, p1, "f1", card("Forest", "Basic Land — Forest"), "library");
+    s = put(s, p1, "f2", card("Plains", "Basic Land — Plains"), "library");
+    s = put(s, p1, "f3", card("Island", "Basic Land — Island"), "library");
+    const libBefore = s.zones.get(`${p1}-library`)!.cardIds;
+    const basics = libBefore.filter((c) =>
+      /^Basic Land/.test(s.cards.get(c)?.cardData.type_line ?? ""),
+    );
+    const out = resolveScriptedAbility(s, hartAbility("hart"))!;
+    const fetched = battlefield(out, p1).filter((c) => basics.includes(c));
+    expect(fetched).toHaveLength(2);
+    for (const c of fetched) expect(out.cards.get(c)!.isTapped).toBe(true);
+    expect(out.zones.get(`${p1}-library`)!.cardIds).toHaveLength(
+      libBefore.length - 2,
+    );
+  });
+
+  it("Burnished Hart finds fewer lands when fewer are left", () => {
+    let s = put(
+      state,
+      p1,
+      "hart",
+      card("Burnished Hart", "Artifact Creature — Elk", [2, 2]),
+    );
+    // Only nonbasic cards in the library apart from one Forest.
+    const lib = s.zones.get(`${p1}-library`)!;
+    const zones = new Map(s.zones);
+    zones.set(`${p1}-library`, { ...lib, cardIds: [] });
+    s = { ...s, zones };
+    s = put(s, p1, "bear", card("Grizzly Bears", "Creature — Bear", [2, 2]), "library");
+    s = put(s, p1, "f1", card("Forest", "Basic Land — Forest"), "library");
+    const out = resolveScriptedAbility(s, hartAbility("hart"))!;
+    expect(battlefield(out, p1)).toContain(id("f1"));
+    expect(out.zones.get(`${p1}-library`)!.cardIds).toEqual([id("bear")]);
+  });
+
+  it("Burnished Hart's script matches Scryfall's oracle", () => {
+    const hart = JSON.parse(
+      readFileSync(join(CARDS_DIR, "burnished_hart.json"), "utf8"),
+    ) as { oracle: string; activated: { text: string }[] };
+    expect(hart.oracle).toBe(`{3}, Sacrifice this creature: ${HART}`);
+    expect(hart.activated.map((a) => a.text)).toEqual([HART]);
+  });
 });

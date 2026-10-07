@@ -1,0 +1,26 @@
+{
+  "name": "Burnished Hart",
+  "oracle": "{3}, Sacrifice this creature: Search your library for up to two basic land cards, put them onto the battlefield tapped, then shuffle.",
+  "activated": [
+    {
+      "text": "Search your library for up to two basic land cards, put them onto the battlefield tapped, then shuffle.",
+      "cost": {
+        "mana": "{3}",
+        "tap": false,
+        "sacrifice": true
+      },
+      "effects": [
+        {
+          "op": "SearchLibrary",
+          "filter": {
+            "basic_land": true
+          },
+          "destination": "battlefield",
+          "tapped": true,
+          "shuffle": true,
+          "count": 2
+        }
+      ]
+    }
+  ]
+}

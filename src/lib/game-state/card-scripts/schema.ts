@@ -444,7 +444,12 @@ export const SearchLibrarySchema = z
       .enum(["hand", "battlefield", "library_top", "library_bottom"])
       .default("hand"),
     shuffle: z.boolean().default(true),
-    count: z.literal(1).default(1),
+    /**
+     * "up to N" cards (Burnished Hart: "up to two basic land cards"). The
+     * engine takes the first N matches in library order; the player does not
+     * choose yet. Capped at 2, the most any scripted card needs today.
+     */
+    count: z.number().int().min(1).max(2).default(1),
     /**
      * "put it onto the battlefield tapped" (Solemn Simulacrum). Only read
      * when `destination` is "battlefield"; ignored for other destinations.
