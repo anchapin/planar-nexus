@@ -29,6 +29,7 @@ import { tapCardAction, untapCardAction } from "@/lib/game-state";
 import { passPriority } from "@/lib/game-state";
 import { moveCardBetweenZones, shuffleZone, drawCards } from "@/lib/game-state";
 import { canAffordMana, getSpellManaCost, isConvergeX } from "@/lib/game-state";
+import { parseImprovise, grantsNoncreatureImprovise } from "@/lib/game-state";
 import { quickScore } from "./game-state-evaluator";
 import type { GameState } from "./game-state-evaluator";
 
@@ -243,14 +244,35 @@ function executeCastSpell(
     ];
   }
 
-  const result = engineCastSpell(
+  // #2607: tap artifacts for improvise when the pool alone can't pay the
+  // generic part of the cost.
+  const improviseArtifacts = chooseAIImproviseArtifacts(
     gameState,
     playerId,
     cardId,
-    targets,
-    chosenModes,
     xValue,
   );
+
+  const result =
+    improviseArtifacts.length > 0
+      ? engineCastSpell(
+          gameState,
+          playerId,
+          cardId,
+          targets,
+          chosenModes,
+          xValue,
+          false,
+          { type: "improvise", improviseArtifacts },
+        )
+      : engineCastSpell(
+          gameState,
+          playerId,
+          cardId,
+          targets,
+          chosenModes,
+          xValue,
+        );
 
   if (result.success) {
     return {
@@ -271,6 +293,101 @@ function executeCastSpell(
     error: result.error || "Failed to cast spell",
     action: { type: "cast_spell", cardId, targetId: targetIdOrIds as string },
   };
+}
+
+/**
+ * Whether `cardId` has improvise for `playerId`: printed (CR 702.126) or, for
+ * a noncreature spell, granted by a permanent they control ("Noncreature
+ * spells you cast have improvise", e.g. Ironheart, Clever Champion).
+ */
+export function aiSpellHasImprovise(
+  gameState: EngineGameState,
+  playerId: PlayerId,
+  cardId: CardInstanceId,
+): boolean {
+  const card = gameState.cards.get(cardId);
+  if (!card) return false;
+  const oracle = (card.cardData as { oracle_text?: string }).oracle_text ?? "";
+  if (parseImprovise(oracle).hasImprovise) return true;
+  if ((card.cardData.type_line || "").toLowerCase().includes("creature")) {
+    return false;
+  }
+  const battlefield =
+    gameState.zones.get(`${playerId}-battlefield`)?.cardIds ?? [];
+  return battlefield.some((id) => {
+    const p = gameState.cards.get(id);
+    return (
+      !!p &&
+      p.controllerId === playerId &&
+      grantsNoncreatureImprovise(
+        (p.cardData as { oracle_text?: string }).oracle_text ?? "",
+      )
+    );
+  });
+}
+
+/**
+ * Artifacts the AI taps for improvise (#2607, CR 702.126a): only as many as
+ * the generic mana its pool can't cover, so artifacts it doesn't need stay
+ * untapped. Prefers artifacts that do nothing else when tapped, then mana
+ * rocks, and taps artifact creatures last (they could attack or block).
+ * Returns [] when the spell has no improvise, the pool already pays, the
+ * colored part is unaffordable, or there aren't enough artifacts.
+ */
+export function chooseAIImproviseArtifacts(
+  gameState: EngineGameState,
+  playerId: PlayerId,
+  cardId: CardInstanceId,
+  xValue: number = 0,
+): CardInstanceId[] {
+  if (!aiSpellHasImprovise(gameState, playerId, cardId)) return [];
+  const data = gameState.cards.get(cardId)?.cardData as
+    { mana_cost?: string } | undefined;
+  if (!data) return [];
+  const { white, blue, black, red, green, generic } = getSpellManaCost(data);
+  const colored = { white, blue, black, red, green };
+  const totalGeneric = generic + Math.max(0, xValue);
+  if (!canAffordMana(gameState, playerId, { ...colored, generic: 0 })) {
+    return [];
+  }
+  let shortfall = 0;
+  while (
+    shortfall < totalGeneric &&
+    !canAffordMana(gameState, playerId, {
+      ...colored,
+      generic: totalGeneric - shortfall,
+    })
+  ) {
+    shortfall++;
+  }
+  if (shortfall === 0) return [];
+
+  const rank = (id: CardInstanceId): number => {
+    const c = gameState.cards.get(id);
+    const type = (c?.cardData.type_line || "").toLowerCase();
+    if (type.includes("creature")) return 2;
+    const oracle =
+      (c?.cardData as { oracle_text?: string } | undefined)?.oracle_text ?? "";
+    return /\{t\}[^:]*:\s*add/i.test(oracle) ? 1 : 0;
+  };
+  const candidates = (
+    gameState.zones.get(`${playerId}-battlefield`)?.cardIds ?? []
+  )
+    .filter((id) => {
+      const c = gameState.cards.get(id);
+      return (
+        !!c &&
+        id !== cardId &&
+        c.controllerId === playerId &&
+        !c.isTapped &&
+        (c.cardData.type_line || "").toLowerCase().includes("artifact")
+      );
+    })
+    .map((id, i) => ({ id, i, r: rank(id) }))
+    .sort((a, b) => a.r - b.r || a.i - b.i)
+    .map((e) => e.id);
+  if (candidates.length < shortfall) return [];
+  return candidates.slice(0, shortfall);
 }
 
 /** Highest X the AI would ever pay; keeps the affordability loop bounded. */
