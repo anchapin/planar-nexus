@@ -719,6 +719,51 @@ export const EquipmentStaticSchema = z
   });
 
 /**
+ * The static ability a scripted Aura grants the permanent it enchants
+ * (issue #2568, CR 702.5 / 303.4). Layer 6 (keywords) and layer 7c (P/T),
+ * per CR 613.3, applied in `refreshAuraBonuses` alongside the engine's
+ * oracle-text Aura bonuses. No `affects`: the host is whichever permanent
+ * `attachedToId` points at.
+ *
+ * v1 also covers Pacifism-style "can't attack / can't block" restrictions
+ * via `restrictAttack` / `restrictBlock`. They ride the same refresh path
+ * and are surfaced as `auraRestrictAttack` / `auraRestrictBlock` on the
+ * enchanted card. `restrictUntap` is a forward-compat field (the engine
+ * does not yet honor it; #2568 leaves the schema room for a follow-up
+ * lane, e.g. Imprisoned in the Moon's "it doesn't untap" clause).
+ */
+export const AuraStaticSchema = z
+  .object({
+    /** The static's oracle sentence, for review and drift checks. */
+    text: z.string().min(1),
+    power: z.number().int().optional(),
+    toughness: z.number().int().optional(),
+    keywords: z.array(z.enum(EQUIPMENT_KEYWORDS)).min(1).optional(),
+    /** "Enchanted creature can't attack." (Pacifism, issue #2568.) */
+    restrictAttack: z.boolean().optional(),
+    /** "Enchanted creature can't block." (Pacifism, issue #2568.) */
+    restrictBlock: z.boolean().optional(),
+    /** Forward-compat: "Enchanted permanent doesn't untap during its controller's untap step." */
+    restrictUntap: z.boolean().optional(),
+  })
+  .strict()
+  .refine((s) => (s.power === undefined) === (s.toughness === undefined), {
+    message: "set both power and toughness, or neither",
+  })
+  .refine(
+    (s) =>
+      s.power !== undefined ||
+      s.keywords ||
+      s.restrictAttack ||
+      s.restrictBlock ||
+      s.restrictUntap,
+    {
+      message:
+        "an aura static needs power/toughness, keywords, or a restriction",
+    },
+  );
+
+/**
  * An Equipment card (CR 301.5, #2561). Has exactly one `Equip` activated
  * ability ("{cost}: Attach this permanent to target creature you control.
  * Activate only as a sorcery", CR 702.6) and grants a static bonus to the
@@ -761,6 +806,43 @@ export const EquipmentSchema = z
 export const EQUIPMENT_ATTACH_ON_ENTER_TEXT =
   "When this Equipment enters, attach it to target creature you control.";
 
+/**
+ * An Aura card (CR 702.5 / 303.4, issue #2568). Mirrors `EquipmentSchema`
+ * for scripted Auras: an Aura always attaches at cast time to a chosen
+ * target matching its "Enchant" line. The engine's existing `attachAura`
+ * is called from the Aura ETB path in `spell-casting/resolve.ts`, and
+ * `refreshAuraBonuses` reads the scripted `static` to write the enchanted
+ * permanent's `auraPT` / `auraKeywords` (and the new
+ * `auraRestrictAttack` / `auraRestrictBlock` for Pacifism-style auras).
+ *
+ * `target` defaults to "creature" — the only value the v1 sample cards
+ * use. The engine's target-legality check still reads the card's
+ * "Enchant" oracle line; the script is a forward-compat hint. "land" and
+ * "planeswalker" are accepted by the schema and reserved for follow-up
+ * lanes (Blanchwood Armor, Angelic Destiny).
+ */
+export const AuraSchema = z
+  .object({
+    /** The card's aura-related oracle text, for review and drift checks. */
+    text: z.string().min(1),
+    /**
+     * What the Aura can be cast onto. Defaults to "creature"; the engine's
+     * `parseEnchantRestriction` still reads the oracle line for the
+     * authoritative check (this is a script-side filter for UI and
+     * follow-up lanes).
+     */
+    target: z
+      .enum(["creature", "land", "planeswalker", "permanent"])
+      .default("creature"),
+    /**
+     * The "Enchanted [permanent] gets +N/+N, has [keyword], can't attack,
+     * can't block" static, applied in layer 6 (keywords) and layer 7c
+     * (P/T) per CR 613.3.
+     */
+    static: AuraStaticSchema,
+  })
+  .strict();
+
 export const CardScriptSchema = z
   .object({
     /** Exact English card name, as on Scryfall. */
@@ -786,6 +868,13 @@ export const CardScriptSchema = z
      * attacks" trigger).
      */
     equipment: EquipmentSchema.optional(),
+    /**
+     * An Aura card (CR 702.5 / 303.4, issue #2568). When set, the card's
+     * "Enchanted [permanent] ..." static is read from the script and
+     * applied in `refreshAuraBonuses`. Auras and Equipment are mutually
+     * exclusive — a card can't be both an Aura and an Equipment.
+     */
+    aura: AuraSchema.optional(),
     /**
      * Flashback (CR 702.143) — an alternative cost: "you may cast this card
      * from your graveyard for its flashback cost. If you do, exile it instead
@@ -816,10 +905,11 @@ export const CardScriptSchema = z
       s.triggers ||
       s.activated ||
       s.statics ||
-      s.equipment,
+      s.equipment ||
+      s.aura,
     {
       message:
-        "a card script needs spell, modes, triggers, activated, statics, or equipment",
+        "a card script needs spell, modes, triggers, activated, statics, equipment, or aura",
     },
   )
   .refine(
@@ -835,7 +925,10 @@ export const CardScriptSchema = z
       s.spell !== undefined ||
       s.modes !== undefined,
     { message: "flashback is only for instant or sorcery scripts" },
-  );
+  )
+  .refine((s) => !(s.aura && s.equipment), {
+    message: "a card is an aura or an equipment, not both",
+  });
 
 export type CardEffect = z.infer<typeof EffectSchema>;
 export type CardScript = z.infer<typeof CardScriptSchema>;
@@ -845,6 +938,8 @@ export type ScriptedStatic = z.infer<typeof StaticSchema>;
 export type ScriptedModes = z.infer<typeof ModesSchema>;
 export type ScriptedEquipment = z.infer<typeof EquipmentSchema>;
 export type ScriptedEquipmentStatic = z.infer<typeof EquipmentStaticSchema>;
+export type ScriptedAura = z.infer<typeof AuraSchema>;
+export type ScriptedAuraStatic = z.infer<typeof AuraStaticSchema>;
 
 export {
   isPermanentScript,

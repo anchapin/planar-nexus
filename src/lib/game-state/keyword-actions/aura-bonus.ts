@@ -5,8 +5,15 @@
  *
  * The summed bonus is stored on `CardInstance.auraPT` and refreshed with the
  * state-based-action pass, like the threshold and tribal anthem statics.
+ *
+ * Scripted Auras (issue #2568) ride the same refresh path: their
+ * `aura.static` is read in addition to the engine's oracle-text parser, so
+ * the enchanted permanent's `auraPT` / `auraKeywords` /
+ * `auraRestrictAttack` / `auraRestrictBlock` come from both sources
+ * simultaneously.
  */
 import type { CardInstance, GameState } from "../types";
+import { getCardScript } from "../card-scripts/registry";
 
 export interface AuraPT {
   power: number;
@@ -82,12 +89,20 @@ function battlefieldCards(state: GameState): CardInstance[] {
  * Recompute `auraPT` for every card from the Auras attached to it. "You" in
  * the Aura's text is the Aura's controller. Returns the same state object
  * when nothing changed.
+ *
+ * Scripted Auras (issue #2568) contribute via their `aura.static`; oracle-
+ * text Auras contribute via `parseAuraPT` / `parseAuraKeywords`. The
+ * Pacifism-style `restrictAttack` / `restrictBlock` flags are surfaced as
+ * `auraRestrictAttack` / `auraRestrictBlock` so `canAttack` / `canBlock`
+ * can refuse them.
  */
 export function refreshAuraBonuses(state: GameState): GameState {
   const onField = battlefieldCards(state);
   const onFieldIds = new Set(onField.map((c) => c.id));
   const bonus = new Map<string, { power: number; toughness: number }>();
   const keywords = new Map<string, string[]>();
+  const restrictAttack = new Map<string, string[]>();
+  const restrictBlock = new Map<string, string[]>();
 
   for (const aura of onField) {
     const target = aura.attachedToId;
@@ -100,29 +115,79 @@ export function refreshAuraBonuses(state: GameState): GameState {
       keywords.set(target, kws);
     }
     const clauses = parseAuraPT(text);
-    if (clauses.length === 0) continue;
-    const enchantments = onField.filter(
-      (c) => c.controllerId === aura.controllerId && isEnchantment(c),
-    ).length;
-    const prev = bonus.get(target) ?? { power: 0, toughness: 0 };
-    for (const c of clauses) {
-      const n = c.perEnchantment ? enchantments : 1;
-      prev.power += c.power * n;
-      prev.toughness += c.toughness * n;
+    if (clauses.length > 0) {
+      const enchantments = onField.filter(
+        (c) => c.controllerId === aura.controllerId && isEnchantment(c),
+      ).length;
+      const prev = bonus.get(target) ?? { power: 0, toughness: 0 };
+      for (const c of clauses) {
+        const n = c.perEnchantment ? enchantments : 1;
+        prev.power += c.power * n;
+        prev.toughness += c.toughness * n;
+      }
+      bonus.set(target, prev);
     }
-    bonus.set(target, prev);
+    // Scripted aura static (issue #2568): read the same path as
+    // `refreshEquipmentBonuses` — get the script, then layer the static
+    // into the same per-target maps. The card's type_line still drives
+    // the oracle-text parser above, so an aura whose oracle also matches
+    // contributes from both; they agree in practice.
+    const script = getCardScript(aura.cardData.name);
+    const scriptedStatic = script?.aura?.static;
+    if (scriptedStatic) {
+      if (
+        scriptedStatic.power !== undefined ||
+        scriptedStatic.toughness !== undefined
+      ) {
+        const prev = bonus.get(target) ?? { power: 0, toughness: 0 };
+        prev.power += scriptedStatic.power ?? 0;
+        prev.toughness += scriptedStatic.toughness ?? 0;
+        bonus.set(target, prev);
+      }
+      if (scriptedStatic.keywords && scriptedStatic.keywords.length > 0) {
+        const kws = keywords.get(target) ?? [];
+        for (const k of scriptedStatic.keywords) {
+          const norm = k.toLowerCase();
+          if (!kws.includes(norm)) kws.push(norm);
+        }
+        keywords.set(target, kws);
+      }
+      if (scriptedStatic.restrictAttack) {
+        const list = restrictAttack.get(target) ?? [];
+        if (!list.includes(aura.cardData.name)) list.push(aura.cardData.name);
+        restrictAttack.set(target, list);
+      }
+      if (scriptedStatic.restrictBlock) {
+        const list = restrictBlock.get(target) ?? [];
+        if (!list.includes(aura.cardData.name)) list.push(aura.cardData.name);
+        restrictBlock.set(target, list);
+      }
+    }
   }
 
   let cards: GameState["cards"] | null = null;
+  const sameStringList = (
+    a: readonly string[] | undefined,
+    b: readonly string[],
+  ) =>
+    (a?.length ?? 0) === b.length &&
+    (a ?? []).every((v, i) => v === b[i]);
+
   for (const [cardId, card] of state.cards) {
     const next = bonus.get(cardId);
     const was = card.auraPT;
     const nextKw = keywords.get(cardId) ?? [];
     const wasKw = card.auraKeywords ?? [];
+    const nextRA = restrictAttack.get(cardId) ?? [];
+    const wasRA = card.auraRestrictAttack ?? [];
+    const nextRB = restrictBlock.get(cardId) ?? [];
+    const wasRB = card.auraRestrictBlock ?? [];
     if (
       (was?.power ?? 0) === (next?.power ?? 0) &&
       (was?.toughness ?? 0) === (next?.toughness ?? 0) &&
-      nextKw.join("|") === wasKw.join("|")
+      nextKw.join("|") === wasKw.join("|") &&
+      sameStringList(wasRA, nextRA) &&
+      sameStringList(wasRB, nextRB)
     ) {
       continue;
     }
@@ -132,6 +197,10 @@ export function refreshAuraBonuses(state: GameState): GameState {
     else delete updated.auraPT;
     if (nextKw.length > 0) updated.auraKeywords = nextKw;
     else delete updated.auraKeywords;
+    if (nextRA.length > 0) updated.auraRestrictAttack = nextRA;
+    else delete updated.auraRestrictAttack;
+    if (nextRB.length > 0) updated.auraRestrictBlock = nextRB;
+    else delete updated.auraRestrictBlock;
     cards.set(cardId, updated);
   }
   return cards ? { ...state, cards } : state;

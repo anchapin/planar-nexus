@@ -239,6 +239,20 @@ export interface CardInstance {
    */
   auraKeywords?: string[];
   /**
+   * Names of scripted Auras attached to this permanent that set
+   * `static.restrictAttack` (e.g. Pacifism, issue #2568). Maintained by
+   * `refreshAuraBonuses`; consumed by `canAttack` to refuse attacks
+   * (CR 303.4, "Enchanted creature can't attack.").
+   */
+  auraRestrictAttack?: string[];
+  /**
+   * Names of scripted Auras attached to this permanent that set
+   * `static.restrictBlock` (e.g. Pacifism, issue #2568). Maintained by
+   * `refreshAuraBonuses`; consumed by `canBlock` to refuse blocks
+   * (CR 303.4, "Enchanted creature can't block.").
+   */
+  auraRestrictBlock?: string[];
+  /**
    * Summed static bonus from Equipment attached to this creature, e.g.
    * Swiftfoot Boots' hexproof+haste (issue #2561). Maintained by
    * `refreshEquipmentBonuses`. Kept separate from `auraPT` so a future

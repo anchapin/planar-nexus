@@ -1,0 +1,14 @@
+{
+  "name": "Witness Protection",
+  "oracle": "Enchant creature\nEnchanted creature gets -1/-1 and can't attack. (Its name is also Clown, but it has only two abilities.)",
+  "aura": {
+    "text": "Enchanted creature gets -1/-1 and can't attack.",
+    "target": "creature",
+    "static": {
+      "text": "Enchanted creature gets -1/-1 and can't attack.",
+      "power": -1,
+      "toughness": -1,
+      "restrictAttack": true
+    }
+  }
+}
