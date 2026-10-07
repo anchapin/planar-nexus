@@ -787,9 +787,17 @@ export const ActivatedSchema = z
     text: z.string().min(1),
     cost: z
       .object({
+        /**
+         * Mana cost string (#2559 follow-up: X in activation cost). "{X}" is
+         * accepted and surfaces on the script's parsed `manaCost.X` field;
+         * the engine charges the chosen X as generic mana at activation time
+         * (`activateAbility` reads `card.xValue` for the chosen value). All
+         * mana symbols on one ability fit the `(symbol)+` shape; mixed "{X}{G}",
+         * "{X}{X}{R}", and "{2}{X}{W}" are valid in v1.
+         */
         mana: z
           .string()
-          .regex(/^(\{(?:[0-9]+|[WUBRGC])\})+$/)
+          .regex(/^(\{(?:[0-9]+|X|[WUBRGC])\})+$/)
           .optional(),
         tap: z.boolean().default(false),
         sacrifice: z.boolean().default(false),

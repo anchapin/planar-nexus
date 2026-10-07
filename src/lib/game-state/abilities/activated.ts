@@ -321,8 +321,17 @@ export function activateAbility(
 
   if (ability.costs.mana) {
     const manaCost = ability.costs.mana;
+    // CR 107.3, #2559: an X-cost activation ("{X}{G}, {T}: ...") charges the
+    // source's chosen X (read from `card.xValue`, set at cast time) as generic
+    // mana on top of the printed generic component. An activation without
+    // `card.xValue` (e.g. a non-X-cost permanent) treats X as 0 and the
+    // printed mana is all that gets spent.
+    const xValue =
+      typeof manaCost.X === "number" && manaCost.X !== null
+        ? (card.xValue ?? 0)
+        : 0;
     const manaPayment = {
-      generic: manaCost.generic,
+      generic: manaCost.generic + xValue,
       white: manaCost.white,
       blue: manaCost.blue,
       black: manaCost.black,
