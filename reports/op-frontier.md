@@ -1,6 +1,6 @@
 # Card script op frontier (epic #2487, phase 4)
 
-Generated: 2026-10-06. Aggregates `needs_new_op` reasons from `docs/card-scripts/drafts/{blb,card-list,fdn,fin,mkm,sos,tdc}.md` and groups them into capabilities ranked by the number of distinct cards each one unlocks.
+Generated: 2026-10-07. Aggregates `needs_new_op` reasons from `docs/card-scripts/drafts/{blb,card-list,fdn,fin,mkm,sos,tdc}.md` and groups them into capabilities ranked by the number of distinct cards each one unlocks.
 
 ## Inputs
 
