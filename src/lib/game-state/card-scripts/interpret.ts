@@ -347,6 +347,11 @@ function fight(
  * land whose `type_line` includes "Basic" (CR 305.9). The other type checks
  * delegate to the engine's `is…` helpers, which read `type_line` and respect
  * the crewed-Vehicle / turn-form cases.
+ *
+ * When the filter has an `or` arm (#2594 follow-up), the card matches if any
+ * sub-filter matches. Top-level AND keys and `or` arms compose: a card must
+ * pass both (all AND keys) AND (any OR sub-filter). The `or` arm is
+ * recursive — a sub-filter can carry its own `or`.
  */
 function searchMatches(
   cardData: { type_line: string; cmc: number; name: string; colors: string[] },
@@ -384,6 +389,14 @@ function searchMatches(
       .map((c) => c.toLowerCase())
       .includes(wantLower);
     if (!has) return false;
+  }
+  if (filter.or) {
+    if (
+      !filter.or.some((sub: SearchLibraryFilter) =>
+        searchMatches(cardData, sub),
+      )
+    )
+      return false;
   }
   return true;
 }
