@@ -588,3 +588,79 @@ describe("a grant-only card is killable", () => {
     expect(isInGraveyard(result.state, id)).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Granted indestructible (#2586): Aura, Equipment, scripted static
+// ---------------------------------------------------------------------------
+
+describe("indestructible granted by another source (CR 702.12b, #2586)", () => {
+  const sources = [
+    ["an attached Aura", "auraKeywords"],
+    ["an attached Equipment", "equipmentKeywords"],
+    ["a scripted static ability", "scriptStaticKeywords"],
+    ["an until-end-of-turn effect", "untilEndOfTurnKeywords"],
+  ] as const;
+
+  /** Grant indestructible to a card already on the battlefield. */
+  function grant(
+    state: GameState,
+    id: string,
+    field: (typeof sources)[number][1],
+  ): void {
+    const card = state.cards.get(id)!;
+    state.cards.set(id, { ...card, [field]: ["indestructible"] });
+  }
+
+  it.each(sources)(
+    "the shared gate sees indestructible from %s",
+    (_, field) => {
+      const card = {
+        ...instance({ name: "Golem" }),
+        [field]: ["indestructible"],
+      };
+      expect(hasIndestructibleKeyword(card)).toBe(true);
+      expect(isIndestructible(card)).toBe(true);
+    },
+  );
+
+  it.each(sources)(
+    "Destroy does not destroy a creature given indestructible by %s",
+    (_, field) => {
+      const { state, aliceId } = makeGame();
+      const id = putOnBattlefield(state, aliceId, { name: "Golem" });
+      grant(state, id, field);
+      const result = destroyCard(state, id);
+      expect(result.success).toBe(false);
+      expect(isOnBattlefield(result.state, id)).toBe(true);
+    },
+  );
+
+  // The SBA pass re-derives the Aura, Equipment and scripted-static fields
+  // from what is actually attached or on the battlefield before it checks
+  // damage, so a hand-set field there would be wiped. Those three reach the
+  // SBA through this same gate (see "the two indestructible gates no longer
+  // diverge" above); the until-end-of-turn field is not re-derived, so it
+  // pins the lethal-damage path end to end.
+  it("lethal damage does not destroy a creature given indestructible until end of turn", () => {
+    const { state, aliceId } = makeGame();
+    const id = putOnBattlefield(state, aliceId, {
+      name: "Golem",
+      toughness: 1,
+      damage: 5,
+    });
+    grant(state, id, "untilEndOfTurnKeywords");
+    const res = checkStateBasedActions(state);
+    expect(isOnBattlefield(res.state, id)).toBe(true);
+  });
+
+  it("0 toughness still kills a creature with granted indestructible (CR 702.12b)", () => {
+    const { state, aliceId } = makeGame();
+    const id = putOnBattlefield(state, aliceId, {
+      name: "Golem",
+      toughness: 0,
+    });
+    grant(state, id, "untilEndOfTurnKeywords");
+    const res = checkStateBasedActions(state);
+    expect(isInGraveyard(res.state, id)).toBe(true);
+  });
+});
