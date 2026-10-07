@@ -177,3 +177,32 @@ describe("typeLineHasCreatureType (#2349)", () => {
     );
   });
 });
+
+describe("createCardInstance honors options.currentZoneKey (#2595)", () => {
+  // Regression: `createCardInstance` was returning `currentZoneKey: null`
+  // regardless of the option. The test helper `put` and the engine's
+  // `moveCard` path both pass `currentZoneKey` so the engine can skip the
+  // fallback zone scan on the first read. Before this fix, the option
+  // was silently dropped and the field always reset to `null`.
+  const mkCard = (name: string) =>
+    createMockCard(name, "Creature — Test", "") as ScryfallCard;
+
+  it("defaults to null when options is empty", () => {
+    const c = createCardInstance(mkCard("A"), OWNER, OWNER);
+    expect(c.currentZoneKey).toBeNull();
+  });
+
+  it("defaults to null when options omits currentZoneKey", () => {
+    const c = createCardInstance(mkCard("A"), OWNER, OWNER, {
+      isToken: false,
+    });
+    expect(c.currentZoneKey).toBeNull();
+  });
+
+  it("preserves an explicit currentZoneKey from options", () => {
+    const c = createCardInstance(mkCard("A"), OWNER, OWNER, {
+      currentZoneKey: "player-1-battlefield",
+    });
+    expect(c.currentZoneKey).toBe("player-1-battlefield");
+  });
+});
