@@ -73,14 +73,26 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
     if (!isOnBattlefield(state, attacker.cardId)) {
       return false;
     }
+    // The declaration-time flags miss first or double strike granted
+    // after attackers were declared (Pedal to the Metal, #2552), so the
+    // creature as it is now counts too, as blockers already do below.
+    const liveCard = state.cards.get(attacker.cardId);
+    const doubleStrike =
+      attacker.hasDoubleStrike ||
+      (liveCard !== undefined && hasDoubleStrike(liveCard));
     if (isFirstStrikeStep) {
       // First strike step: only first strike or double strike
-      return attacker.hasFirstStrike || attacker.hasDoubleStrike;
+      return (
+        attacker.hasFirstStrike ||
+        doubleStrike ||
+        (liveCard !== undefined && hasFirstStrike(liveCard))
+      );
     } else {
       // Regular damage step: only double strike OR no first strike
-      // First-strike-only creatures are excluded (they already dealt damage).
-      // Double-strike creatures that survived the first-strike step deal again.
-      return !attacker.hasFirstStrike || attacker.hasDoubleStrike;
+      // First-strike-only creatures are excluded (they already dealt damage;
+      // the first-strike step sets hasFirstStrike on every attacker that
+      // dealt damage in it). Double strikers that survived deal again.
+      return !attacker.hasFirstStrike || doubleStrike;
     }
   });
 
@@ -544,7 +556,16 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
     // First strike step complete - keep combat state for regular damage step
     clearedCombat = {
       ...updatedState.combat,
-      attackers: state.combat.attackers, // Keep attackers for second pass
+      // Keep attackers for second pass. An attacker that dealt first-strike
+      // damage is marked so it sits out the regular step unless it has
+      // double strike (CR 702.7c: losing or gaining first strike after this
+      // step doesn't change that).
+      attackers: state.combat.attackers.map((a) =>
+        !a.hasFirstStrike &&
+        attackersDealingDamage.some((d) => d.cardId === a.cardId)
+          ? { ...a, hasFirstStrike: true }
+          : a,
+      ),
       blockers: state.combat.blockers, // Keep blockers for second pass
     };
   } else {

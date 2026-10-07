@@ -4,6 +4,7 @@
 
 import type { PlayerId, Turn, GameState } from "./types";
 import { Phase } from "./types";
+import { hasFirstStrike, hasDoubleStrike } from "./evergreen-keywords";
 
 /**
  * Get the next phase in the turn structure
@@ -233,14 +234,32 @@ export function isCombatDamageStep(phase: Phase): boolean {
  */
 export function shouldHaveFirstStrikeStep(state: GameState): boolean {
   const { attackers, blockers } = state.combat;
+  // The declaration-time flags miss a keyword granted after attackers or
+  // blockers were declared ("gains first strike until end of turn", #2552),
+  // so also check each creature as it is now (CR 510.4).
+  const strikesFirst = (cardId: string, flagged: boolean) => {
+    if (flagged) return true;
+    const card = state.cards.get(cardId);
+    return card ? hasFirstStrike(card) || hasDoubleStrike(card) : false;
+  };
   for (const attacker of attackers) {
-    if (attacker.hasFirstStrike || attacker.hasDoubleStrike) {
+    if (
+      strikesFirst(
+        attacker.cardId,
+        attacker.hasFirstStrike || attacker.hasDoubleStrike,
+      )
+    ) {
       return true;
     }
   }
   for (const blockerList of blockers.values()) {
     for (const blocker of blockerList) {
-      if (blocker.hasFirstStrike || blocker.hasDoubleStrike) {
+      if (
+        strikesFirst(
+          blocker.cardId,
+          blocker.hasFirstStrike || blocker.hasDoubleStrike,
+        )
+      ) {
         return true;
       }
     }

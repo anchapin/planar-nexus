@@ -337,7 +337,7 @@ export const PumpSchema = z
  * Indestructible only for now (CR 702.12); widen as cards surface, and each
  * new entry must be honored by the engine's keyword gate for it.
  */
-export const GRANTABLE_KEYWORDS = ["indestructible"] as const;
+export const GRANTABLE_KEYWORDS = ["indestructible", "first strike"] as const;
 
 /**
  * "Target creature gains indestructible until end of turn" (#2567). `target`:
