@@ -42,8 +42,18 @@ export function putTriggersOnStack(
       // instance's `kicked` flag is stamped by `castSpell` and survives
       // onto the battlefield; the trigger's `StackObject` carries the same
       // value so the interpreter can gate the effect via `if_kicked`.
+      // CR 702.85, #2594: a multikicker cast stamps `timesKicked` with the
+      // actual charge count (>= 1), so an ETB "if kicked 2+ times" trigger
+      // (or any tiered effect gated on `if_kicked: N` in the script) can
+      // read the count. Falls back to the boolean `kicked` flag for cards
+      // whose cast predates the multikicker field (backward compatible).
       wasKicked: card.kicked === true,
-      timesKicked: card.kicked === true ? 1 : 0,
+      timesKicked:
+        typeof card.timesKicked === "number" && card.timesKicked > 0
+          ? card.timesKicked
+          : card.kicked === true
+            ? 1
+            : 0,
     };
     const spellCardId = trigger.context?.spellCardId;
     if (spellCardId) {

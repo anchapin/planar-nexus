@@ -1,0 +1,22 @@
+{
+  "name": "Skyfire Adept",
+  "oracle": "Skyfire Adept deals 1 damage to any target. Multikicker {1}{R} (You may pay this cost up to two times as you cast this spell.).\nIf this spell was kicked two or more times, draw a card.",
+  "spell": [
+    {
+      "op": "DealDamage",
+      "amount": 1,
+      "target": "any",
+      "if_kicked": true
+    },
+    {
+      "op": "Draw",
+      "amount": 1,
+      "who": "you",
+      "if_kicked": 2
+    }
+  ],
+  "kicker": {
+    "cost": "{1}{R}",
+    "count": 2
+  }
+}
