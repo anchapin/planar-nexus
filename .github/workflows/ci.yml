@@ -799,6 +799,13 @@ jobs:
         # `tauri::generate_context!()` (src-tauri/src/lib.rs) embeds those
         # assets while compiling — the directory must exist for clippy and
         # test to build the crate at all.
+        # Runs in the background (step-level `background:`, GitHub Actions
+        # 2026-06-25) so the build overlaps the Rust toolchain install, cargo
+        # cache restore, apt install and `cargo fmt`, none of which need
+        # `.next`. The `wait` step below blocks before clippy, the first step
+        # that compiles the crate; a build failure fails the job there.
+        id: next-build
+        background: true
         run: npm run build
 
       - name: Install Rust toolchain
@@ -858,6 +865,9 @@ jobs:
         working-directory: src-tauri
         run: cargo fmt --check
 
+      - name: Wait for Next.js frontend build
+        wait: next-build
+
       - name: Lint (cargo clippy, warnings are errors)
         working-directory: src-tauri
         run: cargo clippy --all-targets -- -D warnings
@@ -900,7 +910,17 @@ jobs:
           # actionlint has no severity flag; use -ignore (regex on messages)
           # to keep SC2086 (quote vars) / SC2015 (A&&B||C) / SC2035 (glob with dashes)
           # info-level nits informational rather than failing the PR gate.
-          args: '-ignore SC2086 -ignore SC2015 -ignore SC2035'
+          # The last two -ignore patterns cover step-level background/wait/
+          # parallel (GitHub Actions, 2026-06-25), which actionlint v1.7.12
+          # (latest as of 2026-10) does not know yet. GitHub's own workflow
+          # parser still rejects a genuinely malformed step. Drop both once
+          # actionlint ships support.
+          # The action splits `args` on whitespace and does not honour shell
+          # quotes, so these regexes use `.` for spaces and quote marks.
+          args: >-
+            -ignore SC2086 -ignore SC2015 -ignore SC2035
+            -ignore unexpected.key..(background|wait|wait-all|cancel|parallel)..for.step
+            -ignore step.must.run.script.with..run..section.or.run.action.with..uses..section
 
   tauri-updater-config:
     # Issue #1430: standalone guard that prevents the Tauri 2 updater from
