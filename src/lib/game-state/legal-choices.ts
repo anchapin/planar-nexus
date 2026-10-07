@@ -19,6 +19,13 @@
  * call `declareAttackers` / `declareBlockers` and so enforce the
  * whole-declaration rules (menace's two-blocker minimum, for example).
  *
+ * Mid-game decisions: `getPendingDecision` says who must answer what before
+ * play continues (an open `waitingChoice`, such as a discard, an offer or a
+ * mode pick, or a triggered ability on the stack still needing a target).
+ * `listDecisionAnswers` enumerates the legal answers and
+ * `applyDecisionAnswer` applies one through `resolveWaitingChoice` /
+ * `chooseTriggerTargets`.
+ *
  * Not covered yet (listed as the plain cast, or skipped): X spells (skipped),
  * modal mode selection, kicker and alternative costs, casting from zones
  * other than hand, and targeted loyalty abilities (skipped). Those land in
@@ -53,6 +60,13 @@ import {
 } from "./combat/queries";
 import { declareAttackers, declareBlockers } from "./combat/declaration";
 import { Phase } from "./types";
+import type { StackObject } from "./types";
+import { resolveWaitingChoice } from "./spell-casting/choices";
+import {
+  chooseTriggerTargets,
+  getLegalTriggerTargets,
+  triggerNeedsTargets,
+} from "./trigger-system/trigger-targets";
 
 /** Cap on target combinations listed for one multi-target spell. */
 export const MAX_TARGET_COMBINATIONS = 64;
@@ -447,4 +461,150 @@ export function applyBlockDeclaration(
     return { success: false, state, error: r.errors?.join("; ") };
   }
   return { success: true, state: r.state };
+}
+
+/** Cap on answers listed for one multi-pick decision (a discard of 3). */
+export const MAX_DECISION_ANSWERS = 64;
+
+export type PendingDecision =
+  | {
+      kind: "waiting_choice";
+      playerId: PlayerId;
+      choiceType: string;
+      minChoices: number;
+      maxChoices: number;
+    }
+  | { kind: "trigger_targets"; playerId: PlayerId; stackObjectId: string };
+
+export type DecisionAnswer =
+  | { kind: "waiting_choice"; value: string | number | boolean | string[] }
+  | { kind: "trigger_targets"; stackObjectId: string; targets: string[] };
+
+function triggerAwaitingTargets(state: GameState): StackObject | undefined {
+  return [...state.stack]
+    .reverse()
+    .find((obj) => triggerNeedsTargets(obj, state));
+}
+
+/**
+ * The decision that must be answered before priority or combat continues,
+ * or null when there is none.
+ */
+export function getPendingDecision(state: GameState): PendingDecision | null {
+  const choice = state.waitingChoice;
+  if (choice) {
+    return {
+      kind: "waiting_choice",
+      playerId: choice.playerId,
+      choiceType: choice.type,
+      minChoices: choice.minChoices,
+      maxChoices: choice.maxChoices,
+    };
+  }
+  const trigger = triggerAwaitingTargets(state);
+  if (trigger) {
+    return {
+      kind: "trigger_targets",
+      playerId: trigger.controllerId,
+      stackObjectId: trigger.id,
+    };
+  }
+  return null;
+}
+
+/** Every size-`k` subset of `items`, in order, capped. */
+function subsets<T>(items: T[], k: number, cap: number): T[][] {
+  const out: T[][] = [];
+  const pick = (start: number, acc: T[]) => {
+    if (out.length >= cap) return;
+    if (acc.length === k) {
+      out.push(acc);
+      return;
+    }
+    for (let i = start; i < items.length; i++) pick(i + 1, [...acc, items[i]]);
+  };
+  pick(0, []);
+  return out;
+}
+
+/** Waiting-choice types answered with a list of option values. */
+const LIST_ANSWER_TYPES = new Set([
+  "discard_to_hand_size",
+  "discard_cards",
+  "choose_mode",
+]);
+
+/**
+ * Legal answers to the pending decision for `playerId`. Empty when nothing
+ * is pending for them. Multi-pick answers (discard two) are listed as every
+ * combination of the required size, capped at MAX_DECISION_ANSWERS.
+ */
+export function listDecisionAnswers(
+  state: GameState,
+  playerId: PlayerId,
+): DecisionAnswer[] {
+  const pending = getPendingDecision(state);
+  if (!pending || pending.playerId !== playerId) return [];
+
+  if (pending.kind === "trigger_targets") {
+    const ids = getLegalTriggerTargets(
+      state,
+      state.stack.find((o) => o.id === pending.stackObjectId)!,
+    );
+    const answers: DecisionAnswer[] = ids.map((id) => ({
+      kind: "trigger_targets",
+      stackObjectId: pending.stackObjectId,
+      targets: [id],
+    }));
+    // "Up to one" abilities may also choose no target.
+    if (chooseTriggerTargets(state, pending.stackObjectId, []).success) {
+      answers.push({
+        kind: "trigger_targets",
+        stackObjectId: pending.stackObjectId,
+        targets: [],
+      });
+    }
+    return answers;
+  }
+
+  const choice = state.waitingChoice!;
+  const values = choice.choices.filter((c) => c.isValid).map((c) => c.value);
+  const multi =
+    LIST_ANSWER_TYPES.has(choice.type) &&
+    (choice.type !== "choose_mode" || choice.maxChoices > 1);
+  if (!multi) {
+    return values.map((value) => ({ kind: "waiting_choice", value }));
+  }
+  const ids = values.filter((v): v is string => typeof v === "string");
+  const out: DecisionAnswer[] = [];
+  const lo = Math.max(choice.minChoices, 0);
+  const hi = Math.min(choice.maxChoices, ids.length);
+  for (let k = lo; k <= hi && out.length < MAX_DECISION_ANSWERS; k++) {
+    for (const pick of subsets(ids, k, MAX_DECISION_ANSWERS - out.length)) {
+      out.push({ kind: "waiting_choice", value: pick });
+    }
+  }
+  return out;
+}
+
+/** Apply an answer from `listDecisionAnswers`. */
+export function applyDecisionAnswer(
+  state: GameState,
+  playerId: PlayerId,
+  answer: DecisionAnswer,
+): ApplyChoiceResult {
+  if (answer.kind === "trigger_targets") {
+    const obj = state.stack.find((o) => o.id === answer.stackObjectId);
+    if (!obj || obj.controllerId !== playerId) {
+      return { success: false, state, error: "Not this player's trigger" };
+    }
+    const r = chooseTriggerTargets(state, answer.stackObjectId, answer.targets);
+    return r.success
+      ? { success: true, state: r.state }
+      : { success: false, state, error: r.error };
+  }
+  const r = resolveWaitingChoice(state, playerId, answer.value);
+  return r.success
+    ? { success: true, state: r.state }
+    : { success: false, state, error: r.error };
 }
