@@ -460,52 +460,86 @@ export const CopySpellSchema = z
  *  by default, or the previous targeted player for `target_player` spells.
  *
  * The filter is a single object whose keys AND together (`{creature: true, mv_le: 1}`
- *  means a creature with mana value ≤ 1). For "basic land OR creature with MV 1"
- *  style filters the LLM picks the first matching key — full disjunction is a
- *  follow-up lane.
+ *  means a creature with mana value ≤ 1). For OR-style filters — e.g.
+ *  "search for an artifact or a land" — use the `or` arm with an array of
+ *  filter objects, any of which may match (#2594 follow-up). The `or` arm
+ *  is recursive: each sub-filter can itself carry an `or`. Top-level AND
+ *  keys and `or` arms compose: a card matches when (the AND keys all match)
+ *  AND (any `or` sub-filter matches, if any `or` arm is present).
  *
  * `destination` defaults to hand. `shuffle` defaults to true and is mandatory
  *  by CR: even a search that finds nothing still shuffles.
  *
- * `count` defaults to 1 and is the only value accepted in v1; "up to N" search
- *  needs UI choice plumbing and is a follow-up.
+ * `count` defaults to 1, capped at 2 in v1 (#2587); "up to N" search for
+ *  N>2 is a follow-up.
  *
  * v1 limitations (noted in the PR): "reveal" is not modeled (the card simply
  *  moves into a private or public zone, or onto the library), and "put it onto
  *  the battlefield tapped" is not modeled (the card enters untapped).
  */
-const SearchLibraryFilterSchema = z
-  .object({
-    basic_land: z.literal(true).optional(),
-    land: z.literal(true).optional(),
-    creature: z.literal(true).optional(),
-    artifact: z.literal(true).optional(),
-    enchantment: z.literal(true).optional(),
-    instant_or_sorcery: z.literal(true).optional(),
-    /** Mana value ≤ N. */
-    mv_le: z.number().int().min(0).optional(),
-    /** Mana value = N. */
-    mv_eq: z.number().int().min(0).optional(),
-    /** Exact English card name (case-insensitive). */
-    name: z.string().min(1).optional(),
-    /** A single color (W/U/B/R/G). */
-    color: z.enum(["W", "U", "B", "R", "G"]).optional(),
-  })
-  .strict()
-  .refine(
-    (f) =>
-      f.basic_land !== undefined ||
-      f.land !== undefined ||
-      f.creature !== undefined ||
-      f.artifact !== undefined ||
-      f.enchantment !== undefined ||
-      f.instant_or_sorcery !== undefined ||
-      f.mv_le !== undefined ||
-      f.mv_eq !== undefined ||
-      f.name !== undefined ||
-      f.color !== undefined,
-    { message: "filter needs at least one key" },
-  );
+type SearchLibraryFilterShape = {
+  basic_land?: true;
+  land?: true;
+  creature?: true;
+  artifact?: true;
+  enchantment?: true;
+  instant_or_sorcery?: true;
+  mv_le?: number;
+  mv_eq?: number;
+  name?: string;
+  color?: "W" | "U" | "B" | "R" | "G";
+  or?: SearchLibraryFilterShape[];
+};
+
+/**
+ * Recursive filter schema (#2594 follow-up). The recursive `or` arm
+ * requires a forward reference, which we resolve with a `let` binding
+ * + z.lazy. Empty `or` arrays are rejected by the inner array schema.
+ */
+const SearchLibraryFilterSchema: z.ZodType<SearchLibraryFilterShape> = z.lazy(
+  () =>
+    z
+      .object({
+        basic_land: z.literal(true).optional(),
+        land: z.literal(true).optional(),
+        creature: z.literal(true).optional(),
+        artifact: z.literal(true).optional(),
+        enchantment: z.literal(true).optional(),
+        instant_or_sorcery: z.literal(true).optional(),
+        /** Mana value ≤ N. */
+        mv_le: z.number().int().min(0).optional(),
+        /** Mana value = N. */
+        mv_eq: z.number().int().min(0).optional(),
+        /** Exact English card name (case-insensitive). */
+        name: z.string().min(1).optional(),
+        /** A single color (W/U/B/R/G). */
+        color: z.enum(["W", "U", "B", "R", "G"]).optional(),
+        /**
+         * OR arm: an array of sub-filters, any of which may match.
+         * Recursive — each sub-filter can carry its own `or`. Empty
+         * arrays are rejected.
+         */
+        or: z.array(SearchLibraryFilterSchema).min(1).optional(),
+      })
+      .strict()
+      .refine(
+        (f: SearchLibraryFilterShape) => {
+          const hasKey =
+            f.basic_land !== undefined ||
+            f.land !== undefined ||
+            f.creature !== undefined ||
+            f.artifact !== undefined ||
+            f.enchantment !== undefined ||
+            f.instant_or_sorcery !== undefined ||
+            f.mv_le !== undefined ||
+            f.mv_eq !== undefined ||
+            f.name !== undefined ||
+            f.color !== undefined;
+          return hasKey || f.or !== undefined;
+        },
+        { message: "filter needs at least one key or an 'or' arm" },
+      ),
+);
 
 /** Inferred shape of the `filter` field on a `SearchLibrary` effect (#2562). */
 export type SearchLibraryFilter = z.infer<typeof SearchLibraryFilterSchema>;

@@ -4278,9 +4278,7 @@ describe("scripted GrantKeyword (#2567)", () => {
       "hexproof",
       "indestructible",
     ]) {
-      expect(
-        ok({ ...grant("creature"), keyword }),
-      ).toBe(true);
+      expect(ok({ ...grant("creature"), keyword })).toBe(true);
     }
     // Keywords outside the evergreen set are still rejected.
     expect(ok({ ...grant("creature"), keyword: "fear" })).toBe(false);
@@ -4358,7 +4356,11 @@ describe("scripted GrantKeyword (#2567)", () => {
         target: "creature",
         until: "end_of_turn",
       }) as const;
-    const resolve = (s: GameState, p1: PlayerId, keyword: "lifelink" | "trample" | "flying") =>
+    const resolve = (
+      s: GameState,
+      p1: PlayerId,
+      keyword: "lifelink" | "trample" | "flying",
+    ) =>
       resolveScriptedSpell(
         s,
         {
@@ -4385,14 +4387,10 @@ describe("scripted GrantKeyword (#2567)", () => {
     // was `["indestructible"]`. With the enum widened, the mode parses
     // and resolves through the same engine path as indestructible.
     const f = fresh();
-    const s = resolveScriptedSpell(
-      f.state,
-      getCardScript("Boros Charm")!,
-      {
-        ...spell(f.p1, [cardTarget("bear")]),
-        chosenModes: ["Target creature gains double strike until end of turn."],
-      },
-    );
+    const s = resolveScriptedSpell(f.state, getCardScript("Boros Charm")!, {
+      ...spell(f.p1, [cardTarget("bear")]),
+      chosenModes: ["Target creature gains double strike until end of turn."],
+    });
     expect(hasKeyword(s.cards.get(id("bear"))!, "double strike")).toBe(true);
   });
 });
@@ -4706,7 +4704,12 @@ describe("scripted auras (#2568)", () => {
   it("Pacifism forbids attack and block while attached", () => {
     const pacifismName = "Pacifism";
     expect(getCardScript(pacifismName)?.aura?.static).toBeDefined();
-    let s = put(state, p1, "bear", card("Bear", "Creature \u2014 Bear", [3, 3]));
+    let s = put(
+      state,
+      p1,
+      "bear",
+      card("Bear", "Creature \u2014 Bear", [3, 3]),
+    );
     // Strip summoning sickness so the bear could otherwise attack/block.
     {
       const cards = new Map(s.cards);
@@ -4813,7 +4816,10 @@ describe("scripted auras (#2568)", () => {
     s = refreshAuraBonuses(s);
     const host = s.cards.get(id("bear"))!;
     expect(host.auraPT).toEqual({ power: 2, toughness: 2 });
-    expect(host.auraKeywords?.sort()).toEqual(["double strike", "first strike"]);
+    expect(host.auraKeywords?.sort()).toEqual([
+      "double strike",
+      "first strike",
+    ]);
   });
 });
 describe("scripted AddMana (#2565)", () => {
@@ -5139,7 +5145,9 @@ describe("kicker schema rejects (#2564)", () => {
 describe("scripted SearchLibrary and ShuffleLibrary (#2566)", () => {
   /** Set up a fresh state with a known, ordered p1 library. */
   const fresh = (): { state: GameState; p1: PlayerId; p2: PlayerId } => {
-    const s = startGame(createInitialGameState(["Player1", "Player2"], 20, false));
+    const s = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
     const [a, b] = Array.from(s.players.keys());
     return { state: s, p1: a, p2: b };
   };
@@ -5249,9 +5257,7 @@ describe("scripted SearchLibrary and ShuffleLibrary (#2566)", () => {
       CardScriptSchema.parse({
         name: "Shuffle Other",
         oracle: "x",
-        spell: [
-          { op: "ShuffleLibrary", who: "target_player" },
-        ],
+        spell: [{ op: "ShuffleLibrary", who: "target_player" }],
       }),
       spell(f.p1, [playerTarget(f.p2)]),
     );
@@ -5303,9 +5309,7 @@ describe("scripted SearchLibrary and ShuffleLibrary (#2566)", () => {
     // order is 1/24 ≈ 4%; the test is unlikely to flake but not
     // astronomically so. If it does, the SearchLibrary code is still
     // correct — the assertion just gets noisy.
-    expect(afterLib).not.toEqual(
-      before.filter((c) => c !== id("Forest-1")),
-    );
+    expect(afterLib).not.toEqual(before.filter((c) => c !== id("Forest-1")));
   });
 
   it("SearchLibrary with shuffle: false leaves the library order untouched", () => {
@@ -5313,11 +5317,7 @@ describe("scripted SearchLibrary and ShuffleLibrary (#2566)", () => {
     // (the schema's default is true; the explicit `false` is what
     // players rarely want, but the schema accepts it).
     const f = fresh();
-    let s = setLibrary(f.state, f.p1, [
-      "bear-1",
-      "bear-2",
-      "Forest-top",
-    ]);
+    let s = setLibrary(f.state, f.p1, ["bear-1", "bear-2", "Forest-top"]);
     // Replace the last (top) card's type_line with "Basic Land — Forest"
     // so the `basic_land: true` filter matches.
     const cards = new Map(s.cards);
@@ -5345,18 +5345,12 @@ describe("scripted SearchLibrary and ShuffleLibrary (#2566)", () => {
       spell(f.p1),
     );
     const afterLib = after.zones.get(`${f.p1}-library`)!.cardIds;
-    expect(afterLib).toEqual(
-      before.filter((c) => c !== id("Forest-top")),
-    );
+    expect(afterLib).toEqual(before.filter((c) => c !== id("Forest-top")));
   });
 
   it("Burnished Hart's ETB searches a basic land onto the battlefield and shuffles", () => {
     const f = fresh();
-    let s = setLibrary(f.state, f.p1, [
-      "bear-1",
-      "bear-2",
-      "Plains-top",
-    ]);
+    let s = setLibrary(f.state, f.p1, ["bear-1", "bear-2", "Plains-top"]);
     // Replace the land's type_line so the `basic_land: true` filter matches.
     const cards = new Map(s.cards);
     const inst = cards.get(id("Plains-top"))!;
@@ -5399,29 +5393,22 @@ describe("scripted SearchLibrary and ShuffleLibrary (#2566)", () => {
     // Lane 8 cares about is exercised by the underlying ShuffleLibrary
     // op tests above.
     const f = fresh();
-    let s = setLibrary(f.state, f.p1, [
-      "lib-1",
-      "lib-2",
-      "lib-3",
-    ]);
+    let s = setLibrary(f.state, f.p1, ["lib-1", "lib-2", "lib-3"]);
     s = put(s, f.p1, "hand-1", card("Hand 1", "Instant"), "hand");
     s = put(s, f.p1, "hand-2", card("Hand 2", "Instant"), "hand");
     s = put(s, f.p1, "talisman", card("Wishclaw Talisman", "Artifact"));
     const beforeHand = s.zones.get(`${f.p1}-hand`)!.cardIds.length;
     const beforeLib = s.zones.get(`${f.p1}-library`)!.cardIds.length;
-    const after = resolveScriptedAbility(
-      s,
-      {
-        id: "ab-1",
-        type: "ability",
-        sourceCardId: id("talisman"),
-        controllerId: f.p1,
-        text: "{T}: Draw a card, then discard a card. Then put this artifact on the bottom of its owner's library.",
-        targets: [],
-        triggered: false,
-        activated: true,
-      } as unknown as StackObject,
-    )!;
+    const after = resolveScriptedAbility(s, {
+      id: "ab-1",
+      type: "ability",
+      sourceCardId: id("talisman"),
+      controllerId: f.p1,
+      text: "{T}: Draw a card, then discard a card. Then put this artifact on the bottom of its owner's library.",
+      targets: [],
+      triggered: false,
+      activated: true,
+    } as unknown as StackObject)!;
     // Drew one (now has beforeHand+1 in hand), then waiting on a
     // discard choice. Library is shorter by 1 (we drew the top).
     expect(after.zones.get(`${f.p1}-library`)!.cardIds.length).toBe(
@@ -5434,5 +5421,150 @@ describe("scripted SearchLibrary and ShuffleLibrary (#2566)", () => {
     // is asked.
     expect(after.waitingChoice?.choices.length).toBe(beforeHand + 1);
   });
-});
 
+  describe("SearchLibrary OR filter (#2594)", () => {
+    // The OR arm lets a card match any of N sub-filters. Top-level AND
+    // keys still apply; the `or` array is matched alongside (a card must
+    // pass all AND keys AND at least one OR sub-filter when `or` is set).
+    const ok = (effect: object) =>
+      CardScriptSchema.safeParse({ name: "X", oracle: "x", spell: [effect] })
+        .success;
+
+    it("schema: or is rejected when empty", () => {
+      expect(ok({ op: "SearchLibrary", filter: { or: [] } })).toBe(false);
+    });
+
+    it("schema: or alone is enough to satisfy the 'at least one key' refine", () => {
+      expect(
+        ok({ op: "SearchLibrary", filter: { or: [{ land: true }] } }),
+      ).toBe(true);
+    });
+
+    it("schema: or is recursive (a sub-filter can carry its own or)", () => {
+      // (creature with MV=1) OR ((land) OR (artifact))
+      expect(
+        ok({
+          op: "SearchLibrary",
+          filter: {
+            or: [
+              { creature: true, mv_eq: 1 },
+              { or: [{ land: true }, { artifact: true }] },
+            ],
+          },
+        }),
+      ).toBe(true);
+    });
+
+    it("schema: off-list keys still rejected inside or sub-filters", () => {
+      expect(
+        ok({
+          op: "SearchLibrary",
+          filter: { or: [{ fear: true }] },
+        }),
+      ).toBe(false);
+    });
+
+    it("engine: or matches the first card that hits any sub-filter", () => {
+      // "artifact or land" — the first matching card in library order
+      // moves to hand; the rest are still shuffled.
+      const f = fresh();
+      const beforeHand = new Set(f.state.zones.get(`${f.p1}-hand`)!.cardIds);
+      let s = setLibrary(
+        f.state,
+        f.p1,
+        ["creature-1", "land-1", "artifact-1"],
+        "Creature", // default type — override below
+      );
+      // Override the type_lines so the OR filter can distinguish.
+      const cards = new Map(s.cards);
+      for (const [cid, name, type] of [
+        [id("creature-1"), "creature-1", "Creature — Test"],
+        [id("land-1"), "land-1", "Basic Land — Plains"],
+        [id("artifact-1"), "artifact-1", "Artifact Creature — Construct"],
+      ] as const) {
+        const inst = cards.get(cid)!;
+        cards.set(cid, {
+          ...inst,
+          cardData: { ...inst.cardData, type_line: type },
+        });
+      }
+      s = { ...s, cards };
+      const after = resolveScriptedSpell(
+        s,
+        CardScriptSchema.parse({
+          name: "ArtifactOrLand",
+          oracle: "x",
+          spell: [
+            {
+              op: "SearchLibrary",
+              filter: { or: [{ artifact: true }, { land: true }] },
+            },
+          ],
+        }),
+        spell(f.p1),
+      );
+      // The fresh-state hand has a few default cards; the new card is
+      // whichever hand id was not in the starting set.
+      const afterHand = after.zones.get(`${f.p1}-hand`)!.cardIds;
+      const newCard = afterHand.find((c) => !beforeHand.has(c));
+      expect(newCard).toBeDefined();
+      // The newly-moved card is a land or an artifact (not a plain creature).
+      const movedName = after.cards.get(newCard!)!.cardData.name;
+      expect(["land-1", "artifact-1"]).toContain(movedName);
+      // The library was shuffled (CR 701.19b: even on a no-find, shuffle).
+      const afterLib = after.zones.get(`${f.p1}-library`)!.cardIds;
+      expect(afterLib).not.toEqual(s.zones.get(`${f.p1}-library`)!.cardIds);
+    });
+
+    it("engine: or combines with top-level AND keys (sub-filter must also pass)", () => {
+      // "creature OR (artifact with MV <= 2)" — but the AND key `color: G`
+      // applies to BOTH arms, so only green cards in either arm match.
+      const f = fresh();
+      const beforeHand = new Set(f.state.zones.get(`${f.p1}-hand`)!.cardIds);
+      let s = setLibrary(
+        f.state,
+        f.p1,
+        ["red-creature", "green-creature", "red-artifact", "green-artifact"],
+        "Creature",
+      );
+      const cards = new Map(s.cards);
+      for (const [cid, name, type, colors] of [
+        [id("red-creature"), "red-creature", "Creature — Test", ["R"]],
+        [id("green-creature"), "green-creature", "Creature — Test", ["G"]],
+        [id("red-artifact"), "red-artifact", "Artifact", ["R"]],
+        [id("green-artifact"), "green-artifact", "Artifact", ["G"]],
+      ] as const) {
+        const inst = cards.get(cid)!;
+        cards.set(cid, {
+          ...inst,
+          cardData: { ...inst.cardData, type_line: type, colors: [...colors] },
+        });
+      }
+      s = { ...s, cards };
+      const after = resolveScriptedSpell(
+        s,
+        CardScriptSchema.parse({
+          name: "GreenCreatureOrArtifact",
+          oracle: "x",
+          spell: [
+            {
+              op: "SearchLibrary",
+              filter: {
+                color: "G",
+                or: [{ creature: true }, { artifact: true }],
+              },
+            },
+          ],
+        }),
+        spell(f.p1),
+      );
+      const afterHand = after.zones.get(`${f.p1}-hand`)!.cardIds;
+      const newCard = afterHand.find((c) => !beforeHand.has(c));
+      expect(newCard).toBeDefined();
+      // Only green cards should be selected — red ones are filtered out
+      // by the top-level AND key. green-creature comes first in library
+      // order, so it wins.
+      expect(after.cards.get(newCard!)!.cardData.name).toBe("green-creature");
+    });
+  });
+});
