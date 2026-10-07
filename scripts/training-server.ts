@@ -20,7 +20,7 @@
  * `options`; answer priority/choice prompts by option index.
  */
 import { createInterface } from "node:readline";
-import { serializeGameState } from "@/lib/game-state";
+import { loadCardScripts, serializeGameState } from "@/lib/game-state";
 import type { SimDeckArchetype } from "@/ai/simulation/game-simulator";
 import {
   TrainingSession,
@@ -72,17 +72,21 @@ function handle(req: Record<string, unknown>): Record<string, unknown> {
   }
 }
 
-const rl = createInterface({ input: process.stdin });
-rl.on("line", (line) => {
-  if (!line.trim()) return;
-  let out: Record<string, unknown>;
-  try {
-    out = { ok: true, ...handle(JSON.parse(line)) };
-  } catch (err) {
-    out = {
-      ok: false,
-      error: err instanceof Error ? err.message : String(err),
-    };
-  }
-  process.stdout.write(JSON.stringify(out) + "\n");
+// Card scripts load in their own chunk; wait for them before taking
+// requests so no card reads as unscripted.
+void loadCardScripts().then(() => {
+  const rl = createInterface({ input: process.stdin });
+  rl.on("line", (line) => {
+    if (!line.trim()) return;
+    let out: Record<string, unknown>;
+    try {
+      out = { ok: true, ...handle(JSON.parse(line)) };
+    } catch (err) {
+      out = {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+    process.stdout.write(JSON.stringify(out) + "\n");
+  });
 });

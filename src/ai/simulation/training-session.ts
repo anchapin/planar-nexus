@@ -24,6 +24,7 @@ import {
   applyBlockDeclaration,
   applyDecisionAnswer,
   applyPriorityChoice,
+  cardScriptsLoaded,
   checkStateBasedActionsFromGameState as checkStateBasedActions,
   createInitialGameState,
   getPendingDecision,
@@ -144,6 +145,11 @@ export class TrainingSession {
 
   /** Start a new seeded game. Returns the player ids in seat order. */
   reset(seed: number, deckA: DeckList, deckB: DeckList): PlayerId[] {
+    if (!cardScriptsLoaded()) {
+      throw new TrainingRulesError(
+        "Card scripts are not loaded: await loadCardScripts() before reset()",
+      );
+    }
     this.cur = {
       state: null as unknown as GameState,
       rng: seed >>> 0,
