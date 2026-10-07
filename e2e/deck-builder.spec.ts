@@ -60,7 +60,10 @@ test.describe("Deck Builder", () => {
     // makes the count render unconditionally.
     const statsSection = page.locator(`[data-testid='deck-count']`).first();
 
-    await expect(statsSection).toBeVisible();
+    // #2485: on firefox the page is still "Initializing database..." at
+    // 5s (the CI screenshot shows the count rendering just after), so give
+    // the first paint the same budget as the other cold-load waits.
+    await expect(statsSection).toBeVisible({ timeout: 15_000 });
     await expect(statsSection).toContainText(/0|count|cards/i);
   });
 
