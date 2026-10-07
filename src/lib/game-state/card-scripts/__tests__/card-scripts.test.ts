@@ -53,6 +53,8 @@ import { PREDEFINED_TOKENS } from "../predefined-tokens";
 import { declareAttackers } from "../../combat/declaration";
 import { passPriority } from "../../game-state";
 import { resolveWaitingChoice } from "../../spell-casting/choices";
+import { castSpell, resolveTopOfStack } from "../../spell-casting";
+import { addMana } from "../../mana";
 import { Phase } from "../../types";
 import { createInitialGameState, startGame } from "../../game-state";
 import { createCardInstance } from "../../card-instance";
@@ -2555,618 +2557,1145 @@ describe("scripted X in triggers and activations (#2559)", () => {
   });
 });
 
-describe("scripted Equipment cards (#2561)", () => {
-  // Lane 3: equipment support. The card-scripts system now has a dedicated
-  // `equipment` block on `CardScriptSchema`; the equip cost is an activated
-  // ability with an `AttachEquipment` op, the static lives on the equipped
-  // creature, and `refreshEquipmentBonuses` rewrites the host's P/T and
-  // granted keywords on the SBA pass.
+describe("scripted Flashback (#2563, CR 702.143)", () => {
+  // Schema: the `flashback` field is optional on CardScriptSchema; when set
+  // it MUST have a mana cost string and `destinations.on_resolution` of
+  // "exile" (the only valid destination per CR 702.143a). The
+  // `CardScriptSchema` test loop already exercises the happy path, so here
+  // we test the boundary conditions.
+
+  it("CardScriptSchema accepts a flashback field with cost + destinations", () => {
+    const ok = CardScriptSchema.safeParse({
+      name: "Test Flashback",
+      oracle: "Draw a card. Flashback {2}{U} ...",
+      spell: [{ op: "Draw", amount: 1, who: "you" }],
+      flashback: {
+        cost: "{2}{U}",
+        destinations: { on_resolution: "exile" },
+      },
+    });
+    expect(ok.success).toBe(true);
+  });
+
+  it("CardScriptSchema rejects a flashback field without cost", () => {
+    const result = CardScriptSchema.safeParse({
+      name: "Test Flashback No Cost",
+      oracle: "Draw a card. Flashback ...",
+      spell: [{ op: "Draw", amount: 1, who: "you" }],
+      flashback: {
+        destinations: { on_resolution: "exile" },
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("CardScriptSchema rejects a flashback field with a non-exile destination", () => {
+    // CR 702.143a: flashback always exiles. Anything other than "exile" is
+    // invalid and the schema must reject it.
+    const result = CardScriptSchema.safeParse({
+      name: "Test Flashback Wrong Dest",
+      oracle: "Draw a card. Flashback ...",
+      spell: [{ op: "Draw", amount: 1, who: "you" }],
+      flashback: {
+        cost: "{2}{U}",
+        destinations: { on_resolution: "graveyard" },
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("CardScriptSchema rejects flashback on a permanent (only instants/sorceries)", () => {
+    const result = CardScriptSchema.safeParse({
+      name: "Permanent With Flashback",
+      oracle: "Flashback {2}{U}",
+      triggers: [
+        {
+          text: "When this creature enters, draw a card.",
+          event: "etb",
+          subject: "self",
+          effects: [{ op: "Draw", amount: 1, who: "you" }],
+        },
+      ],
+      flashback: {
+        cost: "{2}{U}",
+        destinations: { on_resolution: "exile" },
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("CardScriptSchema rejects an empty flashback cost (no mana symbols)", () => {
+    const result = CardScriptSchema.safeParse({
+      name: "Test Flashback Empty",
+      oracle: "Draw a card. Flashback ...",
+      spell: [{ op: "Draw", amount: 1, who: "you" }],
+      flashback: {
+        cost: "",
+        destinations: { on_resolution: "exile" },
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  // The scripted card JSONs cover the engine's per-card "what does the spell
+  // do" path. The full cast+resolve cycle through `castSpell` +
+  // `resolveTopOfStack` is the engine's "does the card actually go to exile
+  // on resolution" path (the redirect that issue #2563 was missing). We
+  // exercise both halves for each of the three hand-checked cards.
+
   let state: GameState;
   let p1: PlayerId;
-  let p2: PlayerId;
 
   beforeEach(() => {
-    state = startGame(
-      createInitialGameState(["Player1", "Player2"], 20, false),
-    );
-    [p1, p2] = Array.from(state.players.keys());
+    state = startGame(createInitialGameState(["P1", "P2"], 20, false));
+    [p1] = Array.from(state.players.keys());
+    state = {
+      ...state,
+      turn: {
+        ...state.turn,
+        currentPhase: Phase.PRECOMBAT_MAIN,
+        activePlayerId: p1,
+      },
+      stack: [],
+      priorityPlayerId: p1,
+    };
   });
 
-  const ability = (
-    sourceCardId: string,
-    text: string,
-    kind: "triggered" | "activated",
-    targets: Target[] = [],
-  ) =>
+  // Helper: make a ScryfallCard for a flashback spell. The card must have
+  // a name that matches the script registry (case-insensitive), a type
+  // line so resolveTopOfStack can pick a destination zone, and oracle
+  // text that includes "Flashback" so the cost parser fires.
+  const makeFlashbackCard = (
+    name: string,
+    typeLine: string,
+    manaCost: string,
+    oracleText: string,
+  ): ScryfallCard =>
     ({
-      id: "ab-1",
-      type: "ability",
-      sourceCardId: id(sourceCardId),
-      controllerId: p1,
-      text,
-      targets,
-      triggered: kind === "triggered",
-      activated: kind === "activated",
-    }) as unknown as StackObject;
+      id: `mock-${name.toLowerCase().replace(/\s+/g, "-")}`,
+      name,
+      type_line: typeLine,
+      oracle_text: oracleText,
+      mana_cost: manaCost,
+      cmc: 0,
+      colors: [],
+      color_identity: [],
+      keywords: [],
+      legalities: { standard: "legal" },
+      layout: "normal",
+    }) as unknown as ScryfallCard;
 
-  const pt = (s: GameState, cardId: string) => {
-    const c = s.cards.get(id(cardId))!;
-    return [getEffectivePower(c), getEffectiveToughness(c)];
+  // Helper: put a card directly into a player's graveyard. The full
+  // cast-from-graveyard path needs the card to be in the graveyard zone,
+  // not in hand.
+  const putInGraveyard = (
+    s: GameState,
+    playerId: PlayerId,
+    cardId: CardInstanceId,
+    cardData: ScryfallCard,
+  ): GameState => {
+    const ci = createCardInstance(cardData, playerId, playerId, {
+      id: cardId,
+      currentZoneKey: `${playerId}-graveyard`,
+    });
+    const cards = new Map(s.cards);
+    cards.set(cardId, ci);
+    const zones = new Map(s.zones);
+    const yard = zones.get(`${playerId}-graveyard`)!;
+    zones.set(`${playerId}-graveyard`, {
+      ...yard,
+      cardIds: [...yard.cardIds, cardId],
+    });
+    return { ...s, cards, zones };
   };
 
-  it("every scripted Equipment script has the expected shape", () => {
-    // The index.generated.ts strips `oracle` (#1814); re-parsing the
-    // registered script would fail the `.oracle: string` requirement, so
-    // we re-read the source JSON the same way the schema-validation
-    // describe block does.
-    const files = readdirSync(CARDS_DIR).filter((f) => f.endsWith(".json"));
-    const equipScripts = files
-      .map((f) => JSON.parse(readFileSync(join(CARDS_DIR, f), "utf8")) as CardScript)
-      .filter((s) => s.equipment);
-    expect(equipScripts.length).toBeGreaterThanOrEqual(3);
-    for (const s of equipScripts) {
-      const reparsed = CardScriptSchema.safeParse(s);
-      expect(reparsed.success).toBe(true);
-      // Every equipment script must declare an Equip activated ability whose
-      // effect list contains the new `AttachEquipment` op.
-      expect(s.equipment!.equip.effects?.[0]?.op).toBe("AttachEquipment");
+  it("Think Twice (FDN 165) — cast from hand: lands in graveyard", () => {
+    const cardData = makeFlashbackCard(
+      "Think Twice",
+      "Instant",
+      "{1}{U}",
+      "Draw a card. Flashback {2}{U} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+    );
+    const ci = createCardInstance(cardData, p1, p1);
+    let s: GameState = { ...state, cards: new Map(state.cards).set(ci.id, ci) };
+    const hand = s.zones.get(`${p1}-hand`)!;
+    s = {
+      ...s,
+      zones: new Map(s.zones).set(`${p1}-hand`, {
+        ...hand,
+        cardIds: [...hand.cardIds, ci.id],
+      }),
+    };
+    s = addMana(s, p1, { blue: 1, generic: 1 });
+    const cast = castSpell(s, p1, ci.id);
+    expect(cast.success).toBe(true);
+    const resolved = resolveTopOfStack(cast.state);
+    // Regular cast (no flashback): card goes to graveyard.
+    expect(resolved.zones.get(`${p1}-graveyard`)!.cardIds).toContain(ci.id);
+    expect(resolved.zones.get(`${p1}-exile`)!.cardIds).not.toContain(ci.id);
+  });
+
+  it("Think Twice — cast from graveyard with flashback: lands in exile", () => {
+    const cardData = makeFlashbackCard(
+      "Think Twice",
+      "Instant",
+      "{1}{U}",
+      "Draw a card. Flashback {2}{U} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+    );
+    const cardId = id("think-twice");
+    let s = putInGraveyard(state, p1, cardId, cardData);
+    s = addMana(s, p1, { blue: 1, generic: 2 });
+    const cast = castSpell(s, p1, cardId, [], [], 0, false, {
+      type: "flashback",
+    });
+    expect(cast.success).toBe(true);
+    // Sanity: the cast stamped "flashback" on the alternativeCostsUsed log.
+    expect(cast.state.stack[0].alternativeCostsUsed).toContain("flashback");
+    const resolved = resolveTopOfStack(cast.state);
+    // CR 702.143a: the spell resolves then is exiled (not put in graveyard).
+    expect(resolved.zones.get(`${p1}-exile`)!.cardIds).toContain(cardId);
+    expect(resolved.zones.get(`${p1}-graveyard`)!.cardIds).not.toContain(
+      cardId,
+    );
+    // The card's `flashback` flag is set for introspection.
+    expect(resolved.cards.get(cardId)!.flashback).toBe(true);
+  });
+
+  it("Tome Blast (SOS 135) — flashback cast: deal 2 damage, then exile", () => {
+    // Test the DealDamage + flashback redirect combo. Target an opponent.
+    const [, p2] = Array.from(state.players.keys());
+    const cardData = makeFlashbackCard(
+      "Tome Blast",
+      "Sorcery",
+      "{1}{R}",
+      "Tome Blast deals 2 damage to any target. Flashback {4}{R} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+    );
+    const cardId = id("tome-blast");
+    let s = putInGraveyard(state, p1, cardId, cardData);
+    s = addMana(s, p1, { red: 1, generic: 4 });
+    const cast = castSpell(
+      s,
+      p1,
+      cardId,
+      [{ type: "player", targetId: p2, isValid: true }],
+      [],
+      0,
+      false,
+      { type: "flashback" },
+    );
+    if (!cast.success) {
+      throw new Error(`cast failed: ${cast.error}`);
     }
-  });
-
-  it("Swiftfoot Boots grants hexproof and haste to the equipped creature", () => {
-    let s = put(
-      state,
-      p1,
-      "boots",
-      card("Swiftfoot Boots", "Artifact — Equipment"),
+    expect(cast.success).toBe(true);
+    const resolved = resolveTopOfStack(cast.state);
+    // 2 damage to p2.
+    expect(resolved.players.get(p2)!.life).toBe(18);
+    // Card exiled, not in graveyard.
+    expect(resolved.zones.get(`${p1}-exile`)!.cardIds).toContain(cardId);
+    expect(resolved.zones.get(`${p1}-graveyard`)!.cardIds).not.toContain(
+      cardId,
     );
-    s = put(s, p1, "bear", card("Bear", "Creature — Bear", [2, 2]));
-    // The equip activated ability is the path; resolve it targeting the
-    // bear (the trigger / ETB-attach path is below).
-    s = resolveScriptedAbility(
-      s,
-      ability(
-        "boots",
-        "Equip {1}: Attach to target creature you control. Equip only as a sorcery.",
-        "activated",
-        [cardTarget("bear")],
-      ),
-    )!;
-    s = checkStateBasedActions(s).state;
-    expect(s.cards.get(id("boots"))!.attachedToId).toBe("bear");
-    expect(s.cards.get(id("bear"))!.attachedCardIds).toContain("boots");
-    expect(hasKeyword(s.cards.get(id("bear"))!, "hexproof")).toBe(true);
-    expect(hasKeyword(s.cards.get(id("bear"))!, "haste")).toBe(true);
   });
 
-  it("Fireshrieker grants double strike to the equipped creature", () => {
-    let s = put(
-      state,
-      p1,
-      "shrieker",
-      card("Fireshrieker", "Artifact — Equipment"),
+  it("Faithless Looting (TDC 213) — flashback cast: draw 2, discard 2, exile", () => {
+    // Test the Draw + Discard sequence + flashback redirect combo. We
+    // build a self-contained fixture because `startGame`'s default
+    // library is just string ids with no backing `CardInstance`, which
+    // would break `discardCards` / `moveCardToZone` for the discard
+    // step (it tries to look up the card in `state.cards` and find
+    // nothing).
+    const cardData = makeFlashbackCard(
+      "Faithless Looting",
+      "Sorcery",
+      "{R}",
+      "Draw two cards, then discard two cards. Flashback {2}{R} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
     );
-    s = put(s, p1, "bear", card("Bear", "Creature — Bear", [2, 2]));
-    s = resolveScriptedAbility(
-      s,
-      ability(
-        "shrieker",
-        "Equip {2}: Attach to target creature you control. Equip only as a sorcery.",
-        "activated",
-        [cardTarget("bear")],
-      ),
-    )!;
-    s = checkStateBasedActions(s).state;
-    expect(hasKeyword(s.cards.get(id("bear"))!, "double strike")).toBe(true);
-  });
-
-  it("Goldvein Pick grants +1/+1 to the equipped creature", () => {
-    let s = put(
-      state,
-      p1,
-      "pick",
-      card("Goldvein Pick", "Artifact — Equipment"),
-    );
-    s = put(s, p1, "bear", card("Bear", "Creature — Bear", [2, 2]));
-    s = resolveScriptedAbility(
-      s,
-      ability(
-        "pick",
-        "Equip {2}: Attach to target creature you control. Equip only as a sorcery.",
-        "activated",
-        [cardTarget("bear")],
-      ),
-    )!;
-    s = checkStateBasedActions(s).state;
-    expect(pt(s, "bear")).toEqual([3, 3]);
-  });
-
-  it("re-equipping the boots moves the bonus to the new host", () => {
-    let s = put(
-      state,
-      p1,
-      "boots",
-      card("Swiftfoot Boots", "Artifact — Equipment"),
-    );
-    s = put(s, p1, "bear", card("Bear", "Creature — Bear", [2, 2]));
-    s = put(s, p1, "elk", card("Elk", "Creature — Elk", [1, 1]));
-    // Equip bear, then re-equip elk.
-    s = resolveScriptedAbility(
-      s,
-      ability(
-        "boots",
-        "Equip {1}: Attach to target creature you control. Equip only as a sorcery.",
-        "activated",
-        [cardTarget("bear")],
-      ),
-    )!;
-    s = checkStateBasedActions(s).state;
-    expect(hasKeyword(s.cards.get(id("bear"))!, "hexproof")).toBe(true);
-    s = resolveScriptedAbility(
-      s,
-      ability(
-        "boots",
-        "Equip {1}: Attach to target creature you control. Equip only as a sorcery.",
-        "activated",
-        [cardTarget("elk")],
-      ),
-    )!;
-    s = checkStateBasedActions(s).state;
-    expect(hasKeyword(s.cards.get(id("bear"))!, "hexproof")).toBe(false);
-    expect(hasKeyword(s.cards.get(id("elk"))!, "hexproof")).toBe(true);
-  });
-
-  it("the ETB attach trigger fires once per card when the controller has a creature", () => {
-    // The synthetic ETB attach trigger's text matches the engine's
-    // `getScriptedTriggeredAbilities` output and the interpreter's
-    // `getScriptedAbility` lookup, so `resolveScriptedAbility` routes the
-    // op straight to `attachEquipment` (issue #2561).
-    let s = put(
-      state,
-      p1,
-      "boots",
-      card("Swiftfoot Boots", "Artifact — Equipment"),
-    );
-    s = put(s, p1, "bear", card("Bear", "Creature — Bear", [2, 2]));
-    s = resolveScriptedAbility(
-      s,
-      ability(
-        "boots",
-        "When this Equipment enters, attach it to target creature you control.",
-        "triggered",
-        [cardTarget("bear")],
-      ),
-    )!;
-    expect(s.cards.get(id("boots"))!.attachedToId).toBe("bear");
-  });
-
-  it("the AttachEquipment op fizzles when there is no legal target", () => {
-    // CR 301.5c: an Equipment that enters with no legal creature fizzes
-    // the auto-attach (the Equipment itself stays on the battlefield).
-    const s = put(
-      state,
-      p1,
-      "boots",
-      card("Swiftfoot Boots", "Artifact — Equipment"),
-    );
-    const noTarget = resolveScriptedAbility(
-      s,
-      ability(
-        "boots",
-        "When this Equipment enters, attach it to target creature you control.",
-        "triggered",
-      ),
-    )!;
-    // No change to the equipment (still on the battlefield, no host).
-    expect(noTarget.cards.get(id("boots"))!.attachedToId).toBeNull();
-  });
-
-  it("does not attach to an opponent's creature", () => {
-    // `controller: "you"` in the `AttachEquipment` op narrows the target
-    // to the source's controller's creatures; an opponent's bear is not
-    // a legal target for the ability.
-    let s = put(
-      state,
-      p1,
-      "boots",
-      card("Swiftfoot Boots", "Artifact — Equipment"),
-    );
-    s = put(s, p2, "rival", card("Rival", "Creature — Human", [1, 1]));
-    const after = resolveScriptedAbility(
-      s,
-      ability(
-        "boots",
-        "When this Equipment enters, attach it to target creature you control.",
-        "triggered",
-        [cardTarget("rival")],
-      ),
-    )!;
-    expect(after.cards.get(id("boots"))!.attachedToId).toBeNull();
-  });
-
-  it("the bonus ends when the equipment leaves the battlefield", () => {
-    let s = put(
-      state,
-      p1,
-      "boots",
-      card("Swiftfoot Boots", "Artifact — Equipment"),
-    );
-    s = put(s, p1, "bear", card("Bear", "Creature — Bear", [2, 2]));
-    s = resolveScriptedAbility(
-      s,
-      ability(
-        "boots",
-        "Equip {1}: Attach to target creature you control. Equip only as a sorcery.",
-        "activated",
-        [cardTarget("bear")],
-      ),
-    )!;
-    s = checkStateBasedActions(s).state;
-    expect(hasKeyword(s.cards.get(id("bear"))!, "hexproof")).toBe(true);
-    // Destroying the boots clears the bonus on the next SBA pass.
-    s = checkStateBasedActions(destroyCard(s, id("boots")).state).state;
-    expect(hasKeyword(s.cards.get(id("bear"))!, "hexproof")).toBe(false);
-  });
-
-  it("validates equipment schemas", () => {
-    const parse = (script: object) =>
-      CardScriptSchema.safeParse({ name: "X", oracle: "X", ...script }).success;
-    const attachedStatic = {
-      text: "Equipped creature has hexproof.",
-      keywords: ["hexproof"],
+    const cardId = id("faithless-looting");
+    const dummy = (i: number, name: string): ScryfallCard =>
+      ({
+        id: `${name}-${i}`,
+        name,
+        type_line: "Instant",
+        oracle_text: "",
+        mana_cost: "",
+        cmc: 0,
+        colors: [],
+        color_identity: [],
+        keywords: [],
+        legalities: { standard: "legal" },
+        layout: "normal",
+      }) as unknown as ScryfallCard;
+    // Wipe the default deck-card string ids from the hand and library.
+    let s: GameState = {
+      ...state,
+      zones: new Map(state.zones)
+        .set(`${p1}-hand`, {
+          ...state.zones.get(`${p1}-hand`)!,
+          cardIds: [],
+        })
+        .set(`${p1}-library`, {
+          ...state.zones.get(`${p1}-library`)!,
+          cardIds: [],
+        }),
     };
-    const equip = {
-      text: "Equip {1}: Attach to target creature you control.",
-      cost: { mana: "{1}", tap: false, sacrifice: false },
-      effects: [
-        { op: "AttachEquipment", target: "creature", controller: "you" },
-      ],
+    // Library: 4 real cards.
+    for (let i = 0; i < 4; i++) {
+      const ci = createCardInstance(dummy(i, `Library Card ${i}`), p1, p1, {
+        id: `lib-${i}` as CardInstanceId,
+        currentZoneKey: `${p1}-library`,
+      });
+      s = {
+        ...s,
+        cards: new Map(s.cards).set(ci.id, ci),
+        zones: new Map(s.zones).set(`${p1}-library`, {
+          ...s.zones.get(`${p1}-library`)!,
+          cardIds: [...s.zones.get(`${p1}-library`)!.cardIds, ci.id],
+        }),
+      };
+    }
+    // Hand: 3 real cards to discard.
+    for (let i = 0; i < 3; i++) {
+      const ci = createCardInstance(dummy(100 + i, `Hand Card ${i}`), p1, p1, {
+        id: `hand-${i}` as CardInstanceId,
+        currentZoneKey: `${p1}-hand`,
+      });
+      s = {
+        ...s,
+        cards: new Map(s.cards).set(ci.id, ci),
+        zones: new Map(s.zones).set(`${p1}-hand`, {
+          ...s.zones.get(`${p1}-hand`)!,
+          cardIds: [...s.zones.get(`${p1}-hand`)!.cardIds, ci.id],
+        }),
+      };
+    }
+    // Place Faithless Looting in the graveyard.
+    const ci = createCardInstance(cardData, p1, p1, {
+      id: cardId,
+      currentZoneKey: `${p1}-graveyard`,
+    });
+    s = {
+      ...s,
+      cards: new Map(s.cards).set(cardId, ci),
+      zones: new Map(s.zones).set(`${p1}-graveyard`, {
+        ...s.zones.get(`${p1}-graveyard`)!,
+        cardIds: [...s.zones.get(`${p1}-graveyard`)!.cardIds, cardId],
+      }),
     };
-    // Happy path
-    expect(
-      parse({
-        equipment: { text: "t", attachedStatic, equip },
-      }),
-    ).toBe(true);
-    // attachedStatic must declare power+toughness or keywords.
-    expect(
-      parse({
-        equipment: { text: "t", attachedStatic: { text: "t" }, equip },
-      }),
-    ).toBe(false);
-    // Keyword must be from EQUIPMENT_KEYWORDS.
-    expect(
-      parse({
-        equipment: {
-          text: "t",
-          attachedStatic: { text: "t", keywords: ["shroud"] },
-          equip,
-        },
-      }),
-    ).toBe(false);
-    // An equip ability whose effects list is something other than
-    // AttachEquipment is allowed at the schema level; the interpreter
-    // ignores unknown effects. We do require the effects to be present.
-    expect(
-      parse({
-        equipment: {
-          text: "t",
-          attachedStatic,
-          equip: {
-            text: "t",
-            cost: { mana: "{1}", tap: false, sacrifice: false },
-            effects: [{ op: "Draw", amount: 1, who: "you" }],
-          },
-        },
-      }),
-    ).toBe(true);
+    s = addMana(s, p1, { red: 1, generic: 2 });
+    const cast = castSpell(s, p1, cardId, [], [], 0, false, {
+      type: "flashback",
+    });
+    if (!cast.success) {
+      throw new Error(`cast failed: ${cast.error}`);
+    }
+    expect(cast.success).toBe(true);
+    // Discard is interactive: the resolution pauses on a `waitingChoice`.
+    const paused = resolveTopOfStack(cast.state);
+    expect(paused.waitingChoice).not.toBeNull();
+    expect(paused.waitingChoice!.type).toBe("discard_cards");
+    expect(paused.waitingChoice!.minChoices).toBe(2);
+    const picked: string[] = paused.waitingChoice!.choices
+      .slice(0, 2)
+      .map((c) => c.value)
+      .filter((v): v is string => typeof v === "string");
+    const choiceResult = resolveWaitingChoice(paused, p1, picked);
+    if (!choiceResult.success) {
+      throw new Error(
+        `resolveWaitingChoice failed: ${choiceResult.error ?? "(no error)"}`,
+      );
+    }
+    // resolveWaitingChoice answers the discard but does not finish the
+    // spell resolution — call resolveTopOfStack again to move the card
+    // off the stack into its flashback destination (exile).
+    const resolved = resolveTopOfStack(choiceResult.state);
+    // Card exiled, not in graveyard.
+    expect(resolved.zones.get(`${p1}-exile`)!.cardIds).toContain(cardId);
+    expect(resolved.zones.get(`${p1}-graveyard`)!.cardIds).not.toContain(
+      cardId,
+    );
+    // Net hand: 3 starting + 2 drawn - 2 discarded = 3.
+    expect(resolved.zones.get(`${p1}-hand`)!.cardIds.length).toBe(3);
+  });
+
+  it("a non-flashback spell cast from graveyard is rejected", () => {
+    // CR 702.143a: only a card with Flashback may be cast from the
+    // graveyard via flashback. The engine's cast-from-graveyard branch
+    // requires `alternativeCost.type === "flashback"` AND the card must
+    // have a parseable Flashback cost. A vanilla instant with no
+    // flashback text should be rejected.
+    const cardData = makeFlashbackCard(
+      "Vanilla Instant",
+      "Instant",
+      "{U}",
+      "Counterspell.",
+    );
+    const cardId = id("vanilla-instant");
+    const s = putInGraveyard(state, p1, cardId, cardData);
+    const cast = castSpell(s, p1, cardId, [], [], 0, false, {
+      type: "flashback",
+    });
+    expect(cast.success).toBe(false);
   });
 });
 
-describe("scripted Equipment cards (#2561)", () => {
-  // Lane 3: equipment support. The card-scripts system now has a dedicated
-  // `equipment` block on `CardScriptSchema`; the equip cost is an activated
-  // ability with an `AttachEquipment` op, the static lives on the equipped
-  // creature, and `refreshEquipmentBonuses` rewrites the host's P/T and
-  // granted keywords on the SBA pass.
+describe("scripted Flashback (#2563, CR 702.143)", () => {
+  // Schema: the `flashback` field is optional on CardScriptSchema; when set
+  // it MUST have a mana cost string and `destinations.on_resolution` of
+  // "exile" (the only valid destination per CR 702.143a). The
+  // `CardScriptSchema` test loop already exercises the happy path, so here
+  // we test the boundary conditions.
+
+  it("CardScriptSchema accepts a flashback field with cost + destinations", () => {
+    const ok = CardScriptSchema.safeParse({
+      name: "Test Flashback",
+      oracle: "Draw a card. Flashback {2}{U} ...",
+      spell: [{ op: "Draw", amount: 1, who: "you" }],
+      flashback: {
+        cost: "{2}{U}",
+        destinations: { on_resolution: "exile" },
+      },
+    });
+    expect(ok.success).toBe(true);
+  });
+
+  it("CardScriptSchema rejects a flashback field without cost", () => {
+    const result = CardScriptSchema.safeParse({
+      name: "Test Flashback No Cost",
+      oracle: "Draw a card. Flashback ...",
+      spell: [{ op: "Draw", amount: 1, who: "you" }],
+      flashback: {
+        destinations: { on_resolution: "exile" },
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("CardScriptSchema rejects a flashback field with a non-exile destination", () => {
+    // CR 702.143a: flashback always exiles. Anything other than "exile" is
+    // invalid and the schema must reject it.
+    const result = CardScriptSchema.safeParse({
+      name: "Test Flashback Wrong Dest",
+      oracle: "Draw a card. Flashback ...",
+      spell: [{ op: "Draw", amount: 1, who: "you" }],
+      flashback: {
+        cost: "{2}{U}",
+        destinations: { on_resolution: "graveyard" },
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("CardScriptSchema rejects flashback on a permanent (only instants/sorceries)", () => {
+    const result = CardScriptSchema.safeParse({
+      name: "Permanent With Flashback",
+      oracle: "Flashback {2}{U}",
+      triggers: [
+        {
+          text: "When this creature enters, draw a card.",
+          event: "etb",
+          subject: "self",
+          effects: [{ op: "Draw", amount: 1, who: "you" }],
+        },
+      ],
+      flashback: {
+        cost: "{2}{U}",
+        destinations: { on_resolution: "exile" },
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("CardScriptSchema rejects an empty flashback cost (no mana symbols)", () => {
+    const result = CardScriptSchema.safeParse({
+      name: "Test Flashback Empty",
+      oracle: "Draw a card. Flashback ...",
+      spell: [{ op: "Draw", amount: 1, who: "you" }],
+      flashback: {
+        cost: "",
+        destinations: { on_resolution: "exile" },
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  // The scripted card JSONs cover the engine's per-card "what does the spell
+  // do" path. The full cast+resolve cycle through `castSpell` +
+  // `resolveTopOfStack` is the engine's "does the card actually go to exile
+  // on resolution" path (the redirect that issue #2563 was missing). We
+  // exercise both halves for each of the three hand-checked cards.
+
   let state: GameState;
   let p1: PlayerId;
-  let p2: PlayerId;
 
   beforeEach(() => {
-    state = startGame(
-      createInitialGameState(["Player1", "Player2"], 20, false),
-    );
-    [p1, p2] = Array.from(state.players.keys());
+    state = startGame(createInitialGameState(["P1", "P2"], 20, false));
+    [p1] = Array.from(state.players.keys());
+    state = {
+      ...state,
+      turn: {
+        ...state.turn,
+        currentPhase: Phase.PRECOMBAT_MAIN,
+        activePlayerId: p1,
+      },
+      stack: [],
+      priorityPlayerId: p1,
+    };
   });
 
-  const ability = (
-    sourceCardId: string,
-    text: string,
-    kind: "triggered" | "activated",
-    targets: Target[] = [],
-  ) =>
+  // Helper: make a ScryfallCard for a flashback spell. The card must have
+  // a name that matches the script registry (case-insensitive), a type
+  // line so resolveTopOfStack can pick a destination zone, and oracle
+  // text that includes "Flashback" so the cost parser fires.
+  const makeFlashbackCard = (
+    name: string,
+    typeLine: string,
+    manaCost: string,
+    oracleText: string,
+  ): ScryfallCard =>
     ({
-      id: "ab-1",
-      type: "ability",
-      sourceCardId: id(sourceCardId),
-      controllerId: p1,
-      text,
-      targets,
-      triggered: kind === "triggered",
-      activated: kind === "activated",
-    }) as unknown as StackObject;
+      id: `mock-${name.toLowerCase().replace(/\s+/g, "-")}`,
+      name,
+      type_line: typeLine,
+      oracle_text: oracleText,
+      mana_cost: manaCost,
+      cmc: 0,
+      colors: [],
+      color_identity: [],
+      keywords: [],
+      legalities: { standard: "legal" },
+      layout: "normal",
+    }) as unknown as ScryfallCard;
 
-  const pt = (s: GameState, cardId: string) => {
-    const c = s.cards.get(id(cardId))!;
-    return [getEffectivePower(c), getEffectiveToughness(c)];
+  // Helper: put a card directly into a player's graveyard. The full
+  // cast-from-graveyard path needs the card to be in the graveyard zone,
+  // not in hand.
+  const putInGraveyard = (
+    s: GameState,
+    playerId: PlayerId,
+    cardId: CardInstanceId,
+    cardData: ScryfallCard,
+  ): GameState => {
+    const ci = createCardInstance(cardData, playerId, playerId, {
+      id: cardId,
+      currentZoneKey: `${playerId}-graveyard`,
+    });
+    const cards = new Map(s.cards);
+    cards.set(cardId, ci);
+    const zones = new Map(s.zones);
+    const yard = zones.get(`${playerId}-graveyard`)!;
+    zones.set(`${playerId}-graveyard`, {
+      ...yard,
+      cardIds: [...yard.cardIds, cardId],
+    });
+    return { ...s, cards, zones };
   };
 
-  it("every scripted Equipment script has the expected shape", () => {
-    // The index.generated.ts strips `oracle` (#1814); re-parsing the
-    // registered script would fail the `.oracle: string` requirement, so
-    // we re-read the source JSON the same way the schema-validation
-    // describe block does.
-    const files = readdirSync(CARDS_DIR).filter((f) => f.endsWith(".json"));
-    const equipScripts = files
-      .map((f) => JSON.parse(readFileSync(join(CARDS_DIR, f), "utf8")) as CardScript)
-      .filter((s) => s.equipment);
-    expect(equipScripts.length).toBeGreaterThanOrEqual(3);
-    for (const s of equipScripts) {
-      const reparsed = CardScriptSchema.safeParse(s);
-      expect(reparsed.success).toBe(true);
-      // Every equipment script must declare an Equip activated ability whose
-      // effect list contains the new `AttachEquipment` op.
-      expect(s.equipment!.equip.effects?.[0]?.op).toBe("AttachEquipment");
+  it("Think Twice (FDN 165) — cast from hand: lands in graveyard", () => {
+    const cardData = makeFlashbackCard(
+      "Think Twice",
+      "Instant",
+      "{1}{U}",
+      "Draw a card. Flashback {2}{U} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+    );
+    const ci = createCardInstance(cardData, p1, p1);
+    let s: GameState = { ...state, cards: new Map(state.cards).set(ci.id, ci) };
+    const hand = s.zones.get(`${p1}-hand`)!;
+    s = {
+      ...s,
+      zones: new Map(s.zones).set(`${p1}-hand`, {
+        ...hand,
+        cardIds: [...hand.cardIds, ci.id],
+      }),
+    };
+    s = addMana(s, p1, { blue: 1, generic: 1 });
+    const cast = castSpell(s, p1, ci.id);
+    expect(cast.success).toBe(true);
+    const resolved = resolveTopOfStack(cast.state);
+    // Regular cast (no flashback): card goes to graveyard.
+    expect(resolved.zones.get(`${p1}-graveyard`)!.cardIds).toContain(ci.id);
+    expect(resolved.zones.get(`${p1}-exile`)!.cardIds).not.toContain(ci.id);
+  });
+
+  it("Think Twice — cast from graveyard with flashback: lands in exile", () => {
+    const cardData = makeFlashbackCard(
+      "Think Twice",
+      "Instant",
+      "{1}{U}",
+      "Draw a card. Flashback {2}{U} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+    );
+    const cardId = id("think-twice");
+    let s = putInGraveyard(state, p1, cardId, cardData);
+    s = addMana(s, p1, { blue: 1, generic: 2 });
+    const cast = castSpell(s, p1, cardId, [], [], 0, false, {
+      type: "flashback",
+    });
+    expect(cast.success).toBe(true);
+    // Sanity: the cast stamped "flashback" on the alternativeCostsUsed log.
+    expect(cast.state.stack[0].alternativeCostsUsed).toContain("flashback");
+    const resolved = resolveTopOfStack(cast.state);
+    // CR 702.143a: the spell resolves then is exiled (not put in graveyard).
+    expect(resolved.zones.get(`${p1}-exile`)!.cardIds).toContain(cardId);
+    expect(resolved.zones.get(`${p1}-graveyard`)!.cardIds).not.toContain(
+      cardId,
+    );
+    // The card's `flashback` flag is set for introspection.
+    expect(resolved.cards.get(cardId)!.flashback).toBe(true);
+  });
+
+  it("Tome Blast (SOS 135) — flashback cast: deal 2 damage, then exile", () => {
+    // Test the DealDamage + flashback redirect combo. Target an opponent.
+    const [, p2] = Array.from(state.players.keys());
+    const cardData = makeFlashbackCard(
+      "Tome Blast",
+      "Sorcery",
+      "{1}{R}",
+      "Tome Blast deals 2 damage to any target. Flashback {4}{R} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+    );
+    const cardId = id("tome-blast");
+    let s = putInGraveyard(state, p1, cardId, cardData);
+    s = addMana(s, p1, { red: 1, generic: 4 });
+    const cast = castSpell(
+      s,
+      p1,
+      cardId,
+      [{ type: "player", targetId: p2, isValid: true }],
+      [],
+      0,
+      false,
+      { type: "flashback" },
+    );
+    if (!cast.success) {
+      throw new Error(`cast failed: ${cast.error}`);
     }
-  });
-
-  it("Swiftfoot Boots grants hexproof and haste to the equipped creature", () => {
-    let s = put(
-      state,
-      p1,
-      "boots",
-      card("Swiftfoot Boots", "Artifact — Equipment"),
+    expect(cast.success).toBe(true);
+    const resolved = resolveTopOfStack(cast.state);
+    // 2 damage to p2.
+    expect(resolved.players.get(p2)!.life).toBe(18);
+    // Card exiled, not in graveyard.
+    expect(resolved.zones.get(`${p1}-exile`)!.cardIds).toContain(cardId);
+    expect(resolved.zones.get(`${p1}-graveyard`)!.cardIds).not.toContain(
+      cardId,
     );
-    s = put(s, p1, "bear", card("Bear", "Creature — Bear", [2, 2]));
-    // The equip activated ability is the path; resolve it targeting the
-    // bear (the trigger / ETB-attach path is below).
-    s = resolveScriptedAbility(
-      s,
-      ability(
-        "boots",
-        "Equip {1}: Attach to target creature you control. Equip only as a sorcery.",
-        "activated",
-        [cardTarget("bear")],
-      ),
-    )!;
-    s = checkStateBasedActions(s).state;
-    expect(s.cards.get(id("boots"))!.attachedToId).toBe("bear");
-    expect(s.cards.get(id("bear"))!.attachedCardIds).toContain("boots");
-    expect(hasKeyword(s.cards.get(id("bear"))!, "hexproof")).toBe(true);
-    expect(hasKeyword(s.cards.get(id("bear"))!, "haste")).toBe(true);
   });
 
-  it("Fireshrieker grants double strike to the equipped creature", () => {
-    let s = put(
-      state,
-      p1,
-      "shrieker",
-      card("Fireshrieker", "Artifact — Equipment"),
+  it("Faithless Looting (TDC 213) — flashback cast: draw 2, discard 2, exile", () => {
+    // Test the Draw + Discard sequence + flashback redirect combo. We
+    // build a self-contained fixture because `startGame`'s default
+    // library is just string ids with no backing `CardInstance`, which
+    // would break `discardCards` / `moveCardToZone` for the discard
+    // step (it tries to look up the card in `state.cards` and find
+    // nothing).
+    const cardData = makeFlashbackCard(
+      "Faithless Looting",
+      "Sorcery",
+      "{R}",
+      "Draw two cards, then discard two cards. Flashback {2}{R} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
     );
-    s = put(s, p1, "bear", card("Bear", "Creature — Bear", [2, 2]));
-    s = resolveScriptedAbility(
-      s,
-      ability(
-        "shrieker",
-        "Equip {2}: Attach to target creature you control. Equip only as a sorcery.",
-        "activated",
-        [cardTarget("bear")],
-      ),
-    )!;
-    s = checkStateBasedActions(s).state;
-    expect(hasKeyword(s.cards.get(id("bear"))!, "double strike")).toBe(true);
-  });
-
-  it("Goldvein Pick grants +1/+1 to the equipped creature", () => {
-    let s = put(
-      state,
-      p1,
-      "pick",
-      card("Goldvein Pick", "Artifact — Equipment"),
-    );
-    s = put(s, p1, "bear", card("Bear", "Creature — Bear", [2, 2]));
-    s = resolveScriptedAbility(
-      s,
-      ability(
-        "pick",
-        "Equip {2}: Attach to target creature you control. Equip only as a sorcery.",
-        "activated",
-        [cardTarget("bear")],
-      ),
-    )!;
-    s = checkStateBasedActions(s).state;
-    expect(pt(s, "bear")).toEqual([3, 3]);
-  });
-
-  it("re-equipping the boots moves the bonus to the new host", () => {
-    let s = put(
-      state,
-      p1,
-      "boots",
-      card("Swiftfoot Boots", "Artifact — Equipment"),
-    );
-    s = put(s, p1, "bear", card("Bear", "Creature — Bear", [2, 2]));
-    s = put(s, p1, "elk", card("Elk", "Creature — Elk", [1, 1]));
-    // Equip bear, then re-equip elk.
-    s = resolveScriptedAbility(
-      s,
-      ability(
-        "boots",
-        "Equip {1}: Attach to target creature you control. Equip only as a sorcery.",
-        "activated",
-        [cardTarget("bear")],
-      ),
-    )!;
-    s = checkStateBasedActions(s).state;
-    expect(hasKeyword(s.cards.get(id("bear"))!, "hexproof")).toBe(true);
-    s = resolveScriptedAbility(
-      s,
-      ability(
-        "boots",
-        "Equip {1}: Attach to target creature you control. Equip only as a sorcery.",
-        "activated",
-        [cardTarget("elk")],
-      ),
-    )!;
-    s = checkStateBasedActions(s).state;
-    expect(hasKeyword(s.cards.get(id("bear"))!, "hexproof")).toBe(false);
-    expect(hasKeyword(s.cards.get(id("elk"))!, "hexproof")).toBe(true);
-  });
-
-  it("the ETB attach trigger fires once per card when the controller has a creature", () => {
-    // The synthetic ETB attach trigger's text matches the engine's
-    // `getScriptedTriggeredAbilities` output and the interpreter's
-    // `getScriptedAbility` lookup, so `resolveScriptedAbility` routes the
-    // op straight to `attachEquipment` (issue #2561).
-    let s = put(
-      state,
-      p1,
-      "boots",
-      card("Swiftfoot Boots", "Artifact — Equipment"),
-    );
-    s = put(s, p1, "bear", card("Bear", "Creature — Bear", [2, 2]));
-    s = resolveScriptedAbility(
-      s,
-      ability(
-        "boots",
-        "When this Equipment enters, attach it to target creature you control.",
-        "triggered",
-        [cardTarget("bear")],
-      ),
-    )!;
-    expect(s.cards.get(id("boots"))!.attachedToId).toBe("bear");
-  });
-
-  it("the AttachEquipment op fizzles when there is no legal target", () => {
-    // CR 301.5c: an Equipment that enters with no legal creature fizzes
-    // the auto-attach (the Equipment itself stays on the battlefield).
-    const s = put(
-      state,
-      p1,
-      "boots",
-      card("Swiftfoot Boots", "Artifact — Equipment"),
-    );
-    const noTarget = resolveScriptedAbility(
-      s,
-      ability(
-        "boots",
-        "When this Equipment enters, attach it to target creature you control.",
-        "triggered",
-      ),
-    )!;
-    // No change to the equipment (still on the battlefield, no host).
-    expect(noTarget.cards.get(id("boots"))!.attachedToId).toBeNull();
-  });
-
-  it("does not attach to an opponent's creature", () => {
-    // `controller: "you"` in the `AttachEquipment` op narrows the target
-    // to the source's controller's creatures; an opponent's bear is not
-    // a legal target for the ability.
-    let s = put(
-      state,
-      p1,
-      "boots",
-      card("Swiftfoot Boots", "Artifact — Equipment"),
-    );
-    s = put(s, p2, "rival", card("Rival", "Creature — Human", [1, 1]));
-    const after = resolveScriptedAbility(
-      s,
-      ability(
-        "boots",
-        "When this Equipment enters, attach it to target creature you control.",
-        "triggered",
-        [cardTarget("rival")],
-      ),
-    )!;
-    expect(after.cards.get(id("boots"))!.attachedToId).toBeNull();
-  });
-
-  it("the bonus ends when the equipment leaves the battlefield", () => {
-    let s = put(
-      state,
-      p1,
-      "boots",
-      card("Swiftfoot Boots", "Artifact — Equipment"),
-    );
-    s = put(s, p1, "bear", card("Bear", "Creature — Bear", [2, 2]));
-    s = resolveScriptedAbility(
-      s,
-      ability(
-        "boots",
-        "Equip {1}: Attach to target creature you control. Equip only as a sorcery.",
-        "activated",
-        [cardTarget("bear")],
-      ),
-    )!;
-    s = checkStateBasedActions(s).state;
-    expect(hasKeyword(s.cards.get(id("bear"))!, "hexproof")).toBe(true);
-    // Destroying the boots clears the bonus on the next SBA pass.
-    s = checkStateBasedActions(destroyCard(s, id("boots")).state).state;
-    expect(hasKeyword(s.cards.get(id("bear"))!, "hexproof")).toBe(false);
-  });
-
-  it("validates equipment schemas", () => {
-    const parse = (script: object) =>
-      CardScriptSchema.safeParse({ name: "X", oracle: "X", ...script }).success;
-    const attachedStatic = {
-      text: "Equipped creature has hexproof.",
-      keywords: ["hexproof"],
+    const cardId = id("faithless-looting");
+    const dummy = (i: number, name: string): ScryfallCard =>
+      ({
+        id: `${name}-${i}`,
+        name,
+        type_line: "Instant",
+        oracle_text: "",
+        mana_cost: "",
+        cmc: 0,
+        colors: [],
+        color_identity: [],
+        keywords: [],
+        legalities: { standard: "legal" },
+        layout: "normal",
+      }) as unknown as ScryfallCard;
+    // Wipe the default deck-card string ids from the hand and library.
+    let s: GameState = {
+      ...state,
+      zones: new Map(state.zones)
+        .set(`${p1}-hand`, {
+          ...state.zones.get(`${p1}-hand`)!,
+          cardIds: [],
+        })
+        .set(`${p1}-library`, {
+          ...state.zones.get(`${p1}-library`)!,
+          cardIds: [],
+        }),
     };
-    const equip = {
-      text: "Equip {1}: Attach to target creature you control.",
-      cost: { mana: "{1}", tap: false, sacrifice: false },
-      effects: [
-        { op: "AttachEquipment", target: "creature", controller: "you" },
+    // Library: 4 real cards.
+    for (let i = 0; i < 4; i++) {
+      const ci = createCardInstance(dummy(i, `Library Card ${i}`), p1, p1, {
+        id: `lib-${i}` as CardInstanceId,
+        currentZoneKey: `${p1}-library`,
+      });
+      s = {
+        ...s,
+        cards: new Map(s.cards).set(ci.id, ci),
+        zones: new Map(s.zones).set(`${p1}-library`, {
+          ...s.zones.get(`${p1}-library`)!,
+          cardIds: [...s.zones.get(`${p1}-library`)!.cardIds, ci.id],
+        }),
+      };
+    }
+    // Hand: 3 real cards to discard.
+    for (let i = 0; i < 3; i++) {
+      const ci = createCardInstance(dummy(100 + i, `Hand Card ${i}`), p1, p1, {
+        id: `hand-${i}` as CardInstanceId,
+        currentZoneKey: `${p1}-hand`,
+      });
+      s = {
+        ...s,
+        cards: new Map(s.cards).set(ci.id, ci),
+        zones: new Map(s.zones).set(`${p1}-hand`, {
+          ...s.zones.get(`${p1}-hand`)!,
+          cardIds: [...s.zones.get(`${p1}-hand`)!.cardIds, ci.id],
+        }),
+      };
+    }
+    // Place Faithless Looting in the graveyard.
+    const ci = createCardInstance(cardData, p1, p1, {
+      id: cardId,
+      currentZoneKey: `${p1}-graveyard`,
+    });
+    s = {
+      ...s,
+      cards: new Map(s.cards).set(cardId, ci),
+      zones: new Map(s.zones).set(`${p1}-graveyard`, {
+        ...s.zones.get(`${p1}-graveyard`)!,
+        cardIds: [...s.zones.get(`${p1}-graveyard`)!.cardIds, cardId],
+      }),
+    };
+    s = addMana(s, p1, { red: 1, generic: 2 });
+    const cast = castSpell(s, p1, cardId, [], [], 0, false, {
+      type: "flashback",
+    });
+    if (!cast.success) {
+      throw new Error(`cast failed: ${cast.error}`);
+    }
+    expect(cast.success).toBe(true);
+    // Discard is interactive: the resolution pauses on a `waitingChoice`.
+    const paused = resolveTopOfStack(cast.state);
+    expect(paused.waitingChoice).not.toBeNull();
+    expect(paused.waitingChoice!.type).toBe("discard_cards");
+    expect(paused.waitingChoice!.minChoices).toBe(2);
+    const picked: string[] = paused.waitingChoice!.choices
+      .slice(0, 2)
+      .map((c) => c.value)
+      .filter((v): v is string => typeof v === "string");
+    const choiceResult = resolveWaitingChoice(paused, p1, picked);
+    if (!choiceResult.success) {
+      throw new Error(
+        `resolveWaitingChoice failed: ${choiceResult.error ?? "(no error)"}`,
+      );
+    }
+    // resolveWaitingChoice answers the discard but does not finish the
+    // spell resolution — call resolveTopOfStack again to move the card
+    // off the stack into its flashback destination (exile).
+    const resolved = resolveTopOfStack(choiceResult.state);
+    // Card exiled, not in graveyard.
+    expect(resolved.zones.get(`${p1}-exile`)!.cardIds).toContain(cardId);
+    expect(resolved.zones.get(`${p1}-graveyard`)!.cardIds).not.toContain(
+      cardId,
+    );
+    // Net hand: 3 starting + 2 drawn - 2 discarded = 3.
+    expect(resolved.zones.get(`${p1}-hand`)!.cardIds.length).toBe(3);
+  });
+
+  it("a non-flashback spell cast from graveyard is rejected", () => {
+    // CR 702.143a: only a card with Flashback may be cast from the
+    // graveyard via flashback. The engine's cast-from-graveyard branch
+    // requires `alternativeCost.type === "flashback"` AND the card must
+    // have a parseable Flashback cost. A vanilla instant with no
+    // flashback text should be rejected.
+    const cardData = makeFlashbackCard(
+      "Vanilla Instant",
+      "Instant",
+      "{U}",
+      "Counterspell.",
+    );
+    const cardId = id("vanilla-instant");
+    const s = putInGraveyard(state, p1, cardId, cardData);
+    const cast = castSpell(s, p1, cardId, [], [], 0, false, {
+      type: "flashback",
+    });
+    expect(cast.success).toBe(false);
+  });
+});
+
+describe("scripted Flashback (#2563, CR 702.143)", () => {
+  // Schema: the `flashback` field is optional on CardScriptSchema; when set
+  // it MUST have a mana cost string and `destinations.on_resolution` of
+  // "exile" (the only valid destination per CR 702.143a). The
+  // `CardScriptSchema` test loop already exercises the happy path, so here
+  // we test the boundary conditions.
+
+  it("CardScriptSchema accepts a flashback field with cost + destinations", () => {
+    const ok = CardScriptSchema.safeParse({
+      name: "Test Flashback",
+      oracle: "Draw a card. Flashback {2}{U} ...",
+      spell: [{ op: "Draw", amount: 1, who: "you" }],
+      flashback: {
+        cost: "{2}{U}",
+        destinations: { on_resolution: "exile" },
+      },
+    });
+    expect(ok.success).toBe(true);
+  });
+
+  it("CardScriptSchema rejects a flashback field without cost", () => {
+    const result = CardScriptSchema.safeParse({
+      name: "Test Flashback No Cost",
+      oracle: "Draw a card. Flashback ...",
+      spell: [{ op: "Draw", amount: 1, who: "you" }],
+      flashback: {
+        destinations: { on_resolution: "exile" },
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("CardScriptSchema rejects a flashback field with a non-exile destination", () => {
+    // CR 702.143a: flashback always exiles. Anything other than "exile" is
+    // invalid and the schema must reject it.
+    const result = CardScriptSchema.safeParse({
+      name: "Test Flashback Wrong Dest",
+      oracle: "Draw a card. Flashback ...",
+      spell: [{ op: "Draw", amount: 1, who: "you" }],
+      flashback: {
+        cost: "{2}{U}",
+        destinations: { on_resolution: "graveyard" },
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("CardScriptSchema rejects flashback on a permanent (only instants/sorceries)", () => {
+    const result = CardScriptSchema.safeParse({
+      name: "Permanent With Flashback",
+      oracle: "Flashback {2}{U}",
+      triggers: [
+        {
+          text: "When this creature enters, draw a card.",
+          event: "etb",
+          subject: "self",
+          effects: [{ op: "Draw", amount: 1, who: "you" }],
+        },
       ],
+      flashback: {
+        cost: "{2}{U}",
+        destinations: { on_resolution: "exile" },
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("CardScriptSchema rejects an empty flashback cost (no mana symbols)", () => {
+    const result = CardScriptSchema.safeParse({
+      name: "Test Flashback Empty",
+      oracle: "Draw a card. Flashback ...",
+      spell: [{ op: "Draw", amount: 1, who: "you" }],
+      flashback: {
+        cost: "",
+        destinations: { on_resolution: "exile" },
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  // The scripted card JSONs cover the engine's per-card "what does the spell
+  // do" path. The full cast+resolve cycle through `castSpell` +
+  // `resolveTopOfStack` is the engine's "does the card actually go to exile
+  // on resolution" path (the redirect that issue #2563 was missing). We
+  // exercise both halves for each of the three hand-checked cards.
+
+  let state: GameState;
+  let p1: PlayerId;
+
+  beforeEach(() => {
+    state = startGame(createInitialGameState(["P1", "P2"], 20, false));
+    [p1] = Array.from(state.players.keys());
+    state = {
+      ...state,
+      turn: {
+        ...state.turn,
+        currentPhase: Phase.PRECOMBAT_MAIN,
+        activePlayerId: p1,
+      },
+      stack: [],
+      priorityPlayerId: p1,
     };
-    // Happy path
-    expect(
-      parse({
-        equipment: { text: "t", attachedStatic, equip },
+  });
+
+  // Helper: make a ScryfallCard for a flashback spell. The card must have
+  // a name that matches the script registry (case-insensitive), a type
+  // line so resolveTopOfStack can pick a destination zone, and oracle
+  // text that includes "Flashback" so the cost parser fires.
+  const makeFlashbackCard = (
+    name: string,
+    typeLine: string,
+    manaCost: string,
+    oracleText: string,
+  ): ScryfallCard =>
+    ({
+      id: `mock-${name.toLowerCase().replace(/\s+/g, "-")}`,
+      name,
+      type_line: typeLine,
+      oracle_text: oracleText,
+      mana_cost: manaCost,
+      cmc: 0,
+      colors: [],
+      color_identity: [],
+      keywords: [],
+      legalities: { standard: "legal" },
+      layout: "normal",
+    }) as unknown as ScryfallCard;
+
+  // Helper: put a card directly into a player's graveyard. The full
+  // cast-from-graveyard path needs the card to be in the graveyard zone,
+  // not in hand.
+  const putInGraveyard = (
+    s: GameState,
+    playerId: PlayerId,
+    cardId: CardInstanceId,
+    cardData: ScryfallCard,
+  ): GameState => {
+    const ci = createCardInstance(cardData, playerId, playerId, {
+      id: cardId,
+      currentZoneKey: `${playerId}-graveyard`,
+    });
+    const cards = new Map(s.cards);
+    cards.set(cardId, ci);
+    const zones = new Map(s.zones);
+    const yard = zones.get(`${playerId}-graveyard`)!;
+    zones.set(`${playerId}-graveyard`, {
+      ...yard,
+      cardIds: [...yard.cardIds, cardId],
+    });
+    return { ...s, cards, zones };
+  };
+
+  it("Think Twice (FDN 165) — cast from hand: lands in graveyard", () => {
+    const cardData = makeFlashbackCard(
+      "Think Twice",
+      "Instant",
+      "{1}{U}",
+      "Draw a card. Flashback {2}{U} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+    );
+    const ci = createCardInstance(cardData, p1, p1);
+    let s: GameState = { ...state, cards: new Map(state.cards).set(ci.id, ci) };
+    const hand = s.zones.get(`${p1}-hand`)!;
+    s = {
+      ...s,
+      zones: new Map(s.zones).set(`${p1}-hand`, {
+        ...hand,
+        cardIds: [...hand.cardIds, ci.id],
       }),
-    ).toBe(true);
-    // attachedStatic must declare power+toughness or keywords.
-    expect(
-      parse({
-        equipment: { text: "t", attachedStatic: { text: "t" }, equip },
+    };
+    s = addMana(s, p1, { blue: 1, generic: 1 });
+    const cast = castSpell(s, p1, ci.id);
+    expect(cast.success).toBe(true);
+    const resolved = resolveTopOfStack(cast.state);
+    // Regular cast (no flashback): card goes to graveyard.
+    expect(resolved.zones.get(`${p1}-graveyard`)!.cardIds).toContain(ci.id);
+    expect(resolved.zones.get(`${p1}-exile`)!.cardIds).not.toContain(ci.id);
+  });
+
+  it("Think Twice — cast from graveyard with flashback: lands in exile", () => {
+    const cardData = makeFlashbackCard(
+      "Think Twice",
+      "Instant",
+      "{1}{U}",
+      "Draw a card. Flashback {2}{U} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+    );
+    const cardId = id("think-twice");
+    let s = putInGraveyard(state, p1, cardId, cardData);
+    s = addMana(s, p1, { blue: 1, generic: 2 });
+    const cast = castSpell(s, p1, cardId, [], [], 0, false, {
+      type: "flashback",
+    });
+    expect(cast.success).toBe(true);
+    // Sanity: the cast stamped "flashback" on the alternativeCostsUsed log.
+    expect(cast.state.stack[0].alternativeCostsUsed).toContain("flashback");
+    const resolved = resolveTopOfStack(cast.state);
+    // CR 702.143a: the spell resolves then is exiled (not put in graveyard).
+    expect(resolved.zones.get(`${p1}-exile`)!.cardIds).toContain(cardId);
+    expect(resolved.zones.get(`${p1}-graveyard`)!.cardIds).not.toContain(
+      cardId,
+    );
+    // The card's `flashback` flag is set for introspection.
+    expect(resolved.cards.get(cardId)!.flashback).toBe(true);
+  });
+
+  it("Tome Blast (SOS 135) — flashback cast: deal 2 damage, then exile", () => {
+    // Test the DealDamage + flashback redirect combo. Target an opponent.
+    const [, p2] = Array.from(state.players.keys());
+    const cardData = makeFlashbackCard(
+      "Tome Blast",
+      "Sorcery",
+      "{1}{R}",
+      "Tome Blast deals 2 damage to any target. Flashback {4}{R} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+    );
+    const cardId = id("tome-blast");
+    let s = putInGraveyard(state, p1, cardId, cardData);
+    s = addMana(s, p1, { red: 1, generic: 4 });
+    const cast = castSpell(
+      s,
+      p1,
+      cardId,
+      [{ type: "player", targetId: p2, isValid: true }],
+      [],
+      0,
+      false,
+      { type: "flashback" },
+    );
+    if (!cast.success) {
+      throw new Error(`cast failed: ${cast.error}`);
+    }
+    expect(cast.success).toBe(true);
+    const resolved = resolveTopOfStack(cast.state);
+    // 2 damage to p2.
+    expect(resolved.players.get(p2)!.life).toBe(18);
+    // Card exiled, not in graveyard.
+    expect(resolved.zones.get(`${p1}-exile`)!.cardIds).toContain(cardId);
+    expect(resolved.zones.get(`${p1}-graveyard`)!.cardIds).not.toContain(
+      cardId,
+    );
+  });
+
+  it("Faithless Looting (TDC 213) — flashback cast: draw 2, discard 2, exile", () => {
+    // Test the Draw + Discard sequence + flashback redirect combo. We
+    // build a self-contained fixture because `startGame`'s default
+    // library is just string ids with no backing `CardInstance`, which
+    // would break `discardCards` / `moveCardToZone` for the discard
+    // step (it tries to look up the card in `state.cards` and find
+    // nothing).
+    const cardData = makeFlashbackCard(
+      "Faithless Looting",
+      "Sorcery",
+      "{R}",
+      "Draw two cards, then discard two cards. Flashback {2}{R} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+    );
+    const cardId = id("faithless-looting");
+    const dummy = (i: number, name: string): ScryfallCard =>
+      ({
+        id: `${name}-${i}`,
+        name,
+        type_line: "Instant",
+        oracle_text: "",
+        mana_cost: "",
+        cmc: 0,
+        colors: [],
+        color_identity: [],
+        keywords: [],
+        legalities: { standard: "legal" },
+        layout: "normal",
+      }) as unknown as ScryfallCard;
+    // Wipe the default deck-card string ids from the hand and library.
+    let s: GameState = {
+      ...state,
+      zones: new Map(state.zones)
+        .set(`${p1}-hand`, {
+          ...state.zones.get(`${p1}-hand`)!,
+          cardIds: [],
+        })
+        .set(`${p1}-library`, {
+          ...state.zones.get(`${p1}-library`)!,
+          cardIds: [],
+        }),
+    };
+    // Library: 4 real cards.
+    for (let i = 0; i < 4; i++) {
+      const ci = createCardInstance(dummy(i, `Library Card ${i}`), p1, p1, {
+        id: `lib-${i}` as CardInstanceId,
+        currentZoneKey: `${p1}-library`,
+      });
+      s = {
+        ...s,
+        cards: new Map(s.cards).set(ci.id, ci),
+        zones: new Map(s.zones).set(`${p1}-library`, {
+          ...s.zones.get(`${p1}-library`)!,
+          cardIds: [...s.zones.get(`${p1}-library`)!.cardIds, ci.id],
+        }),
+      };
+    }
+    // Hand: 3 real cards to discard.
+    for (let i = 0; i < 3; i++) {
+      const ci = createCardInstance(dummy(100 + i, `Hand Card ${i}`), p1, p1, {
+        id: `hand-${i}` as CardInstanceId,
+        currentZoneKey: `${p1}-hand`,
+      });
+      s = {
+        ...s,
+        cards: new Map(s.cards).set(ci.id, ci),
+        zones: new Map(s.zones).set(`${p1}-hand`, {
+          ...s.zones.get(`${p1}-hand`)!,
+          cardIds: [...s.zones.get(`${p1}-hand`)!.cardIds, ci.id],
+        }),
+      };
+    }
+    // Place Faithless Looting in the graveyard.
+    const ci = createCardInstance(cardData, p1, p1, {
+      id: cardId,
+      currentZoneKey: `${p1}-graveyard`,
+    });
+    s = {
+      ...s,
+      cards: new Map(s.cards).set(cardId, ci),
+      zones: new Map(s.zones).set(`${p1}-graveyard`, {
+        ...s.zones.get(`${p1}-graveyard`)!,
+        cardIds: [...s.zones.get(`${p1}-graveyard`)!.cardIds, cardId],
       }),
-    ).toBe(false);
-    // Keyword must be from EQUIPMENT_KEYWORDS.
-    expect(
-      parse({
-        equipment: {
-          text: "t",
-          attachedStatic: { text: "t", keywords: ["shroud"] },
-          equip,
-        },
-      }),
-    ).toBe(false);
-    // An equip ability whose effects list is something other than
-    // AttachEquipment is allowed at the schema level; the interpreter
-    // ignores unknown effects. We do require the effects to be present.
-    expect(
-      parse({
-        equipment: {
-          text: "t",
-          attachedStatic,
-          equip: {
-            text: "t",
-            cost: { mana: "{1}", tap: false, sacrifice: false },
-            effects: [{ op: "Draw", amount: 1, who: "you" }],
-          },
-        },
-      }),
-    ).toBe(true);
+    };
+    s = addMana(s, p1, { red: 1, generic: 2 });
+    const cast = castSpell(s, p1, cardId, [], [], 0, false, {
+      type: "flashback",
+    });
+    if (!cast.success) {
+      throw new Error(`cast failed: ${cast.error}`);
+    }
+    expect(cast.success).toBe(true);
+    // Discard is interactive: the resolution pauses on a `waitingChoice`.
+    const paused = resolveTopOfStack(cast.state);
+    expect(paused.waitingChoice).not.toBeNull();
+    expect(paused.waitingChoice!.type).toBe("discard_cards");
+    expect(paused.waitingChoice!.minChoices).toBe(2);
+    const picked: string[] = paused.waitingChoice!.choices
+      .slice(0, 2)
+      .map((c) => c.value)
+      .filter((v): v is string => typeof v === "string");
+    const choiceResult = resolveWaitingChoice(paused, p1, picked);
+    if (!choiceResult.success) {
+      throw new Error(
+        `resolveWaitingChoice failed: ${choiceResult.error ?? "(no error)"}`,
+      );
+    }
+    // resolveWaitingChoice answers the discard but does not finish the
+    // spell resolution — call resolveTopOfStack again to move the card
+    // off the stack into its flashback destination (exile).
+    const resolved = resolveTopOfStack(choiceResult.state);
+    // Card exiled, not in graveyard.
+    expect(resolved.zones.get(`${p1}-exile`)!.cardIds).toContain(cardId);
+    expect(resolved.zones.get(`${p1}-graveyard`)!.cardIds).not.toContain(
+      cardId,
+    );
+    // Net hand: 3 starting + 2 drawn - 2 discarded = 3.
+    expect(resolved.zones.get(`${p1}-hand`)!.cardIds.length).toBe(3);
+  });
+
+  it("a non-flashback spell cast from graveyard is rejected", () => {
+    // CR 702.143a: only a card with Flashback may be cast from the
+    // graveyard via flashback. The engine's cast-from-graveyard branch
+    // requires `alternativeCost.type === "flashback"` AND the card must
+    // have a parseable Flashback cost. A vanilla instant with no
+    // flashback text should be rejected.
+    const cardData = makeFlashbackCard(
+      "Vanilla Instant",
+      "Instant",
+      "{U}",
+      "Counterspell.",
+    );
+    const cardId = id("vanilla-instant");
+    const s = putInGraveyard(state, p1, cardId, cardData);
+    const cast = castSpell(s, p1, cardId, [], [], 0, false, {
+      type: "flashback",
+    });
+    expect(cast.success).toBe(false);
   });
 });

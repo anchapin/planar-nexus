@@ -1,0 +1,17 @@
+{
+  "name": "Think Twice",
+  "oracle": "Draw a card. Flashback {2}{U} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+  "spell": [
+    {
+      "op": "Draw",
+      "amount": 1,
+      "who": "you"
+    }
+  ],
+  "flashback": {
+    "cost": "{2}{U}",
+    "destinations": {
+      "on_resolution": "exile"
+    }
+  }
+}

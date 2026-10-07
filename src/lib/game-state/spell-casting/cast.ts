@@ -481,15 +481,22 @@ export function castSpell(
           break;
         }
         case "flashback": {
-          // CR 702.66 - Flashback: cast from graveyard
+          // CR 702.143a - Flashback: an alternative cost that REPLACES the
+          // mana cost (not an additional cost). The printed flashback cost
+          // is paid instead of the mana cost; the spell's mana value is
+          // unchanged and other additional costs/taxes still apply on top.
+          // Subtract the printed mana-cost component and add the flashback-
+          // cost component so additional costs are preserved (same treatment
+          // as Blitz/Foretell/Spectacle/Escape).
           const flashbackInfo = parseFlashback(card.cardData.oracle_text || "");
           if (flashbackInfo.hasFlashback && flashbackInfo.flashbackCost) {
-            totalGeneric += flashbackInfo.flashbackCost.generic;
-            totalWhite += flashbackInfo.flashbackCost.white;
-            totalBlue += flashbackInfo.flashbackCost.blue;
-            totalBlack += flashbackInfo.flashbackCost.black;
-            totalRed += flashbackInfo.flashbackCost.red;
-            totalGreen += flashbackInfo.flashbackCost.green;
+            totalGeneric +=
+              flashbackInfo.flashbackCost.generic - manaCost.generic;
+            totalWhite += flashbackInfo.flashbackCost.white - manaCost.white;
+            totalBlue += flashbackInfo.flashbackCost.blue - manaCost.blue;
+            totalBlack += flashbackInfo.flashbackCost.black - manaCost.black;
+            totalRed += flashbackInfo.flashbackCost.red - manaCost.red;
+            totalGreen += flashbackInfo.flashbackCost.green - manaCost.green;
             alternativeCostsUsed.push("flashback");
           }
           break;
@@ -1328,6 +1335,19 @@ export function castSpell(
         ...card,
         isFaceDown: false,
         foretold: false,
+        currentZoneKey: "stack",
+      });
+    } else if (alternativeCost?.type === "flashback") {
+      // CR 702.143a - Flashback: stamp the card with the `flashback` flag
+      // while it is on the stack so callers can observe that the flashback
+      // alternative was actually used. The flag is purely informational
+      // (the engine uses `StackObject.alternativeCostsUsed` for the actual
+      // exile redirect on resolution, set up in
+      // `spell-casting/resolve.ts`).
+      updatedCards = new Map(currentState.cards);
+      updatedCards.set(cardId, {
+        ...card,
+        flashback: true,
         currentZoneKey: "stack",
       });
     }
