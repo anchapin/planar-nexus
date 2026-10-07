@@ -108,3 +108,37 @@ export function clearUntilEndOfTurnPT(state: GameState): GameState {
   }
   return cards ? { ...state, cards } : state;
 }
+
+/**
+ * Append keywords to a card's until-end-of-turn keyword list (CR 611.2a,
+ * layer 6, #2564). Used by the scripted `Pump` op when its `keywords`
+ * field is set (e.g. Divine Resilience's lifelink). The layer-6 keyword
+ * read path (`evergreen-keywords.hasKeyword`) unions these onto the card's
+ * keyword set until end of turn; `clearUntilEndOfTurnKeywords` drops them.
+ */
+export function addUntilEndOfTurnKeywords(
+  state: GameState,
+  cardId: CardInstanceId,
+  keywords: readonly string[],
+): GameState {
+  if (keywords.length === 0) return state;
+  const card = state.cards.get(cardId);
+  if (!card) return state;
+  const lower = keywords.map((k) => k.toLowerCase());
+  const prev = card.untilEndOfTurnKeywords ?? [];
+  const merged = Array.from(new Set([...prev, ...lower]));
+  const cards = new Map(state.cards);
+  cards.set(cardId, { ...card, untilEndOfTurnKeywords: merged });
+  return { ...state, cards };
+}
+
+/** End-of-turn cleanup: drop every until-end-of-turn keyword grant. */
+export function clearUntilEndOfTurnKeywords(state: GameState): GameState {
+  let cards: GameState["cards"] | null = null;
+  for (const [id, card] of state.cards) {
+    if (!card.untilEndOfTurnKeywords) continue;
+    cards ??= new Map(state.cards);
+    cards.set(id, { ...card, untilEndOfTurnKeywords: undefined });
+  }
+  return cards ? { ...state, cards } : state;
+}

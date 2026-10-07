@@ -153,6 +153,19 @@ export interface CardInstance {
    */
   flashback?: boolean;
 
+  // Kicker-specific (CR 702.32, #2564)
+  /**
+   * Whether this card was kicked on the most recent cast. Set when the
+   * player opts into the kicker additional cost (`castSpell(..., true)`)
+   * and stays true through resolution. For a permanent with an ETB
+   * "if kicked" trigger, the engine reads this field to decide whether the
+   * bonus effect fires. The engine's authoritative signal is
+   * `StackObject.wasKicked` / `timesKicked`; this field is the
+   * CardInstance-level mirror so the kicker state survives after the spell
+   * has resolved (mirrors `flashback`).
+   */
+  kicked?: boolean;
+
   // Prototype-specific (CR 702.152)
   /** Whether this permanent is currently in prototype form */
   isPrototype: boolean;
@@ -185,9 +198,11 @@ export interface CardInstance {
    */
   untilEndOfTurnPT?: { power: number; toughness: number };
   /**
-   * Keywords granted "until end of turn" by resolved spells and abilities
-   * (CR 611.2a, layer 6), e.g. Adamant Will's indestructible (#2567).
-   * Lowercase. Cleared at end of turn with `untilEndOfTurnPT`.
+   * Keywords granted to this permanent "until end of turn" by a resolved
+   * spell or ability (e.g. Divine Resilience's lifelink, #2564). The
+   * layer-6 keyword read path unions these onto the card's keyword set for
+   * the rest of the turn; cleared at end of turn (see
+   * `clearUntilEndOfTurnKeywords`).
    */
   untilEndOfTurnKeywords?: string[];
 

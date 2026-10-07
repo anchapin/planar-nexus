@@ -37,6 +37,7 @@ import {
 import { startDiscard } from "../keyword-actions/discard-choice";
 import { addCounters, isCreature } from "../card-instance";
 import { getEffectivePower } from "../evergreen-keywords";
+import { addUntilEndOfTurnKeywords } from "../pt-until-end-of-turn";
 import { copySpellOnStack } from "../spell-casting/resolve";
 import { attachEquipment } from "../keyword-actions/equip";
 import { addUntilEndOfTurnKeyword } from "../pt-until-end-of-turn";
@@ -74,6 +75,14 @@ interface EffectContext {
    */
   fighter?: Target;
   kickerBonus: number;
+  /**
+   * Whether the spell/ability was kicked (CR 702.32, #2564). Read from the
+   * stack object — true iff `wasKicked` is set or `timesKicked > 0`. The
+   * interpreter skips effects whose `if_kicked` doesn't match this flag.
+   * For a permanent ETB trigger fired by a kicked cast, the same value
+   * flows through the trigger's `StackObject` to the interpreter here.
+   */
+  wasKicked: boolean;
   /** The spell's X (#2552); 0 when it has none. */
   x: number;
   /** Cast triggers: the spell that triggered the ability. */
@@ -540,16 +549,39 @@ function applyEffect(
         !controllerStillMatches(state, target.targetId, effect.controller, ctx)
       )
         return state;
+      // CR 702.33d: "If this spell was kicked, it deals N damage instead"
+      // — for a kicked spell the replacement amount is the one declared on
+      // the `if_kicked: true` effect. We dispatch the kicker-replacement
+      // variant via `kickedAmount` so the engine's resolution layer applies
+      // the "instead" rule rather than adding the default +1 per kick. The
+      // un-kicked effect (no `if_kicked` or `if_kicked: false`) supplies
+      // the base amount; the kicked effect supplies the replacement.
+      const damageAmount =
+        ctx.wasKicked && effect.kickedAmount !== undefined
+          ? effect.kickedAmount
+          : effect.amount;
+      const stackEffect: {
+        effectType: "damage";
+        amount: number;
+        targetId: CardInstanceId | PlayerId;
+        isCombatDamage: boolean;
+        kickedAmount?: number;
+      } = {
+        effectType: "damage",
+        amount: damageAmount,
+        targetId: target.targetId as CardInstanceId | PlayerId,
+        isCombatDamage: false,
+      };
+      // CR 702.33d — carry `kickedAmount` on the resolved StackEffect so
+      // `applyKickerBonus` recognizes the "instead" rule and replaces the
+      // amount outright (instead of adding the +1 per-kick bonus on top
+      // of the already-replaced amount).
+      if (ctx.wasKicked && effect.kickedAmount !== undefined) {
+        stackEffect.kickedAmount = effect.kickedAmount;
+      }
       return resolveStackObjectEffects(
         state,
-        [
-          {
-            effectType: "damage",
-            amount: effect.amount,
-            targetId: target.targetId as CardInstanceId | PlayerId,
-            isCombatDamage: false,
-          },
-        ],
+        [stackEffect],
         sourceId,
         [target],
         ctx.kickerBonus,
@@ -764,7 +796,16 @@ function applyEffect(
         },
         sourceId,
       );
-      return r.success ? r.state : state;
+      if (!r.success) return state;
+      // CR 611.2a / 514.2 / 702.15: a scripted Pump with `keywords` grants
+      // those keywords to the target until end of turn (e.g. Divine
+      // Resilience's lifelink, #2564). The until-end-of-turn keyword
+      // buffer is read by `evergreen-keywords.hasKeyword` (layer 6) and
+      // cleared by the cleanup step in game-state/index.ts.
+      if (effect.keywords && effect.keywords.length > 0) {
+        return addUntilEndOfTurnKeywords(r.state, cardId, effect.keywords);
+      }
+      return r.state;
     }
     case "GrantKeyword": {
       // "it" shares the previous targeted effect's target (resolved as
@@ -849,7 +890,11 @@ type ScriptStackObject = Pick<
   Partial<
     Pick<
       StackObject,
-      "triggeringStackObjectId" | "chosenModes" | "variableValues"
+      | "triggeringStackObjectId"
+      | "chosenModes"
+      | "variableValues"
+      | "wasKicked"
+      | "timesKicked"
     >
   >;
 
@@ -938,12 +983,59 @@ export function resolveScriptedEffects(
 ): GameState {
   const targets = stackObject.targets ?? [];
   const x = stackObject.variableValues?.get("X") ?? 0;
+  // CR 702.32, #2564: a spell is "kicked" iff `wasKicked` is set or
+  // `timesKicked > 0`. The interpreter uses this to gate `if_kicked`
+  // effects. A multikicker spell that paid 2+ charges still resolves its
+  // `if_kicked: true` branch (the engine's existing `applyKickerBonus`
+  // already scales the base amount by the bonus; the kicker-replacement
+  // effect on the script just turns the bonus on and off).
+  const wasKicked =
+    stackObject.wasKicked === true || (stackObject.timesKicked ?? 0) > 0;
   let current = state;
   let next = 0;
   // The previous targeted effect's target, while it is still legal: what
   // "it" means in "... target creature you control. It fights ..." (#2548).
   let previous: Target | undefined;
   for (const effect of effects) {
+    // CR 702.32 — per-effect Kicker gate. An effect whose `if_kicked` is
+    // set is applied only when the spell/ability was kicked (matching the
+    // boolean). When unset, the effect always applies. A common shape is
+    // a base effect (`if_kicked: false`) paired with a kicker-replacement
+    // effect (`if_kicked: true`); the gate below picks the one that
+    // matches the actual cast state.
+    if (effect.if_kicked !== undefined && effect.if_kicked !== wasKicked) {
+      // A skipped effect still consumes its target slot from the stack
+      // object's targets list, EVEN for the base of a kicker-replacement
+      // pair — that way the kicked variant can inherit the base's target
+      // (the "deals N instead" pattern) without taking a second slot of
+      // its own. The replacement effect skips the cursor bump below and
+      // reuses the base's chosen target via `previous`.
+      const skippedCount = effectTargetCount(effect);
+      if (skippedCount > 0) {
+        const taken = targets.slice(next, next + skippedCount);
+        const ctxForLegality: EffectContext = {
+          controllerId: stackObject.controllerId as PlayerId,
+          sourceId: (stackObject.sourceCardId as CardInstanceId) || undefined,
+          kickerBonus,
+          wasKicked,
+          x,
+          triggeringStackObjectId: stackObject.triggeringStackObjectId,
+        };
+        const legal =
+          taken.length === skippedCount &&
+          taken.every((t) =>
+            effectTargetLegal(current, t, effect, ctxForLegality),
+          );
+        if (legal) {
+          // Remember the chosen target so a following kicker-replacement
+          // can inherit it via `previous`. CR 608.2b (the engine still
+          // re-checks target legality on resolution).
+          previous = taken[0];
+        }
+        next += skippedCount;
+      }
+      continue;
+    }
     let target: Target | undefined;
     let fighter: Target | undefined;
     const count = effectTargetCount(effect);
@@ -958,22 +1050,45 @@ export function resolveScriptedEffects(
       target = previous;
     }
     if (count > 0) {
-      const taken = targets.slice(next, next + count);
-      next += count;
-      const ctxForLegality: EffectContext = {
-        controllerId: stackObject.controllerId as PlayerId,
-        sourceId: (stackObject.sourceCardId as CardInstanceId) || undefined,
-        kickerBonus,
-        x,
-        triggeringStackObjectId: stackObject.triggeringStackObjectId,
-      };
-      const legal =
-        taken.length === count &&
-        taken.every((t) => effectTargetLegal(current, t, effect, ctxForLegality));
-      previous = legal ? taken[0] : undefined;
-      if (!legal) continue;
-      target = taken[count - 1];
-      if (count === 2) fighter = taken[0];
+      // CR 702.32 — Kicker-replacement shape: an `if_kicked: true` effect
+      // that comes right after a base effect (`if_kicked: false`) shares
+      // the base effect's chosen target (the "deals 4 instead" pattern,
+      // Burst Lightning). The base consumes the target slot when it
+      // runs (or, when the base was skipped because the cast WAS kicked,
+      // records the slot in `previous` so the kicked variant can find
+      // it). The kicked variant reuses the base's target without taking
+      // a second slot of its own — a script only declares the targets
+      // the caster actually chose (#2564). Non-kicker effects always
+      // take a fresh slot from the targets list.
+      const inheritPrevious =
+        effect.if_kicked === true && previous !== undefined;
+      if (inheritPrevious) {
+        target = previous;
+        if (count === 2) fighter = previous;
+        // Kicker's "instead" is not its own target — the caster only
+        // chose one target for the spell, and the engine reuses it.
+        // `next` was already advanced by the (skipped or run) base.
+      } else {
+        const taken = targets.slice(next, next + count);
+        next += count;
+        const ctxForLegality: EffectContext = {
+          controllerId: stackObject.controllerId as PlayerId,
+          sourceId: (stackObject.sourceCardId as CardInstanceId) || undefined,
+          kickerBonus,
+          wasKicked,
+          x,
+          triggeringStackObjectId: stackObject.triggeringStackObjectId,
+        };
+        const legal =
+          taken.length === count &&
+          taken.every((t) =>
+            effectTargetLegal(current, t, effect, ctxForLegality),
+          );
+        previous = legal ? taken[0] : undefined;
+        if (!legal) continue;
+        target = taken[count - 1];
+        if (count === 2) fighter = taken[0];
+      }
     }
     current = applyEffect(current, effect, {
       controllerId: stackObject.controllerId as PlayerId,
@@ -981,6 +1096,7 @@ export function resolveScriptedEffects(
       target,
       fighter,
       kickerBonus,
+      wasKicked,
       x,
       triggeringStackObjectId: stackObject.triggeringStackObjectId,
     });
@@ -1041,13 +1157,14 @@ export function getScriptedAbility(
   const source = state.cards.get(stackObject.sourceCardId as CardInstanceId);
   const script = getCardScript(source?.cardData.name);
   if (!script || !isPermanentScript(script)) return undefined;
-  const abilities: readonly (ScriptedTrigger | ScriptedActivated)[] = stackObject.triggered
-    ? (script.triggers ?? []).concat(
-        script.equipment?.attachOnEnter ? [EQUIPMENT_ATTACH_ON_ENTER] : [],
-      )
-    : (script.activated ?? []).concat(
-        script.equipment?.equip ? [script.equipment.equip] : [],
-      );
+  const abilities: readonly (ScriptedTrigger | ScriptedActivated)[] =
+    stackObject.triggered
+      ? (script.triggers ?? []).concat(
+          script.equipment?.attachOnEnter ? [EQUIPMENT_ATTACH_ON_ENTER] : [],
+        )
+      : (script.activated ?? []).concat(
+          script.equipment?.equip ? [script.equipment.equip] : [],
+        );
   return abilities.find((a) => sameText(a.text, stackObject.text));
 }
 

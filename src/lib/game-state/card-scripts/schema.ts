@@ -16,6 +16,17 @@ import { REMOVAL_TARGETS, TARGET_CONTROLLERS } from "./target-filters";
 const amount = z.number().int().min(0);
 
 /**
+ * Per-effect Kicker gate (CR 702.32, #2564). When set, the effect is applied
+ * only when the spell was kicked (`stackObject.wasKicked === true` matches
+ * the value). An unset value means the effect always applies. This is the
+ * sibling-on-effect shape (not a wrapper union) so existing scripts that
+ * don't care about kicker stay byte-compatible. Mirrors how
+ * `CardScript.flashback` augments the schema for a single alternative cost
+ * without restructuring the spell-effects array.
+ */
+const ifKicked = z.boolean().optional();
+
+/**
  * "X" (CR 107.3, #2552): the value chosen for X as the spell was cast
  * (CR 601.2b). Only on a card whose mana cost has {X}; 0 anywhere else.
  */
@@ -42,6 +53,18 @@ export const DealDamageSchema = z
     /** each_opponent is untargeted: damage to every opponent. */
     target: z.enum(["any", "creature", "player", "each_opponent"]),
     controller,
+    /**
+     * CR 702.33d — "If this spell was kicked, it deals N damage instead."
+     * Set on the `if_kicked: true` variant of a damage effect that REPLACES
+     * the base amount (Burst Lightning: 2 normally, 4 if kicked). The
+     * interpreter dispatches this as `kickedAmount` on the resolved
+     * StackEffect so the engine applies the "instead" rule rather than the
+     * default +1-per-kick bonus. Only meaningful on the kicked variant;
+     * the un-kicked variant declares the base `amount` and no
+     * `kickedAmount`.
+     */
+    kickedAmount: z.number().int().nonnegative().optional(),
+    if_kicked: ifKicked,
   })
   .strict()
   .refine(
@@ -54,6 +77,7 @@ export const DrawSchema = z
     op: z.literal("Draw"),
     amount: xAmount,
     who: z.enum(["you", "target_player"]).default("you"),
+    if_kicked: ifKicked,
   })
   .strict();
 
@@ -62,6 +86,7 @@ export const GainLifeSchema = z
     op: z.literal("GainLife"),
     amount: xAmount,
     who: z.enum(["you", "target_player"]).default("you"),
+    if_kicked: ifKicked,
   })
   .strict();
 
@@ -72,6 +97,7 @@ export const LoseLifeSchema = z
     who: z
       .enum(["you", "target_player", "each_opponent"])
       .default("target_player"),
+    if_kicked: ifKicked,
   })
   .strict();
 
@@ -127,6 +153,7 @@ export const CreateTokenSchema = z
     /** An artifact creature token, e.g. a Thopter or Robot (#2496). */
     artifact: z.boolean().optional(),
     keywords: z.array(z.enum(TOKEN_KEYWORDS)).min(1).optional(),
+    if_kicked: ifKicked,
   })
   .strict()
   .refine((t) => (t.color === undefined) !== (t.colors === undefined), {
@@ -142,6 +169,7 @@ export const CreatePredefinedTokenSchema = z
     op: z.literal("CreatePredefinedToken"),
     token: z.enum(PREDEFINED_TOKEN_KINDS),
     count: z.number().int().min(1),
+    if_kicked: ifKicked,
   })
   .strict();
 
@@ -154,6 +182,7 @@ const removalFields = {
   min_power: z.number().int().optional(),
   max_power: z.number().int().optional(),
   controller,
+  if_kicked: ifKicked,
 };
 
 export const DestroySchema = z
@@ -214,6 +243,7 @@ export const ReturnFromZoneSchema = z
       .strict()
       .optional(),
     count: xCount.optional(),
+    if_kicked: ifKicked,
   })
   .strict();
 
@@ -236,6 +266,7 @@ const fightFields = {
   target: z.literal("creature"),
   controller,
   optional: z.boolean().optional(),
+  if_kicked: ifKicked,
 };
 const optionalNeedsSelf = {
   message: "optional only applies when the fighter is self",
@@ -252,7 +283,11 @@ export const BiteSchema = z
   .refine((e) => !e.optional || e.fighter === "self", optionalNeedsSelf);
 
 export const CounterSchema = z
-  .object({ op: z.literal("Counter"), target: z.enum(["spell"]) })
+  .object({
+    op: z.literal("Counter"),
+    target: z.enum(["spell"]),
+    if_kicked: ifKicked,
+  })
   .strict();
 
 /**
@@ -268,6 +303,7 @@ export const AttachEquipmentSchema = z
     op: z.literal("AttachEquipment"),
     target: z.enum(["creature"]),
     controller,
+    if_kicked: ifKicked,
   })
   .strict();
 
@@ -279,6 +315,16 @@ export const PumpSchema = z
     /** self: the permanent the ability belongs to (untargeted). */
     target: z.enum(["creature", "self"]),
     controller,
+    /**
+     * Keywords to grant the target until end of turn (e.g. lifelink on
+     * Divine Resilience, #2564). When set, the interpreter appends each
+     * keyword to the target's `untilEndOfTurnKeywords` so the layer-6
+     * read path sees them. Evergreens only today; new entries must also
+     * be supported in `evergreen-keywords.ts`'s `hasKeyword` and the
+     * layer-6 keyword grant path.
+     */
+    keywords: z.array(z.enum(EQUIPMENT_KEYWORDS)).min(1).optional(),
+    if_kicked: ifKicked,
   })
   .strict()
   .refine(
@@ -308,6 +354,7 @@ export const GrantKeywordSchema = z
     target: z.enum(["creature", "self", "it"]),
     controller,
     until: z.literal("end_of_turn"),
+    if_kicked: ifKicked,
   })
   .strict()
   .refine(
@@ -323,6 +370,7 @@ export const PutCountersSchema = z
     amount: xCount,
     target: z.enum(["creature", "self"]),
     controller,
+    if_kicked: ifKicked,
   })
   .strict()
   .refine(
@@ -339,6 +387,7 @@ export const MillSchema = z
     op: z.literal("Mill"),
     amount: xCount,
     who: z.enum(["you", "target_player", "each_opponent"]).default("you"),
+    if_kicked: ifKicked,
   })
   .strict();
 
@@ -352,16 +401,25 @@ export const DiscardSchema = z
     op: z.literal("Discard"),
     amount: z.number().int().min(1),
     who: z.enum(["you", "target_player", "each_opponent"]).default("you"),
+    if_kicked: ifKicked,
   })
   .strict();
 
 /** Scry N (CR 701.22, #2540). */
 export const ScrySchema = z
-  .object({ op: z.literal("Scry"), amount: z.number().int().min(1) })
+  .object({
+    op: z.literal("Scry"),
+    amount: z.number().int().min(1),
+    if_kicked: ifKicked,
+  })
   .strict();
 
 export const SurveilSchema = z
-  .object({ op: z.literal("Surveil"), amount: z.number().int().min(1) })
+  .object({
+    op: z.literal("Surveil"),
+    amount: z.number().int().min(1),
+    if_kicked: ifKicked,
+  })
   .strict();
 
 /**
@@ -376,6 +434,7 @@ export const CopySpellSchema = z
       .array(z.enum(["wither"]))
       .min(1)
       .optional(),
+    if_kicked: ifKicked,
   })
   .strict();
 
@@ -450,6 +509,7 @@ export const SearchLibrarySchema = z
      * when `destination` is "battlefield"; ignored for other destinations.
      */
     tapped: z.boolean().optional(),
+    if_kicked: ifKicked,
   })
   .strict();
 
@@ -476,6 +536,7 @@ export const AddManaSchema = z
     op: z.literal("AddMana"),
     amount: z.number().int().min(1).default(1),
     colors: z.union([z.array(z.enum(MANA_SYMBOLS)).min(1), z.literal("any")]),
+    if_kicked: ifKicked,
   })
   .strict();
 
@@ -896,6 +957,57 @@ export const CardScriptSchema = z
       })
       .strict()
       .optional(),
+    /**
+     * Kicker (CR 702.32, #2564) — a single optional additional cost. "You may
+     * pay an additional cost as you cast this spell. If you do, [its bonus
+     * effect occurs]." `cost` is a mana-string in the same shape as
+     * `flashback.cost`. `count` is the number of times the cost may be paid
+     * (single-kicker default 1; multi-kicker is out of scope for this lane —
+     * see the PR notes). The cast flow charges the cost and stamps
+     * `card.kicked = true` when the player opts in; the interpreter then
+     * applies the script's effects whose `if_kicked: true` matches.
+     */
+    kicker: z
+      .object({
+        cost: z.string().regex(/^(\{(?:[0-9]+|[WUBRGC])\})+$/),
+        /** Always 1 today; reserved for a follow-up multi-kicker lane. */
+        count: z.literal(1).default(1),
+      })
+      .strict()
+      .optional(),
+    /**
+     * Generic additional-cost slot (#2564). Today the only arm that has its
+     * own schema is `offspring` (CR 702.169; flagged for a follow-up lane).
+     * `kicker` is also accessible as `additionalCosts.kicker` for forward
+     * compatibility with the spec, but the engine's `castSpell` reads
+     * `script.kicker` directly so callers can set either field.
+     */
+    additionalCosts: z
+      .object({
+        kicker: z
+          .object({
+            cost: z.string().regex(/^(\{(?:[0-9]+|[WUBRGC])\})+$/),
+            count: z.literal(1).default(1),
+          })
+          .strict()
+          .optional(),
+        offspring: z
+          .object({
+            createToken: z
+              .object({
+                count: z.literal(1),
+                power: z.literal(1),
+                toughness: z.literal(1),
+                color: z.union([tokenColor, z.literal("colorless")]).optional(),
+                keywords: z.array(z.enum(TOKEN_KEYWORDS)).optional(),
+              })
+              .strict(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .refine(
@@ -928,7 +1040,18 @@ export const CardScriptSchema = z
   )
   .refine((s) => !(s.aura && s.equipment), {
     message: "a card is an aura or an equipment, not both",
-  });
+  })
+  .refine(
+    (s) =>
+      s.kicker === undefined ||
+      s.spell !== undefined ||
+      s.modes !== undefined ||
+      s.triggers !== undefined,
+    {
+      message:
+        "kicker is only for instant, sorcery, or enters-the-battlefield permanent scripts",
+    },
+  );
 
 export type CardEffect = z.infer<typeof EffectSchema>;
 export type CardScript = z.infer<typeof CardScriptSchema>;

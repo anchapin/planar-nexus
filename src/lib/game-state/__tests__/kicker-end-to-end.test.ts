@@ -467,14 +467,15 @@ describe("Issue #1228 — Kicker effect application through cast→resolve cycle
     // The tests below exercise the cast→resolve cycle and assert the kicked
     // additional effect fires as expected.
 
-    it("kicked damage spell adds 1 to its base damage (Burst Lightning-style: base 2 → 3)", () => {
+    it("kicked damage spell adds 1 to its base damage (default engine rule: base 2 → 3)", () => {
       const { state: initial, aliceId, bobId } = setupTwoPlayerGame();
-      // Burst Lightning (paraphrased): "Kicker {R}. Burst Lightning deals 2
-      // damage to any target. If you paid the kicker cost, it deals 3 damage
-      // instead." The parser only sees the base 2 — the +1 bonus comes from
-      // the kicker application step (CR 702.85).
+      // Generic kicker damage spell (no scripted override — the scripted
+      // Burst Lightning in src/lib/game-state/card-scripts/cards/ uses the
+      // CR 702.33d "deals N instead" pattern, which would otherwise shadow
+      // this test). The parser only sees the base 2 — the +1 bonus comes
+      // from the kicker application step (CR 702.85).
       const kickerSpell = createKickerInstant(
-        "Burst Lightning",
+        "Generic Kicker Damage",
         "Deal 2 damage to any target.",
         "{R}",
         "{R}",
@@ -507,10 +508,10 @@ describe("Issue #1228 — Kicker effect application through cast→resolve cycle
       expect(bobBefore - bobAfter).toBe(3);
     });
 
-    it("non-kicked damage spell stays at its base damage (Burst Lightning-style: 2, not 3)", () => {
+    it("non-kicked damage spell stays at its base damage (default engine rule: 2, not 3)", () => {
       const { state: initial, aliceId, bobId } = setupTwoPlayerGame();
       const kickerSpell = createKickerInstant(
-        "Burst Lightning",
+        "Generic Kicker Damage",
         "Deal 2 damage to any target.",
         "{R}",
         "{R}",

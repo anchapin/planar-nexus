@@ -1,0 +1,22 @@
+{
+  "name": "Burst Lightning",
+  "oracle": "Kicker {4} (You may pay an additional {4} as you cast this spell.)\nBurst Lightning deals 2 damage to any target. If this spell was kicked, it deals 4 damage instead.",
+  "spell": [
+    {
+      "op": "DealDamage",
+      "amount": 2,
+      "target": "any",
+      "if_kicked": false
+    },
+    {
+      "op": "DealDamage",
+      "amount": 4,
+      "target": "any",
+      "kickedAmount": 4,
+      "if_kicked": true
+    }
+  ],
+  "kicker": {
+    "cost": "{4}"
+  }
+}
