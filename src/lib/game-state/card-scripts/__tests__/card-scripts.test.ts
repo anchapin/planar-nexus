@@ -4134,6 +4134,9 @@ describe("SearchLibrary tapped + Solemn Simulacrum, Campus Guide fix (#2566)", (
     const lib = out.zones.get(`${p1}-library`)!.cardIds;
     // The top of a library is the last id (getTopCard, zones.ts).
     expect(lib[lib.length - 1]).toBe(id("lib-forest"));
+    // Same library size as before, the Forest only once (not duplicated).
+    expect(lib).toHaveLength(s.zones.get(`${p1}-library`)!.cardIds.length);
+    expect(lib.filter((c) => c === id("lib-forest"))).toHaveLength(1);
   });
 
   it("Solemn Simulacrum and Campus Guide scripts match Scryfall's oracle", () => {
