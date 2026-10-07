@@ -4261,7 +4261,30 @@ describe("scripted GrantKeyword (#2567)", () => {
     expect(ok(grant("it"))).toBe(true);
     expect(ok({ ...grant("creature"), controller: "you" })).toBe(true);
     expect(ok({ ...grant("self"), controller: "you" })).toBe(false);
-    expect(ok({ ...grant("creature"), keyword: "flying" })).toBe(false);
+    // Every evergreen keyword in the grantable list validates
+    // (issue #2594 follow-up: widens from `indestructible`-only to
+    // match the equipment keyword set).
+    for (const keyword of [
+      "flying",
+      "vigilance",
+      "trample",
+      "haste",
+      "lifelink",
+      "deathtouch",
+      "reach",
+      "first strike",
+      "double strike",
+      "menace",
+      "hexproof",
+      "indestructible",
+    ]) {
+      expect(
+        ok({ ...grant("creature"), keyword }),
+      ).toBe(true);
+    }
+    // Keywords outside the evergreen set are still rejected.
+    expect(ok({ ...grant("creature"), keyword: "fear" })).toBe(false);
+    expect(ok({ ...grant("creature"), keyword: "banding" })).toBe(false);
     expect(ok({ ...grant("creature"), until: "next_turn" })).toBe(false);
     const { until: _until, ...noUntil } = grant("creature");
     expect(ok(noUntil)).toBe(false);
@@ -4321,6 +4344,56 @@ describe("scripted GrantKeyword (#2567)", () => {
         ]);
       }
     }
+  });
+
+  it("grants non-indestructible keywords through the same engine path (#2594)", () => {
+    // The schema widens to all 12 evergreen keywords (#2594). The engine
+    // path (`addUntilEndOfTurnKeyword` -> `untilEndOfTurnKeywords` ->
+    // `hasKeyword`) is the same for every keyword; sanity-check three
+    // representative ones (lifelink, trample, flying) flow through.
+    const grant = (keyword: "lifelink" | "trample" | "flying") =>
+      ({
+        op: "GrantKeyword",
+        keyword,
+        target: "creature",
+        until: "end_of_turn",
+      }) as const;
+    const resolve = (s: GameState, p1: PlayerId, keyword: "lifelink" | "trample" | "flying") =>
+      resolveScriptedSpell(
+        s,
+        {
+          name: "X",
+          oracle: "x",
+          spell: [grant(keyword)],
+        },
+        spell(p1, [cardTarget("bear")]),
+      );
+    for (const keyword of ["lifelink", "trample", "flying"] as const) {
+      const { state, p1 } = fresh();
+      const s = resolve(state, p1, keyword);
+      expect(hasKeyword(s.cards.get(id("bear"))!, keyword)).toBe(true);
+    }
+    // Cleanup drops them too.
+    const { state, p1 } = fresh();
+    const s = clearUntilEndOfTurnPT(resolve(state, p1, "flying"));
+    expect(hasKeyword(s.cards.get(id("bear"))!, "flying")).toBe(false);
+  });
+
+  it("Boros Charm's third mode grants double strike to a target creature", () => {
+    // Re-validates the v1 workaround removal: the third mode of Boros
+    // Charm was dropped in #2592's rebase because `GRANTABLE_KEYWORDS`
+    // was `["indestructible"]`. With the enum widened, the mode parses
+    // and resolves through the same engine path as indestructible.
+    const f = fresh();
+    const s = resolveScriptedSpell(
+      f.state,
+      getCardScript("Boros Charm")!,
+      {
+        ...spell(f.p1, [cardTarget("bear")]),
+        chosenModes: ["Target creature gains double strike until end of turn."],
+      },
+    );
+    expect(hasKeyword(s.cards.get(id("bear"))!, "double strike")).toBe(true);
   });
 });
 

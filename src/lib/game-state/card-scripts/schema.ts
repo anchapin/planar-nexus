@@ -333,11 +333,27 @@ export const PumpSchema = z
   );
 
 /**
- * Keywords a resolved spell or ability may grant until end of turn (#2567).
- * Indestructible only for now (CR 702.12); widen as cards surface, and each
- * new entry must be honored by the engine's keyword gate for it.
+ * Keywords a resolved spell or ability may grant until end of turn (#2567,
+ * follow-up #2594). Mirrors `EQUIPMENT_KEYWORDS`: every keyword in
+ * `evergreen-keywords.hasKeyword` is honored via the
+ * `untilEndOfTurnKeywords` field on the card, so any of the 12 standard
+ * evergreen keywords can be granted until end of turn. Adding a new entry
+ * to `EQUIPMENT_KEYWORDS` also flows through here automatically.
  */
-export const GRANTABLE_KEYWORDS = ["indestructible", "first strike"] as const;
+export const GRANTABLE_KEYWORDS = [
+  "flying",
+  "vigilance",
+  "trample",
+  "haste",
+  "lifelink",
+  "deathtouch",
+  "reach",
+  "first strike",
+  "double strike",
+  "menace",
+  "hexproof",
+  "indestructible",
+] as const;
 
 /**
  * "Target creature gains indestructible until end of turn" (#2567). `target`:
