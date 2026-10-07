@@ -41,17 +41,17 @@ function recordedSteps(): { obs: number[]; logits: number[] }[] {
 }
 
 test.describe("manamind simple-v1 in the browser", () => {
-  test("simple mode loads the Easy opponent", async ({ page }) => {
+  test("simple mode loads the opponent", async ({ page }) => {
     await page.goto("/simple-mode");
     await expect(
       page.getByRole("heading", { name: "Simple mode", level: 1 }),
     ).toBeVisible({ timeout: 60000 });
-    await expect(page.getByText("Loading the Easy opponent…")).toBeHidden({
+    await expect(page.getByText("Loading the opponent…")).toBeHidden({
       timeout: 60000,
     });
     // Scope to the page's own error message: the app shell keeps a separate
     // role="alert" live region (the route announcer) mounted on every route.
-    await expect(page.getByText(/Easy opponent couldn.t load/)).toHaveCount(0);
+    await expect(page.getByText(/opponent couldn.t load/)).toHaveCount(0);
     await expect(page.getByTestId("simple-moves")).toBeVisible();
     await expect(page.getByTestId("simple-you-life")).toHaveText("20");
   });

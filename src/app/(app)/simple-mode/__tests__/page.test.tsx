@@ -1,5 +1,6 @@
 /**
- * Simple-mode screen (#2557): you play seat 0 against the Easy opponent.
+ * Simple-mode screen (#2557, #2573): you play seat 0 against a manamind
+ * opponent of the chosen strength.
  */
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import SimpleModePage from "../page";
@@ -71,6 +72,35 @@ describe("SimpleModePage", () => {
     const log = await screen.findByTestId("simple-log");
     expect(log).toHaveTextContent("You: Play Forest");
     await waitFor(() => expect(log).toHaveTextContent("Easy:"), {
+      timeout: 4000,
+    });
+  });
+
+  it("starts on Easy and starts a new game when you pick another opponent", async () => {
+    mockLoad.mockResolvedValue(fakeModel);
+    render(<SimpleModePage />);
+    fireEvent.click(await screen.findByText("Play Forest"));
+    expect(await screen.findByTestId("simple-log")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Easy" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "Expert" }));
+    expect(screen.getByRole("radio", { name: "Expert" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(screen.queryByTestId("simple-log")).not.toBeInTheDocument();
+    expect(screen.getByText("Expert opponent")).toBeInTheDocument();
+  });
+
+  it("lets a searching opponent move", async () => {
+    mockLoad.mockResolvedValue(fakeModel);
+    render(<SimpleModePage />);
+    fireEvent.click(await screen.findByRole("radio", { name: "Hard" }));
+    fireEvent.click(await screen.findByText("Play Forest"));
+    const log = await screen.findByTestId("simple-log");
+    await waitFor(() => expect(log).toHaveTextContent("Hard:"), {
       timeout: 4000,
     });
   });
