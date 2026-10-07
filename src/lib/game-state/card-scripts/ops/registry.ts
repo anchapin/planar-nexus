@@ -19,6 +19,7 @@
  * `EffectSchema.options` (#2551). Drift is impossible: if an op schema
  * exists here, its reference must exist too.
  */
+import { AddManaReference } from "./add-mana";
 import { AttachEquipmentReference } from "./attach-equipment";
 import { BiteReference } from "./bite";
 import { CopySpellReference } from "./copy-spell";
@@ -37,6 +38,7 @@ import { MillReference } from "./mill";
 import { PumpReference } from "./pump";
 import { PutCountersReference } from "./put-counters";
 import { ReturnFromZoneReference } from "./return-from-zone";
+import { GrantKeywordReference } from "./grant-keyword";
 import { ReturnToHandReference } from "./return-to-hand";
 import { ScryReference } from "./scry";
 import { SearchLibraryReference } from "./search-library";
@@ -71,6 +73,8 @@ export const OP_REFERENCES: readonly CardOpReference[] = [
   SearchLibraryReference,
   FightReference,
   BiteReference,
+  AddManaReference,
+  GrantKeywordReference,
 ];
 
 /**

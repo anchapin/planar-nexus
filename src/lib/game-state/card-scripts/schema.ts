@@ -286,6 +286,35 @@ export const PumpSchema = z
     controllerNeedsCreatureTarget,
   );
 
+/**
+ * Keywords a resolved spell or ability may grant until end of turn (#2567).
+ * Indestructible only for now (CR 702.12); widen as cards surface, and each
+ * new entry must be honored by the engine's keyword gate for it.
+ */
+export const GRANTABLE_KEYWORDS = ["indestructible"] as const;
+
+/**
+ * "Target creature gains indestructible until end of turn" (#2567). `target`:
+ * - "creature": a target creature (uses one target).
+ * - "self": the permanent the ability belongs to (untargeted).
+ * - "it": the creature the previous targeted effect targeted, as in Adamant
+ *   Will's "Target creature gets +2/+2 and gains indestructible" (one target
+ *   shared by the Pump and the grant).
+ */
+export const GrantKeywordSchema = z
+  .object({
+    op: z.literal("GrantKeyword"),
+    keyword: z.enum(GRANTABLE_KEYWORDS),
+    target: z.enum(["creature", "self", "it"]),
+    controller,
+    until: z.literal("end_of_turn"),
+  })
+  .strict()
+  .refine(
+    (e) => e.controller === undefined || e.target === "creature",
+    controllerNeedsCreatureTarget,
+  );
+
 export const PutCountersSchema = z
   .object({
     op: z.literal("PutCounters"),
@@ -424,6 +453,32 @@ export const SearchLibrarySchema = z
   })
   .strict();
 
+/**
+ * Add mana to the controller's pool (#2565). Covers mana dorks and rocks:
+ * "{T}: Add {G}." is `{"amount":1,"colors":["G"]}`, "{T}: Add {G}{G}." is
+ * `{"amount":2,"colors":["G"]}`, "Add {R} or {G}." is
+ * `{"amount":1,"colors":["R","G"]}`, and "Add one mana of any color." is
+ * `{"amount":1,"colors":"any"}`.
+ *
+ * An activated ability with this op is a mana ability (CR 605.1a): it
+ * resolves immediately without using the stack, and the engine's mana
+ * ability path adds the mana (with a color choice when there is more
+ * than one option). There is no flag for this in the script.
+ *
+ * Out of scope for now: "spend this mana only on ..." restrictions, mana
+ * that depends on a count ("for each creature you control"), and mixed
+ * symbols like "{R}{G}". Cards with those wait for a follow-up.
+ */
+export const MANA_SYMBOLS = ["W", "U", "B", "R", "G", "C"] as const;
+
+export const AddManaSchema = z
+  .object({
+    op: z.literal("AddMana"),
+    amount: z.number().int().min(1).default(1),
+    colors: z.union([z.array(z.enum(MANA_SYMBOLS)).min(1), z.literal("any")]),
+  })
+  .strict();
+
 export const EffectSchema = z.discriminatedUnion("op", [
   DealDamageSchema,
   DrawSchema,
@@ -449,6 +504,8 @@ export const EffectSchema = z.discriminatedUnion("op", [
   SearchLibrarySchema,
   FightSchema,
   BiteSchema,
+  AddManaSchema,
+  GrantKeywordSchema,
 ]);
 
 /** True when no non-Discard effect follows a Discard (#2536). */
@@ -741,9 +798,7 @@ export const CardScriptSchema = z
      */
     flashback: z
       .object({
-        cost: z
-          .string()
-          .regex(/^(\{(?:[0-9]+|[WUBRGC])\})+$/),
+        cost: z.string().regex(/^(\{(?:[0-9]+|[WUBRGC])\})+$/),
         destinations: z
           .object({
             on_resolution: z.literal("exile"),
@@ -768,8 +823,7 @@ export const CardScriptSchema = z
     },
   )
   .refine(
-    (s) =>
-      !((s.spell || s.modes) && (s.triggers || s.activated || s.statics)),
+    (s) => !((s.spell || s.modes) && (s.triggers || s.activated || s.statics)),
     { message: "a spell script can't also have permanent abilities" },
   )
   .refine((s) => !(s.spell && s.modes), {

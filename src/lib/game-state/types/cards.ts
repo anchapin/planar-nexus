@@ -184,6 +184,12 @@ export interface CardInstance {
    * Banshee's -1/-1. Cleared at end of turn (see `clearUntilEndOfTurnPT`).
    */
   untilEndOfTurnPT?: { power: number; toughness: number };
+  /**
+   * Keywords granted "until end of turn" by resolved spells and abilities
+   * (CR 611.2a, layer 6), e.g. Adamant Will's indestructible (#2567).
+   * Lowercase. Cleared at end of turn with `untilEndOfTurnPT`.
+   */
+  untilEndOfTurnKeywords?: string[];
 
   /**
    * Active threshold static bonus (power/toughness, granted keywords,

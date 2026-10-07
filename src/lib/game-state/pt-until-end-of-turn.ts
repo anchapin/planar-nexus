@@ -75,13 +75,36 @@ export function addUntilEndOfTurnPT(
   return { ...state, cards };
 }
 
-/** End-of-turn cleanup: drop every until-end-of-turn P/T change. */
+/** Grant a keyword to a card until end of turn (#2567). */
+export function addUntilEndOfTurnKeyword(
+  state: GameState,
+  cardId: CardInstanceId,
+  keyword: string,
+): GameState {
+  const card = state.cards.get(cardId);
+  if (!card) return state;
+  const k = keyword.toLowerCase();
+  const prev = card.untilEndOfTurnKeywords ?? [];
+  if (prev.includes(k)) return state;
+  const cards = new Map(state.cards);
+  cards.set(cardId, { ...card, untilEndOfTurnKeywords: [...prev, k] });
+  return { ...state, cards };
+}
+
+/**
+ * End-of-turn cleanup: drop every until-end-of-turn P/T change and keyword
+ * grant (CR 514.2).
+ */
 export function clearUntilEndOfTurnPT(state: GameState): GameState {
   let cards: GameState["cards"] | null = null;
   for (const [id, card] of state.cards) {
-    if (!card.untilEndOfTurnPT) continue;
+    if (!card.untilEndOfTurnPT && !card.untilEndOfTurnKeywords) continue;
     cards ??= new Map(state.cards);
-    cards.set(id, { ...card, untilEndOfTurnPT: undefined });
+    cards.set(id, {
+      ...card,
+      untilEndOfTurnPT: undefined,
+      untilEndOfTurnKeywords: undefined,
+    });
   }
   return cards ? { ...state, cards } : state;
 }
