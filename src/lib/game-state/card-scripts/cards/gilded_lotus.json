@@ -1,0 +1,20 @@
+{
+  "name": "Gilded Lotus",
+  "oracle": "{T}: Add three mana of any one color.",
+  "activated": [
+    {
+      "text": "Add three mana of any one color.",
+      "cost": {
+        "tap": true,
+        "sacrifice": false
+      },
+      "effects": [
+        {
+          "op": "AddMana",
+          "amount": 3,
+          "colors": "any"
+        }
+      ]
+    }
+  ]
+}
