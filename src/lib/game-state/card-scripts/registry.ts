@@ -55,7 +55,10 @@ export function getCardScript(
 ): CardScript | undefined {
   if (!name) return undefined;
   if (!byName) {
-    void loadCardScripts().catch(() => undefined);
+    // Start the load once. Attaching a fresh handler on every lookup piled
+    // up pending promises when a synchronous caller (a headless training
+    // run) never yielded to let the import finish (#2612).
+    if (!loading) void loadCardScripts().catch(() => undefined);
     return undefined;
   }
   return byName.get(normalizeCardName(name));
