@@ -3,7 +3,11 @@
  * training interface (manamind self-play, epic manamind#84).
  */
 import {
+  applyAttackDeclaration,
+  applyBlockDeclaration,
   applyPriorityChoice,
+  listAttackerOptions,
+  listBlockerOptions,
   createInitialGameState,
   listPriorityChoices,
   loadDeckForPlayer,
@@ -192,5 +196,136 @@ describe("listPriorityChoices (#2612)", () => {
         expect(theirs.has(c.cardId)).toBe(false);
       }
     }
+  });
+});
+
+/** Move up to `n` creatures from the library onto the battlefield, ready. */
+function deployCreatures(
+  state: GameState,
+  playerId: PlayerId,
+  n: number,
+  sick = false,
+): { state: GameState; ids: string[] } {
+  const libKey = `${playerId}-library`;
+  const bfKey = `${playerId}-battlefield`;
+  const lib = state.zones.get(libKey)!;
+  const ids = lib.cardIds
+    .filter((id) =>
+      /\bcreature\b/i.test(state.cards.get(id)?.cardData.type_line ?? ""),
+    )
+    .slice(0, n);
+  const zones = new Map(state.zones);
+  zones.set(libKey, {
+    ...lib,
+    cardIds: lib.cardIds.filter((id) => !ids.includes(id)),
+  });
+  const bf = zones.get(bfKey)!;
+  zones.set(bfKey, { ...bf, cardIds: [...bf.cardIds, ...ids] });
+  const cards = new Map(state.cards);
+  for (const id of ids) {
+    cards.set(id, {
+      ...cards.get(id)!,
+      isTapped: false,
+      hasSummoningSickness: sick,
+    });
+  }
+  return { state: { ...state, zones, cards }, ids };
+}
+
+function atStep(state: GameState, phase: Phase): GameState {
+  return { ...state, turn: { ...state.turn, currentPhase: phase } };
+}
+
+describe("combat choices (#2612)", () => {
+  function board(seed: number) {
+    const g = newGame(seed, "aggro", "midrange");
+    const a = deployCreatures(g.state, g.p1, 2);
+    const sick = deployCreatures(a.state, g.p1, 1, true);
+    const b = deployCreatures(sick.state, g.p2, 2);
+    return {
+      ...g,
+      state: atStep(b.state, Phase.DECLARE_ATTACKERS),
+      attackers: a.ids,
+      sickId: sick.ids[0],
+      blockers: b.ids,
+    };
+  }
+
+  it("lists no attackers outside combat or for the non-active player", () => {
+    const g = board(50);
+    expect(
+      listAttackerOptions(atStep(g.state, Phase.PRECOMBAT_MAIN), g.p1),
+    ).toEqual([]);
+    expect(listAttackerOptions(g.state, g.p2)).toEqual([]);
+  });
+
+  it("lists ready creatures with the opponent as defender, not sick ones", () => {
+    const g = board(51);
+    const options = listAttackerOptions(g.state, g.p1);
+    expect(options.map((o) => o.cardId).sort()).toEqual(
+      [...g.attackers].sort(),
+    );
+    for (const o of options) expect(o.defenders).toEqual([g.p2]);
+    expect(options.some((o) => o.cardId === g.sickId)).toBe(false);
+  });
+
+  it("applies every listed attack, alone and together", () => {
+    const g = board(52);
+    const options = listAttackerOptions(g.state, g.p1);
+    for (const o of options) {
+      const r = applyAttackDeclaration(g.state, [
+        { cardId: o.cardId, defenderId: o.defenders[0] },
+      ]);
+      expect({ ok: r.success, error: r.error }).toEqual({
+        ok: true,
+        error: undefined,
+      });
+      expect(r.state.combat.attackers.map((a) => a.cardId)).toEqual([o.cardId]);
+    }
+    const all = applyAttackDeclaration(
+      g.state,
+      options.map((o) => ({ cardId: o.cardId, defenderId: o.defenders[0] })),
+    );
+    expect(all.success).toBe(true);
+    expect(all.state.combat.attackers).toHaveLength(options.length);
+    // Attackers are declared, so nothing more to list.
+    expect(listAttackerOptions(all.state, g.p1)).toEqual([]);
+  });
+
+  it("lists the defender's blockers and applies each listed block", () => {
+    const g = board(53);
+    const options = listAttackerOptions(g.state, g.p1);
+    const attacked = applyAttackDeclaration(
+      g.state,
+      options.map((o) => ({ cardId: o.cardId, defenderId: o.defenders[0] })),
+    ).state;
+    const blocking = atStep(attacked, Phase.DECLARE_BLOCKERS);
+    expect(listBlockerOptions(blocking, g.p1)).toEqual([]);
+    const blocks = listBlockerOptions(blocking, g.p2);
+    expect(blocks.map((b) => b.cardId).sort()).toEqual([...g.blockers].sort());
+    for (const b of blocks) {
+      expect(b.attackers.sort()).toEqual([...g.attackers].sort());
+      for (const attackerId of b.attackers) {
+        const r = applyBlockDeclaration(blocking, [
+          { blockerId: b.cardId, attackerId },
+        ]);
+        expect({ ok: r.success, error: r.error }).toEqual({
+          ok: true,
+          error: undefined,
+        });
+      }
+    }
+  });
+
+  it("treats empty declarations as no attack / no blocks", () => {
+    const g = board(54);
+    expect(applyAttackDeclaration(g.state, [])).toEqual({
+      success: true,
+      state: g.state,
+    });
+    expect(applyBlockDeclaration(g.state, [])).toEqual({
+      success: true,
+      state: g.state,
+    });
   });
 });
