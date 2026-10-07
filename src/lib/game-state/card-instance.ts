@@ -58,7 +58,12 @@ export function createCardInstance(
     prototypePower: null,
     prototypeToughness: null,
     prototypeManaCost: null,
-    currentZoneKey: null,
+    // Performance optimization (CR 704 - SBA performance, issue #1715): zone
+    // lookup cache. The test helper `put` and the engine's `moveCard` path
+    // both pass this through `options` so a freshly-created instance can
+    // skip the fallback zone scan on the first read. Before #2595, this
+    // option was silently dropped — the field always reset to `null`.
+    currentZoneKey: options.currentZoneKey ?? null,
   };
 }
 
