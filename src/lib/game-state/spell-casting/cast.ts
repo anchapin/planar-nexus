@@ -642,6 +642,13 @@ export function castSpell(
             };
           }
           const hc = parseManaCost(harmonizeCost);
+          if (!hc) {
+            return {
+              success: false,
+              state,
+              error: "Invalid harmonize cost.",
+            };
+          }
           totalGeneric += hc.generic - manaCost.generic;
           totalWhite += hc.white - manaCost.white;
           totalBlue += hc.blue - manaCost.blue;

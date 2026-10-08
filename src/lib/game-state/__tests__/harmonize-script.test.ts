@@ -15,6 +15,7 @@ import { RAW_CARD_SCRIPTS } from "../card-scripts/cards/index.generated";
 import { CardScriptSchema } from "../card-scripts/schema";
 import { Phase } from "../types";
 import type {
+  CardInstance,
   CardInstanceId,
   GameState,
   PlayerId,
@@ -52,9 +53,9 @@ describe("Harmonize: Channeled Dragonfire (#2614)", () => {
   let p2: PlayerId;
   let fire: CardInstanceId;
 
-  const place = (s: GameState, inst: { id: CardInstanceId }, zone: string) => {
+  const place = (s: GameState, inst: CardInstance, zone: string) => {
     const cards = new Map(s.cards);
-    cards.set(inst.id, { ...(inst as never), currentZoneKey: zone });
+    cards.set(inst.id, { ...inst, currentZoneKey: zone });
     const zones = new Map(s.zones);
     const z = zones.get(zone)!;
     zones.set(zone, { ...z, cardIds: [...z.cardIds, inst.id] });
