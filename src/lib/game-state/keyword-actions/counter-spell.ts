@@ -33,6 +33,21 @@ export function counterSpell(
 
   const stackObject = state.stack[stackIndex];
 
+  // #2594 — "This spell can't be countered." (Curator of Destinies,
+  // Koma, World-Eater, Sphinx of the Final Word.) The rider wins
+  // (CR 701.5a); the counter fizzles. Counter-targeting is still
+  // legal on the stack — only resolution is suppressed. The player
+  // can choose a different target (the engine's `autoChooseCounterTargets`
+  // would re-pick a legal target on the next pass).
+  if (stackObject.cantBeCountered) {
+    return {
+      success: false,
+      state,
+      description: "",
+      error: `${stackObject.name} can't be countered.`,
+    };
+  }
+
   // CR 701.5 — remove the countered object from the stack so subsequent
   // stack walks (cascade, copies, resolution sweeps) never observe the
   // stale entry.

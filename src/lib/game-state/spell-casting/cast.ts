@@ -36,6 +36,7 @@ import {
   parseSplitSecond,
   parseStorm,
   parseCascade,
+  parseCantBeCountered,
   isModalSpell,
   getModesForModalSpell,
   isSplitCard,
@@ -1323,6 +1324,14 @@ export function castSpell(
       // the stack (see hasSplitSecondOnStack / ValidationService).
       splitSecond: parseSplitSecond(card.cardData.oracle_text || "")
         .hasSplitSecond,
+      // #2594 — "This spell can't be countered." (Curator of Destinies,
+      // Koma, World-Eater, Sphinx of the Final Word.) The script's
+      // `cantBeCountered: true` wins over the oracle-text parse. See
+      // `counterSpell` for the consumer side.
+      cantBeCountered:
+        getCardScript(card.cardData.name)?.cantBeCountered === true ||
+        parseCantBeCountered(card.cardData.oracle_text || "")
+          .hasCantBeCountered,
       // CR 702.41 - Storm: parsed from Oracle text and stamped onto the spell's
       // StackObject so the on-cast trigger can fire (see detectStormTrigger /
       // copySpellOnStack below).

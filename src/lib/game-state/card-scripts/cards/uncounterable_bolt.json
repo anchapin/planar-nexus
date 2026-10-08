@@ -1,0 +1,12 @@
+{
+  "name": "Uncounterable Bolt",
+  "oracle": "This spell can't be countered.\nUncounterable Bolt deals 3 damage to any target.",
+  "spell": [
+    {
+      "op": "DealDamage",
+      "amount": 3,
+      "target": "any"
+    }
+  ],
+  "cantBeCountered": true
+}
