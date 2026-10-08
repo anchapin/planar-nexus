@@ -536,6 +536,12 @@ export function processUntapStep(state: GameState): UntapStepResult {
 
       // Untap-modifying effect: "doesn't untap during your untap step" (CR 502.2)
       if (card.doesNotUntapDuringUntapStep) continue;
+      // #2594 #9: scripted Aura with `static.restrictUntap` (e.g.
+      // "Enchanted permanent doesn't untap during your untap step."
+      // — Starlight Snare, Imprisoned in the Moon). The Aura
+      // refresh path surfaces this list to `card.auraRestrictUntap`;
+      // the discrete untap step honors it here.
+      if (card.auraRestrictUntap && card.auraRestrictUntap.length > 0) continue;
 
       let updatedCard = card;
       if (card.isTapped) {

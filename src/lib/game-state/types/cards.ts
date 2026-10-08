@@ -277,6 +277,14 @@ export interface CardInstance {
    */
   auraRestrictBlock?: string[];
   /**
+   * Names of scripted Auras attached to this permanent that set
+   * `static.restrictUntap` (e.g. Imprisoned in the Moon, Starlight
+   * Snare, #2594 #9). Maintained by `refreshAuraBonuses`; consumed
+   * by `processUntapStep` to skip the untap ("Enchanted permanent
+   * doesn't untap during your untap step.").
+   */
+  auraRestrictUntap?: string[];
+  /**
    * Summed static bonus from Equipment attached to this creature, e.g.
    * Swiftfoot Boots' hexproof+haste (issue #2561). Maintained by
    * `refreshEquipmentBonuses`. Kept separate from `auraPT` so a future
