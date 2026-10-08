@@ -1,0 +1,34 @@
+{
+  "name": "Lumbering Worldwagon",
+  "oracle": "This Vehicle's power is equal to the number of lands you control.\nWhenever this Vehicle enters or attacks, you may search your library for a basic land card, put it onto the battlefield tapped, then shuffle.\nCrew 4",
+  "triggers": [
+    {
+      "text": "Whenever this Vehicle enters or attacks, you may search your library for a basic land card, put it onto the battlefield tapped, then shuffle.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "SearchLibrary",
+          "filter": { "basic_land": true },
+          "destination": "battlefield",
+          "tapped": true,
+          "shuffle": true
+        }
+      ]
+    },
+    {
+      "text": "Whenever this Vehicle enters or attacks, you may search your library for a basic land card, put it onto the battlefield tapped, then shuffle.",
+      "event": "attacks",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "SearchLibrary",
+          "filter": { "basic_land": true },
+          "destination": "battlefield",
+          "tapped": true,
+          "shuffle": true
+        }
+      ]
+    }
+  ]
+}

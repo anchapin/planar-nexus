@@ -20,6 +20,32 @@ export const BASIC_LAND_TYPES = [
 const DOMAIN_POWER_CDA =
   /\bdomain\b[^.]*?\bpower is equal to the number of basic land types among lands you control\b/i;
 
+/**
+ * "This Vehicle's power is equal to the number of lands you control."
+ * (Lumbering Worldwagon, #2614). Same layer-7a CDA slot as domain, so the
+ * value also lives on `domainPower`.
+ */
+const LANDS_POWER_CDA =
+  /\bpower is equal to the number of lands you control\b/i;
+
+/** Number of lands the player controls. */
+export function countLands(state: GameState, playerId: PlayerId): number {
+  const zone = state.zones.get(`${playerId}-battlefield`);
+  if (!zone) return 0;
+  let count = 0;
+  for (const cardId of zone.cardIds) {
+    const card = state.cards.get(cardId);
+    if (!card || card.controllerId !== playerId) continue;
+    if (/\bLand\b/.test(card.cardData.type_line ?? "")) count++;
+  }
+  return count;
+}
+
+/** True when the card's power is the number of lands its controller has. */
+export function hasLandsPowerCDA(card: CardInstance): boolean {
+  return LANDS_POWER_CDA.test(card.cardData.oracle_text ?? "");
+}
+
 /** Number of basic land types among lands the player controls (0-5). */
 export function countBasicLandTypes(
   state: GameState,
@@ -47,19 +73,24 @@ export function hasDomainPowerCDA(card: CardInstance): boolean {
 }
 
 /**
- * Recompute `domainPower` for every domain CDA card. Returns the same state
+ * Recompute `domainPower` for every domain or lands-count CDA card. Returns the same state
  * object when nothing changed.
  */
 export function refreshDomainPower(state: GameState): GameState {
   let cards: GameState["cards"] | null = null;
   const counts = new Map<PlayerId, number>();
+  const landCounts = new Map<PlayerId, number>();
   for (const [cardId, card] of state.cards) {
-    if (!hasDomainPowerCDA(card)) continue;
+    const lands = hasLandsPowerCDA(card);
+    if (!lands && !hasDomainPowerCDA(card)) continue;
     const controller = card.controllerId;
-    let value = counts.get(controller);
+    const cache = lands ? landCounts : counts;
+    let value = cache.get(controller);
     if (value === undefined) {
-      value = countBasicLandTypes(state, controller);
-      counts.set(controller, value);
+      value = lands
+        ? countLands(state, controller)
+        : countBasicLandTypes(state, controller);
+      cache.set(controller, value);
     }
     if (card.domainPower === value) continue;
     cards ??= new Map(state.cards);
