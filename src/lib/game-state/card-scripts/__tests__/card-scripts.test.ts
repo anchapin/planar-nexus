@@ -8710,3 +8710,103 @@ describe("Ba Sing Se: earthbend 2 and enters tapped unless basic (#2614)", () =>
     expect(b.state.cards.get(id("bss"))!.isTapped).toBe(true);
   });
 });
+
+describe("Earthbender Ascension: earthbend, land search, quest counters (#2614)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  const script = () => getCardScript("Earthbender Ascension")!;
+  const resolveTrigger = (s: GameState, index: number, targets: Target[]) =>
+    resolveScriptedEffects(s, script().triggers![index].effects!, {
+      controllerId: p1,
+      sourceCardId: id("asc"),
+      targets,
+    } as unknown as StackObject);
+  const withQuest = (s: GameState, count: number): GameState => {
+    const cards = new Map(s.cards);
+    const asc = cards.get(id("asc"))!;
+    cards.set(id("asc"), { ...asc, counters: [{ type: "quest", count }] });
+    return { ...s, cards };
+  };
+  const counter = (s: GameState, cid: string, type: string) =>
+    s.cards.get(id(cid))!.counters.find((c) => c.type === type)?.count ?? 0;
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1] = Array.from(state.players.keys());
+    state = put(state, p1, "asc", card("Earthbender Ascension", "Enchantment"));
+    state = put(state, p1, "forest", card("Forest", "Basic Land — Forest"));
+    state = put(
+      state,
+      p1,
+      "bear",
+      card("Grizzly Bears", "Creature — Bear", [2, 2]),
+    );
+  });
+
+  it("validates quest counters and the optional creature target", () => {
+    const ok = (effect: object) =>
+      CardScriptSchema.safeParse({ name: "X", oracle: "x", spell: [effect] })
+        .success;
+    expect(
+      ok({ op: "PutCounters", counter: "quest", amount: 1, target: "self" }),
+    ).toBe(true);
+    expect(
+      ok({
+        op: "PutCounters",
+        counter: "quest",
+        amount: 1,
+        target: "creature",
+      }),
+    ).toBe(false);
+    expect(
+      ok({
+        op: "PutCounters",
+        counter: "+1/+1",
+        amount: 1,
+        target: "self",
+        optional: true,
+      }),
+    ).toBe(false);
+  });
+
+  it("earthbends 2, then puts a basic land onto the battlefield tapped", () => {
+    let s = put(
+      state,
+      p1,
+      "plains",
+      card("Plains", "Basic Land — Plains"),
+      "library",
+    );
+    s = resolveTrigger(s, 0, [cardTarget(id("forest"))]);
+    const forest = s.cards.get(id("forest"))!;
+    expect(isCreatureCard(forest)).toBe(true);
+    expect(getEffectivePower(forest)).toBe(2);
+    expect(battlefield(s, p1)).toContain(id("plains"));
+    expect(s.cards.get(id("plains"))!.isTapped).toBe(true);
+  });
+
+  it("adds a quest counter but no bonus below four quest counters", () => {
+    let s = withQuest(state, 2);
+    s = resolveTrigger(s, 1, [cardTarget(id("bear"))]);
+    expect(counter(s, "asc", "quest")).toBe(3);
+    expect(counter(s, "bear", "+1/+1")).toBe(0);
+    expect(hasKeyword(s.cards.get(id("bear"))!, "trample")).toBe(false);
+  });
+
+  it("at four quest counters, gives the target a +1/+1 counter and trample", () => {
+    let s = withQuest(state, 3);
+    s = resolveTrigger(s, 1, [cardTarget(id("bear"))]);
+    expect(counter(s, "asc", "quest")).toBe(4);
+    expect(counter(s, "bear", "+1/+1")).toBe(1);
+    expect(hasKeyword(s.cards.get(id("bear"))!, "trample")).toBe(true);
+  });
+
+  it("still adds the quest counter with no creature chosen", () => {
+    let s = withQuest(state, 3);
+    s = resolveTrigger(s, 1, []);
+    expect(counter(s, "asc", "quest")).toBe(4);
+    expect(counter(s, "bear", "+1/+1")).toBe(0);
+  });
+});
