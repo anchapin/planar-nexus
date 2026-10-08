@@ -379,7 +379,18 @@ export const GrantKeywordSchema = z
   .object({
     op: z.literal("GrantKeyword"),
     keyword: z.enum(GRANTABLE_KEYWORDS),
-    target: z.enum(["creature", "self", "it"]),
+    /**
+     * target: "creature" + controller: "you" → "target creature you control"
+     * (single-target, chosen on cast).
+     * target: "self" → this creature (the source of the spell/ability).
+     * target: "it" → the previous targeted effect's target (CR 608.2b,
+     *   e.g. Adamant Will).
+     * target: "permanents_you_control" → every permanent the controller
+     *   owns on resolution; the engine fans out to all matching cards
+     *   (Boros Charm mode 2 — "Permanents you control gain
+     *   indestructible until end of turn.").
+     */
+    target: z.enum(["creature", "self", "it", "permanents_you_control"]),
     controller,
     until: z.literal("end_of_turn"),
     if_kicked: ifKicked,
