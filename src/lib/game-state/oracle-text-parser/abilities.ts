@@ -117,10 +117,12 @@ export interface TriggerCondition {
   /**
    * Whose event the trigger watches (CR 603.6a, 603.10a, 508.1m): "self" for
    * "this creature" / the card's own name, "another" for "another ..." /
-   * "other ...", "any" for "a ..." / "one or more ...". Set on enters, dies
-   * and attack triggers; undefined elsewhere.
+   * "other ...", "any" for "a ..." / "one or more ...", "attached" for
+   * "the equipped creature" / "the enchanted permanent" — i.e. the
+   * controller's own equipment/auras whose `attachedToId` points at
+   * the entering/dying/attacking card (#2594 #16, Goldvein Pick).
    */
-  subject?: "self" | "another" | "any";
+  subject?: "self" | "another" | "any" | "attached";
   /**
    * Which permanents an "another"/"any" trigger cares about: the one that
    * entered (ETB), died (dies) or attacked (attacks).
