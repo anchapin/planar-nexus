@@ -1,0 +1,25 @@
+{
+  "name": "Steel Hellkite",
+  "oracle": "Flying\n{2}: This creature gets +1/+0 until end of turn.\n{X}: Destroy each nonland permanent with mana value X whose controller was dealt combat damage by this creature this turn. Activate only once each turn.",
+  "activated": [
+    {
+      "text": "This creature gets +1/+0 until end of turn.",
+      "cost": { "mana": "{2}" },
+      "effects": [
+        { "op": "Pump", "power": 1, "toughness": 0, "target": "self" }
+      ]
+    },
+    {
+      "text": "Destroy each nonland permanent with mana value X whose controller was dealt combat damage by this creature this turn.",
+      "cost": { "mana": "{X}" },
+      "limit": "once_per_turn",
+      "effects": [
+        {
+          "op": "Destroy",
+          "target": "all_nonland_permanents",
+          "max_mana_value": "X"
+        }
+      ]
+    }
+  ]
+}

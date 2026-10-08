@@ -242,6 +242,24 @@ const removalFields = {
   target: z.enum([...REMOVAL_TARGETS, ...REMOVAL_ALL_TARGETS]),
   min_power: z.number().int().optional(),
   max_power: z.number().int().optional(),
+  /**
+   * #2594 follow-up (lane 18): bound the card's mana value across
+   * types — "destroy each nonland permanent with mana value X"
+   * (Steel Hellkite — FDN #138, {X}: Destroy each nonland
+   * permanent with mana value X), "exile target creature with
+   * mana value 3 or less", etc. `min_mana_value` is the lower
+   * bound (inclusive), `max_mana_value` is the upper bound
+   * (inclusive). The filter only applies to cards with a numeric
+   * mana value (tokens default to 0).
+   */
+  // "X" on a mana-value bound (Steel Hellkite's "{X}: destroy each
+  // nonland permanent with mana value X") is accepted by the
+  // schema but the engine's scripted-spell resolver currently
+  // resolves it to 0 via `withX`. A future lane should bind the
+  // resolved X from the activated ability's xValue so the sweeper
+  // honors the chosen X at activation time.
+  min_mana_value: z.union([z.number().int().min(0), X]).optional(),
+  max_mana_value: z.union([z.number().int().min(0), X]).optional(),
   controller,
   if_kicked: ifKicked,
 };
