@@ -1,0 +1,13 @@
+{
+  "name": "Myojin of Night's Reach",
+  "oracle": "Remove a divinity counter from this creature: Each opponent discards their hand.",
+  "activated": [
+    {
+      "text": "Each opponent discards their hand.",
+      "cost": { "sacrifice": false },
+      "effects": [
+        { "op": "Discard", "amount": 1, "who": "each_opponent", "all": true }
+      ]
+    }
+  ]
+}

@@ -585,6 +585,14 @@ export const DiscardSchema = z
     op: z.literal("Discard"),
     amount: z.number().int().min(1),
     who: z.enum(["you", "target_player", "each_opponent"]).default("you"),
+    /**
+     * #2594 follow-up (lane 15): "Discard your hand" (Myojin of
+     * Night's Reach — FDN #110, Nibelheim Aflame — FIN). When
+     * true, the player (per `who`) discards every card in their
+     * hand regardless of `amount`. The `amount` is ignored when
+     * this is set.
+     */
+    all: z.boolean().default(false),
     if_kicked: ifKicked,
   })
   .strict();

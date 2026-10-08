@@ -29,6 +29,7 @@ import {
   exileCard,
   moveCardToZone,
 } from "../keyword-actions/removal";
+import { discardCards } from "../keyword-actions/draw";
 import { tapCardAction, untapCardAction } from "../keyword-actions/damage-tap";
 import {
   addCardToZone,
@@ -248,6 +249,18 @@ function playerFor(
   return ctx.target?.type === "player"
     ? (ctx.target.targetId as PlayerId)
     : undefined;
+}
+
+/**
+ * Discard every card in the given player's hand (#2594 follow-up,
+ * lane 15). Used by `Discard.all: true` (Myojin of Night's Reach).
+ * Returns the `KeywordActionResult` from `discardCards` so callers
+ * can chain cleanly.
+ */
+function discardEntireHand(state: GameState, playerId: PlayerId) {
+  const hand = state.zones.get(`${playerId}-hand`);
+  const count = hand?.cardIds.length ?? 0;
+  return discardCards(state, playerId, count, false);
 }
 
 /**
@@ -1249,6 +1262,27 @@ function applyEffect(
       return player ? millPlayer(state, player, effect.amount) : state;
     }
     case "Discard": {
+      // #2594 follow-up (lane 15): "Discard your hand" (Myojin of
+      // Night's Reach — FDN, Nibelheim Aflame — FIN). When
+      // `all: true`, the player (per `who`) discards every card
+      // currently in their hand regardless of `amount`. The
+      // engine's `discardCards(state, player, count)` primitive
+      // already discards exactly `count` cards (and naturally
+      // discards the whole hand when `count === hand.length`).
+      if (effect.all) {
+        if (effect.who === "each_opponent") {
+          let next = state;
+          for (const opp of opponentsOf(state, ctx.controllerId)) {
+            const r = discardEntireHand(next, opp);
+            if (r.success) next = r.state;
+          }
+          return next;
+        }
+        const player = playerFor(effect.who, ctx);
+        if (!player) return state;
+        const r = discardEntireHand(state, player);
+        return r.success ? r.state : state;
+      }
       if (effect.who === "each_opponent") {
         let next = state;
         for (const opp of opponentsOf(state, ctx.controllerId)) {
