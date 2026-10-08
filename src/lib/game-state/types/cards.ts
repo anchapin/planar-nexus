@@ -329,6 +329,12 @@ export interface CardInstance {
    */
   scriptStaticKeywords?: string[];
   /**
+   * "Cards exiled with this creature" (#2614 Keen-Eyed Curator, CR 607.2a):
+   * the scripted source that exiled this card, keyed by that source's
+   * battlefield timestamp so a new object (CR 400.7) starts with none.
+   */
+  exiledWith?: { sourceId: CardInstanceId; timestamp: number };
+  /**
    * Keywords granted to this card's spell while it resolves (#2483): set
    * from the stack object's `grantedKeywords` for the duration of
    * `resolveTopOfStack`, so damage it deals sees them.

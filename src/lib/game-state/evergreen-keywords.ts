@@ -77,6 +77,10 @@ export function hasKeyword(card: CardInstance, keyword: string): boolean {
   let oracleText = card.cardData.oracle_text?.toLowerCase() || "";
   for (const s of statics)
     oracleText = oracleText.replace(s.text.toLowerCase(), "");
+  // A conditional self bonus (#2614 Keen-Eyed Curator) is applied above
+  // through scriptStaticKeywords, not read from the oracle line.
+  const bonusText = getCardScript(card.cardData.name)?.exiled_types_bonus?.text;
+  if (bonusText) oracleText = oracleText.replace(bonusText.toLowerCase(), "");
 
   return (
     keywords.some((k) => k.toLowerCase() === keyword.toLowerCase()) ||

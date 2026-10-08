@@ -8290,3 +8290,126 @@ describe("Surrak, Elusive Hunter: draw when an opponent targets your creatures (
     expect(s.zones.get(`${p1}-hand`)!.cardIds.length).toBe(before + 1);
   });
 });
+
+describe("Keen-Eyed Curator: exile from a graveyard, grow with card types (#2614)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+  const exileEffects = () =>
+    getCardScript("Keen-Eyed Curator")!.activated![0].effects!;
+  const exileWithCurator = (s: GameState, cardId: string) =>
+    resolveScriptedEffects(s, exileEffects(), {
+      controllerId: p1,
+      sourceCardId: id("curator"),
+      targets: [{ type: "card", targetId: id(cardId), isValid: true }],
+    } as unknown as StackObject);
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+    state = put(
+      state,
+      p1,
+      "curator",
+      card("Keen-Eyed Curator", "Creature — Raccoon Scout", [3, 3]),
+    );
+    const gy: [string, PlayerId, string][] = [
+      ["g-creature", p2, "Creature — Bear"],
+      ["g-instant", p2, "Instant"],
+      ["g-sorcery", p1, "Sorcery"],
+      ["g-land", p2, "Land"],
+      ["g-artcreature", p2, "Artifact Creature — Golem"],
+    ];
+    for (const [cid, owner, type] of gy) {
+      state = put(state, owner, cid, card(cid, type), "graveyard");
+    }
+  });
+
+  it("exiles a card from any graveyard and links it to the Curator", () => {
+    const s = exileWithCurator(state, "g-creature");
+    expect(s.zones.get(`${p2}-exile`)!.cardIds).toContain(id("g-creature"));
+    expect(s.cards.get(id("g-creature"))!.exiledWith?.sourceId).toBe(
+      id("curator"),
+    );
+    const own = exileWithCurator(s, "g-sorcery");
+    expect(own.zones.get(`${p1}-exile`)!.cardIds).toContain(id("g-sorcery"));
+  });
+
+  it("gets +4/+4 and trample at four card types, not three", () => {
+    let s = state;
+    for (const c of ["g-creature", "g-instant", "g-sorcery"]) {
+      s = exileWithCurator(s, c);
+    }
+    s = refreshScriptedStatics(s);
+    expect(s.cards.get(id("curator"))!.scriptStaticPT).toBeUndefined();
+    expect(hasKeyword(s.cards.get(id("curator"))!, "trample")).toBe(false);
+    s = refreshScriptedStatics(exileWithCurator(s, "g-land"));
+    const curator = s.cards.get(id("curator"))!;
+    expect(curator.scriptStaticPT).toEqual({ power: 4, toughness: 4 });
+    expect(getEffectivePower(curator)).toBe(7);
+    expect(hasKeyword(curator, "trample")).toBe(true);
+  });
+
+  it("counts each card type once, including both types of an artifact creature", () => {
+    let s = state;
+    for (const c of ["g-creature", "g-artcreature", "g-land"]) {
+      s = exileWithCurator(s, c);
+    }
+    // creature, artifact, land = three types; the second creature adds none.
+    s = refreshScriptedStatics(s);
+    expect(s.cards.get(id("curator"))!.scriptStaticPT).toBeUndefined();
+  });
+
+  it("a new Curator object doesn't count cards the old one exiled (CR 400.7)", () => {
+    let s = state;
+    for (const c of ["g-creature", "g-instant", "g-sorcery", "g-land"]) {
+      s = exileWithCurator(s, c);
+    }
+    const cards = new Map(s.cards);
+    const old = cards.get(id("curator"))!;
+    cards.set(id("curator"), {
+      ...old,
+      enteredBattlefieldTimestamp: old.enteredBattlefieldTimestamp + 1,
+    });
+    s = refreshScriptedStatics({ ...s, cards });
+    expect(s.cards.get(id("curator"))!.scriptStaticPT).toBeUndefined();
+  });
+
+  it("a card re-exiled by another source loses its old link (CR 400.7)", () => {
+    let s = exileWithCurator(state, "g-creature");
+    const zones = new Map(s.zones);
+    const exile = zones.get(`${p2}-exile`)!;
+    zones.set(`${p2}-exile`, {
+      ...exile,
+      cardIds: exile.cardIds.filter((c) => c !== id("g-creature")),
+    });
+    const gy = zones.get(`${p2}-graveyard`)!;
+    zones.set(`${p2}-graveyard`, {
+      ...gy,
+      cardIds: [...gy.cardIds, id("g-creature")],
+    });
+    const cards = new Map(s.cards);
+    cards.set(id("g-creature"), {
+      ...cards.get(id("g-creature"))!,
+      currentZoneKey: `${p2}-graveyard`,
+    });
+    s = resolveScriptedEffects({ ...s, zones, cards }, exileEffects(), {
+      controllerId: p1,
+      sourceCardId: null,
+      targets: [{ type: "card", targetId: id("g-creature"), isValid: true }],
+    } as unknown as StackObject);
+    expect(s.zones.get(`${p2}-exile`)!.cardIds).toContain(id("g-creature"));
+    expect(s.cards.get(id("g-creature"))!.exiledWith).toBeUndefined();
+  });
+
+  it("an exile by a card without the bonus leaves no link", () => {
+    const s = resolveScriptedEffects(state, exileEffects(), {
+      controllerId: p1,
+      sourceCardId: null,
+      targets: [{ type: "card", targetId: id("g-creature"), isValid: true }],
+    } as unknown as StackObject);
+    expect(s.cards.get(id("g-creature"))!.exiledWith).toBeUndefined();
+  });
+});
