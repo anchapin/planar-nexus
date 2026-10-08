@@ -181,6 +181,18 @@ function effectTargetLegal(
     }
     return true;
   }
+  // #2594 follow-up (lane 14): "exile each card in target player's
+  // graveyard" (Angel of Finality) doesn't read the targeted
+  // object — the engine reads `effect.controller` directly and
+  // sweeps the chosen player's graveyard. Returning true keeps the
+  // dispatcher's legality check happy, but the actual sweep uses
+  // `effect.controller` and ignores `target`.
+  if (
+    effect.op === "Exile" &&
+    effect.fromZone === "opponent_graveyard"
+  ) {
+    return true;
+  }
   // #2594 follow-up (lane 13): "Counter target red or green spell"
   // (Flashfreeze) — the targeted spell's source card must have at
   // least one color in the script's `colors` filter. The spell is
@@ -942,18 +954,56 @@ function applyEffect(
       // #2614 Keen-Eyed Curator: "target card from a graveyard" (graveyard
       // set) takes any card type, so the permanent filters don't apply.
       const anyCard = effect.fromZone === "graveyard" && effect.graveyard;
+      // #2594 follow-up (lane 14): the opponent_graveyard sweep
+      // doesn't read the targeted object — the engine reads
+      // `effect.controller` directly and iterates the chosen
+      // player's graveyard. Skip the target legality check
+      // (handled by the sweep branch below).
+      const isSweep = effect.fromZone === "opponent_graveyard";
       if (
-        !target ||
-        (!anyCard &&
-          (!targetStillMatches(state, target.targetId, effect) ||
-            !controllerStillMatches(
-              state,
-              target.targetId,
-              effect.controller,
-              ctx,
-            )))
+        !isSweep &&
+        (!target ||
+          (!anyCard &&
+            (!targetStillMatches(state, target.targetId, effect) ||
+              !controllerStillMatches(
+                state,
+                target.targetId,
+                effect.controller,
+                ctx,
+              ))))
       )
         return state;
+      // #2594 follow-up (lane 14): "exile each card in target
+      // player's graveyard" (Angel of Finality). The target
+      // player is narrowed by `effect.controller` (`"you"` for the
+      // controller's own graveyard, `"opponent"` for the
+      // opponent's). Default behavior ("exile target player's
+      // graveyard") targets the opponent.
+      if (effect.fromZone === "opponent_graveyard") {
+        let targetPlayer: PlayerId | undefined;
+        if (effect.controller === "you") {
+          targetPlayer = ctx.controllerId;
+        } else {
+          // opponent (default) — pick the one player whose id
+          // isn't the source controller (single-opponent 2-player
+          // games).
+          if (!ctx.controllerId) return state;
+          targetPlayer = [...state.players.keys()].find(
+            (p) => p !== ctx.controllerId,
+          );
+        }
+        if (!targetPlayer) return state;
+        const gy = state.zones.get(`${targetPlayer}-graveyard`);
+        if (!gy) return state;
+        let next = state;
+        // Snapshot ids because `exileCard` mutates zones.
+        const ids: CardInstanceId[] = [...gy.cardIds];
+        for (const id of ids) {
+          const r = exileCard(next, id);
+          if (r.success) next = r.state;
+        }
+        return next;
+      }
       // #2594 follow-up: "exile target card from a graveyard"
       // (Ambush Wolf, Soul-Guide Lantern). When `fromZone` is
       // "graveyard", the target is a card id in the chosen player's
@@ -962,21 +1012,24 @@ function applyEffect(
       // current zone to the exile zone, so the only branch here is
       // the legality check (the chosen player must own the card
       // and the target zone must contain it).
+      const targetId = target?.targetId as CardInstanceId | undefined;
       if (effect.fromZone === "graveyard") {
-        const card = state.cards.get(target.targetId as CardInstanceId);
+        if (!targetId) return state;
+        const card = state.cards.get(targetId);
         if (!card) return state;
         const ownerId: PlayerId = card.ownerId || card.controllerId;
         const gy = state.zones.get(`${ownerId}-graveyard`);
-        if (!gy || !gy.cardIds.includes(target.targetId as CardInstanceId)) {
+        if (!gy || !gy.cardIds.includes(targetId)) {
           return state;
         }
         if (effect.graveyard === "you" && ownerId !== ctx.controllerId) {
           return state;
         }
       }
-      const r = exileCard(state, target.targetId as CardInstanceId);
+      if (!targetId) return state;
+      const r = exileCard(state, targetId);
       if (!r.success) return state;
-      return linkExiledCard(r.state, target.targetId as CardInstanceId, ctx);
+      return linkExiledCard(r.state, targetId, ctx);
     }
     case "Tap":
     case "Untap": {
