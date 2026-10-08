@@ -792,6 +792,20 @@ export const AnimateSchema = z
   })
   .strict();
 
+/**
+ * Earthbend N (#2614 Ba Sing Se): target land you control becomes a 0/0
+ * creature with haste that's still a land, with N +1/+1 counters; it
+ * returns to the battlefield tapped when it dies or is exiled.
+ */
+export const EarthbendSchema = z
+  .object({
+    op: z.literal("Earthbend"),
+    target: z.literal("land_you_control"),
+    amount: z.number().int().min(1).max(9),
+    if_kicked: ifKicked,
+  })
+  .strict();
+
 export const EffectSchema = z.discriminatedUnion("op", [
   DealDamageSchema,
   DrawSchema,
@@ -822,6 +836,7 @@ export const EffectSchema = z.discriminatedUnion("op", [
   GrantKeywordSchema,
   CantBeBlockedSchema,
   AnimateSchema,
+  EarthbendSchema,
 ]);
 
 /** True when no non-Discard effect follows a Discard (#2536). */

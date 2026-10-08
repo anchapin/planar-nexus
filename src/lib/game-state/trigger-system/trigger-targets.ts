@@ -46,6 +46,8 @@ export interface TriggerTargetSpec {
   optional: boolean;
   /** "another target creature" — the source itself is excluded. */
   excludeSource: boolean;
+  /** Scripted Earthbend: only lands qualify (#2614). */
+  landOnly?: boolean;
   /** Scripted Destroy/Exile: which permanents qualify (#2528). */
   filter?: RemovalFilter;
   /** Scripted ReturnFromZone: which cards in the chosen graveyard qualify (#2560). */
@@ -191,6 +193,8 @@ function legalTargetsForSpec(
         : battlefieldCreatures(state);
     for (const card of candidates) {
       if (spec.filter && !matchesRemovalFilter(card, spec.filter)) continue;
+      if (spec.landOnly && !/\bLand\b/.test(card.cardData.type_line ?? ""))
+        continue;
       if (spec.controller === "you" && card.controllerId !== controllerId)
         continue;
       if (spec.controller === "opponent" && card.controllerId === controllerId)
@@ -317,6 +321,9 @@ function effectTargetSpecs(effect: CardEffect): TriggerTargetSpec[] | null {
         controller: effect.controller ?? "any",
       },
     ];
+  }
+  if (effect.op === "Earthbend") {
+    return [{ ...base, kind: "permanent", controller: "you", landOnly: true }];
   }
   if (effect.op === "Pump" || effect.op === "PutCounters") {
     return [
