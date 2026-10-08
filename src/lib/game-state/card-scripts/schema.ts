@@ -266,8 +266,17 @@ export const ExileSchema = z
     op: z.literal("Exile"),
     ...removalFields,
     fromZone: z.enum(["battlefield", "graveyard"]).optional(),
+    /**
+     * With fromZone graveyard: whose graveyard the target card comes from
+     * (#2614 Keen-Eyed Curator: "target card from a graveyard" is any).
+     * Unset keeps the older targeting.
+     */
+    graveyard: z.enum(["you", "any"]).optional(),
   })
-  .strict();
+  .strict()
+  .refine((e) => !e.graveyard || e.fromZone === "graveyard", {
+    message: "graveyard needs fromZone graveyard",
+  });
 
 /** Tap or untap target permanent (#2538). Same filters as Destroy/Exile. */
 export const TapSchema = z
@@ -1330,6 +1339,22 @@ export const CardScriptSchema = z
      * turns" (`extra_land_plays`, CR 305.2) and "You may play lands from your
      * graveyard" (`from_graveyard`).
      */
+    /**
+     * "As long as there are N or more card types among cards exiled with
+     * this creature, it gets +P/+T and has ..." (#2614 Keen-Eyed Curator,
+     * CR 607.2a). Cards this permanent's scripted Exile effects exile are
+     * linked to it; the bonus applies to itself only.
+     */
+    exiled_types_bonus: z
+      .object({
+        text: z.string().min(1),
+        min_types: z.number().int().min(1).max(9),
+        power: z.number().int(),
+        toughness: z.number().int(),
+        keywords: z.array(z.enum(TOKEN_KEYWORDS)).min(1).optional(),
+      })
+      .strict()
+      .optional(),
     land_rules: z
       .object({
         extra_land_plays: z.number().int().min(1).max(2).optional(),

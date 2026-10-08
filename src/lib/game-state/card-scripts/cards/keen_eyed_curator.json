@@ -1,0 +1,25 @@
+{
+  "name": "Keen-Eyed Curator",
+  "oracle": "As long as there are four or more card types among cards exiled with this creature, it gets +4/+4 and has trample.\n{1}: Exile target card from a graveyard.",
+  "exiled_types_bonus": {
+    "text": "As long as there are four or more card types among cards exiled with this creature, it gets +4/+4 and has trample.",
+    "min_types": 4,
+    "power": 4,
+    "toughness": 4,
+    "keywords": ["trample"]
+  },
+  "activated": [
+    {
+      "text": "Exile target card from a graveyard.",
+      "cost": { "mana": "{1}", "tap": false, "sacrifice": false },
+      "effects": [
+        {
+          "op": "Exile",
+          "target": "creature",
+          "fromZone": "graveyard",
+          "graveyard": "any"
+        }
+      ]
+    }
+  ]
+}

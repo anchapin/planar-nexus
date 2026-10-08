@@ -179,6 +179,33 @@ function effectTargetLegal(
   return targetStillLegal(state, target);
 }
 
+/**
+ * Link a card a scripted source just exiled to that source when its script
+ * counts "cards exiled with" it (#2614 Keen-Eyed Curator, CR 607.2a).
+ */
+function linkExiledCard(
+  state: GameState,
+  cardId: CardInstanceId,
+  ctx: EffectContext,
+): GameState {
+  if (!ctx.sourceId) return state;
+  const source = state.cards.get(ctx.sourceId);
+  if (!source || !getCardScript(source.cardData.name)?.exiled_types_bonus) {
+    return state;
+  }
+  const card = state.cards.get(cardId);
+  if (!card) return state;
+  const cards = new Map(state.cards);
+  cards.set(cardId, {
+    ...card,
+    exiledWith: {
+      sourceId: source.id,
+      timestamp: source.enteredBattlefieldTimestamp,
+    },
+  });
+  return { ...state, cards };
+}
+
 function playerFor(
   who: "you" | "target_player",
   ctx: EffectContext,
@@ -877,10 +904,19 @@ function applyEffect(
       return r.success ? r.state : state;
     }
     case "Exile": {
+      // #2614 Keen-Eyed Curator: "target card from a graveyard" (graveyard
+      // set) takes any card type, so the permanent filters don't apply.
+      const anyCard = effect.fromZone === "graveyard" && effect.graveyard;
       if (
         !target ||
-        !targetStillMatches(state, target.targetId, effect) ||
-        !controllerStillMatches(state, target.targetId, effect.controller, ctx)
+        (!anyCard &&
+          (!targetStillMatches(state, target.targetId, effect) ||
+            !controllerStillMatches(
+              state,
+              target.targetId,
+              effect.controller,
+              ctx,
+            )))
       )
         return state;
       // #2594 follow-up: "exile target card from a graveyard"
@@ -899,9 +935,13 @@ function applyEffect(
         if (!gy || !gy.cardIds.includes(target.targetId as CardInstanceId)) {
           return state;
         }
+        if (effect.graveyard === "you" && ownerId !== ctx.controllerId) {
+          return state;
+        }
       }
       const r = exileCard(state, target.targetId as CardInstanceId);
-      return r.success ? r.state : state;
+      if (!r.success) return state;
+      return linkExiledCard(r.state, target.targetId as CardInstanceId, ctx);
     }
     case "Tap":
     case "Untap": {
