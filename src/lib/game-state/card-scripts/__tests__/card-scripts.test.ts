@@ -2664,7 +2664,7 @@ describe("scripted X activation cost (#2559, #2594 #18)", () => {
     activated: [
       {
         text: "This creature gets +X/+X until end of turn.",
-        cost: { mana: "{X}{G}", tap: true, sacrifice: false },
+        cost: { mana: "{X}{G}", tap: true, sacrifice: false, exileSelf: false },
         effects: [{ op: "Pump", power: "X", toughness: "X", target: "self" }],
       },
     ],
@@ -4396,7 +4396,7 @@ describe("scripted AddMana (#2565)", () => {
             activated: [
               {
                 text: "Add {G}.",
-                cost: { tap: true, sacrifice: false },
+                cost: { tap: true, sacrifice: false, exileSelf: false },
                 effects: [effect],
               },
             ],
@@ -6673,7 +6673,7 @@ describe("scripted cycling (#2566)", () => {
       activated: [
         {
           text: "Draw a card.",
-          cost: { tap: true, sacrifice: false },
+          cost: { tap: true, sacrifice: false, exileSelf: false },
           effects: [{ op: "Draw", amount: 1, who: "you" }],
         },
       ],

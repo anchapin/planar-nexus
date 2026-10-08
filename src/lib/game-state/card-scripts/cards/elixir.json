@@ -1,0 +1,13 @@
+{
+  "name": "Elixir",
+  "oracle": "{T}, Exile this artifact: You gain 3 life.",
+  "activated": [
+    {
+      "text": "You gain 3 life.",
+      "cost": { "tap": true, "sacrifice": false, "exileSelf": true },
+      "effects": [
+        { "op": "GainLife", "amount": 3, "who": "you" }
+      ]
+    }
+  ]
+}

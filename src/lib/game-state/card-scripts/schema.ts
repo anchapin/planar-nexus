@@ -945,6 +945,16 @@ export const ActivatedSchema = z
           .optional(),
         tap: z.boolean().default(false),
         sacrifice: z.boolean().default(false),
+        /**
+         * #2594 follow-up: "Exile this artifact" as a cost (Phoenix Down,
+         * Ether, Elixir — FIN #29, etc.). When true, the engine
+         * exiles the source card to the controller's exile zone as
+         * part of the activation cost. The activation will still fail
+         * (no-op) if the source card can't be moved (e.g. an Aura
+         * attached to an illegal target — but this is an artifact
+         * ability, so that case doesn't apply here).
+         */
+        exileSelf: z.boolean().default(false),
       })
       .strict(),
     /** CR 602.5b: "Activate only once" / "Activate only once each turn". */
