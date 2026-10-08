@@ -41,6 +41,9 @@ function scriptedActivated(a: ScriptedActivated): ParsedActivatedAbility {
       discard: false,
       payLife: 0,
       exileSelf: a.cost.exileSelf,
+      ...(a.cost.sacrifice_permanents
+        ? { sacrificePermanents: a.cost.sacrifice_permanents }
+        : {}),
       additionalCosts: [],
     },
     effect: a.text,
@@ -99,6 +102,8 @@ function scriptedCondition(t: ScriptedTrigger): TriggerCondition {
   // targeted: creatures/creature spells you control targeted by an
   // opponent (#2614 Surrak); the controller check lives in triggered.ts.
   if (t.event === "targeted") return { event: "targeted" };
+  // crime: you committed a crime (#2614 Magda); see keyword-actions/targeted.
+  if (t.event === "crime") return { event: "crime" };
   const condition: TriggerCondition = {
     event: SUBJECT_EVENT[t.event],
     subject: t.subject,

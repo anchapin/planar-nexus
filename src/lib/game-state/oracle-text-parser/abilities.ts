@@ -49,6 +49,8 @@ export interface ParsedActivatedAbility {
      * a different cost entirely and remains on its own line.
      */
     exileSelf: boolean;
+    /** "Sacrifice three Treasures" (#2614 Magda), from the card script. */
+    sacrificePermanents?: { count: number; subtype: string };
     additionalCosts: string[];
   };
   effect: string;
@@ -121,6 +123,7 @@ export interface TriggerCondition {
     | "disturb"
     | "transform"
     | "targeted"
+    | "crime"
     | "unknown";
   /**
    * Whose event the trigger watches (CR 603.6a, 603.10a, 508.1m): "self" for

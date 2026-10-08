@@ -19,6 +19,7 @@ import {
 } from "../keyword-actions/grandeur";
 import { getActivatedAbilities } from "./parse";
 import { isCreature } from "../card-instance";
+import { hasSubtype } from "../spell-casting/affinity";
 import { hasKeyword } from "../evergreen-keywords";
 import { generateAbilityId } from "./ids";
 import { evaluateInterveningIfClause } from "./evaluate";
@@ -37,6 +38,28 @@ import type { ActivateAbilityResult } from "./types";
  * priority. Kept local so this module doesn't pull equip into the client
  * bundle.
  */
+/**
+ * Permanents of a subtype the player controls that could pay a "Sacrifice N
+ * <subtype>s" cost (#2614 Magda), tapped ones first so untapped Treasures
+ * stay available for mana.
+ */
+function sacrificeCandidates(
+  state: GameState,
+  playerId: PlayerId,
+  cost: { subtype: string },
+): CardInstanceId[] {
+  const zone = state.zones.get(`${playerId}-battlefield`);
+  const ids = (zone?.cardIds ?? []).filter((id) => {
+    const c = state.cards.get(id);
+    return !!c && c.controllerId === playerId && hasSubtype(c, cost.subtype);
+  });
+  return ids.sort(
+    (a, b) =>
+      Number(!!state.cards.get(b)!.isTapped) -
+      Number(!!state.cards.get(a)!.isTapped),
+  );
+}
+
 function atSorcerySpeed(state: GameState, playerId: PlayerId): boolean {
   const phase = state.turn.currentPhase;
   return (
@@ -96,6 +119,18 @@ export function canActivateAbility(
           "A spell with split second is on the stack. Only mana abilities may be activated.",
       };
     }
+  }
+
+  // "Sacrifice three Treasures" (#2614 Magda): enough of them to pay.
+  if (
+    ability?.costs.sacrificePermanents &&
+    sacrificeCandidates(state, playerId, ability.costs.sacrificePermanents)
+      .length < ability.costs.sacrificePermanents.count
+  ) {
+    return {
+      canActivate: false,
+      reason: `Not enough ${ability.costs.sacrificePermanents.subtype}s to sacrifice`,
+    };
   }
 
   // CR 302.6: a creature's {T} ability can't be activated unless it's been
@@ -371,6 +406,27 @@ export function activateAbility(
       ...currentState,
       players: updatedPlayers,
     };
+  }
+
+  if (ability.costs.sacrificePermanents) {
+    const { count } = ability.costs.sacrificePermanents;
+    const ids = sacrificeCandidates(
+      currentState,
+      playerId,
+      ability.costs.sacrificePermanents,
+    );
+    if (ids.length < count) {
+      return {
+        success: false,
+        state,
+        description: "",
+        error: "Not enough permanents to sacrifice",
+      };
+    }
+    for (const id of ids.slice(0, count)) {
+      const result = destroyCard(currentState, id, true);
+      if (result.success) currentState = result.state;
+    }
   }
 
   if (ability.costs.sacrifice) {

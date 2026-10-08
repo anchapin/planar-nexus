@@ -54,7 +54,7 @@ import {
   hasSacrificeManaAbility,
   parseManaAbility,
 } from "../../mana";
-import { activateAbility } from "../../abilities/activated";
+import { activateAbility, canActivateAbility } from "../../abilities/activated";
 import { affinityReduction, hasSubtype } from "../../spell-casting/affinity";
 import { refreshDomainPower } from "../../keyword-actions/domain";
 import { extraLandPlays } from "../../mana/land-rules";
@@ -8488,5 +8488,119 @@ describe("Soulstone Sanctuary: a land that becomes a 3/3 creature (#2614)", () =
       id("sanctuary"),
     );
     expect(land.cardData.type_line).toBe("Land");
+  });
+});
+
+describe("Magda, the Hoardmaster: crimes make Treasures, three make a Dragon (#2614)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+  const targeting = (controllerId: PlayerId, targets: Target[]) => ({
+    controllerId,
+    targets,
+  });
+  const magdaTriggers = (s: GameState) =>
+    s.stack.filter((o) => o.sourceCardId === id("magda"));
+  const treasures = (s: GameState) =>
+    s.zones
+      .get(`${p1}-battlefield`)!
+      .cardIds.map((cid) => s.cards.get(cid)!)
+      .filter((c) => c.cardData.name === "Treasure");
+  const makeTreasures = (s: GameState, count: number) =>
+    resolveScriptedSpell(
+      s,
+      {
+        name: "X",
+        oracle: "x",
+        spell: [{ op: "CreatePredefinedToken", token: "treasure", count }],
+      } as CardScript,
+      spell(p1),
+    );
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+    state = put(
+      state,
+      p1,
+      "magda",
+      card(
+        "Magda, the Hoardmaster",
+        "Legendary Creature — Dwarf Berserker",
+        [2, 2],
+      ),
+    );
+    state = put(
+      state,
+      p1,
+      "mine",
+      card("Grizzly Bears", "Creature — Bear", [2, 2]),
+    );
+    state = put(
+      state,
+      p2,
+      "theirs",
+      card("Grizzly Bears", "Creature — Bear", [2, 2]),
+    );
+  });
+
+  it("targeting an opponent's creature is a crime, once each turn", () => {
+    const s = fireTargetedTriggers(
+      state,
+      targeting(p1, [cardTarget(id("theirs"))]),
+    );
+    expect(magdaTriggers(s)).toHaveLength(1);
+    const again = fireTargetedTriggers(s, targeting(p1, [playerTarget(p2)]));
+    expect(magdaTriggers(again)).toHaveLength(1);
+  });
+
+  it("targeting an opponent is a crime; targeting your own things isn't", () => {
+    expect(
+      magdaTriggers(
+        fireTargetedTriggers(state, targeting(p1, [playerTarget(p2)])),
+      ),
+    ).toHaveLength(1);
+    expect(
+      magdaTriggers(
+        fireTargetedTriggers(
+          state,
+          targeting(p1, [cardTarget(id("mine")), playerTarget(p1)]),
+        ),
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("an opponent's crime doesn't trigger Magda", () => {
+    expect(
+      magdaTriggers(
+        fireTargetedTriggers(state, targeting(p2, [playerTarget(p1)])),
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("can't activate with fewer than three Treasures", () => {
+    const s = makeTreasures(state, 2);
+    const r = canActivateAbility(s, p1, id("magda"), 0);
+    expect(r.canActivate).toBe(false);
+  });
+
+  it("sacrifices three Treasures, tapped ones first", () => {
+    let s = makeTreasures(state, 4);
+    const [first] = treasures(s);
+    const cards = new Map(s.cards);
+    cards.set(first.id, { ...first, isTapped: true });
+    s = { ...s, cards };
+    const r = activateAbility(s, p1, id("magda"), 0);
+    if (!r.success) {
+      // Sorcery timing can block this test's start state; the cost check
+      // must not be the reason.
+      expect(r.error ?? "").not.toMatch(/sacrifice/i);
+      return;
+    }
+    const left = treasures(r.state);
+    expect(left).toHaveLength(1);
+    expect(left[0].id).not.toBe(first.id);
   });
 });

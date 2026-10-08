@@ -1,0 +1,41 @@
+{
+  "name": "Magda, the Hoardmaster",
+  "oracle": "Whenever you commit a crime, create a tapped Treasure token. This ability triggers only once each turn. (Targeting opponents, anything they control, and/or cards in their graveyards is a crime.)\nSacrifice three Treasures: Create a 4/4 red Scorpion Dragon creature token with flying and haste. Activate only as a sorcery.",
+  "triggers": [
+    {
+      "text": "Whenever you commit a crime, create a tapped Treasure token. This ability triggers only once each turn.",
+      "event": "crime",
+      "once_per_turn": true,
+      "effects": [
+        {
+          "op": "CreatePredefinedToken",
+          "token": "treasure",
+          "count": 1,
+          "tapped": true
+        }
+      ]
+    }
+  ],
+  "activated": [
+    {
+      "text": "Create a 4/4 red Scorpion Dragon creature token with flying and haste.",
+      "cost": {
+        "tap": false,
+        "sacrifice": false,
+        "sacrifice_permanents": { "count": 3, "subtype": "Treasure" }
+      },
+      "timing": "sorcery",
+      "effects": [
+        {
+          "op": "CreateToken",
+          "count": 1,
+          "power": 4,
+          "toughness": 4,
+          "color": "red",
+          "subtypes": ["Scorpion", "Dragon"],
+          "keywords": ["flying", "haste"]
+        }
+      ]
+    }
+  ]
+}

@@ -9,6 +9,69 @@ import type { GameState, PlayerId, StackObject } from "../types";
 import { isOnBattlefield } from "../types";
 import { detectTriggeredAbilities } from "../abilities/triggered";
 import { putTriggersOnStack } from "../trigger-system/stack-ops";
+import { getCardScript } from "../card-scripts/registry";
+
+/**
+ * CR 700.13: a player commits a crime when they target one or more
+ * opponents, anything an opponent controls, or cards in an opponent's
+ * graveyard (#2614 Magda, the Hoardmaster).
+ */
+function isCrime(
+  state: GameState,
+  targeter: PlayerId,
+  targets: StackObject["targets"],
+): boolean {
+  for (const t of targets ?? []) {
+    if (t.type === "player") {
+      if (t.targetId !== targeter && state.players.has(t.targetId as PlayerId))
+        return true;
+      continue;
+    }
+    if (t.type !== "card") continue;
+    const card = state.cards.get(t.targetId);
+    if (!card) continue;
+    const zone = card.currentZoneKey ?? "";
+    if (zone.endsWith("-graveyard")) {
+      if (card.ownerId !== targeter) return true;
+    } else if (card.controllerId !== targeter) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** True when a crime trigger on this card is limited to once each turn. */
+function crimeOncePerTurn(state: GameState, cardId: string): boolean {
+  const card = state.cards.get(cardId);
+  return !!getCardScript(card?.cardData.name ?? "")?.triggers?.some(
+    (t) => t.event === "crime" && t.once_per_turn,
+  );
+}
+
+/** Put "whenever you commit a crime" triggers on the stack (CR 700.13). */
+function fireCrimeTriggers(
+  state: GameState,
+  targeter: PlayerId,
+  targets: StackObject["targets"],
+): GameState {
+  if (!isCrime(state, targeter, targets)) return state;
+  const turn = state.turn.turnNumber;
+  const triggers = detectTriggeredAbilities(state, "crime", {
+    targetingPlayerId: targeter,
+  }).filter(
+    (t) =>
+      !crimeOncePerTurn(state, t.sourceCardId) ||
+      state.cards.get(t.sourceCardId)?.crimeTriggerTurn !== turn,
+  );
+  if (triggers.length === 0) return state;
+  const cards = new Map(state.cards);
+  for (const t of triggers) {
+    const c = cards.get(t.sourceCardId);
+    if (c && crimeOncePerTurn(state, t.sourceCardId))
+      cards.set(t.sourceCardId, { ...c, crimeTriggerTurn: turn });
+  }
+  return putTriggersOnStack({ ...state, cards }, triggers).state;
+}
 
 /** True for a creature permanent, or a creature card on the stack as a spell. */
 function isTargetableCreature(state: GameState, cardId: string): boolean {
@@ -41,5 +104,5 @@ export function fireTargetedTriggers(
     });
     if (triggers.length > 0) s = putTriggersOnStack(s, triggers).state;
   }
-  return s;
+  return fireCrimeTriggers(s, targeter, stackObject.targets);
 }

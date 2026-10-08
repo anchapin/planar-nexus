@@ -340,6 +340,8 @@ export interface CardInstance {
    * leaves the battlefield. While set, `cardData` carries the animated type
    * line and base power/toughness.
    */
+  /** Turn a once-each-turn crime trigger last fired (#2614 Magda). */
+  crimeTriggerTurn?: number;
   animatedUntilEndOfTurn?: {
     cardData: ScryfallCard;
     allCreatureTypes?: boolean;
