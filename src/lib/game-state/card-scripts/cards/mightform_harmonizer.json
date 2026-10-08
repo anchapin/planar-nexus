@@ -1,0 +1,21 @@
+{
+  "name": "Mightform Harmonizer",
+  "oracle": "Landfall — Whenever a land you control enters, double the power of target creature you control until end of turn.\nWarp {2}{G} (You may cast this card from your hand for its warp cost. Exile this creature at the beginning of the next end step, then you may cast it from exile on a later turn.)",
+  "triggers": [
+    {
+      "text": "Landfall — Whenever a land you control enters, double the power of target creature you control until end of turn.",
+      "event": "landfall",
+      "effects": [
+        {
+          "op": "Pump",
+          "power": 0,
+          "toughness": 0,
+          "target": "creature",
+          "controller": "you",
+          "double_power": true
+        }
+      ]
+    }
+  ],
+  "warp": { "cost": "{2}{G}" }
+}

@@ -948,11 +948,20 @@ function applyEffect(
     case "Pump": {
       const cardId = creatureFor(state, effect.target, ctx, effect.controller);
       if (!cardId) return state;
+      // Doubling power: +X/+0 where X is the creature's power now. A
+      // negative power doubles to a lower value (CR 701.10e-style), so X is
+      // the power as-is.
+      const doubled = state.cards.get(cardId);
+      const power = effect.double_power
+        ? doubled
+          ? getEffectivePower(doubled)
+          : 0
+        : effect.power;
       const r = resolveEffect(
         state,
         {
           effectType: "pt_until_eot",
-          power: effect.power,
+          power,
           toughness: effect.toughness,
           targetId: cardId,
         },
