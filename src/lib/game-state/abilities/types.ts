@@ -26,7 +26,8 @@ export type TriggerEvent =
   | "turnBegins"
   | "cleanupStep"
   | "stateTrigger"
-  | "abilityActivated";
+  | "abilityActivated"
+  | "targeted";
 
 export interface TriggerContext {
   sourceCardId?: CardInstanceId;
@@ -57,6 +58,13 @@ export interface TriggerContext {
   upkeepPlayerId?: PlayerId;
   /** Cast (CR 601.2i): who cast the spell (the spell is `spellCardId`). */
   castingPlayerId?: PlayerId;
+  /**
+   * Targeted (#2614 Surrak): the creature (permanent or creature spell)
+   * that became a target, and the controller of the targeting spell or
+   * ability.
+   */
+  targetedCardId?: CardInstanceId;
+  targetingPlayerId?: PlayerId;
 }
 
 export interface ActivateAbilityResult {

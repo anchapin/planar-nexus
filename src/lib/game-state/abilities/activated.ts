@@ -1,4 +1,5 @@
 import { isSelfTransformText } from "../keyword-actions/transform";
+import { fireTargetedTriggers } from "../keyword-actions/targeted";
 import type {
   GameState,
   PlayerId,
@@ -559,6 +560,8 @@ export function activateAbility(
       stack: updatedStack,
       lastModifiedAt: Date.now(),
     };
+    // "Becomes the target" triggers (#2614 Surrak) for targets picked now.
+    cardMovedState = fireTargetedTriggers(cardMovedState, stackObject);
   }
 
   const playerIds = Array.from(cardMovedState.players.keys());
