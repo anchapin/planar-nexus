@@ -401,6 +401,29 @@ export const GrantKeywordSchema = z
     controllerNeedsCreatureTarget,
   );
 
+/**
+ * "Target creature [with power N or less] can't be blocked this turn"
+ * (#2614, Escape Tunnel). Records "can't be blocked" in the target's
+ * `untilEndOfTurnKeywords`, which combat's block check reads and cleanup
+ * clears. `max_power` is rechecked on resolution (CR 608.2b). `target`
+ * matches GrantKeyword: "creature", "self", or "it" (the previous
+ * effect's target).
+ */
+export const CantBeBlockedSchema = z
+  .object({
+    op: z.literal("CantBeBlocked"),
+    target: z.enum(["creature", "self", "it"]),
+    max_power: z.number().int().optional(),
+    controller,
+    until: z.literal("end_of_turn"),
+    if_kicked: ifKicked,
+  })
+  .strict()
+  .refine(
+    (e) => e.controller === undefined || e.target === "creature",
+    controllerNeedsCreatureTarget,
+  );
+
 export const PutCountersSchema = z
   .object({
     op: z.literal("PutCounters"),
@@ -670,6 +693,7 @@ export const EffectSchema = z.discriminatedUnion("op", [
   BiteSchema,
   AddManaSchema,
   GrantKeywordSchema,
+  CantBeBlockedSchema,
 ]);
 
 /** True when no non-Discard effect follows a Discard (#2536). */

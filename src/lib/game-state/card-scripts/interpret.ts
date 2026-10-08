@@ -41,7 +41,10 @@ import { getEffectivePower } from "../evergreen-keywords";
 import { addUntilEndOfTurnKeywords } from "../pt-until-end-of-turn";
 import { copySpellOnStack } from "../spell-casting/resolve";
 import { attachEquipment } from "../keyword-actions/equip";
-import { addUntilEndOfTurnKeyword } from "../pt-until-end-of-turn";
+import {
+  addUntilEndOfTurnKeyword,
+  CANT_BE_BLOCKED,
+} from "../pt-until-end-of-turn";
 import { getCardScript } from "./registry";
 import { addMana } from "../mana/mana-pool";
 import { PREDEFINED_TOKENS } from "./predefined-tokens";
@@ -841,6 +844,30 @@ function applyEffect(
       );
       if (!cardId) return state;
       return addUntilEndOfTurnKeyword(state, cardId, effect.keyword);
+    }
+    case "CantBeBlocked": {
+      // #2614 (Escape Tunnel): "can't be blocked this turn". The power
+      // bound is part of the target's legality, so it's rechecked here
+      // (CR 608.2b); a creature that grew past it is an illegal target.
+      const cardId = creatureFor(
+        state,
+        effect.target === "self" ? "self" : "creature",
+        ctx,
+        effect.controller,
+      );
+      if (!cardId) return state;
+      if (effect.max_power !== undefined) {
+        const card = state.cards.get(cardId);
+        if (
+          !card ||
+          !matchesRemovalFilter(card, {
+            target: "creature",
+            max_power: effect.max_power,
+          })
+        )
+          return state;
+      }
+      return addUntilEndOfTurnKeyword(state, cardId, CANT_BE_BLOCKED);
     }
     case "PutCounters": {
       const cardId = creatureFor(state, effect.target, ctx, effect.controller);
