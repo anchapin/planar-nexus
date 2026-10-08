@@ -401,7 +401,11 @@ function fight(
   const fighterId =
     effect.fighter === "self"
       ? ctx.sourceId
-      : (ctx.fighter?.targetId as CardInstanceId | undefined);
+      : effect.fighter === "enchanted"
+        ? ctx.sourceId
+          ? (state.cards.get(ctx.sourceId)?.attachedToId ?? undefined)
+          : undefined
+        : (ctx.fighter?.targetId as CardInstanceId | undefined);
   const otherId = ctx.target?.targetId as CardInstanceId | undefined;
   if (!fighterId || !otherId) return state;
   const fighter = state.cards.get(fighterId);
@@ -415,7 +419,10 @@ function fight(
     !isCreature(other)
   )
     return state;
-  if (effect.fighter !== "self" && fighter.controllerId !== ctx.controllerId)
+  if (
+    (effect.fighter === "it" || effect.fighter === "creature") &&
+    fighter.controllerId !== ctx.controllerId
+  )
     return state;
   if (!controllerStillMatches(state, otherId, effect.controller, ctx))
     return state;

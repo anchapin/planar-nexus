@@ -325,29 +325,33 @@ export const ReturnFromZoneSchema = z
  *   counter on target creature you control. It fights ...").
  * - "creature": a target creature you control, chosen just before the other
  *   target, so the effect uses two targets.
+ * - "enchanted": the creature the Aura the ability belongs to is attached to
+ *   (untargeted; Meltstrider's Resolve, #2614).
  * `controller` is whose creature the other target is. `optional` is "up to
  * one target creature" and is only scripted on abilities of the fighter.
  */
 const fightFields = {
-  fighter: z.enum(["self", "it", "creature"]),
+  fighter: z.enum(["self", "it", "creature", "enchanted"]),
   target: z.literal("creature"),
   controller,
   optional: z.boolean().optional(),
   if_kicked: ifKicked,
 };
 const optionalNeedsSelf = {
-  message: "optional only applies when the fighter is self",
+  message: "optional only applies when the fighter is self or enchanted",
 };
+const optionalFighterOk = (e: { optional?: boolean; fighter: string }) =>
+  !e.optional || e.fighter === "self" || e.fighter === "enchanted";
 
 export const FightSchema = z
   .object({ op: z.literal("Fight"), ...fightFields })
   .strict()
-  .refine((e) => !e.optional || e.fighter === "self", optionalNeedsSelf);
+  .refine(optionalFighterOk, optionalNeedsSelf);
 
 export const BiteSchema = z
   .object({ op: z.literal("Bite"), ...fightFields })
   .strict()
-  .refine((e) => !e.optional || e.fighter === "self", optionalNeedsSelf);
+  .refine(optionalFighterOk, optionalNeedsSelf);
 
 export const CounterSchema = z
   .object({
@@ -1061,6 +1065,12 @@ export const AuraStaticSchema = z
     restrictBlock: z.boolean().optional(),
     /** Forward-compat: "Enchanted permanent doesn't untap during its controller's untap step." */
     restrictUntap: z.boolean().optional(),
+    /**
+     * "Enchanted creature can't be blocked by more than one creature."
+     * (Meltstrider's Resolve, #2614; CR 509.1b). Surfaced as
+     * `auraMaxBlockers` on the enchanted card.
+     */
+    maxBlockers: z.literal(1).optional(),
   })
   .strict()
   .refine((s) => (s.power === undefined) === (s.toughness === undefined), {
@@ -1072,7 +1082,8 @@ export const AuraStaticSchema = z
       s.keywords ||
       s.restrictAttack ||
       s.restrictBlock ||
-      s.restrictUntap,
+      s.restrictUntap ||
+      s.maxBlockers !== undefined,
     {
       message:
         "an aura static needs power/toughness, keywords, or a restriction",

@@ -57,7 +57,7 @@ import {
 import { activateAbility } from "../../abilities/activated";
 import { parseManaFromEffect } from "../../abilities/mana";
 import { PREDEFINED_TOKENS } from "../predefined-tokens";
-import { declareAttackers } from "../../combat/declaration";
+import { declareAttackers, declareBlockers } from "../../combat/declaration";
 import { passPriority } from "../../game-state";
 import { resolveWaitingChoice } from "../../spell-casting/choices";
 import { Phase } from "../../types";
@@ -7841,5 +7841,113 @@ describe("Mightform Harmonizer: landfall doubles a creature's power (#2614)", ()
       }).success;
     expect(ok(0)).toBe(true);
     expect(ok(2)).toBe(false);
+  });
+});
+
+describe("Meltstrider's Resolve: enchanted creature fights; max one blocker (#2614)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+  const fightEffects = () =>
+    getCardScript("Meltstrider's Resolve")!.triggers![0].effects!;
+  const ready = (s: GameState, cardId: string): GameState => {
+    const cards = new Map(s.cards);
+    cards.set(id(cardId), {
+      ...cards.get(id(cardId))!,
+      hasSummoningSickness: false,
+    });
+    return { ...s, cards };
+  };
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+    state = put(
+      state,
+      p1,
+      "bear",
+      card("Grizzly Bears", "Creature — Bear", [3, 3]),
+    );
+    state = put(
+      state,
+      p1,
+      "resolve",
+      card("Meltstrider's Resolve", "Enchantment — Aura"),
+    );
+    state = attachAura(state, id("resolve"), id("bear"));
+    state = refreshAuraBonuses(state);
+  });
+
+  it("gives +0/+2 and a one-blocker limit", () => {
+    const host = state.cards.get(id("bear"))!;
+    expect(getEffectivePower(host)).toBe(3);
+    expect(getEffectiveToughness(host)).toBe(5);
+    expect(host.auraMaxBlockers).toBe(1);
+  });
+
+  it("the enchanted creature fights the opponent's creature", () => {
+    state = put(state, p2, "foe", card("Foe", "Creature — Ogre", [2, 4]));
+    const after = resolveScriptedEffects(state, fightEffects(), {
+      controllerId: p1,
+      sourceCardId: id("resolve"),
+      targets: [cardTarget("foe")],
+    } as unknown as StackObject);
+    expect(after.cards.get(id("foe"))!.damage).toBe(3);
+    expect(after.cards.get(id("bear"))!.damage).toBe(2);
+  });
+
+  it("does nothing with no target (up to one)", () => {
+    const after = resolveScriptedEffects(state, fightEffects(), {
+      controllerId: p1,
+      sourceCardId: id("resolve"),
+      targets: [],
+    } as unknown as StackObject);
+    expect(after.cards.get(id("bear"))!.damage).toBe(0);
+  });
+
+  it("can't be blocked by more than one creature", () => {
+    state = ready(state, "bear");
+    state = put(
+      state,
+      p2,
+      "b1",
+      card("Blocker One", "Creature — Wall", [0, 4]),
+    );
+    state = put(
+      state,
+      p2,
+      "b2",
+      card("Blocker Two", "Creature — Wall", [0, 4]),
+    );
+    state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+    const attacked = declareAttackers(state, [
+      { cardId: id("bear"), defenderId: p2 },
+    ]);
+    expect(attacked.success).toBe(true);
+    attacked.state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+    const two = declareBlockers(
+      attacked.state,
+      new Map([[id("bear"), [id("b1"), id("b2")]]]),
+    );
+    expect(two.state.combat.blockers.has(id("bear"))).toBe(false);
+    expect(two.errors?.join(" ")).toContain("more than 1 creature");
+    const one = declareBlockers(
+      attacked.state,
+      new Map([[id("bear"), [id("b1")]]]),
+    );
+    expect(one.state.combat.blockers.get(id("bear"))).toHaveLength(1);
+  });
+
+  it("schema: optional fight needs a self or enchanted fighter", () => {
+    const parses = (fighter: string) =>
+      CardScriptSchema.safeParse({
+        name: "X",
+        oracle: "x",
+        spell: [{ op: "Fight", fighter, target: "creature", optional: true }],
+      }).success;
+    expect(parses("enchanted")).toBe(true);
+    expect(parses("it")).toBe(false);
   });
 });

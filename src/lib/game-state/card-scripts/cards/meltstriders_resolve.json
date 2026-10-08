@@ -1,0 +1,29 @@
+{
+  "name": "Meltstrider's Resolve",
+  "oracle": "Enchant creature you control\nWhen this Aura enters, enchanted creature fights up to one target creature an opponent controls. (Each deals damage equal to its power to the other.)\nEnchanted creature gets +0/+2 and can't be blocked by more than one creature.",
+  "aura": {
+    "text": "Enchanted creature gets +0/+2 and can't be blocked by more than one creature.",
+    "target": "creature",
+    "static": {
+      "text": "Enchanted creature gets +0/+2 and can't be blocked by more than one creature.",
+      "power": 0,
+      "toughness": 2,
+      "maxBlockers": 1
+    }
+  },
+  "triggers": [
+    {
+      "text": "When this Aura enters, enchanted creature fights up to one target creature an opponent controls.",
+      "event": "etb",
+      "effects": [
+        {
+          "op": "Fight",
+          "fighter": "enchanted",
+          "target": "creature",
+          "controller": "opponent",
+          "optional": true
+        }
+      ]
+    }
+  ]
+}
