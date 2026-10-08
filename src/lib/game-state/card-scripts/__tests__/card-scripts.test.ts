@@ -1917,9 +1917,18 @@ describe("scripted CreatePredefinedToken (#2544)", () => {
     expect(
       ok({
         op: "CreatePredefinedToken",
+        token: "treasure",
+        count: 1,
+        who: "opponent",
+        tapped: true,
+      }),
+    ).toBe(true);
+    expect(
+      ok({
+        op: "CreatePredefinedToken",
         token: "food",
         count: 1,
-        tapped: true,
+        who: "each_player",
       }),
     ).toBe(false);
   });
@@ -7526,5 +7535,87 @@ describe("Sunspine Lynx: life gain and prevention statics (#2614)", () => {
         ],
       }).success,
     ).toBe(true);
+  });
+});
+
+describe("Generous Plunderer: Treasures and attack damage (#2614)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+  const plunderer = () =>
+    card("Generous Plunderer", "Creature — Human Rogue", [2, 2]);
+  const life = (s: GameState, who: PlayerId) => s.players.get(who)!.life;
+  const treasures = (s: GameState, who: PlayerId) =>
+    [...s.cards.values()].filter(
+      (c) => c.cardData.name === "Treasure" && c.controllerId === who,
+    );
+  const run = (s: GameState, index: number) =>
+    resolveScriptedEffects(
+      s,
+      getCardScript("Generous Plunderer")!.triggers![index].effects!,
+      {
+        controllerId: p1,
+        sourceCardId: id("plunderer"),
+        targets: [],
+      } as unknown as StackObject,
+    );
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+    state = put(state, p1, "plunderer", plunderer());
+  });
+
+  it("upkeep: you get a Treasure and the opponent gets a tapped one", () => {
+    const after = run(state, 0);
+    const mine = treasures(after, p1);
+    const theirs = treasures(after, p2);
+    expect(mine).toHaveLength(1);
+    expect(mine[0].isTapped).toBe(false);
+    expect(theirs).toHaveLength(1);
+    expect(theirs[0].isTapped).toBe(true);
+  });
+
+  it("attack deals damage equal to the defending player's artifacts", () => {
+    state = put(state, p2, "art1", card("Ornithopter", "Artifact Creature"));
+    state = put(state, p2, "art2", card("Mind Stone", "Artifact"));
+    state = put(state, p1, "myart", card("Sol Ring", "Artifact"));
+    state = {
+      ...state,
+      combat: {
+        ...state.combat,
+        attackers: [
+          {
+            cardId: id("plunderer"),
+            defenderId: p2,
+            isAttackingPlaneswalker: false,
+            damageToDeal: 2,
+            hasFirstStrike: false,
+            hasDoubleStrike: false,
+          },
+        ],
+      },
+    };
+    const after = run(state, 1);
+    expect(life(after, p2)).toBe(18);
+    expect(life(after, p1)).toBe(20);
+  });
+
+  it("attack deals nothing when the defender has no artifacts", () => {
+    expect(life(run(state, 1), p2)).toBe(20);
+  });
+
+  it("schema: per artifact needs defending_player", () => {
+    const base = { name: "Test", oracle: "x" };
+    const spell = (target: string, per: string) =>
+      CardScriptSchema.safeParse({
+        ...base,
+        spell: [{ op: "DealDamage", amount: 1, target, per }],
+      }).success;
+    expect(spell("each_player", "artifact")).toBe(false);
+    expect(spell("defending_player", "nonbasic_land")).toBe(false);
+    expect(spell("defending_player", "artifact")).toBe(true);
   });
 });
