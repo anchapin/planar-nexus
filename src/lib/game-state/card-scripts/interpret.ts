@@ -836,6 +836,20 @@ function applyEffect(
       return r.state;
     }
     case "GrantKeyword": {
+      // "permanents_you_control" fans out: every permanent the
+      // controller owns on resolution gets the keyword. Boros Charm
+      // mode 2 ("Permanents you control gain indestructible until end
+      // of turn.") is the v1 sample (#2594 #14).
+      if (effect.target === "permanents_you_control") {
+        const battlefieldKey = `${ctx.controllerId}-battlefield`;
+        const battlefield = state.zones.get(battlefieldKey);
+        if (!battlefield) return state;
+        let next: GameState = state;
+        for (const id of battlefield.cardIds) {
+          next = addUntilEndOfTurnKeyword(next, id, effect.keyword);
+        }
+        return next;
+      }
       // "it" shares the previous targeted effect's target (resolved as
       // ctx.target in resolveScriptedEffects), e.g. Adamant Will (#2567).
       const cardId = creatureFor(
