@@ -1266,6 +1266,18 @@ export const CardScriptSchema = z
       .strict()
       .optional(),
     /**
+     * Warp (CR 702.185, #2614) — "You may cast this card from your hand for
+     * its warp cost. Exile this permanent at the beginning of the next end
+     * step, then you may cast it from exile on a later turn." `cost` is a
+     * mana-string like `flashback.cost`. Permanent scripts only.
+     */
+    warp: z
+      .object({
+        cost: z.string().regex(/^(\{(?:[0-9]+|[WUBRGC])\})+$/),
+      })
+      .strict()
+      .optional(),
+    /**
      * Kicker (CR 702.32, #2564) — a single optional additional cost. "You may
      * pay an additional cost as you cast this spell. If you do, [its bonus
      * effect occurs]." `cost` is a mana-string in the same shape as
@@ -1370,6 +1382,11 @@ export const CardScriptSchema = z
       s.spell !== undefined ||
       s.modes !== undefined,
     { message: "harmonize is only for instant or sorcery scripts" },
+  )
+  .refine(
+    (s) =>
+      s.warp === undefined || (s.spell === undefined && s.modes === undefined),
+    { message: "warp is only for permanent scripts" },
   )
   .refine((s) => !(s.aura && s.equipment), {
     message: "a card is an aura or an equipment, not both",

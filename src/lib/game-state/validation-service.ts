@@ -332,7 +332,13 @@ export class ValidationService {
         !(altType === "foretell" && isForetold) &&
         !(altType === "escape" && inGrave) &&
         !(altType === "flashback" && inGrave) &&
-        !(altType === "harmonize" && inGrave)
+        !(altType === "harmonize" && inGrave) &&
+        !(
+          altType === undefined &&
+          inExile &&
+          card.warpExiledTurn !== undefined &&
+          state.turn.turnNumber > card.warpExiledTurn
+        )
       ) {
         return {
           isValid: false,
@@ -402,6 +408,11 @@ export class ValidationService {
       altType !== "spectacle" &&
       altType !== "escape" &&
       altType !== "mutate" &&
+      // Warp / harmonize replace the printed cost with a script-declared one
+      // (harmonize can also be reduced by tapping a creature); castSpell
+      // checks the substituted cost.
+      altType !== "warp" &&
+      altType !== "harmonize" &&
       (data.alternativeCost?.improviseArtifacts?.length ?? 0) === 0
     ) {
       const manaValidation = this.validateManaCost(state, player, card);

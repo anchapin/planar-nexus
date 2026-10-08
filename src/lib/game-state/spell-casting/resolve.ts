@@ -15,6 +15,7 @@ import {
 import {
   destroyCard,
   sacrificeCard,
+  exileCard,
   createTokenCard,
   applyEntersWithCounters,
 } from "../keyword-actions";
@@ -376,6 +377,39 @@ function resolveTopOfStackInner(state: GameState): GameState {
       }
     }
 
+    // Warp end-step trigger (CR 702.185a): exile its source if that
+    // permanent is still on the battlefield; its owner may cast it from
+    // exile on a later turn.
+    if (
+      stackObject.type === "ability" &&
+      stackObject.triggered &&
+      /^exile this permanent \(warp\)\.?$/i.test(
+        stackObject.text?.trim() ?? "",
+      ) &&
+      stackObject.sourceCardId
+    ) {
+      const sourceId = stackObject.sourceCardId;
+      const source = currentState.cards.get(sourceId);
+      const bf = source
+        ? currentState.zones.get(`${source.controllerId}-battlefield`)
+        : undefined;
+      if (source && bf?.cardIds.includes(sourceId)) {
+        const ex = exileCard(currentState, sourceId);
+        if (ex.success) {
+          const exiled = ex.state.cards.get(sourceId);
+          const cards = new Map(ex.state.cards);
+          if (exiled) {
+            cards.set(sourceId, {
+              ...exiled,
+              warp: false,
+              warpExiledTurn: ex.state.turn.turnNumber,
+            });
+          }
+          currentState = { ...ex.state, cards };
+        }
+      }
+    }
+
     // CR 608.2n / 113.7: an ability is not a card. Once its effects are
     // applied it just leaves the stack. Without this, a triggered ability from
     // a permanent fell into spell completion, which re-ran the source's
@@ -578,6 +612,22 @@ function resolveSpellCompletion(
           }
         }
 
+        // Keep the zone-key cache in step with the move so lookups that trust
+        // it (isOnBattlefield, end-step warp/blitz detection) see the card
+        // where it actually is.
+        {
+          const moving = updatedCards.get(stackObject.sourceCardId);
+          if (moving && moving.currentZoneKey !== destinationZone) {
+            if (updatedCards === state.cards) {
+              updatedCards = new Map(state.cards);
+            }
+            updatedCards.set(stackObject.sourceCardId, {
+              ...moving,
+              currentZoneKey: destinationZone,
+            });
+          }
+        }
+
         // Reset priority passes for all players (CR 117.4)
         const updatedPlayers = new Map(state.players);
         updatedPlayers.forEach((player) => {
@@ -625,11 +675,29 @@ function resolveSpellCompletion(
               },
             );
           }
-          currentState = checkTriggeredAbilities(
-            currentState,
-            "entersBattlefield",
-            { enteringCardId: stackObject.sourceCardId ?? undefined },
-          ).state;
+          // CR 702.140e: a mutating creature spell that merges with its
+          // target does not enter the battlefield, so its ETB abilities don't
+          // trigger. If the target is gone it enters normally (702.140f).
+          const mutateTargetId =
+            stackObject.alternativeCostsUsed?.includes("mutate") === true
+              ? stackObject.mutateTargetCreatureId
+              : undefined;
+          const mutateTarget = mutateTargetId
+            ? currentState.cards.get(mutateTargetId)
+            : undefined;
+          const mutateWillMerge =
+            mutateTargetId !== undefined &&
+            mutateTarget !== undefined &&
+            currentState.zones
+              .get(`${mutateTarget.controllerId}-battlefield`)
+              ?.cardIds.includes(mutateTargetId) === true;
+          if (!mutateWillMerge) {
+            currentState = checkTriggeredAbilities(
+              currentState,
+              "entersBattlefield",
+              { enteringCardId: stackObject.sourceCardId ?? undefined },
+            ).state;
+          }
         }
 
         // CR 702.85 — the kicker additional effect (damage / card_draw /
@@ -759,6 +827,20 @@ function resolveSpellCompletion(
               ...currentState,
               cards: updatedCards,
             };
+          }
+        }
+
+        // CR 702.185a - Warp: mark the permanent so the engine exiles it at the
+        // beginning of the next end step.
+        if (stackObject.alternativeCostsUsed?.includes("warp")) {
+          const warpCard = currentState.cards.get(stackObject.sourceCardId!);
+          if (warpCard) {
+            const updatedCards = new Map(currentState.cards);
+            updatedCards.set(stackObject.sourceCardId!, {
+              ...warpCard,
+              warp: true,
+            });
+            currentState = { ...currentState, cards: updatedCards };
           }
         }
 
