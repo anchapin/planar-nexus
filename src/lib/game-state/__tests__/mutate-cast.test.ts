@@ -580,8 +580,8 @@ describe("Mutate — target-disappears fallback (CR 702.140f)", () => {
     const bfZone = resolved.zones.get(`${f.aliceId}-battlefield`)!;
     expect(bfZone.cardIds).toContain(mutateCardId);
     expect(bfZone.type).toBe(ZoneType.BATTLEFIELD);
-    // The stack is empty after resolution.
-    expect(resolved.stack.length).toBe(0);
+    // It entered normally, so its own ETB ("draw a card") triggers.
+    expect(resolved.stack.map((o) => o.text)).toEqual(["draw a card"]);
   });
 });
 

@@ -1,0 +1,20 @@
+{
+  "name": "Nova Hellkite",
+  "oracle": "Flying, haste\nWhen this creature enters, it deals 1 damage to target creature an opponent controls.\nWarp {2}{R} (You may cast this card from your hand for its warp cost. Exile this creature at the beginning of the next end step, then you may cast it from exile on a later turn.)",
+  "triggers": [
+    {
+      "text": "When this creature enters, it deals 1 damage to target creature an opponent controls.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "DealDamage",
+          "amount": 1,
+          "target": "creature",
+          "controller": "opponent"
+        }
+      ]
+    }
+  ],
+  "warp": { "cost": "{2}{R}" }
+}

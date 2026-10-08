@@ -391,13 +391,23 @@ export const PumpSchema = z
      * layer-6 keyword grant path.
      */
     keywords: z.array(z.enum(EQUIPMENT_KEYWORDS)).min(1).optional(),
+    /**
+     * "Double the power of target creature" (Mightform Harmonizer, #2614):
+     * the target gets +X/+0 until end of turn, X its power on resolution
+     * (CR 701.10e-style doubling). `power` and `toughness` are ignored and
+     * should be 0.
+     */
+    double_power: z.literal(true).optional(),
     if_kicked: ifKicked,
   })
   .strict()
   .refine(
     (e) => e.controller === undefined || e.target === "creature",
     controllerNeedsCreatureTarget,
-  );
+  )
+  .refine((e) => !e.double_power || (e.power === 0 && e.toughness === 0), {
+    message: "double_power needs power 0 and toughness 0",
+  });
 
 /**
  * Keywords a resolved spell or ability may grant until end of turn (#2567,
@@ -1276,6 +1286,18 @@ export const CardScriptSchema = z
       .strict()
       .optional(),
     /**
+     * Warp (CR 702.185, #2614) — "You may cast this card from your hand for
+     * its warp cost. Exile this permanent at the beginning of the next end
+     * step, then you may cast it from exile on a later turn." `cost` is a
+     * mana-string like `flashback.cost`. Permanent scripts only.
+     */
+    warp: z
+      .object({
+        cost: z.string().regex(/^(\{(?:[0-9]+|[WUBRGC])\})+$/),
+      })
+      .strict()
+      .optional(),
+    /**
      * Kicker (CR 702.32, #2564) — a single optional additional cost. "You may
      * pay an additional cost as you cast this spell. If you do, [its bonus
      * effect occurs]." `cost` is a mana-string in the same shape as
@@ -1380,6 +1402,11 @@ export const CardScriptSchema = z
       s.spell !== undefined ||
       s.modes !== undefined,
     { message: "harmonize is only for instant or sorcery scripts" },
+  )
+  .refine(
+    (s) =>
+      s.warp === undefined || (s.spell === undefined && s.modes === undefined),
+    { message: "warp is only for permanent scripts" },
   )
   .refine((s) => !(s.aura && s.equipment), {
     message: "a card is an aura or an equipment, not both",

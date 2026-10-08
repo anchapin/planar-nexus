@@ -7771,3 +7771,75 @@ describe("Magmatic Hellkite: land destruction and stun counters (#2614)", () => 
     expect(ok(0)).toBe(false);
   });
 });
+
+describe("Mightform Harmonizer: landfall doubles a creature's power (#2614)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+  const run = (s: GameState, targetId: string) =>
+    resolveScriptedEffects(
+      s,
+      getCardScript("Mightform Harmonizer")!.triggers![0].effects!,
+      {
+        controllerId: p1,
+        sourceCardId: id("harmonizer"),
+        targets: [cardTarget(targetId)],
+      } as unknown as StackObject,
+    );
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+    state = put(
+      state,
+      p1,
+      "harmonizer",
+      card("Mightform Harmonizer", "Creature — Insect Druid", [4, 4]),
+    );
+    state = put(
+      state,
+      p1,
+      "bear",
+      card("Grizzly Bears", "Creature — Bear", [3, 2]),
+    );
+  });
+
+  it("doubles the target's power and leaves toughness alone", () => {
+    const after = run(state, "bear");
+    const bear = after.cards.get(id("bear"))!;
+    expect(getEffectivePower(bear)).toBe(6);
+    expect(getEffectiveToughness(bear)).toBe(2);
+  });
+
+  it("doubles the current power, including earlier pumps", () => {
+    const after = run(run(state, "bear"), "bear");
+    expect(getEffectivePower(after.cards.get(id("bear"))!)).toBe(12);
+  });
+
+  it("does nothing to a creature an opponent controls", () => {
+    state = put(state, p2, "foe", card("Foe", "Creature — Ogre", [3, 3]));
+    const after = run(state, "foe");
+    expect(getEffectivePower(after.cards.get(id("foe"))!)).toBe(3);
+  });
+
+  it("schema: double_power needs power and toughness 0", () => {
+    const ok = (power: number) =>
+      CardScriptSchema.safeParse({
+        name: "X",
+        oracle: "x",
+        spell: [
+          {
+            op: "Pump",
+            power,
+            toughness: 0,
+            target: "creature",
+            double_power: true,
+          },
+        ],
+      }).success;
+    expect(ok(0)).toBe(true);
+    expect(ok(2)).toBe(false);
+  });
+});

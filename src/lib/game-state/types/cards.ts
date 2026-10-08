@@ -142,6 +142,19 @@ export interface CardInstance {
    */
   foretoldTurn?: number;
 
+  // Warp-specific (CR 702.185)
+  /**
+   * Whether this permanent was cast for its warp cost (CR 702.185a). While
+   * true it is exiled at the beginning of the next end step. Set at
+   * resolution only when the warp cost was paid.
+   */
+  warp?: boolean;
+  /**
+   * The turn number on which warp exiled this card. While it stays in exile
+   * its owner may cast it from there on a later turn (CR 702.185a).
+   */
+  warpExiledTurn?: number;
+
   // Flashback-specific (CR 702.143)
   /**
    * Whether this card is currently being cast for its flashback cost (CR

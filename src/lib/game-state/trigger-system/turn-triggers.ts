@@ -186,6 +186,28 @@ export function detectTurnEndTriggers(
   return sortTriggersAPNAP(triggers, state, activePlayerId);
 }
 
+function warpEndStepTriggers(state: GameState): TriggeredAbilityInstance[] {
+  const out: TriggeredAbilityInstance[] = [];
+  for (const [cardId, card] of state.cards) {
+    if (card.warp !== true || !isOnBattlefield(state, cardId)) continue;
+    const context: TriggerDetectionContext = {
+      sourceCardId: cardId,
+      triggerType: TriggerConditionType.TURN_END,
+    };
+    out.push({
+      id: generateTriggeredAbilityId(),
+      sourceCardId: cardId,
+      triggeringPlayerId: card.controllerId,
+      triggerCondition: "endOfTurn",
+      effect: "exile this permanent (warp)",
+      timestamp: Date.now(),
+      sourceCardTimestamp: card.enteredBattlefieldTimestamp,
+      context: context as any,
+    });
+  }
+  return out;
+}
+
 function blitzEndStepSourceIds(
   state: GameState,
 ): import("../types").CardInstanceId[] {
@@ -222,6 +244,9 @@ export function detectBlitzEndStepTriggers(
       context: context as any,
     });
   }
+  // CR 702.185a: warp's delayed "exile at the next end step" rides the same
+  // end-step pass as blitz.
+  triggers.push(...warpEndStepTriggers(state));
 
   return sortTriggersAPNAP(triggers, state, activePlayerId);
 }
