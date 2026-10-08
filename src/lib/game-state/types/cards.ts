@@ -229,6 +229,14 @@ export interface CardInstance {
   untilEndOfTurnKeywords?: string[];
 
   /**
+   * Subtypes this permanent has "until end of turn" in addition to its
+   * printed ones (#2614 Sarkhan, Dragon Ascendant: "becomes a Dragon in
+   * addition to his other types"). `hasSubtype` reads them; cleared at end
+   * of turn with the other until-end-of-turn effects.
+   */
+  untilEndOfTurnSubtypes?: string[];
+
+  /**
    * Active threshold static bonus (power/toughness, granted keywords,
    * unblockable) while its controller has seven or more cards in their
    * graveyard. Maintained by `refreshThresholdBonuses`.
