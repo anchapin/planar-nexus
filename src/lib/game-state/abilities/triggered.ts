@@ -36,7 +36,7 @@ function entersTriggerMatches(
  * ("this creature", "another creature you control", "a creature")? Without a
  * subject id (older callers) every such trigger fires, as before.
  */
-function subjectMatches(
+export function subjectMatches(
   state: GameState,
   cardId: CardInstanceId,
   card: CardInstance,
@@ -46,6 +46,12 @@ function subjectMatches(
   if (!enteringId || !trigger.subject) return true;
   if (trigger.subject === "self") return enteringId === cardId;
   if (trigger.subject === "another" && enteringId === cardId) return false;
+  // #2594 #16: "the equipped creature" / "the enchanted permanent"
+  // — Equipment and Aura triggers that read the card's own
+  // `attachedToId` (Goldvein Pick: "whenever equipped creature
+  // attacks"). The source card is the equipment/enchantment; the
+  // event is on the equipped/enchanted permanent.
+  if (trigger.subject === "attached") return enteringId === card.attachedToId;
   const entering = state.cards.get(enteringId);
   if (!entering) return false;
   const filter = trigger.enteringFilter;

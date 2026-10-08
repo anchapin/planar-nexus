@@ -823,7 +823,7 @@ export const TriggerSchema = z
      * (CR 603.6a). "self" is this permanent; "another" / "any" are
      * creatures, narrowed by `controller`.
      */
-    subject: z.enum(["self", "another", "any"]).default("self"),
+    subject: z.enum(["self", "another", "any", "attached"]).default("self"),
     /** With subject another/any: only creatures you or an opponent control. */
     controller: z.enum(["you", "opponent"]).optional(),
     /**
