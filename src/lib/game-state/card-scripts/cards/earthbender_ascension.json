@@ -1,0 +1,48 @@
+{
+  "name": "Earthbender Ascension",
+  "oracle": "When this enchantment enters, earthbend 2. Then search your library for a basic land card, put it onto the battlefield tapped, then shuffle.\nLandfall — Whenever a land you control enters, put a quest counter on this enchantment. When you do, if it has four or more quest counters on it, put a +1/+1 counter on target creature you control. It gains trample until end of turn.",
+  "triggers": [
+    {
+      "text": "When this enchantment enters, earthbend 2. Then search your library for a basic land card, put it onto the battlefield tapped, then shuffle.",
+      "event": "etb",
+      "effects": [
+        { "op": "Earthbend", "target": "land_you_control", "amount": 2 },
+        {
+          "op": "SearchLibrary",
+          "filter": { "basic_land": true },
+          "destination": "battlefield",
+          "tapped": true,
+          "shuffle": true
+        }
+      ]
+    },
+    {
+      "text": "Landfall — Whenever a land you control enters, put a quest counter on this enchantment. When you do, if it has four or more quest counters on it, put a +1/+1 counter on target creature you control. It gains trample until end of turn.",
+      "event": "landfall",
+      "effects": [
+        {
+          "op": "PutCounters",
+          "counter": "quest",
+          "amount": 1,
+          "target": "self"
+        },
+        {
+          "op": "PutCounters",
+          "counter": "+1/+1",
+          "amount": 1,
+          "target": "creature",
+          "controller": "you",
+          "optional": true,
+          "if_source_counters": { "counter": "quest", "min": 4 }
+        },
+        {
+          "op": "GrantKeyword",
+          "keyword": "trample",
+          "target": "it",
+          "until": "end_of_turn",
+          "if_source_counters": { "counter": "quest", "min": 4 }
+        }
+      ]
+    }
+  ]
+}

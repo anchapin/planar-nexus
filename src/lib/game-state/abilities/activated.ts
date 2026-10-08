@@ -46,12 +46,31 @@ import type { ActivateAbilityResult } from "./types";
 function sacrificeCandidates(
   state: GameState,
   playerId: PlayerId,
-  cost: { subtype: string },
+  cost: {
+    subtype?: string;
+    type?: "Creature" | "Artifact" | "Enchantment" | "Land" | "Planeswalker";
+  },
 ): CardInstanceId[] {
   const zone = state.zones.get(`${playerId}-battlefield`);
   const ids = (zone?.cardIds ?? []).filter((id) => {
     const c = state.cards.get(id);
-    return !!c && c.controllerId === playerId && hasSubtype(c, cost.subtype);
+    if (!c || c.controllerId !== playerId) return false;
+    // #2594 follow-up (lane 17): match by card type when the script
+    // sets `type` ("Sacrifice a creature") instead of a creature
+    // subtype ("Sacrifice three Treasures"). The type line lives
+    // on the underlying ScryfallCard data.
+    if (cost.type) {
+      const line = c.cardData.type_line ?? "";
+      // CR 205.2a: the type line starts with one or more of
+      // "Artifact", "Conspiracy", "Creature", "Eaturecray",
+      // "Enchantment", "Land", "Phenomenon", "Plane", "Planeswalker",
+      // "Scheme", "Snow", "Tribal", "Vanguard". A simple
+      // substring check against the type-line prefix is enough for
+      // the v1 set of scripted cards.
+      return line.toLowerCase().startsWith(cost.type.toLowerCase());
+    }
+    if (cost.subtype) return hasSubtype(c, cost.subtype);
+    return false;
   });
   return ids.sort(
     (a, b) =>
@@ -127,9 +146,13 @@ export function canActivateAbility(
     sacrificeCandidates(state, playerId, ability.costs.sacrificePermanents)
       .length < ability.costs.sacrificePermanents.count
   ) {
+    const label =
+      ability.costs.sacrificePermanents.type ??
+      ability.costs.sacrificePermanents.subtype ??
+      "permanents";
     return {
       canActivate: false,
-      reason: `Not enough ${ability.costs.sacrificePermanents.subtype}s to sacrifice`,
+      reason: `Not enough ${label}s to sacrifice`,
     };
   }
 
