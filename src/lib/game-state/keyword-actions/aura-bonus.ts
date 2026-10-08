@@ -107,6 +107,8 @@ export function refreshAuraBonuses(state: GameState): GameState {
   // surfaces these to the enchanted card as `auraRestrictUntap` so
   // `processUntapStep` can skip the untap (CR 303.4d / 502.2).
   const restrictUntap = new Map<string, string[]>();
+  // #2614: "can't be blocked by more than one creature" (CR 509.1b).
+  const maxBlockers = new Map<string, number>();
 
   for (const aura of onField) {
     const target = aura.attachedToId;
@@ -174,6 +176,15 @@ export function refreshAuraBonuses(state: GameState): GameState {
         if (!list.includes(aura.cardData.name)) list.push(aura.cardData.name);
         restrictUntap.set(target, list);
       }
+      if (scriptedStatic.maxBlockers !== undefined) {
+        const prev = maxBlockers.get(target);
+        maxBlockers.set(
+          target,
+          prev === undefined
+            ? scriptedStatic.maxBlockers
+            : Math.min(prev, scriptedStatic.maxBlockers),
+        );
+      }
     }
   }
 
@@ -181,9 +192,7 @@ export function refreshAuraBonuses(state: GameState): GameState {
   const sameStringList = (
     a: readonly string[] | undefined,
     b: readonly string[],
-  ) =>
-    (a?.length ?? 0) === b.length &&
-    (a ?? []).every((v, i) => v === b[i]);
+  ) => (a?.length ?? 0) === b.length && (a ?? []).every((v, i) => v === b[i]);
 
   for (const [cardId, card] of state.cards) {
     const next = bonus.get(cardId);
@@ -196,13 +205,15 @@ export function refreshAuraBonuses(state: GameState): GameState {
     const wasRB = card.auraRestrictBlock ?? [];
     const nextRU = restrictUntap.get(cardId) ?? [];
     const wasRU = card.auraRestrictUntap ?? [];
+    const nextMB = maxBlockers.get(cardId);
     if (
       (was?.power ?? 0) === (next?.power ?? 0) &&
       (was?.toughness ?? 0) === (next?.toughness ?? 0) &&
       nextKw.join("|") === wasKw.join("|") &&
       sameStringList(wasRA, nextRA) &&
       sameStringList(wasRB, nextRB) &&
-      sameStringList(wasRU, nextRU)
+      sameStringList(wasRU, nextRU) &&
+      card.auraMaxBlockers === nextMB
     ) {
       continue;
     }
@@ -218,6 +229,8 @@ export function refreshAuraBonuses(state: GameState): GameState {
     else delete updated.auraRestrictBlock;
     if (nextRU.length > 0) updated.auraRestrictUntap = nextRU;
     else delete updated.auraRestrictUntap;
+    if (nextMB !== undefined) updated.auraMaxBlockers = nextMB;
+    else delete updated.auraMaxBlockers;
     cards.set(cardId, updated);
   }
   return cards ? { ...state, cards } : state;

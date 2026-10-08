@@ -261,6 +261,16 @@ export function declareBlockers(
           );
           continue;
         }
+        // CR 509.1b: "can't be blocked by more than one creature" (an
+        // Aura's maxBlockers, #2614). Reject the whole assignment for this
+        // attacker, the same way menace rejects a partial one.
+        const maxAllowed = attacker.auraMaxBlockers;
+        if (maxAllowed !== undefined && validBlockerIds.length > maxAllowed) {
+          errors.push(
+            `${attacker.cardData.name || attackerId}: can't be blocked by more than ${maxAllowed} creature${maxAllowed !== 1 ? "s" : ""}`,
+          );
+          continue;
+        }
       }
       validBlockers.set(attackerId, validBlockerIds);
     }

@@ -298,6 +298,13 @@ export interface CardInstance {
    */
   auraRestrictUntap?: string[];
   /**
+   * The most creatures that can block this permanent, from a scripted Aura's
+   * `static.maxBlockers` ("can't be blocked by more than one creature",
+   * Meltstrider's Resolve, #2614). Maintained by `refreshAuraBonuses`;
+   * enforced in `declareBlockers` (CR 509.1b).
+   */
+  auraMaxBlockers?: number;
+  /**
    * Summed static bonus from Equipment attached to this creature, e.g.
    * Swiftfoot Boots' hexproof+haste (issue #2561). Maintained by
    * `refreshEquipmentBonuses`. Kept separate from `auraPT` so a future
