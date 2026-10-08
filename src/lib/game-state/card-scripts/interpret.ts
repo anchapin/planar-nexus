@@ -13,6 +13,7 @@ import type {
   Target,
   Zone,
 } from "../types";
+import { hasSubtype } from "../spell-casting/affinity";
 import {
   resolveCardDrawEffect,
   resolveCounterEffect,
@@ -402,7 +403,11 @@ function fight(
   const fighterId =
     effect.fighter === "self"
       ? ctx.sourceId
-      : (ctx.fighter?.targetId as CardInstanceId | undefined);
+      : effect.fighter === "enchanted"
+        ? ctx.sourceId
+          ? (state.cards.get(ctx.sourceId)?.attachedToId ?? undefined)
+          : undefined
+        : (ctx.fighter?.targetId as CardInstanceId | undefined);
   const otherId = ctx.target?.targetId as CardInstanceId | undefined;
   if (!fighterId || !otherId) return state;
   const fighter = state.cards.get(fighterId);
@@ -416,7 +421,10 @@ function fight(
     !isCreature(other)
   )
     return state;
-  if (effect.fighter !== "self" && fighter.controllerId !== ctx.controllerId)
+  if (
+    (effect.fighter === "it" || effect.fighter === "creature") &&
+    fighter.controllerId !== ctx.controllerId
+  )
     return state;
   if (!controllerStillMatches(state, otherId, effect.controller, ctx))
     return state;
@@ -1037,7 +1045,12 @@ function applyEffect(
         const battlefield = state.zones.get(battlefieldKey);
         if (!battlefield) return state;
         let next: GameState = state;
+        const subtypes = effect.subtypes;
         for (const id of battlefield.cardIds) {
+          if (subtypes) {
+            const card = state.cards.get(id);
+            if (!card || !subtypes.some((t) => hasSubtype(card, t))) continue;
+          }
           next = addUntilEndOfTurnKeyword(next, id, effect.keyword);
         }
         return next;

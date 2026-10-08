@@ -6,6 +6,7 @@ import type {
   CardInstanceId,
 } from "./types";
 import { getGameMode } from "./format-rules";
+import { affinityReduction } from "./spell-casting/affinity";
 import {
   canTarget as canTargetKeyword,
   canBlockProtectedAttacker,
@@ -509,7 +510,13 @@ export class ValidationService {
     const availableForGeneric =
       pool.generic + (totalColored - neededColored) + pool.colorless;
 
-    if (availableForGeneric < coloredCost.generic) {
+    // CR 702.41 - Affinity lowers the generic part (#2614).
+    const genericNeeded = Math.max(
+      0,
+      coloredCost.generic -
+        affinityReduction(state, player.id, card.cardData.name),
+    );
+    if (availableForGeneric < genericNeeded) {
       return {
         isValid: false,
         reason: "Not enough mana",
