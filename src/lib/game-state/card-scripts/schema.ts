@@ -82,8 +82,10 @@ export const DealDamageSchema = z
      * lands that player controls" is amount 1 per nonbasic land (CR 205.4a).
      * With defending_player (Generous Plunderer): "deals damage to defending
      * player equal to the number of artifacts they control" is per artifact.
+     * On a targeted effect, treasure counts the Treasures you control (Smaug
+     * the Magnificent: "damage equal to the number of Treasures you control").
      */
-    per: z.enum(["nonbasic_land", "artifact"]).optional(),
+    per: z.enum(["nonbasic_land", "artifact", "treasure"]).optional(),
     /**
      * CR 702.33d — "If this spell was kicked, it deals N damage instead."
      * Set on the `if_kicked: true` variant of a damage effect that REPLACES
@@ -106,10 +108,12 @@ export const DealDamageSchema = z
     (e) =>
       e.per === undefined ||
       (e.target === "each_player" && e.per === "nonbasic_land") ||
-      (e.target === "defending_player" && e.per === "artifact"),
+      (e.target === "defending_player" && e.per === "artifact") ||
+      (e.per === "treasure" &&
+        ["any", "creature", "player", "opponent"].includes(e.target)),
     {
       message:
-        "per is nonbasic_land on each_player or artifact on defending_player",
+        "per is nonbasic_land on each_player, artifact on defending_player, or treasure on a targeted effect",
     },
   );
 

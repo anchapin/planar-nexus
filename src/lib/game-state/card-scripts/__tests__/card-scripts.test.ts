@@ -7619,3 +7619,68 @@ describe("Generous Plunderer: Treasures and attack damage (#2614)", () => {
     expect(spell("defending_player", "artifact")).toBe(true);
   });
 });
+
+describe("Smaug the Magnificent: Treasure-scaled attack damage (#2614)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+  const life = (s: GameState, who: PlayerId) => s.players.get(who)!.life;
+  const treasures = (s: GameState, who: PlayerId) =>
+    [...s.cards.values()].filter(
+      (c) => c.cardData.name === "Treasure" && c.controllerId === who,
+    );
+  const run = (s: GameState, index: number) =>
+    resolveScriptedEffects(
+      s,
+      getCardScript("Smaug the Magnificent")!.triggers![index].effects!,
+      {
+        controllerId: p1,
+        sourceCardId: id("smaug"),
+        targets: [{ type: "player", targetId: p2, isValid: true }],
+      } as unknown as StackObject,
+    );
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+    state = put(
+      state,
+      p1,
+      "smaug",
+      card("Smaug the Magnificent", "Legendary Creature — Dragon", [4, 3]),
+    );
+  });
+
+  it("upkeep creates a Treasure for you", () => {
+    expect(treasures(run(state, 1), p1)).toHaveLength(1);
+  });
+
+  it("attack deals damage equal to the Treasures you control", () => {
+    state = run(run(state, 1), 1);
+    state = put(
+      state,
+      p2,
+      "theirs",
+      card("Treasure", "Token Artifact — Treasure"),
+    );
+    expect(life(run(state, 0), p2)).toBe(18);
+  });
+
+  it("attack deals nothing with no Treasures", () => {
+    expect(life(run(state, 0), p2)).toBe(20);
+  });
+
+  it("schema: per treasure needs a targeted damage effect", () => {
+    const ok = (target: string) =>
+      CardScriptSchema.safeParse({
+        name: "Test",
+        oracle: "x",
+        spell: [{ op: "DealDamage", amount: 1, target, per: "treasure" }],
+      }).success;
+    expect(ok("any")).toBe(true);
+    expect(ok("each_opponent")).toBe(false);
+    expect(ok("defending_player")).toBe(false);
+  });
+});
