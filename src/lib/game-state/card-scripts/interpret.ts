@@ -1431,6 +1431,18 @@ export function resolveScriptedEffects(
       }
       continue;
     }
+    // #2614 — "if it has N or more quest counters on it", read from the
+    // source as this effect resolves (after earlier effects of the same
+    // ability). A skipped effect still uses up its target slot.
+    if (
+      "if_source_counters" in effect &&
+      effect.if_source_counters &&
+      !sourceHasCounters(current, stackObject, effect.if_source_counters)
+    ) {
+      next += effectTargetCount(effect);
+      previous = undefined;
+      continue;
+    }
     let target: Target | undefined;
     let fighter: Target | undefined;
     const count = effectTargetCount(effect);
@@ -1503,6 +1515,24 @@ export function resolveScriptedEffects(
     });
   }
   return current;
+}
+
+/**
+ * Whether the ability's source has at least `gate.min` counters of
+ * `gate.counter` (#2614 Earthbender Ascension). A source that left the
+ * battlefield is read as it is now, which drops its counters; the engine
+ * does not keep last known information for this check.
+ */
+function sourceHasCounters(
+  state: GameState,
+  stackObject: ScriptStackObject,
+  gate: { counter: string; min: number },
+): boolean {
+  const id = stackObject.sourceCardId as CardInstanceId | undefined;
+  const source = id ? state.cards.get(id) : undefined;
+  if (!source || !isOnBattlefield(state, source.id)) return false;
+  const have = source.counters.find((c) => c.type === gate.counter)?.count ?? 0;
+  return have >= gate.min;
 }
 
 /**

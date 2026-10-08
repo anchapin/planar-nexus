@@ -444,6 +444,22 @@ export const PumpSchema = z
   });
 
 /**
+ * #2614 Earthbender Ascension: "if it has four or more quest counters on
+ * it". The effect runs only when the ability's source has at least `min`
+ * counters of `counter` as the effect resolves, so a counter an earlier
+ * effect of the same ability just added counts. A gated effect that does
+ * not run still uses up its target slot, and a following "it" effect
+ * (GrantKeyword target "it") then has no target (CR 608.2b).
+ */
+const ifSourceCounters = z
+  .object({
+    counter: z.enum(["quest"]),
+    min: z.number().int().min(1).max(20),
+  })
+  .strict()
+  .optional();
+
+/**
  * Keywords a resolved spell or ability may grant until end of turn (#2567,
  * follow-up #2594). Mirrors `EQUIPMENT_KEYWORDS`: every keyword in
  * `evergreen-keywords.hasKeyword` is honored via the
@@ -499,6 +515,7 @@ export const GrantKeywordSchema = z
     controller,
     until: z.literal("end_of_turn"),
     if_kicked: ifKicked,
+    if_source_counters: ifSourceCounters,
   })
   .strict()
   .refine(
@@ -536,18 +553,36 @@ export const CantBeBlockedSchema = z
 export const PutCountersSchema = z
   .object({
     op: z.literal("PutCounters"),
-    /** Only +1/+1 counters for now. */
-    counter: z.literal("+1/+1"),
+    /**
+     * +1/+1 counters, or quest counters on the source itself (#2614
+     * Earthbender Ascension: "put a quest counter on this enchantment").
+     */
+    counter: z.enum(["+1/+1", "quest"]),
     amount: xCount,
     target: z.enum(["creature", "self"]),
     controller,
+    /**
+     * The creature target may be left unchosen. Models a reflexive "when
+     * you do ... target creature" inside an ability that itself has no
+     * target, so the rest of the ability still resolves with no creature
+     * around (Earthbender Ascension's landfall still adds its quest
+     * counter).
+     */
+    optional: z.boolean().optional(),
     if_kicked: ifKicked,
+    if_source_counters: ifSourceCounters,
   })
   .strict()
   .refine(
     (e) => e.controller === undefined || e.target === "creature",
     controllerNeedsCreatureTarget,
-  );
+  )
+  .refine((e) => e.counter !== "quest" || e.target === "self", {
+    message: "quest counters only go on self",
+  })
+  .refine((e) => e.optional === undefined || e.target === "creature", {
+    message: "optional needs target creature",
+  });
 
 /**
  * Put the top N cards of a library into its owner's graveyard (#2534).
