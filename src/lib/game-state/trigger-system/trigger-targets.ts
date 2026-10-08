@@ -265,7 +265,8 @@ function effectTargetSpecs(effect: CardEffect): TriggerTargetSpec[] | null {
   if (
     effect.op === "DealDamage" &&
     effect.target !== "each_opponent" &&
-    effect.target !== "each_player"
+    effect.target !== "each_player" &&
+    effect.target !== "defending_player"
   ) {
     return [
       { ...base, kind: effect.target, controller: effect.controller ?? "any" },

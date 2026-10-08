@@ -1,0 +1,34 @@
+{
+  "name": "Generous Plunderer",
+  "oracle": "Menace\nAt the beginning of your upkeep, you may create a Treasure token. When you do, target opponent creates a tapped Treasure token.\nWhenever this creature attacks, it deals damage to defending player equal to the number of artifacts they control.",
+  "triggers": [
+    {
+      "text": "At the beginning of your upkeep, you may create a Treasure token. When you do, target opponent creates a tapped Treasure token.",
+      "event": "upkeep",
+      "whose": "you",
+      "effects": [
+        { "op": "CreatePredefinedToken", "token": "treasure", "count": 1 },
+        {
+          "op": "CreatePredefinedToken",
+          "token": "treasure",
+          "count": 1,
+          "who": "opponent",
+          "tapped": true
+        }
+      ]
+    },
+    {
+      "text": "Whenever this creature attacks, it deals damage to defending player equal to the number of artifacts they control.",
+      "event": "attacks",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "DealDamage",
+          "amount": 1,
+          "target": "defending_player",
+          "per": "artifact"
+        }
+      ]
+    }
+  ]
+}
