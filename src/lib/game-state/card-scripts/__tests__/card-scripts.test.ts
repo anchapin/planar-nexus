@@ -14,7 +14,11 @@ import {
   scriptedModeChoiceError,
   scriptedSpellEffects,
 } from "../index";
-import { withX as withXEffect } from "../interpret";
+import { withX as withXEffect, resolveScriptedEffects } from "../interpret";
+import {
+  gainLife as gainLifeAction,
+  dealDamageToPlayer as dealDamageToPlayerAction,
+} from "../../player-actions";
 import { parseModes } from "../../oracle-text-parser/modes";
 import type { CardScript } from "../schema";
 import {
@@ -7275,5 +7279,252 @@ describe("Demolition Field: destroy a nonbasic land, both players search (#2614)
       `{T}: Add {C}.\n{2}, {T}, Sacrifice this land: ${DEMOLISH}`,
     );
     expect(field.activated.map((a) => a.text)).toEqual(["Add {C}.", DEMOLISH]);
+  });
+});
+
+describe("Hired Claw: Lizard attack ping and conditional counter (#2614)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+  const ORACLE =
+    "Whenever you attack with one or more Lizards, this creature deals 1 damage to target opponent.\n{1}{R}: Put a +1/+1 counter on this creature. Activate only if an opponent lost life this turn and only once each turn.";
+  const claw = () =>
+    ({
+      ...card("Hired Claw", "Creature — Lizard Mercenary", [1, 2]),
+      oracle_text: ORACLE,
+      mana_cost: "{R}",
+      cmc: 1,
+      colors: ["R"],
+    }) as ScryfallCard;
+  const sources = (s: GameState) => s.stack.map((o) => o.sourceCardId);
+  const bothPass = (s: GameState) => passPriority(passPriority(s, p1), p2);
+  const ready = (s: GameState, cardId: string): GameState => {
+    const cards = new Map(s.cards);
+    cards.set(id(cardId), {
+      ...cards.get(id(cardId))!,
+      hasSummoningSickness: false,
+    });
+    return { ...s, cards };
+  };
+  const at = (s: GameState, phase: Phase): GameState => ({
+    ...s,
+    stack: [],
+    priorityPlayerId: p1,
+    turn: { ...s.turn, activePlayerId: p1, currentPhase: phase },
+  });
+  const fund = (s: GameState): GameState => {
+    const players = new Map(s.players);
+    const p = players.get(p1)!;
+    players.set(p1, {
+      ...p,
+      manaPool: { ...p.manaPool, generic: 1, red: 1 },
+    });
+    return { ...s, players };
+  };
+  const lostLife = (s: GameState, who: PlayerId, n: number): GameState => {
+    const players = new Map(s.players);
+    players.set(who, { ...players.get(who)!, lastTurnLifeLost: n });
+    return { ...s, players };
+  };
+  const counters = (s: GameState) =>
+    s.cards
+      .get(id("claw"))!
+      .counters.filter((c) => c.type === "+1/+1")
+      .reduce((n, c) => n + c.count, 0);
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+    state = put(state, p1, "claw", claw());
+  });
+
+  it("parses into a once-per-combat Lizard attack trigger", () => {
+    const [ability] = getTriggeredAbilities(claw());
+    expect(ability.trigger).toMatchObject({
+      event: "attacked",
+      subject: "any",
+      enteringFilter: {
+        types: ["creature"],
+        controller: "you",
+        subtype: "Lizard",
+      },
+      attackFilter: { once: true },
+    });
+  });
+
+  it("triggers once when Lizards attack and pings the opponent", () => {
+    state = put(
+      state,
+      p1,
+      "lizard",
+      card("Lizard", "Creature — Lizard", [2, 2]),
+    );
+    state = at(ready(ready(state, "claw"), "lizard"), Phase.DECLARE_ATTACKERS);
+    const attacked = autoChooseTriggerTargets(
+      declareAttackers(state, [
+        { cardId: id("claw"), defenderId: p2 },
+        { cardId: id("lizard"), defenderId: p2 },
+      ]).state,
+      p1,
+    );
+    expect(sources(attacked)).toEqual([id("claw")]);
+    expect(attacked.stack[0].targets).toEqual([
+      expect.objectContaining({ type: "player", targetId: p2 }),
+    ]);
+    expect(bothPass(attacked).players.get(p2)!.life).toBe(19);
+  });
+
+  it("doesn't trigger when only non-Lizards attack", () => {
+    state = put(state, p1, "bear", card("Bear", "Creature — Bear", [2, 2]));
+    state = at(ready(state, "bear"), Phase.DECLARE_ATTACKERS);
+    const attacked = declareAttackers(state, [
+      { cardId: id("bear"), defenderId: p2 },
+    ]).state;
+    expect(sources(attacked)).toEqual([]);
+  });
+
+  it("can't put a counter on until an opponent lost life this turn", () => {
+    const s = fund(at(state, Phase.PRECOMBAT_MAIN));
+    expect(activateAbility(s, p1, id("claw"), 0).success).toBe(false);
+    expect(activateAbility(lostLife(s, p1, 3), p1, id("claw"), 0).success).toBe(
+      false,
+    );
+    const r = activateAbility(lostLife(s, p2, 1), p1, id("claw"), 0);
+    expect(r.success).toBe(true);
+    const resolved = resolveScriptedAbility(
+      r.state,
+      r.state.stack[r.state.stack.length - 1],
+    )!;
+    expect(counters(resolved)).toBe(1);
+  });
+
+  it("activates only once each turn", () => {
+    const s = fund(lostLife(at(state, Phase.PRECOMBAT_MAIN), p2, 2));
+    const first = activateAbility(s, p1, id("claw"), 0);
+    expect(first.success).toBe(true);
+    expect(activateAbility(fund(first.state), p1, id("claw"), 0).success).toBe(
+      false,
+    );
+  });
+
+  it("rejects a subtype on a self trigger", () => {
+    const ok = (extra: object) =>
+      CardScriptSchema.safeParse({
+        name: "X",
+        oracle: "X",
+        triggers: [
+          {
+            text: "X",
+            event: "attacks",
+            effects: [{ op: "Draw", amount: 1 }],
+            ...extra,
+          },
+        ],
+      }).success;
+    expect(ok({ subject: "any", subtype: "Lizard" })).toBe(true);
+    expect(ok({ subject: "self", subtype: "Lizard" })).toBe(false);
+  });
+});
+
+describe("Sunspine Lynx: life gain and prevention statics (#2614)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+  const lynx = () => card("Sunspine Lynx", "Creature — Elemental Cat", [5, 4]);
+  const life = (s: GameState, who: PlayerId) => s.players.get(who)!.life;
+  const shield = (s: GameState, who: PlayerId, amount: number) =>
+    s.replacementEffectManager.addPreventionShield(who, {
+      sourceId: id("shield-source"),
+      amount,
+      controllerId: who,
+    });
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+  });
+
+  it("stops life gain while it is on the battlefield", () => {
+    expect(life(gainLifeAction(state, p1, 3), p1)).toBe(23);
+    state = put(state, p1, "lynx", lynx());
+    expect(life(gainLifeAction(state, p1, 3), p1)).toBe(20);
+    expect(life(gainLifeAction(state, p2, 3), p2)).toBe(20);
+  });
+
+  it("makes damage unpreventable while it is on the battlefield", () => {
+    shield(state, p2, 5);
+    expect(life(dealDamageToPlayerAction(state, p2, 3), p2)).toBe(20);
+    state = put(state, p1, "lynx", lynx());
+    expect(life(dealDamageToPlayerAction(state, p2, 3), p2)).toBe(17);
+  });
+
+  it("ETB deals damage to each player equal to their nonbasic lands", () => {
+    state = put(state, p1, "lynx", lynx());
+    state = put(state, p1, "dfield", card("Demolition Field", "Land"));
+    state = put(state, p2, "dual1", card("Shared Roots", "Land"));
+    state = put(state, p2, "dual2", card("Fabled Passage", "Land"));
+    state = put(state, p2, "forest", card("Forest", "Basic Land — Forest"));
+    const [trigger] = getCardScript("Sunspine Lynx")!.triggers!;
+    const after = resolveScriptedEffects(state, trigger.effects!, {
+      controllerId: p1,
+      sourceCardId: id("lynx"),
+      targets: [],
+    } as unknown as StackObject);
+    expect(life(after, p1)).toBe(19);
+    expect(life(after, p2)).toBe(18);
+  });
+
+  it("deals no damage to a player with only basic lands", () => {
+    state = put(state, p1, "lynx", lynx());
+    state = put(state, p2, "forest", card("Forest", "Basic Land — Forest"));
+    const [trigger] = getCardScript("Sunspine Lynx")!.triggers!;
+    const after = resolveScriptedEffects(state, trigger.effects!, {
+      controllerId: p1,
+      sourceCardId: id("lynx"),
+      targets: [],
+    } as unknown as StackObject);
+    expect(life(after, p1)).toBe(20);
+    expect(life(after, p2)).toBe(20);
+  });
+
+  it("schema: per needs each_player, and rules can't sit on a spell", () => {
+    const base = { name: "Test", oracle: "x" };
+    expect(
+      CardScriptSchema.safeParse({
+        ...base,
+        spell: [
+          {
+            op: "DealDamage",
+            amount: 1,
+            target: "each_opponent",
+            per: "nonbasic_land",
+          },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      CardScriptSchema.safeParse({
+        ...base,
+        spell: [{ op: "DealDamage", amount: 1, target: "each_opponent" }],
+        rules: [
+          { text: "Players can't gain life.", rule: "players_cant_gain_life" },
+        ],
+      }).success,
+    ).toBe(false);
+    expect(
+      CardScriptSchema.safeParse({
+        ...base,
+        rules: [
+          {
+            text: "Damage can't be prevented.",
+            rule: "damage_cant_be_prevented",
+          },
+        ],
+      }).success,
+    ).toBe(true);
   });
 });

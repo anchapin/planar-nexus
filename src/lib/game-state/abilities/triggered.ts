@@ -68,7 +68,18 @@ function subjectMatches(
   )
     return false;
   if (filter.nontoken && entering.isToken) return false;
+  if (filter.subtype && !hasSubtype(typeLine, filter.subtype)) return false;
   return true;
+}
+
+/** CR 205.3: is `subtype` among the type line's subtypes (after the dash)? */
+function hasSubtype(typeLine: string, subtype: string): boolean {
+  const dash = typeLine.search(/[\u2014-]/);
+  if (dash < 0) return false;
+  return typeLine
+    .slice(dash + 1)
+    .split(/\s+/)
+    .includes(subtype.toLowerCase());
 }
 
 /**

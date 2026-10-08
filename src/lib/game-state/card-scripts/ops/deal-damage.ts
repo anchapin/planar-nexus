@@ -4,5 +4,5 @@ import type { CardOpReference } from "./types";
 export const DealDamageReference: CardOpReference = {
   name: "DealDamage",
   reference:
-    '{"op":"DealDamage","amount":N|"X","target":"any"|"creature"|"player"|"each_opponent","controller":"you"|"opponent"} (controller optional, target creature only: "target creature you control" is "you", "an opponent controls" or "you don\'t control" is "opponent")',
+    '{"op":"DealDamage","amount":N|"X","target":"any"|"creature"|"player"|"opponent"|"each_opponent","controller":"you"|"opponent"} (controller optional, target creature only: "target creature you control" is "you", "an opponent controls" or "you don\'t control" is "opponent")',
 };

@@ -2,6 +2,7 @@
  * Main GameState class for managing the complete game state
  */
 
+import { scriptRuleActive } from "../keyword-actions/scripted-statics";
 import { clearUntilEndOfTurnPT } from "../pt-until-end-of-turn";
 import { clearUntilEndOfTurnKeywords } from "../pt-until-end-of-turn";
 import type {
@@ -881,7 +882,10 @@ export function dealDamageToPlayer(
     state.turn.activePlayerId,
     Array.from(state.players.keys()),
   );
-  const processedEvent = rem.processEvent(replacementEvent, apnapOrder);
+  // CR 615.12: "Damage can't be prevented" (Sunspine Lynx, #2614).
+  const processedEvent = rem.processEvent(replacementEvent, apnapOrder, 100, {
+    preventionAllowed: !scriptRuleActive(state, "damage_cant_be_prevented"),
+  });
   const actualDamage = processedEvent.amount;
 
   if (actualDamage <= 0) return state;
@@ -917,7 +921,11 @@ export function dealDamageToPlayer(
 
   if (sourceId) {
     const sourceCard = state.cards.get(sourceId);
-    if (sourceCard && hasLifelink(sourceCard)) {
+    if (
+      sourceCard &&
+      hasLifelink(sourceCard) &&
+      !scriptRuleActive(state, "players_cant_gain_life")
+    ) {
       const sourceController = state.players.get(sourceCard.controllerId);
       if (sourceController) {
         const updatedController = {
@@ -952,6 +960,9 @@ export function gainLife(
   if (!player) {
     throw new Error(`Player ${playerId} not found`);
   }
+
+  // CR 119.7: "Players can't gain life" (Sunspine Lynx, #2614).
+  if (scriptRuleActive(state, "players_cant_gain_life")) return state;
 
   // Check for replacement effects (e.g., "If you would gain life, gain twice that much instead")
   const replacementEvent = {

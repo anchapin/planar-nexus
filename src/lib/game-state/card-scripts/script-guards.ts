@@ -73,7 +73,9 @@ export function scriptedAbilityEffects(
 export function isTargetedEffect(effect: CardEffect): boolean {
   switch (effect.op) {
     case "DealDamage":
-      return effect.target !== "each_opponent";
+      return (
+        effect.target !== "each_opponent" && effect.target !== "each_player"
+      );
     case "Pump":
     case "PutCounters":
     case "AttachEquipment":
