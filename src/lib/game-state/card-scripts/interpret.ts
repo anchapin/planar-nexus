@@ -588,6 +588,14 @@ function searchLibrary(
         ...inst,
         currentZoneKey: destKey,
         ...(entersTapped ? { isTapped: true } : {}),
+        ...(entersTapped && effect.stun
+          ? {
+              counters: [
+                ...inst.counters.filter((c) => c.type !== "stun"),
+                { type: "stun", count: effect.stun },
+              ],
+            }
+          : {}),
       });
     }
   }

@@ -678,6 +678,12 @@ export const SearchLibrarySchema = z
      * with `tapped` on a battlefield search.
      */
     untap_if_lands: z.number().int().min(1).optional(),
+    /**
+     * Magmatic Hellkite: "puts it onto the battlefield tapped with a stun
+     * counter on it" (CR 122.1d). Stun counters on each found card. Only
+     * read with `tapped` on a battlefield search.
+     */
+    stun: z.number().int().min(1).optional(),
     if_kicked: ifKicked,
   })
   .strict();
@@ -1248,6 +1254,18 @@ export const CardScriptSchema = z
       .strict()
       .optional(),
     /**
+     * Harmonize (CR 702.180) — "You may cast this card from your graveyard
+     * for its harmonize cost. You may tap a creature you control to reduce
+     * that cost by {X}, where X is its power. Then exile this spell."
+     * Instants and sorceries only, like flashback.
+     */
+    harmonize: z
+      .object({
+        cost: z.string().regex(/^(\{(?:[0-9]+|[WUBRGC])\})+$/),
+      })
+      .strict()
+      .optional(),
+    /**
      * Kicker (CR 702.32, #2564) — a single optional additional cost. "You may
      * pay an additional cost as you cast this spell. If you do, [its bonus
      * effect occurs]." `cost` is a mana-string in the same shape as
@@ -1345,6 +1363,13 @@ export const CardScriptSchema = z
       s.spell !== undefined ||
       s.modes !== undefined,
     { message: "flashback is only for instant or sorcery scripts" },
+  )
+  .refine(
+    (s) =>
+      s.harmonize === undefined ||
+      s.spell !== undefined ||
+      s.modes !== undefined,
+    { message: "harmonize is only for instant or sorcery scripts" },
   )
   .refine((s) => !(s.aura && s.equipment), {
     message: "a card is an aura or an equipment, not both",

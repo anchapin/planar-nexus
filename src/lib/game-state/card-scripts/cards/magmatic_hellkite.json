@@ -1,0 +1,27 @@
+{
+  "name": "Magmatic Hellkite",
+  "oracle": "Flying\nWhen this creature enters, destroy target nonbasic land an opponent controls. Its controller searches their library for a basic land card, puts it onto the battlefield tapped with a stun counter on it, then shuffles. (If a permanent with a stun counter would become untapped, remove one from it instead.)",
+  "triggers": [
+    {
+      "text": "When this creature enters, destroy target nonbasic land an opponent controls. Its controller searches their library for a basic land card, puts it onto the battlefield tapped with a stun counter on it, then shuffles.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "Destroy",
+          "target": "nonbasic_land",
+          "controller": "opponent"
+        },
+        {
+          "op": "SearchLibrary",
+          "who": "target_controller",
+          "filter": { "basic_land": true },
+          "destination": "battlefield",
+          "tapped": true,
+          "stun": 1,
+          "shuffle": true
+        }
+      ]
+    }
+  ]
+}
