@@ -48,6 +48,36 @@ export interface StormInfo {
 }
 
 /**
+ * Result of detecting "this spell can't be countered" (CR 701.5a).
+ * Not a CR-defined keyword — a plain-text clause that the drafter
+ * mirrors in the script's `cantBeCountered: true` (preferred) or in
+ * the oracle text. Detected here so legacy cards without a script
+ * still get the rider when the engine reads their oracle_text
+ * (issue #2594 follow-up for Curator of Destinies, Koma,
+ * World-Eater, Sphinx of the Final Word).
+ */
+export interface CantBeCounteredInfo {
+  hasCantBeCountered: boolean;
+  description: string;
+}
+
+/**
+ * Parse "this spell can't be countered" from oracle text. Word-boundary
+ * anchored so the clause doesn't false-match on adjacent reminder
+ * text. Case-insensitive.
+ */
+export function parseCantBeCountered(oracleText: string): CantBeCounteredInfo {
+  if (!oracleText) {
+    return { hasCantBeCountered: false, description: "" };
+  }
+  const hasCantBeCountered =
+    /\bthis spell can'?t be countered\b/i.test(oracleText);
+  return {
+    hasCantBeCountered,
+    description: hasCantBeCountered ? "This spell can't be countered." : "",
+  };
+}
+/**
  * Parse the Storm keyword from oracle text.
  *
  * CR 702.41: "Storm" is a triggered ability that functions only while the
