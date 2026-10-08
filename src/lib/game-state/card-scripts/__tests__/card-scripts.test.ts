@@ -58,6 +58,7 @@ import { activateAbility } from "../../abilities/activated";
 import { affinityReduction } from "../../spell-casting/affinity";
 import { refreshDomainPower } from "../../keyword-actions/domain";
 import { extraLandPlays } from "../../mana/land-rules";
+import { fireTargetedTriggers } from "../../keyword-actions/targeted";
 import { playLand } from "../../mana/lands";
 import { listPriorityChoices } from "../../legal-choices";
 import { parseManaFromEffect } from "../../abilities/mana";
@@ -8204,5 +8205,88 @@ describe("Icetill Explorer: extra land, lands from graveyard, landfall mill (#26
         spell: [{ op: "GainLife", amount: 1, who: "you" }],
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("Surrak, Elusive Hunter: draw when an opponent targets your creatures (#2614)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+  const targeting = (controllerId: PlayerId, targetId: string) => ({
+    controllerId,
+    targets: [{ type: "card" as const, targetId, isValid: true }],
+  });
+  const surrakTriggers = (s: GameState) =>
+    s.stack.filter((o) => o.sourceCardId === id("surrak"));
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+    state = put(
+      state,
+      p1,
+      "surrak",
+      card(
+        "Surrak, Elusive Hunter",
+        "Legendary Creature — Human Warrior",
+        [4, 3],
+      ),
+    );
+    state = put(
+      state,
+      p1,
+      "bear",
+      card("Grizzly Bears", "Creature — Bear", [2, 2]),
+    );
+    state = put(
+      state,
+      p2,
+      "theirs",
+      card("Grizzly Bears", "Creature — Bear", [2, 2]),
+    );
+  });
+
+  it("triggers when an opponent targets a creature you control", () => {
+    const s = fireTargetedTriggers(state, targeting(p2, "bear"));
+    expect(surrakTriggers(s)).toHaveLength(1);
+    expect(surrakTriggers(s)[0].controllerId).toBe(p1);
+  });
+
+  it("ignores your own targeting and the opponent's own creatures", () => {
+    expect(
+      surrakTriggers(fireTargetedTriggers(state, targeting(p1, "bear"))),
+    ).toHaveLength(0);
+    expect(
+      surrakTriggers(fireTargetedTriggers(state, targeting(p2, "theirs"))),
+    ).toHaveLength(0);
+  });
+
+  it("triggers once per targeted creature", () => {
+    const s = fireTargetedTriggers(state, {
+      controllerId: p2,
+      targets: [
+        { type: "card", targetId: "bear", isValid: true },
+        { type: "card", targetId: "surrak", isValid: true },
+        { type: "card", targetId: "bear", isValid: true },
+      ],
+    } as never);
+    expect(surrakTriggers(s)).toHaveLength(2);
+  });
+
+  it("the trigger draws a card, and the spell can't be countered", () => {
+    expect(getCardScript("Surrak, Elusive Hunter")!.cantBeCountered).toBe(true);
+    const before = state.zones.get(`${p1}-hand`)!.cardIds.length;
+    const s = resolveScriptedEffects(
+      state,
+      getCardScript("Surrak, Elusive Hunter")!.triggers![0].effects!,
+      {
+        controllerId: p1,
+        sourceCardId: id("surrak"),
+        targets: [],
+      } as unknown as StackObject,
+    );
+    expect(s.zones.get(`${p1}-hand`)!.cardIds.length).toBe(before + 1);
   });
 });

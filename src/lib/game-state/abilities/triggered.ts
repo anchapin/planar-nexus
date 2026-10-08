@@ -260,6 +260,21 @@ export function detectTriggeredAbilities(
         case "lifeGain":
           shouldTrigger = ability.trigger.event === "lifeGain";
           break;
+        case "targeted": {
+          // "Whenever a creature you control or a creature spell you
+          // control becomes the target of a spell or ability an opponent
+          // controls" (#2614 Surrak).
+          const targeted = context?.targetedCardId
+            ? state.cards.get(context.targetedCardId)
+            : undefined;
+          shouldTrigger =
+            ability.trigger.event === "targeted" &&
+            !!targeted &&
+            targeted.controllerId === card.controllerId &&
+            !!context?.targetingPlayerId &&
+            context.targetingPlayerId !== card.controllerId;
+          break;
+        }
         case "lifeLost":
           shouldTrigger = ability.trigger.event === "lifeLost";
           break;

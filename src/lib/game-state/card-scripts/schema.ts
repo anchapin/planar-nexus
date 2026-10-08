@@ -11,7 +11,11 @@
  */
 import { z } from "zod";
 import { PREDEFINED_TOKEN_KINDS } from "./predefined-tokens";
-import { REMOVAL_ALL_TARGETS, REMOVAL_TARGETS, TARGET_CONTROLLERS } from "./target-filters";
+import {
+  REMOVAL_ALL_TARGETS,
+  REMOVAL_TARGETS,
+  TARGET_CONTROLLERS,
+} from "./target-filters";
 
 const amount = z.number().int().min(0);
 
@@ -861,6 +865,10 @@ export const TriggerSchema = z
       "cast",
       "phaseEnds",
       "lifeGain",
+      // targeted: a creature you control or a creature spell you control
+      // becomes the target of a spell or ability an opponent controls
+      // (#2614 Surrak, Elusive Hunter).
+      "targeted",
     ]),
     /**
      * etb, dies, attacks: whose entry, death or attack it watches

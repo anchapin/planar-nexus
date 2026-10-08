@@ -96,6 +96,9 @@ function scriptedCondition(t: ScriptedTrigger): TriggerCondition {
   // Pridemate); subject="another" / "any" is supported but uncommon
   // for the v1 sample cards.
   if (t.event === "lifeGain") return { event: "lifeGain" };
+  // targeted: creatures/creature spells you control targeted by an
+  // opponent (#2614 Surrak); the controller check lives in triggered.ts.
+  if (t.event === "targeted") return { event: "targeted" };
   const condition: TriggerCondition = {
     event: SUBJECT_EVENT[t.event],
     subject: t.subject,

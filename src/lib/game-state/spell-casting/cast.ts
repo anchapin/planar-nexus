@@ -57,6 +57,7 @@ import { affinityReduction } from "./affinity";
 import { isCreature, getPower } from "../card-instance";
 import { scriptedModeChoiceError } from "../card-scripts/script-guards";
 import { fireCastTriggers } from "../keyword-actions/cast-triggers";
+import { fireTargetedTriggers } from "../keyword-actions/targeted";
 import { createEngineUncaughtException } from "../errors";
 
 /**
@@ -1624,6 +1625,8 @@ export function castSpell(
     // CR 601.2i / 603.3: "whenever you cast ..." triggers go on the stack
     // above the spell (#2496).
     finalState = fireCastTriggers(finalState, cardId, playerId);
+    // "Becomes the target" triggers (#2614 Surrak) for the spell's targets.
+    finalState = fireTargetedTriggers(finalState, stackObject);
 
     return { success: true, state: finalState };
   } catch (err) {

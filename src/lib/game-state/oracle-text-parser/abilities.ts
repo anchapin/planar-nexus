@@ -120,6 +120,7 @@ export interface TriggerCondition {
     | "exploit"
     | "disturb"
     | "transform"
+    | "targeted"
     | "unknown";
   /**
    * Whose event the trigger watches (CR 603.6a, 603.10a, 508.1m): "self" for
