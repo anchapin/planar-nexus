@@ -578,15 +578,31 @@ export function castSpell(
           // Subtract the printed mana-cost component and add the flashback-
           // cost component so additional costs are preserved (same treatment
           // as Blitz/Foretell/Spectacle/Escape).
-          const flashbackInfo = parseFlashback(card.cardData.oracle_text || "");
-          if (flashbackInfo.hasFlashback && flashbackInfo.flashbackCost) {
-            totalGeneric +=
-              flashbackInfo.flashbackCost.generic - manaCost.generic;
-            totalWhite += flashbackInfo.flashbackCost.white - manaCost.white;
-            totalBlue += flashbackInfo.flashbackCost.blue - manaCost.blue;
-            totalBlack += flashbackInfo.flashbackCost.black - manaCost.black;
-            totalRed += flashbackInfo.flashbackCost.red - manaCost.red;
-            totalGreen += flashbackInfo.flashbackCost.green - manaCost.green;
+          //
+          // #2594 #17: a scripted card declares its flashback cost on
+          // the script (`flashback.cost`); the oracle-text parser is the
+          // legacy path for cards without a script. Script wins so the
+          // engine doesn't depend on a regex parse of the card's
+          // printed text — mirrors the kicker pattern above (#2564).
+          const cardScript = getCardScript(card.cardData.name);
+          const scriptedFlashbackCost = cardScript?.flashback?.cost;
+          let flashbackCost: ReturnType<typeof parseFlashback>["flashbackCost"] =
+            null;
+          if (scriptedFlashbackCost) {
+            flashbackCost = parseManaCost(scriptedFlashbackCost);
+          } else {
+            const flashbackInfo = parseFlashback(
+              card.cardData.oracle_text || "",
+            );
+            flashbackCost = flashbackInfo.flashbackCost;
+          }
+          if (flashbackCost) {
+            totalGeneric += flashbackCost.generic - manaCost.generic;
+            totalWhite += flashbackCost.white - manaCost.white;
+            totalBlue += flashbackCost.blue - manaCost.blue;
+            totalBlack += flashbackCost.black - manaCost.black;
+            totalRed += flashbackCost.red - manaCost.red;
+            totalGreen += flashbackCost.green - manaCost.green;
             alternativeCostsUsed.push("flashback");
           }
           break;
