@@ -124,7 +124,10 @@ export interface TriggerCondition {
     | "transform"
     | "targeted"
     | "crime"
+    | "chapter"
     | "unknown";
+  /** Saga chapter ability: its chapter number (CR 714.2b). */
+  chapter?: number;
   /**
    * Whose event the trigger watches (CR 603.6a, 603.10a, 508.1m): "self" for
    * "this creature" / the card's own name, "another" for "another ..." /

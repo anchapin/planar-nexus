@@ -41,6 +41,7 @@ import {
 import { hasLifelink, clearProwessBoosts } from "../evergreen-keywords";
 import { clearCrewedVehicles } from "../keyword-actions/crew";
 import { fireUpkeepTriggers } from "../keyword-actions/upkeep";
+import { addPrecombatMainLoreCounters } from "../keyword-actions/saga";
 import {
   HAND_SIZE_DISCARD_CHOICE_TYPE,
   createHandSizeDiscardChoice,
@@ -720,6 +721,11 @@ function advanceToNextPhase(state: GameState): GameState {
   // CR 503.1a: "at the beginning of your/each upkeep" triggers (#2498).
   if (nextPhase.currentPhase === Phase.UPKEEP) {
     return fireUpkeepTriggers(advanced, state.turn.activePlayerId);
+  }
+  // CR 714.3b: after the draw step, a lore counter on each of the active
+  // player's Sagas (#2614).
+  if (nextPhase.currentPhase === Phase.PRECOMBAT_MAIN) {
+    return addPrecombatMainLoreCounters(advanced, state.turn.activePlayerId);
   }
   // CR 507.1: "at the beginning of combat on your turn" triggers.
   if (nextPhase.currentPhase === Phase.BEGIN_COMBAT) {

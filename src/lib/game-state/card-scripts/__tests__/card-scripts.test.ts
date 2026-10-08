@@ -48,6 +48,11 @@ import { refreshTribalAnthems } from "../../keyword-actions/tribal-anthem";
 import { cycleCard } from "../../keyword-actions/cycling";
 import { checkStateBasedActions } from "../../state-based-actions";
 import { clearUntilEndOfTurnPT } from "../../pt-until-end-of-turn";
+import {
+  addLoreCounters,
+  addPrecombatMainLoreCounters,
+} from "../../keyword-actions/saga";
+import { resolveTopOfStack } from "../../spell-casting/resolve";
 import { destroyCard } from "../../keyword-actions/removal";
 import {
   activateManaAbility,
@@ -8906,5 +8911,204 @@ describe("Sarkhan, Dragon Ascendant: behold a Dragon, becomes a Dragon (#2614)",
     expect(trigger.subject).toBe("another");
     expect(trigger.controller).toBe("you");
     expect(trigger.subtype).toBe("Dragon");
+  });
+});
+
+describe("Esper Origins // Summon: Esper Maduin: flashback into a Saga (#2614)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  const NAME = "Esper Origins // Summon: Esper Maduin";
+  const esper = () =>
+    ({
+      ...card(NAME, "Sorcery // Enchantment Creature — Saga Elemental"),
+      layout: "transform",
+      card_faces: [
+        {
+          name: "Esper Origins",
+          type_line: "Sorcery",
+          mana_cost: "{1}{G}",
+          oracle_text: "",
+        },
+        {
+          name: "Summon: Esper Maduin",
+          type_line: "Enchantment Creature — Saga Elemental",
+          mana_cost: "",
+          oracle_text: "",
+          power: "4",
+          toughness: "4",
+        },
+      ],
+    }) as unknown as ScryfallCard;
+  const onStack = (s: GameState, alt: string[]): GameState => {
+    s = put(s, p1, "esper", esper(), "hand");
+    const zones = new Map(s.zones);
+    const hand = zones.get(`${p1}-hand`)!;
+    zones.set(`${p1}-hand`, {
+      ...hand,
+      cardIds: hand.cardIds.filter((c) => c !== id("esper")),
+    });
+    const stack = zones.get("stack")!;
+    zones.set("stack", { ...stack, cardIds: [...stack.cardIds, id("esper")] });
+    const so = {
+      id: "so-esper",
+      type: "spell",
+      sourceCardId: id("esper"),
+      controllerId: p1,
+      name: NAME,
+      text: "",
+      manaCost: "{3}{G}",
+      targets: [],
+      chosenModes: [],
+      variableValues: new Map(),
+      isCountered: false,
+      timestamp: 1,
+      alternativeCostsUsed: alt,
+    } as unknown as StackObject;
+    return { ...s, zones, stack: [...s.stack, so] };
+  };
+  const zoneOf = (s: GameState, cid: string) =>
+    [...s.zones.entries()].find(([, z]) => z.cardIds.includes(id(cid)))?.[0];
+  const lore = (s: GameState) =>
+    s.cards.get(id("esper"))!.counters.find((c) => c.type === "lore")?.count ??
+    0;
+  const chapterEffects = (n: number) =>
+    getCardScript("Summon: Esper Maduin")!.triggers!.find(
+      (t) => t.chapter === n,
+    )!.effects!;
+  const runChapter = (s: GameState, n: number) =>
+    resolveScriptedEffects(s, chapterEffects(n), {
+      controllerId: p1,
+      sourceCardId: id("esper"),
+      targets: [],
+    } as unknown as StackObject);
+  const flashbackOntoBattlefield = (): GameState => {
+    const s = onStack(state, ["flashback"]);
+    const script = getCardScript(NAME)!;
+    return resolveScriptedEffects(
+      s,
+      script.spell!.filter((e) => e.op === "ReturnTransformed"),
+      s.stack[s.stack.length - 1],
+    );
+  };
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1] = Array.from(state.players.keys());
+  });
+
+  it("validates chapter triggers and the new ops", () => {
+    const trig = (t: object) =>
+      CardScriptSchema.safeParse({ name: "X", oracle: "x", triggers: [t] })
+        .success;
+    const effects = [{ op: "AddMana", amount: 1, colors: ["G"] }];
+    expect(trig({ text: "I", event: "chapter", chapter: 1, effects })).toBe(
+      true,
+    );
+    expect(trig({ text: "I", event: "chapter", effects })).toBe(false);
+    expect(trig({ text: "I", event: "etb", chapter: 1, effects })).toBe(false);
+    const ok = (effect: object) =>
+      CardScriptSchema.safeParse({ name: "X", oracle: "x", spell: [effect] })
+        .success;
+    expect(ok({ op: "RevealTopToHand", filter: "permanent" })).toBe(true);
+    expect(ok({ op: "ReturnTransformed", if_cast_from: "hand" })).toBe(false);
+  });
+
+  it("cast from hand: gains 2 life and stays a spell", () => {
+    const s = onStack(state, []);
+    const life = s.players.get(p1)!.life;
+    const after = resolveScriptedEffects(
+      s,
+      getCardScript(NAME)!.spell!.filter((e) => e.op !== "Surveil"),
+      s.stack[s.stack.length - 1],
+    );
+    expect(after.players.get(p1)!.life).toBe(life + 2);
+    expect(zoneOf(after, "esper")).toBe("stack");
+  });
+
+  it("cast with flashback: enters transformed with finality and lore counters", () => {
+    const s = flashbackOntoBattlefield();
+    const c = s.cards.get(id("esper"))!;
+    expect(zoneOf(s, "esper")).toBe(`${p1}-battlefield`);
+    expect(c.cardData.name).toBe("Summon: Esper Maduin");
+    expect(c.counters.find((x) => x.type === "finality")?.count).toBe(1);
+    expect(lore(s)).toBe(1);
+    expect(
+      s.stack.some(
+        (o) => o.sourceCardId === id("esper") && o.id !== "so-esper",
+      ),
+    ).toBe(true);
+  });
+
+  it("finishing resolution leaves the Saga on the battlefield", () => {
+    let s = flashbackOntoBattlefield();
+    s = { ...s, stack: s.stack.filter((o) => o.id === "so-esper") };
+    s = resolveTopOfStack(s);
+    expect(zoneOf(s, "esper")).toBe(`${p1}-battlefield`);
+    expect(s.stack.some((o) => o.id === "so-esper")).toBe(false);
+  });
+
+  it("chapter I puts a revealed permanent card into hand, not a spell", () => {
+    let s = put(
+      state,
+      p1,
+      "bear",
+      card("Grizzly Bears", "Creature — Bear", [2, 2]),
+      "library",
+    );
+    s = runChapter(s, 1);
+    expect(zoneOf(s, "bear")).toBe(`${p1}-hand`);
+    s = put(s, p1, "bolt", card("Lightning Bolt", "Instant"), "library");
+    s = runChapter(s, 1);
+    expect(zoneOf(s, "bolt")).toBe(`${p1}-library`);
+  });
+
+  it("the second lore counter triggers chapter II, which adds {G}{G}", () => {
+    let s = flashbackOntoBattlefield();
+    const before = s.stack.length;
+    s = addLoreCounters(s, id("esper"));
+    expect(lore(s)).toBe(2);
+    expect(s.stack.length).toBe(before + 1);
+    s = runChapter(s, 2);
+    expect(s.players.get(p1)!.manaPool.green).toBe(2);
+  });
+
+  it("chapter III pumps other creatures you control with trample", () => {
+    let s = flashbackOntoBattlefield();
+    s = put(s, p1, "bear", card("Grizzly Bears", "Creature — Bear", [2, 2]));
+    s = runChapter(s, 3);
+    const bear = s.cards.get(id("bear"))!;
+    expect(getEffectivePower(bear)).toBe(4);
+    expect(hasKeyword(bear, "trample")).toBe(true);
+    expect(getEffectivePower(s.cards.get(id("esper"))!)).toBe(4);
+  });
+
+  it("adds lore after the draw step, then exiles the finished Saga (finality)", () => {
+    let s = flashbackOntoBattlefield();
+    s = { ...s, stack: [] };
+    s = addPrecombatMainLoreCounters(s, p1);
+    s = addPrecombatMainLoreCounters({ ...s, stack: [] }, p1);
+    expect(lore(s)).toBe(3);
+    s = checkStateBasedActions(s).state;
+    expect(zoneOf(s, "esper")).toBe(`${p1}-battlefield`);
+    s = checkStateBasedActions({ ...s, stack: [] }).state;
+    expect(zoneOf(s, "esper")).toMatch(/exile$/);
+  });
+
+  it("a creature with a finality counter is exiled instead of dying", () => {
+    let s = put(
+      state,
+      p1,
+      "bear",
+      card("Grizzly Bears", "Creature — Bear", [2, 2]),
+    );
+    const cards = new Map(s.cards);
+    cards.set(id("bear"), {
+      ...cards.get(id("bear"))!,
+      counters: [{ type: "finality", count: 1 }],
+    });
+    s = destroyCard({ ...s, cards }, id("bear")).state;
+    expect(zoneOf(s, "bear")).toMatch(/exile$/);
   });
 });

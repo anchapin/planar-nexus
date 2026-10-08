@@ -44,6 +44,7 @@ import { refreshScriptedStatics } from "./keyword-actions/scripted-statics";
 import { refreshTurnCreatureForms } from "./keyword-actions/ninjutsu";
 import { refreshEquipmentBonuses } from "./keyword-actions/equipment-bonus";
 import { isAuraIllegallyAttached } from "./keyword-actions/enchant";
+import { isFinishedSaga } from "./keyword-actions/saga";
 
 // Helper functions to check card types
 function isAura(card: CardInstance): boolean {
@@ -309,6 +310,18 @@ export function checkStateBasedActions(
             );
             actionsPerformed = true;
           }
+        }
+
+        // SBA 704.5s / CR 714.4: a Saga at or past its final chapter with
+        // no chapter ability on the stack is sacrificed (#2614).
+        if (isFinishedSaga(updatedState, card)) {
+          if (!cardsToDestroy.includes(card.id)) {
+            cardsToDestroy.push(card.id);
+          }
+          descriptions.push(
+            `${card.cardData.name} is sacrificed (final chapter)`,
+          );
+          actionsPerformed = true;
         }
 
         // SBA 704.5i: A planeswalker with 0 loyalty is exiled

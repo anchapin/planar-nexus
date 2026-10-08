@@ -6,7 +6,9 @@
  * replaces the step of reading oracle text to decide what happens.
  */
 import { earthbend } from "../keyword-actions/earthbend";
+import { faceCardData } from "../keyword-actions/transform";
 import type {
+  CardInstance,
   CardInstanceId,
   GameState,
   PlayerId,
@@ -1130,6 +1132,31 @@ function applyEffect(
       return r.success ? r.state : state;
     }
     case "Pump": {
+      if (effect.target === "other_creatures_you_control") {
+        // Untargeted fan-out (#2614 Summon: Esper Maduin chapter III).
+        const battlefield = state.zones.get(`${ctx.controllerId}-battlefield`);
+        let next: GameState = state;
+        for (const id of battlefield?.cardIds ?? []) {
+          const c = next.cards.get(id);
+          if (!c || id === sourceId || !isCreature(c)) continue;
+          if (c.controllerId !== ctx.controllerId) continue;
+          const r = resolveEffect(
+            next,
+            {
+              effectType: "pt_until_eot",
+              power: effect.power,
+              toughness: effect.toughness,
+              targetId: id,
+            },
+            sourceId,
+          );
+          if (!r.success) continue;
+          next = effect.keywords?.length
+            ? addUntilEndOfTurnKeywords(r.state, id, effect.keywords)
+            : r.state;
+        }
+        return next;
+      }
       const cardId = creatureFor(state, effect.target, ctx, effect.controller);
       if (!cardId) return state;
       // Doubling power: +X/+0 where X is the creature's power now. A
@@ -1309,6 +1336,57 @@ function applyEffect(
       return effect.keywords
         ? addUntilEndOfTurnKeywords(animated, cardId, effect.keywords)
         : animated;
+    }
+    case "RevealTopToHand": {
+      // The reveal itself is public information; the engine has no
+      // separate reveal step. A nonpermanent card stays on top.
+      const library = state.zones.get(`${ctx.controllerId}-library`);
+      const top = library?.cardIds[library.cardIds.length - 1];
+      const card = top ? state.cards.get(top) : undefined;
+      if (!top || !card) return state;
+      const typeLine = (card.cardData.type_line ?? "").split(" // ")[0];
+      if (
+        !/\b(artifact|creature|enchantment|land|planeswalker|battle)\b/i.test(
+          typeLine,
+        )
+      )
+        return state;
+      const r = moveCardToZone(state, top, "hand");
+      return r.success ? r.state : state;
+    }
+    case "ReturnTransformed": {
+      const id = ctx.sourceId;
+      const card = id ? state.cards.get(id) : undefined;
+      if (!id || !card) return state;
+      // Cast from a graveyard: flashback (or another graveyard cast).
+      const spell = state.stack.find((o) => o.sourceCardId === id);
+      const fromGraveyard = (spell?.alternativeCostsUsed ?? []).some((c) =>
+        ["flashback", "harmonize", "escape"].includes(c),
+      );
+      if (!fromGraveyard) return state;
+      if (!state.zones.get("stack")?.cardIds.includes(id)) return state;
+      const original = card.transformOriginalCardData ?? card.cardData;
+      if (original.layout !== "transform" || !original.card_faces?.[1])
+        return state;
+      // "Exile it, then put it onto the battlefield transformed under its
+      // owner's control": the brief stop in exile has no other effect here,
+      // so it moves straight from the stack, back face up, with the
+      // finality counter on it as it enters.
+      const transformed: CardInstance = {
+        ...card,
+        controllerId: card.ownerId,
+        transformOriginalCardData: original,
+        cardData: faceCardData(
+          { ...card, transformOriginalCardData: original },
+          1,
+        ),
+        currentFaceIndex: 1,
+        counters: effect.counter ? [{ type: effect.counter, count: 1 }] : [],
+      };
+      const cards = new Map(state.cards);
+      cards.set(id, transformed);
+      const r = moveCardToZone({ ...state, cards }, id, "battlefield");
+      return r.success ? r.state : state;
     }
     case "AddSubtype": {
       const id = ctx.sourceId;

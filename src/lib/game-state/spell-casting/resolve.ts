@@ -515,6 +515,19 @@ function resolveSpellCompletion(
         }
       }
 
+      // A resolving spell an effect already moved off the stack (Esper
+      // Origins puts itself onto the battlefield, #2614) stays there.
+      if (
+        !state.zones.get("stack")?.cardIds.includes(stackObject.sourceCardId)
+      ) {
+        return {
+          ...state,
+          stack: state.stack.filter((o) => o.id !== stackObject.id),
+          priorityPlayerId: state.turn.activePlayerId,
+          lastModifiedAt: Date.now(),
+        };
+      }
+
       let destinationZone: string;
       if (typeLine.includes("instant") || typeLine.includes("sorcery")) {
         // Instants and sorceries go to graveyard — UNLESS they were cast

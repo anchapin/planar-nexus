@@ -434,8 +434,12 @@ export const PumpSchema = z
     op: z.literal("Pump"),
     power: xPump,
     toughness: xPump,
-    /** self: the permanent the ability belongs to (untargeted). */
-    target: z.enum(["creature", "self"]),
+    /**
+     * self: the permanent the ability belongs to (untargeted).
+     * other_creatures_you_control: every other creature you control,
+     * untargeted (#2614 Summon: Esper Maduin chapter III).
+     */
+    target: z.enum(["creature", "self", "other_creatures_you_control"]),
     controller,
     /**
      * Keywords to grant the target until end of turn (e.g. lifelink on
@@ -897,6 +901,33 @@ export const AddSubtypeSchema = z
   })
   .strict();
 
+/**
+ * "Reveal the top card of your library. If it's a permanent card, put it
+ * into your hand." (#2614 Summon: Esper Maduin chapter I). A nonpermanent
+ * card stays on top.
+ */
+export const RevealTopToHandSchema = z
+  .object({
+    op: z.literal("RevealTopToHand"),
+    filter: z.literal("permanent"),
+    if_kicked: ifKicked,
+  })
+  .strict();
+
+/**
+ * "If this spell was cast from a graveyard, exile it, then put it onto the
+ * battlefield transformed under its owner's control with a finality counter
+ * on it." (#2614 Esper Origins). Only on a transforming double-faced spell.
+ */
+export const ReturnTransformedSchema = z
+  .object({
+    op: z.literal("ReturnTransformed"),
+    if_cast_from: z.literal("graveyard"),
+    counter: z.literal("finality").optional(),
+    if_kicked: ifKicked,
+  })
+  .strict();
+
 export const EffectSchema = z.discriminatedUnion("op", [
   DealDamageSchema,
   DrawSchema,
@@ -929,6 +960,8 @@ export const EffectSchema = z.discriminatedUnion("op", [
   AnimateSchema,
   EarthbendSchema,
   AddSubtypeSchema,
+  RevealTopToHandSchema,
+  ReturnTransformedSchema,
 ]);
 
 /** True when no non-Discard effect follows a Discard (#2536). */
@@ -1007,6 +1040,10 @@ export const TriggerSchema = z
       // crime: you target an opponent, anything they control, or a card in
       // their graveyard (CR 700.13, #2614 Magda, the Hoardmaster).
       "crime",
+      // chapter: a Saga chapter ability (CR 714.2b), fired when a lore
+      // counter brings the count to `chapter` or past it (#2614 Summon:
+      // Esper Maduin).
+      "chapter",
     ]),
     /**
      * etb, dies, attacks: whose entry, death or attack it watches
@@ -1044,6 +1081,8 @@ export const TriggerSchema = z
     once_per_turn: z.literal(true).optional(),
     /** cast only: "a spell with a single target" (exactly one target). */
     targets: z.literal("single").optional(),
+    /** The chapter number of a Saga chapter ability (I = 1). */
+    chapter: z.number().int().min(1).max(6).optional(),
     effects: effects.optional(),
     /**
      * A modal ability ("When this creature enters, choose one —"), instead of
@@ -1055,6 +1094,9 @@ export const TriggerSchema = z
   .strict()
   .refine((t) => (t.effects === undefined) !== (t.modes === undefined), {
     message: "a trigger has effects or modes, exactly one",
+  })
+  .refine((t) => (t.event === "chapter") === (t.chapter !== undefined), {
+    message: "chapter is required on, and only for, chapter triggers",
   })
   .refine((t) => t.event === "upkeep" || t.whose === undefined, {
     message: "whose is only for upkeep triggers",

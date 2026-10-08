@@ -2,6 +2,7 @@ import type { CardInstanceId, PlayerId, GameState } from "../types";
 
 export type TriggerEvent =
   | "landfall"
+  | "chapter"
   | "entersBattlefield"
   | "leavesBattlefield"
   | "damageDealt"
@@ -32,6 +33,12 @@ export type TriggerEvent =
 
 export interface TriggerContext {
   sourceCardId?: CardInstanceId;
+  /**
+   * Saga chapters (CR 714.2b): the lore count before and after lore
+   * counters were added to `sourceCardId`.
+   */
+  loreFrom?: number;
+  loreTo?: number;
   damageAmount?: number;
   damageTarget?: PlayerId | CardInstanceId;
   lifeLostPlayer?: PlayerId;

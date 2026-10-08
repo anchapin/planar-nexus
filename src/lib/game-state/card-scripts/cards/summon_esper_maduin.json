@@ -1,0 +1,32 @@
+{
+  "name": "Summon: Esper Maduin",
+  "oracle": "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI — Reveal the top card of your library. If it's a permanent card, put it into your hand.\nII — Add {G}{G}.\nIII — Other creatures you control get +2/+2 and gain trample until end of turn.",
+  "triggers": [
+    {
+      "text": "I — Reveal the top card of your library. If it's a permanent card, put it into your hand.",
+      "event": "chapter",
+      "chapter": 1,
+      "effects": [{ "op": "RevealTopToHand", "filter": "permanent" }]
+    },
+    {
+      "text": "II — Add {G}{G}.",
+      "event": "chapter",
+      "chapter": 2,
+      "effects": [{ "op": "AddMana", "amount": 2, "colors": ["G"] }]
+    },
+    {
+      "text": "III — Other creatures you control get +2/+2 and gain trample until end of turn.",
+      "event": "chapter",
+      "chapter": 3,
+      "effects": [
+        {
+          "op": "Pump",
+          "power": 2,
+          "toughness": 2,
+          "target": "other_creatures_you_control",
+          "keywords": ["trample"]
+        }
+      ]
+    }
+  ]
+}
