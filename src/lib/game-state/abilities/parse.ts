@@ -104,6 +104,8 @@ function scriptedCondition(t: ScriptedTrigger): TriggerCondition {
   if (t.event === "targeted") return { event: "targeted" };
   // crime: you committed a crime (#2614 Magda); see keyword-actions/targeted.
   if (t.event === "crime") return { event: "crime" };
+  // chapter: a Saga chapter ability (#2614); see keyword-actions/saga.ts.
+  if (t.event === "chapter") return { event: "chapter", chapter: t.chapter };
   const condition: TriggerCondition = {
     event: SUBJECT_EVENT[t.event],
     subject: t.subject,

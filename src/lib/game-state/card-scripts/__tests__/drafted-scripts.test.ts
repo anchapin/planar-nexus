@@ -365,8 +365,12 @@ describe("card-scripts text-vs-numbers guard (data-driven)", () => {
         oracle: string;
       };
       const oracleLower = raw.oracle.toLowerCase();
+      // Saga chapter numbers are printed as Roman numerals ("I —",
+      // "III —"), so the `chapter` field is skipped here.
       const numbersInScript =
-        JSON.stringify(raw)
+        JSON.stringify(raw, (key, value) =>
+          key === "chapter" ? undefined : value,
+        )
           .match(/\b\d+\b/g)
           ?.map((s) => Number(s))
           // Skip 0 and 1: P/T 1/1, default discard-1, default count-1 all

@@ -47,6 +47,8 @@ import { ShuffleLibraryReference } from "./shuffle-library";
 import { AnimateReference } from "./animate";
 import { EarthbendReference } from "./earthbend";
 import { AddSubtypeReference } from "./add-subtype";
+import { RevealTopToHandReference } from "./reveal-top-to-hand";
+import { ReturnTransformedReference } from "./return-transformed";
 import { SurveilReference } from "./surveil";
 import { TapReference } from "./tap";
 import { UntapReference } from "./untap";
@@ -80,6 +82,8 @@ export const OP_REFERENCES: readonly CardOpReference[] = [
   AnimateReference,
   EarthbendReference,
   AddSubtypeReference,
+  RevealTopToHandReference,
+  ReturnTransformedReference,
   FightReference,
   BiteReference,
   AddManaReference,
