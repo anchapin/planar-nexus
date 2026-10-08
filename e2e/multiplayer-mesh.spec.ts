@@ -287,8 +287,24 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
       // #2485: clock.install keeps time running in real time, so on a slow
       // runner B's 200ms timers could fire before the +50ms sample (firefox
       // saw 2). Pause B's clock now so only the runFor below moves it.
-      const bNow = await peerB.evaluate(() => Date.now());
-      await peerB.clock.pauseAt(bNow + 1);
+      // The clock keeps running between the Date.now() read and pauseAt, so
+      // a +1ms target can already be in the past on a slow runner ("Cannot
+      // fast-forward to the past"). Aim a little ahead and re-read on that
+      // error. No slow-pipe timers exist yet, so the short jump fires none.
+      for (let attempt = 0; ; attempt++) {
+        const bNow = await peerB.evaluate(() => Date.now());
+        try {
+          await peerB.clock.pauseAt(bNow + 25);
+          break;
+        } catch (err) {
+          if (
+            attempt >= 4 ||
+            !String(err).includes("fast-forward to the past")
+          ) {
+            throw err;
+          }
+        }
+      }
 
       // Host broadcasts 3 state-syncs in a tight loop. The mesh's broadcast
       // is synchronous on the host side — it does not wait for any peer's
