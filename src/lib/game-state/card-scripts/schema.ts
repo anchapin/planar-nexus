@@ -265,7 +265,20 @@ export const ExileSchema = z
   .object({
     op: z.literal("Exile"),
     ...removalFields,
-    fromZone: z.enum(["battlefield", "graveyard"]).optional(),
+    /**
+     * Source zone for the exiled card:
+     * - `undefined` / `"battlefield"` — single-target exile from
+     *   the battlefield (default; e.g. Swords to Plowshares).
+     * - `"graveyard"` — single-target exile from a graveyard (lane
+     *   10, Ambush Wolf / Soul-Guide Lantern).
+     * - `"opponent_graveyard"` — sweep: exile every card in the
+     *   targeted opponent's graveyard (lane 14, Angel of Finality).
+     *   The `target` enum is overridden by `target_player`; the
+     *   effect iterates the graveyard in the engine's `applyEffect`.
+     */
+    fromZone: z
+      .enum(["battlefield", "graveyard", "opponent_graveyard"])
+      .optional(),
     /**
      * With fromZone graveyard: whose graveyard the target card comes from
      * (#2614 Keen-Eyed Curator: "target card from a graveyard" is any).

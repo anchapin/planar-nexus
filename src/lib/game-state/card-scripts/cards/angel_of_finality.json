@@ -1,0 +1,19 @@
+{
+  "name": "Angel of Finality",
+  "oracle": "Flying\nWhen this creature enters, exile target player's graveyard.",
+  "triggers": [
+    {
+      "text": "When this creature enters, exile target player's graveyard.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "Exile",
+          "target": "creature",
+          "fromZone": "opponent_graveyard",
+          "controller": "opponent"
+        }
+      ]
+    }
+  ]
+}
