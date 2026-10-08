@@ -11,7 +11,7 @@
  */
 import { z } from "zod";
 import { PREDEFINED_TOKEN_KINDS } from "./predefined-tokens";
-import { REMOVAL_TARGETS, TARGET_CONTROLLERS } from "./target-filters";
+import { REMOVAL_ALL_TARGETS, REMOVAL_TARGETS, TARGET_CONTROLLERS } from "./target-filters";
 
 const amount = z.number().int().min(0);
 
@@ -228,9 +228,14 @@ export const CreatePredefinedTokenSchema = z
 /**
  * Destroy/Exile targets (#2528). min_power/max_power bound a creature's power
  * ("creature with power 4 or greater"); they only ever match creatures.
+ *
+ * `target` accepts both single-target values (`REMOVAL_TARGETS`) and the
+ * "all <type>" sweeper set (`REMOVAL_ALL_TARGETS`, lane 12). Sweepers are
+ * distinguished in the engine: a single-target op looks up the named card
+ * via the chosen target; a sweeper iterates the battlefield.
  */
 const removalFields = {
-  target: z.enum(REMOVAL_TARGETS),
+  target: z.enum([...REMOVAL_TARGETS, ...REMOVAL_ALL_TARGETS]),
   min_power: z.number().int().optional(),
   max_power: z.number().int().optional(),
   controller,

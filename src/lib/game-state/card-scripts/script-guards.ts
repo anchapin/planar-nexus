@@ -4,6 +4,8 @@
  * value: that would pull zod into the game page's bundle (#1814).
  */
 import type { CardEffect, CardScript } from "./schema";
+import { REMOVAL_ALL_TARGETS } from "./target-filters";
+import type { RemovalAllTarget } from "./target-filters";
 
 /**
  * A permanent's script: its abilities come only from the script, never from
@@ -85,6 +87,14 @@ export function isTargetedEffect(effect: CardEffect): boolean {
     case "CantBeBlocked":
       return effect.target === "creature";
     case "Destroy":
+      // #2594 follow-up (lane 12): sweeper targets don't use a
+      // chosen target — the engine iterates the battlefield in
+      // `applyEffect`. Returning false here keeps `effectTargetCount`
+      // at 0, so the dispatch loop in `resolveScriptedEffects`
+      // doesn't try to read a non-existent target slot.
+      return !REMOVAL_ALL_TARGETS.includes(
+        effect.target as RemovalAllTarget,
+      );
     case "Exile":
     case "Tap":
     case "Untap":
