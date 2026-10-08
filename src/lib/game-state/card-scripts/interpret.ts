@@ -160,6 +160,20 @@ function effectTargetLegal(
     if (target.type !== "card") return false;
     return returnFromZoneStillMatches(state, target.targetId, effect, ctx);
   }
+  // #2594 follow-up: Exile with `fromZone: "graveyard"` (Soul-Guide
+  // Lantern, Ambush Wolf) targets a card in the controller's
+  // graveyard; legality checks that exact zone membership.
+  if (effect.op === "Exile" && effect.fromZone === "graveyard") {
+    if (target.type !== "card") return false;
+    const card = state.cards.get(target.targetId as CardInstanceId);
+    if (!card) return false;
+    const ownerId: PlayerId = card.ownerId || card.controllerId;
+    const gy = state.zones.get(`${ownerId}-graveyard`);
+    if (!gy || !gy.cardIds.includes(target.targetId as CardInstanceId)) {
+      return false;
+    }
+    return true;
+  }
   return targetStillLegal(state, target);
 }
 
@@ -812,6 +826,23 @@ function applyEffect(
         !controllerStillMatches(state, target.targetId, effect.controller, ctx)
       )
         return state;
+      // #2594 follow-up: "exile target card from a graveyard"
+      // (Ambush Wolf, Soul-Guide Lantern). When `fromZone` is
+      // "graveyard", the target is a card id in the chosen player's
+      // graveyard and the engine routes through the graveyard
+      // zone directly. `exileCard` already moves the card from its
+      // current zone to the exile zone, so the only branch here is
+      // the legality check (the chosen player must own the card
+      // and the target zone must contain it).
+      if (effect.fromZone === "graveyard") {
+        const card = state.cards.get(target.targetId as CardInstanceId);
+        if (!card) return state;
+        const ownerId: PlayerId = card.ownerId || card.controllerId;
+        const gy = state.zones.get(`${ownerId}-graveyard`);
+        if (!gy || !gy.cardIds.includes(target.targetId as CardInstanceId)) {
+          return state;
+        }
+      }
       const r = exileCard(state, target.targetId as CardInstanceId);
       return r.success ? r.state : state;
     }
