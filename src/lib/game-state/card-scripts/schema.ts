@@ -391,13 +391,23 @@ export const PumpSchema = z
      * layer-6 keyword grant path.
      */
     keywords: z.array(z.enum(EQUIPMENT_KEYWORDS)).min(1).optional(),
+    /**
+     * "Double the power of target creature" (Mightform Harmonizer, #2614):
+     * the target gets +X/+0 until end of turn, X its power on resolution
+     * (CR 701.10e-style doubling). `power` and `toughness` are ignored and
+     * should be 0.
+     */
+    double_power: z.literal(true).optional(),
     if_kicked: ifKicked,
   })
   .strict()
   .refine(
     (e) => e.controller === undefined || e.target === "creature",
     controllerNeedsCreatureTarget,
-  );
+  )
+  .refine((e) => !e.double_power || (e.power === 0 && e.toughness === 0), {
+    message: "double_power needs power 0 and toughness 0",
+  });
 
 /**
  * Keywords a resolved spell or ability may grant until end of turn (#2567,
