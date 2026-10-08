@@ -123,6 +123,18 @@ export function untapCard(card: CardInstance): CardInstance {
 }
 
 /**
+ * Untap a permanent, honoring stun counters (CR 122.1d): if a tapped
+ * permanent with a stun counter would become untapped, remove one stun
+ * counter from it instead and it stays tapped.
+ */
+export function untapOrRemoveStun(card: CardInstance): CardInstance {
+  if (!card.isTapped) return card;
+  const stun = card.counters.find((c) => c.type === "stun");
+  if (stun && stun.count > 0) return removeCounters(card, "stun", 1);
+  return untapCard(card);
+}
+
+/**
  * Flip a card (for flip cards)
  */
 export function flipCard(card: CardInstance): CardInstance {
