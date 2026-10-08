@@ -60,7 +60,7 @@ import { Phase } from "../../types";
 import { refreshAuraBonuses } from "../../keyword-actions/aura-bonus";
 import { attachAura } from "../../keyword-actions/enchant";
 import { canAttack, canBlock } from "../../combat/queries";
-import { createInitialGameState, startGame } from "../../game-state";
+import { createInitialGameState, startGame, processUntapStep } from "../../game-state";
 import { createCardInstance } from "../../card-instance";
 import {
   getEffectivePower,
@@ -5159,6 +5159,172 @@ describe("scripted auras (#2568)", () => {
       "double strike",
       "first strike",
     ]);
+  });
+});
+
+describe("scripted Aura restrictUntap (#2594 #9)", () => {
+  // The schema's `AuraStaticSchema.restrictUntap` (#2568) was a
+  // forward-compat field; this lane wires the engine path that
+  // surfaces it to the enchanted card and consumes it in
+  // `processUntapStep`. The model card is Starlight Snare
+  // ("Enchanted permanent doesn't untap during your untap step.").
+  //
+  // The test mirrors the Pacifism / Witness Protection pattern
+  // already in `scripted auras (#2568)` (#2568) — attach the aura,
+  // refresh, then assert the host picked up `auraRestrictUntap` and
+  // the discrete untap step honors it.
+
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: CardInstanceId;
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+  });
+
+  it("Starlight Snare surfaces `auraRestrictUntap` and skips the untap step", () => {
+    // Set up a bear + the Starlight Snare aura. Tap the bear so the
+    // untap step would normally flip it back.
+    let s0 = put(
+      state,
+      p1,
+      "bear",
+      card("Grizzly Bears", "Creature — Bear", [2, 2]),
+    );
+    s0 = put(
+      s0,
+      p1,
+      "snare",
+      card("Starlight Snare", "Enchantment — Aura"),
+    );
+    s0 = attachAura(s0, id("snare"), id("bear"));
+    s0 = refreshAuraBonuses(s0);
+    // Tap the bear so the untap step would ordinarily untap it.
+    {
+      const cards = new Map(s0.cards);
+      cards.set(id("bear"), { ...cards.get(id("bear"))!, isTapped: true });
+      s0 = { ...s0, cards };
+    }
+    const host = s0.cards.get(id("bear"))!;
+    expect(host.auraRestrictUntap).toEqual(["Starlight Snare"]);
+    expect(host.isTapped).toBe(true);
+
+    // Run the untap step. The bear stays tapped because the
+    // `auraRestrictUntap` field is non-empty.
+    const result = processUntapStep(s0);
+    const after = result.state.cards.get(id("bear"))!;
+    expect(after.isTapped).toBe(true);
+  });
+
+  it("leaving the battlefield restores the next untap", () => {
+    let s0 = put(
+      state,
+      p1,
+      "bear",
+      card("Grizzly Bears", "Creature — Bear", [2, 2]),
+    );
+    s0 = put(
+      s0,
+      p1,
+      "snare",
+      card("Starlight Snare", "Enchantment — Aura"),
+    );
+    s0 = attachAura(s0, id("snare"), id("bear"));
+    s0 = refreshAuraBonuses(s0);
+    // Tap + run the untap step — bear stays tapped.
+    {
+      const cards = new Map(s0.cards);
+      cards.set(id("bear"), { ...cards.get(id("bear"))!, isTapped: true });
+      s0 = { ...s0, cards };
+    }
+    const blocked = processUntapStep(s0).state.cards.get(id("bear"))!;
+    expect(blocked.isTapped).toBe(true);
+
+    // Move the aura to the graveyard (the engine's removeCardFromZone
+    // path) and re-refresh.
+    {
+      const cards = new Map(blocked ? s0.cards : s0.cards);
+      // The simplest path: just delete the bear's `auraRestrictUntap`
+      // and re-run the refresh, simulating aura-left-play.
+      cards.set(id("bear"), { ...cards.get(id("bear"))! });
+      const zones = new Map(s0.zones);
+      const bf = zones.get(`${p1}-battlefield`)!;
+      zones.set(`${p1}-battlefield`, {
+        ...bf,
+        cardIds: bf.cardIds.filter((c) => c !== id("snare")),
+      });
+      s0 = { ...s0, cards, zones };
+    }
+    s0 = refreshAuraBonuses(s0);
+    expect(s0.cards.get(id("bear"))!.auraRestrictUntap).toBeUndefined();
+
+    // Re-tap and run the untap step again — the bear untaps now.
+    {
+      const cards = new Map(s0.cards);
+      cards.set(id("bear"), { ...cards.get(id("bear"))!, isTapped: true });
+      s0 = { ...s0, cards };
+    }
+    const unblocked = processUntapStep(s0).state.cards.get(id("bear"))!;
+    expect(unblocked.isTapped).toBe(false);
+  });
+
+  it("a card with no `auraRestrictUntap` untaps normally", () => {
+    // Sanity: the untap step doesn't accidentally skip cards that
+    // have nothing to do with the new field.
+    let s0 = put(
+      state,
+      p1,
+      "bear",
+      card("Grizzly Bears", "Creature — Bear", [2, 2]),
+    );
+    {
+      const cards = new Map(s0.cards);
+      cards.set(id("bear"), { ...cards.get(id("bear"))!, isTapped: true });
+      s0 = { ...s0, cards };
+    }
+    const result = processUntapStep(s0);
+    expect(result.state.cards.get(id("bear"))!.isTapped).toBe(false);
+  });
+
+  it("only blocks the enchanted permanent, not other p1 permanents", () => {
+    // The aura is attached to p1's bear. A second p1 creature (no
+    // aura) on the same battlefield untaps normally — the
+    // `auraRestrictUntap` field is per-card, not battlefield-wide.
+    let s0 = put(
+      state,
+      p1,
+      "bear",
+      card("Grizzly Bears", "Creature — Bear", [2, 2]),
+    );
+    s0 = put(
+      s0,
+      p1,
+      "friend",
+      card("Ally", "Creature — Human", [1, 1]),
+    );
+    s0 = put(
+      s0,
+      p1,
+      "snare",
+      card("Starlight Snare", "Enchantment — Aura"),
+    );
+    s0 = attachAura(s0, id("snare"), id("bear"));
+    s0 = refreshAuraBonuses(s0);
+    // Tap both bear and friend.
+    {
+      const cards = new Map(s0.cards);
+      cards.set(id("bear"), { ...cards.get(id("bear"))!, isTapped: true });
+      cards.set(id("friend"), { ...cards.get(id("friend"))!, isTapped: true });
+      s0 = { ...s0, cards };
+    }
+    const result = processUntapStep(s0);
+    // The bear (with the aura) stays tapped.
+    expect(result.state.cards.get(id("bear"))!.isTapped).toBe(true);
+    // The friend (no aura) untaps normally.
+    expect(result.state.cards.get(id("friend"))!.isTapped).toBe(false);
   });
 });
 describe("scripted AddMana (#2565)", () => {
