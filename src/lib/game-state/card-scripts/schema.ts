@@ -241,8 +241,23 @@ export const DestroySchema = z
   .object({ op: z.literal("Destroy"), ...removalFields })
   .strict();
 
+/**
+ * Exile a target (CR 701.14, #2528). The default `target` enum is the
+ * `REMOVAL_TARGETS` list ("creature", "artifact", ..., "planeswalker")
+ * — all battlefield permanents. When `fromZone` is `"graveyard"`,
+ * the effect targets a card in the chosen player's graveyard
+ * (FDN: Ambush Wolf, Soul-Guide Lantern, #2594 follow-up). The
+ * engine's `target.targetId` is the card id; the schema's `target`
+ * field is still required (the engine uses the same target-spec
+ * plumbing) but the value is treated as a single-card id when
+ * `fromZone === "graveyard"`.
+ */
 export const ExileSchema = z
-  .object({ op: z.literal("Exile"), ...removalFields })
+  .object({
+    op: z.literal("Exile"),
+    ...removalFields,
+    fromZone: z.enum(["battlefield", "graveyard"]).optional(),
+  })
   .strict();
 
 /** Tap or untap target permanent (#2538). Same filters as Destroy/Exile. */
