@@ -73,14 +73,17 @@ export const DealDamageSchema = z
       "opponent",
       "each_opponent",
       "each_player",
+      "defending_player",
     ]),
     controller,
     /**
      * Per-player amount for an untargeted each_player effect (#2614, Sunspine
      * Lynx): "deals damage to each player equal to the number of nonbasic
      * lands that player controls" is amount 1 per nonbasic land (CR 205.4a).
+     * With defending_player (Generous Plunderer): "deals damage to defending
+     * player equal to the number of artifacts they control" is per artifact.
      */
-    per: z.literal("nonbasic_land").optional(),
+    per: z.enum(["nonbasic_land", "artifact"]).optional(),
     /**
      * CR 702.33d — "If this spell was kicked, it deals N damage instead."
      * Set on the `if_kicked: true` variant of a damage effect that REPLACES
@@ -99,9 +102,16 @@ export const DealDamageSchema = z
     (e) => e.controller === undefined || e.target === "creature",
     controllerNeedsCreatureTarget,
   )
-  .refine((e) => e.per === undefined || e.target === "each_player", {
-    message: "per only applies to each_player damage",
-  });
+  .refine(
+    (e) =>
+      e.per === undefined ||
+      (e.target === "each_player" && e.per === "nonbasic_land") ||
+      (e.target === "defending_player" && e.per === "artifact"),
+    {
+      message:
+        "per is nonbasic_land on each_player or artifact on defending_player",
+    },
+  );
 
 export const DrawSchema = z
   .object({
@@ -200,6 +210,13 @@ export const CreatePredefinedTokenSchema = z
     op: z.literal("CreatePredefinedToken"),
     token: z.enum(PREDEFINED_TOKEN_KINDS),
     count: z.number().int().min(1),
+    /**
+     * Who creates the tokens (#2614). "opponent" is "target opponent creates";
+     * in two-player games the only opponent.
+     */
+    who: z.enum(["you", "opponent"]).optional(),
+    /** The tokens enter tapped ("creates a tapped Treasure token"). */
+    tapped: z.boolean().optional(),
     if_kicked: ifKicked,
   })
   .strict();

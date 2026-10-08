@@ -223,6 +223,37 @@ function nonbasicLandCount(state: GameState, playerId: PlayerId): number {
   return n;
 }
 
+function artifactCount(state: GameState, playerId: PlayerId): number {
+  const zone = state.zones.get(`${playerId}-battlefield`);
+  let n = 0;
+  for (const id of zone?.cardIds ?? []) {
+    const card = state.cards.get(id);
+    if (!card || card.controllerId !== playerId) continue;
+    if (/\bArtifact\b/.test(card.cardData.type_line ?? "")) n++;
+  }
+  return n;
+}
+
+/**
+ * The defending player for an attacking source (CR 506.2): the player it
+ * attacks, or the controller of the planeswalker it attacks. Falls back to
+ * the first opponent when the source is not in combat.
+ */
+function defendingPlayerOf(
+  state: GameState,
+  sourceId: CardInstanceId | undefined,
+  controllerId: PlayerId,
+): PlayerId | undefined {
+  const attack = state.combat?.attackers?.find((a) => a.cardId === sourceId);
+  if (attack) {
+    if (state.players.has(attack.defenderId as PlayerId))
+      return attack.defenderId as PlayerId;
+    const pw = state.cards.get(attack.defenderId as CardInstanceId);
+    if (pw) return pw.controllerId;
+  }
+  return opponentsOf(state, controllerId)[0];
+}
+
 function damagePlayer(
   state: GameState,
   amount: number,
@@ -598,6 +629,15 @@ function applyEffect(
         }
         return next;
       }
+      if (effect.target === "defending_player") {
+        const defender = defendingPlayerOf(state, sourceId, ctx.controllerId);
+        if (!defender) return state;
+        const amount =
+          effect.per === "artifact"
+            ? effect.amount * artifactCount(state, defender)
+            : effect.amount;
+        return amount > 0 ? damagePlayer(state, amount, defender, ctx) : state;
+      }
       if (!target) return state;
       if (
         effect.target === "creature" &&
@@ -709,14 +749,26 @@ function applyEffect(
       return r.success ? r.state : state;
     }
     case "CreatePredefinedToken": {
+      const creator =
+        effect.who === "opponent"
+          ? opponentsOf(state, ctx.controllerId)[0]
+          : ctx.controllerId;
+      if (!creator) return state;
       const r = resolveTokenCreationEffect(
         state,
         sourceId,
         PREDEFINED_TOKENS[effect.token],
         effect.count,
-        ctx.controllerId,
+        creator,
       );
-      return r.success ? r.state : state;
+      if (!r.success) return state;
+      if (!effect.tapped || !r.affectedCards?.length) return r.state;
+      const cards = new Map(r.state.cards);
+      for (const id of r.affectedCards) {
+        const card = cards.get(id as CardInstanceId);
+        if (card) cards.set(card.id, { ...card, isTapped: true });
+      }
+      return { ...r.state, cards };
     }
     case "Destroy": {
       // A target that no longer matches is illegal: nothing happens (CR 608.2b).

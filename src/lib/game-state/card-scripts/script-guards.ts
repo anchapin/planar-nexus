@@ -74,7 +74,9 @@ export function isTargetedEffect(effect: CardEffect): boolean {
   switch (effect.op) {
     case "DealDamage":
       return (
-        effect.target !== "each_opponent" && effect.target !== "each_player"
+        effect.target !== "each_opponent" &&
+        effect.target !== "each_player" &&
+        effect.target !== "defending_player"
       );
     case "Pump":
     case "PutCounters":
