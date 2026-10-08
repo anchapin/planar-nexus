@@ -375,6 +375,18 @@ export const CounterSchema = z
   .object({
     op: z.literal("Counter"),
     target: z.enum(["spell"]),
+    /**
+     * #2594 follow-up: "counter target red or green spell" filter
+     * (Flashfreeze — FDN #590). When set, the targeted spell's
+     * source card must have at least one color in this list on its
+     * color identity. An empty array is rejected; the field is
+     * optional and defaults to no filter (the existing
+     * counter-anything behavior).
+     */
+    colors: z
+      .array(z.enum(["W", "U", "B", "R", "G"]))
+      .min(1)
+      .optional(),
     if_kicked: ifKicked,
   })
   .strict();
