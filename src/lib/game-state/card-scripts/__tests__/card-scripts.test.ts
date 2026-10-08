@@ -8591,14 +8591,19 @@ describe("Magda, the Hoardmaster: crimes make Treasures, three make a Dragon (#2
     const [first] = treasures(s);
     const cards = new Map(s.cards);
     cards.set(first.id, { ...first, isTapped: true });
-    s = { ...s, cards };
+    s = {
+      ...s,
+      cards,
+      turn: {
+        ...s.turn,
+        activePlayerId: p1,
+        currentPhase: Phase.PRECOMBAT_MAIN,
+      },
+      priorityPlayerId: p1,
+    };
     const r = activateAbility(s, p1, id("magda"), 0);
-    if (!r.success) {
-      // Sorcery timing can block this test's start state; the cost check
-      // must not be the reason.
-      expect(r.error ?? "").not.toMatch(/sacrifice/i);
-      return;
-    }
+    expect(r.error).toBeUndefined();
+    expect(r.success).toBe(true);
     const left = treasures(r.state);
     expect(left).toHaveLength(1);
     expect(left[0].id).not.toBe(first.id);

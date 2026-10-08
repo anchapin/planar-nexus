@@ -33,7 +33,12 @@ function isCrime(
     const zone = card.currentZoneKey ?? "";
     if (zone.endsWith("-graveyard")) {
       if (card.ownerId !== targeter) return true;
-    } else if (card.controllerId !== targeter) {
+    } else if (
+      (zone.endsWith("-battlefield") || zone === "stack" || zone === "") &&
+      card.controllerId !== targeter
+    ) {
+      // Permanents and spells an opponent controls. Cards in exile, hands
+      // or libraries don't count (CR 700.13 names only graveyards).
       return true;
     }
   }
