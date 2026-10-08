@@ -1,0 +1,15 @@
+{
+  "name": "Shared Roots",
+  "oracle": "Search your library for a basic land card, put it onto the battlefield tapped, then shuffle.",
+  "spell": [
+    {
+      "op": "SearchLibrary",
+      "filter": {
+        "basic_land": true
+      },
+      "destination": "battlefield",
+      "tapped": true,
+      "shuffle": true
+    }
+  ]
+}
