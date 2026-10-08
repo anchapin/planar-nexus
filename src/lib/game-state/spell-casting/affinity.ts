@@ -7,9 +7,42 @@ import type { CardInstance, GameState, PlayerId } from "../types";
 import { getCardScript } from "../card-scripts/registry";
 
 /** True when the card's type line lists `subtype` after the dash. */
+/**
+ * Subtypes that belong to other card types (CR 205.3g-k), which "all
+ * creature types" doesn't grant. Not exhaustive: the land, artifact and
+ * enchantment subtypes the engine's cards check.
+ */
+const NONCREATURE_SUBTYPES = new Set([
+  "plains",
+  "island",
+  "swamp",
+  "mountain",
+  "forest",
+  "desert",
+  "gate",
+  "cave",
+  "town",
+  "equipment",
+  "vehicle",
+  "treasure",
+  "food",
+  "clue",
+  "aura",
+  "saga",
+  "class",
+  "room",
+  "shrine",
+  "case",
+  "background",
+]);
+
 export function hasSubtype(card: CardInstance, subtype: string): boolean {
   // "All creature types" (#2614 Soulstone Sanctuary, CR 205.3m).
-  if (card.animatedUntilEndOfTurn?.allCreatureTypes) return true;
+  if (
+    card.animatedUntilEndOfTurn?.allCreatureTypes &&
+    !NONCREATURE_SUBTYPES.has(subtype.toLowerCase())
+  )
+    return true;
   const typeLine = card.cardData.type_line || "";
   const front = typeLine.split(" // ")[0];
   const parts = front.split(/\s+[—-]\s+/);

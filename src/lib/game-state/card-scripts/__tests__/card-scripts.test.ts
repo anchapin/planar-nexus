@@ -8454,6 +8454,15 @@ describe("Soulstone Sanctuary: a land that becomes a 3/3 creature (#2614)", () =
     expect(getEffectiveToughness(land)).toBe(3);
     expect(hasKeyword(land, "vigilance")).toBe(true);
     expect(hasSubtype(land, "Elf")).toBe(true);
+    // All creature types, not land types (CR 205.3m).
+    expect(hasSubtype(land, "Forest")).toBe(false);
+  });
+
+  it("stays animated through a statics refresh while on the battlefield", () => {
+    const land = refreshScriptedStatics(animate(state)).cards.get(
+      id("sanctuary"),
+    )!;
+    expect(land.cardData.type_line).toBe("Land Creature");
   });
 
   it("a second activation the same turn doesn't stack the type change", () => {
