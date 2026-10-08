@@ -140,9 +140,97 @@ export function getActivatedAbilities(
   card: ScryfallCard,
 ): ParsedActivatedAbility[] {
   const script = permanentScript(card);
-  if (script) return (script.activated ?? []).map(scriptedActivated);
+  if (script) {
+    const out: ParsedActivatedAbility[] = (script.activated ?? []).map(
+      scriptedActivated,
+    );
+    // #2566: when a card script has `cycling`, synthesize a parsed
+    // activated ability for the cycling keyword so the engine / UI can
+    // see the ability (legal-targets, hand-only, sorcery-speed). The
+    // ability's `effect` is a canonical "Cycling {cost}." / "[Type]cycling
+    // {cost}." / "Landcycling {cost}." / "Basic landcycling {cost}."
+    // string that `parseCycling` recognizes from the synthesized text.
+    // Resolution flows through the engine's `cycleCard` (which still
+    // reads the cost from the card's oracle text today; the lane
+    // documents this as a v1 limitation).
+    if (script.cycling) {
+      out.push(scriptedCycling(script));
+    }
+    return out;
+  }
   if (!card.oracle_text) return [];
   return parseOracleText(card).activatedAbilities;
+}
+
+/**
+ * Build a `ParsedActivatedAbility` from a card script's `cycling` field
+ * (#2566). The synthesized ability has:
+ *  - `costs.mana` = the printed cycling cost
+ *  - `costs.discard` = true (CR 702.30a: discard the card is part of
+ *    the cost, paid as part of the activated ability)
+ *  - `effect` = the canonical cycling text for the variant
+ *  - `effectType` = "generic" (the engine doesn't have a dedicated
+ *    cycling effectType; `cycleCard` short-circuits on the cycling
+ *    variant text)
+ *
+ * The cycling ability is sorcery-speed (CR 117.1a — main phase, empty
+ * stack, priority, active player) and from-hand only (the existing
+ * `canCycleCard` / `cycleCard` checks enforce this; the synthesized
+ * `effect` text is the signal).
+ */
+function scriptedCycling(script: CardScript): ParsedActivatedAbility {
+  const cyc = script.cycling!;
+  const variant: "cycling" | "typecycling" | "landcycling" | "basic_landcycling" =
+    cyc.variant ?? "cycling";
+  const effectText = cyclingEffectText({ ...cyc, variant });
+  return {
+    type: AbilityType.ACTIVATED,
+    costs: {
+      mana: parseManaCost(cyc.cost),
+      tap: false,
+      sacrifice: false,
+      exile: false,
+      discard: true,
+      payLife: 0,
+      additionalCosts: [],
+    },
+    effect: effectText,
+    effectType: "generic",
+    targets: [],
+    sorceryOnly: true,
+  };
+}
+
+/**
+ * Canonical cycling effect text for a `cycling` script field, matching
+ * the strings the engine's `parseCycling` recognizes. Mirrors the
+ * "Cycling {cost}." / "[Type]cycling {cost}." / "Landcycling {cost}."
+ * / "Basic landcycling {cost}." patterns.
+ */
+function cyclingEffectText(cyc: {
+  cost: string;
+  variant?:
+    | "cycling"
+    | "typecycling"
+    | "landcycling"
+    | "basic_landcycling";
+  type?: string;
+  basicLandType?: string;
+}): string {
+  switch (cyc.variant ?? "cycling") {
+    case "cycling":
+      return `Cycling ${cyc.cost}.`;
+    case "typecycling":
+      // "[Type]cycling {cost}." — e.g. "Wizardcycling {2}."
+      return `${cyc.type ?? "Unknown"}cycling ${cyc.cost}.`;
+    case "landcycling":
+      // "Landcycling {cost}." or "[Type] landcycling {cost}."
+      return cyc.basicLandType
+        ? `${cyc.basicLandType} landcycling ${cyc.cost}.`
+        : `Landcycling ${cyc.cost}.`;
+    case "basic_landcycling":
+      return `Basic landcycling ${cyc.cost}.`;
+  }
 }
 
 export function hasTriggeredAbilities(card: { oracle_text?: string }): boolean {
