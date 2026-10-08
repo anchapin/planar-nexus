@@ -82,6 +82,19 @@ function scriptedCondition(t: ScriptedTrigger): TriggerCondition {
     return { event: "upkeep", upkeepOf: t.whose ?? "you" };
   if (t.event === "cast")
     return { event: "spellCast", castFilter: castFilterOf(t) };
+  // phaseEnds: "at the beginning of your end step" — the engine's
+  // `phaseEnds` covers both the CR 603.4 delayed-trigger and the
+  // phase-end tick (see `abilities/triggered.ts`). subject is unused
+  // because the trigger fires on a global phase boundary, not on a
+  // creature event.
+  if (t.event === "phaseEnds") return { event: "phaseEnds" };
+  // lifeGain: "whenever you gain life" (CR 118) — the engine's
+  // `lifeGain` case in `abilities/triggered.ts` fires the trigger for
+  // any life gain by the controller. subject="self" is the standard
+  // shape for "this creature gets +1/+1 counters" cards (Ajani's
+  // Pridemate); subject="another" / "any" is supported but uncommon
+  // for the v1 sample cards.
+  if (t.event === "lifeGain") return { event: "lifeGain" };
   const condition: TriggerCondition = {
     event: SUBJECT_EVENT[t.event],
     subject: t.subject,

@@ -738,10 +738,23 @@ export const TriggerSchema = z
      * dies: a creature goes to the graveyard from the battlefield (CR 700.4).
      * attacks: attackers are declared (CR 508.1m). upkeep: the upkeep step
      * begins (CR 503.1a). cast: a spell is cast (CR 601.2i), the trigger
-     * goes on the stack above it. The engine fires all six in real games
-     * (#2498, #2496).
+     * goes on the stack above it. phaseEnds: the end step begins
+     * (CR 702.1a-style "at the beginning of your end step" wording;
+     * the engine's `phaseEnds` covers both the beginning-of-end-step
+     * delayed trigger and the phase-end tick). lifeGain: a player gains
+     * life (CR 118 — covers "Ajani's Pridemate" style triggers). The
+     * engine fires all of these in real games (#2498, #2496).
      */
-    event: z.enum(["etb", "landfall", "dies", "attacks", "upkeep", "cast"]),
+    event: z.enum([
+      "etb",
+      "landfall",
+      "dies",
+      "attacks",
+      "upkeep",
+      "cast",
+      "phaseEnds",
+      "lifeGain",
+    ]),
     /**
      * etb, dies, attacks: whose entry, death or attack it watches
      * (CR 603.6a). "self" is this permanent; "another" / "any" are
