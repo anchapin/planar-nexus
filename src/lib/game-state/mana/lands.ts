@@ -6,6 +6,7 @@ import { isPriorityPlayer } from "../priority-guard";
 import { moveCardBetweenZones } from "../zones";
 import { fireLandfallTriggers } from "../keyword-actions/landfall";
 import { fireEntersTriggers } from "../keyword-actions/enters";
+import { canPlayLandsFromGraveyard, extraLandPlays } from "./land-rules";
 
 export function canPlayLand(state: GameState, playerId: PlayerId): boolean {
   const player = state.players.get(playerId);
@@ -13,7 +14,8 @@ export function canPlayLand(state: GameState, playerId: PlayerId): boolean {
     return false;
   }
 
-  const maxLands = player.maxLandsPerTurn ?? 1;
+  const maxLands =
+    (player.maxLandsPerTurn ?? 1) + extraLandPlays(state, playerId);
   if ((player.landsPlayedThisTurn ?? 0) >= maxLands) {
     return false;
   }
@@ -72,8 +74,18 @@ export function playLand(
     return { success: false, state, error: "Battlefield zone not found." };
   }
 
-  const handZone = state.zones.get(`${playerId}-hand`);
-  if (!handZone || !handZone.cardIds.includes(cardId)) {
+  // The land comes from hand, or from the graveyard when a permanent lets
+  // the player play lands from there (#2614 Icetill Explorer).
+  const handKey = `${playerId}-hand`;
+  const graveyardKey = `${playerId}-graveyard`;
+  const sourceKey = state.zones.get(handKey)?.cardIds.includes(cardId)
+    ? handKey
+    : state.zones.get(graveyardKey)?.cardIds.includes(cardId) &&
+        canPlayLandsFromGraveyard(state, playerId)
+      ? graveyardKey
+      : null;
+  const handZone = sourceKey ? state.zones.get(sourceKey) : undefined;
+  if (!sourceKey || !handZone) {
     return { success: false, state, error: "Card not in hand." };
   }
 
@@ -107,7 +119,7 @@ export function playLand(
   const moved = moveCardBetweenZones(handZone, battlefieldZone, cardId);
 
   const updatedZones = new Map(state.zones);
-  updatedZones.set(`${playerId}-hand`, moved.from);
+  updatedZones.set(sourceKey, moved.from);
   updatedZones.set(`${playerId}-battlefield`, moved.to);
 
   const updatedCards = new Map(state.cards);
