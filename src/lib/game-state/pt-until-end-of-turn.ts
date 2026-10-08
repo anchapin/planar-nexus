@@ -75,6 +75,20 @@ export function addUntilEndOfTurnPT(
   return { ...state, cards };
 }
 
+/**
+ * Marker kept in `untilEndOfTurnKeywords` for "can't be blocked this turn"
+ * (#2614). Not a keyword (CR 702), but it shares the keyword buffer so the
+ * cleanup step clears it with the rest.
+ */
+export const CANT_BE_BLOCKED = "can't be blocked";
+
+/** True when `card` can't be blocked this turn (#2614). */
+export function cantBeBlockedThisTurn(card: {
+  untilEndOfTurnKeywords?: string[];
+}): boolean {
+  return Boolean(card.untilEndOfTurnKeywords?.includes(CANT_BE_BLOCKED));
+}
+
 /** Grant a keyword to a card until end of turn (#2567). */
 export function addUntilEndOfTurnKeyword(
   state: GameState,

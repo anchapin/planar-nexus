@@ -282,6 +282,21 @@ function effectTargetSpecs(effect: CardEffect): TriggerTargetSpec[] | null {
     const kind = effect.target === "creature" ? "creature" : "permanent";
     return [{ ...base, kind, filter, controller: effect.controller ?? "any" }];
   }
+  if (effect.op === "CantBeBlocked") {
+    // #2614: "target creature with power 2 or less".
+    const filter: RemovalFilter = {
+      target: "creature",
+      max_power: effect.max_power,
+    };
+    return [
+      {
+        ...base,
+        kind: "creature",
+        filter,
+        controller: effect.controller ?? "any",
+      },
+    ];
+  }
   if (effect.op === "Pump" || effect.op === "PutCounters") {
     return [
       { ...base, kind: "creature", controller: effect.controller ?? "any" },
