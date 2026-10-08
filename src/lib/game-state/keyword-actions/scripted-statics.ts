@@ -9,6 +9,7 @@
 import type { CardInstance, GameState } from "../types";
 import { getCardScript } from "../card-scripts/registry";
 import type { RuleStatic, ScriptedStatic } from "../card-scripts/schema";
+import { restoreAnimatedOffBattlefield } from "../pt-until-end-of-turn";
 
 function battlefieldCards(state: GameState): CardInstance[] {
   const out: CardInstance[] = [];
@@ -31,6 +32,51 @@ function subtypesOf(card: CardInstance): string[] {
   return (after ?? "").split(/\s+/).filter(Boolean);
 }
 
+const CARD_TYPES = [
+  "artifact",
+  "battle",
+  "creature",
+  "enchantment",
+  "instant",
+  "kindred",
+  "land",
+  "planeswalker",
+  "sorcery",
+];
+
+/**
+ * Number of card types among cards in exile linked to `source` (#2614
+ * Keen-Eyed Curator). Links from an earlier object of the same card
+ * (another battlefield timestamp) don't count (CR 400.7).
+ */
+export function exiledCardTypes(
+  state: GameState,
+  source: CardInstance,
+): number {
+  const types = new Set<string>();
+  for (const [key, zone] of state.zones) {
+    if (!key.endsWith("-exile")) continue;
+    for (const id of zone.cardIds) {
+      const card = state.cards.get(id);
+      const link = card?.exiledWith;
+      if (
+        !card ||
+        !link ||
+        link.sourceId !== source.id ||
+        link.timestamp !== source.enteredBattlefieldTimestamp
+      ) {
+        continue;
+      }
+      const front = (card.cardData.type_line ?? "")
+        .split("//")[0]
+        .split(/\s+[\u2014-]\s+/)[0]
+        .toLowerCase();
+      for (const t of CARD_TYPES) if (front.includes(t)) types.add(t);
+    }
+  }
+  return types.size;
+}
+
 /** True when the static on `source` applies to `target` (CR 611.3a). */
 export function staticAffects(
   stat: ScriptedStatic,
@@ -42,14 +88,19 @@ export function staticAffects(
   if (other && source.id === target.id) return false;
   const sameController = source.controllerId === target.controllerId;
   if (controller === "you" ? !sameController : sameController) return false;
-  return !subtype || subtypesOf(target).includes(subtype);
+  return (
+    !subtype ||
+    Boolean(target.animatedUntilEndOfTurn?.allCreatureTypes) ||
+    subtypesOf(target).includes(subtype)
+  );
 }
 
 /**
  * Recompute `scriptStaticPT` and `scriptStaticKeywords` for every card.
  * Returns the same state object when nothing changed.
  */
-export function refreshScriptedStatics(state: GameState): GameState {
+export function refreshScriptedStatics(input: GameState): GameState {
+  const state = restoreAnimatedOffBattlefield(input);
   const onField = battlefieldCards(state);
   const sources: { card: CardInstance; statics: ScriptedStatic[] }[] = [];
   for (const card of onField) {
@@ -70,6 +121,14 @@ export function refreshScriptedStatics(state: GameState): GameState {
         toughness += stat.toughness ?? 0;
         for (const k of stat.keywords ?? []) granted.add(k);
       }
+    }
+    // #2614 Keen-Eyed Curator: a self bonus from card types among cards
+    // exiled with this permanent (CR 607.2a).
+    const bonus = getCardScript(target.cardData.name)?.exiled_types_bonus;
+    if (bonus && exiledCardTypes(state, target) >= bonus.min_types) {
+      power += bonus.power;
+      toughness += bonus.toughness;
+      for (const k of bonus.keywords ?? []) granted.add(k);
     }
     if (power || toughness) pt.set(target.id, { power, toughness });
     if (granted.size > 0) kws.set(target.id, [...granted].sort());

@@ -201,17 +201,19 @@ function legalTargetsForSpec(
     }
   }
   if (spec.kind === "graveyard_card") {
-    // #2560: a card in the named player's graveyard.
-    const graveyardOwner =
+    // #2560: a card in the named player's graveyard; "any" is every
+    // graveyard (#2614 Keen-Eyed Curator).
+    const opponent = [...state.players.keys()].find((p) => p !== controllerId);
+    const owners =
       spec.controller === "you"
-        ? controllerId
-        : [...state.players.keys()].find((p) => p !== controllerId);
-    if (graveyardOwner) {
-      for (const card of graveyardCards(
-        state,
-        graveyardOwner,
-        spec.graveyardFilter,
-      )) {
+        ? [controllerId]
+        : spec.controller === "any"
+          ? [...state.players.keys()]
+          : opponent
+            ? [opponent]
+            : [];
+    for (const owner of owners) {
+      for (const card of graveyardCards(state, owner, spec.graveyardFilter)) {
         ids.push(card.id);
       }
     }
@@ -270,6 +272,20 @@ function effectTargetSpecs(effect: CardEffect): TriggerTargetSpec[] | null {
   ) {
     return [
       { ...base, kind: effect.target, controller: effect.controller ?? "any" },
+    ];
+  }
+  if (
+    effect.op === "Exile" &&
+    effect.fromZone === "graveyard" &&
+    effect.graveyard
+  ) {
+    // #2614 Keen-Eyed Curator: "target card from a graveyard".
+    return [
+      {
+        ...base,
+        kind: "graveyard_card",
+        controller: effect.graveyard === "you" ? "you" : "any",
+      },
     ];
   }
   if (

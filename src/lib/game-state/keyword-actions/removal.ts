@@ -208,9 +208,13 @@ export function exileCard(
     };
   }
 
-  // Update card state
+  // Update card state. A newly exiled card is a new object (CR 400.7), so
+  // any earlier "exiled with" link is dropped; the exiling source relinks
+  // it when its script counts cards exiled with it (#2614 Keen-Eyed Curator).
+  const { exiledWith: _staleLink, ...rest } = card;
+  void _staleLink;
   const updatedCard = {
-    ...card,
+    ...rest,
     isFaceDown: faceDown,
     attachedToId: null, // Detach from any attachments
     attachedCardIds: [], // Remove any attachments

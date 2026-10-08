@@ -54,8 +54,8 @@ import {
   hasSacrificeManaAbility,
   parseManaAbility,
 } from "../../mana";
-import { activateAbility } from "../../abilities/activated";
-import { affinityReduction } from "../../spell-casting/affinity";
+import { activateAbility, canActivateAbility } from "../../abilities/activated";
+import { affinityReduction, hasSubtype } from "../../spell-casting/affinity";
 import { refreshDomainPower } from "../../keyword-actions/domain";
 import { extraLandPlays } from "../../mana/land-rules";
 import { fireTargetedTriggers } from "../../keyword-actions/targeted";
@@ -8288,5 +8288,324 @@ describe("Surrak, Elusive Hunter: draw when an opponent targets your creatures (
       } as unknown as StackObject,
     );
     expect(s.zones.get(`${p1}-hand`)!.cardIds.length).toBe(before + 1);
+  });
+});
+
+describe("Keen-Eyed Curator: exile from a graveyard, grow with card types (#2614)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+  const exileEffects = () =>
+    getCardScript("Keen-Eyed Curator")!.activated![0].effects!;
+  const exileWithCurator = (s: GameState, cardId: string) =>
+    resolveScriptedEffects(s, exileEffects(), {
+      controllerId: p1,
+      sourceCardId: id("curator"),
+      targets: [{ type: "card", targetId: id(cardId), isValid: true }],
+    } as unknown as StackObject);
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+    state = put(
+      state,
+      p1,
+      "curator",
+      card("Keen-Eyed Curator", "Creature — Raccoon Scout", [3, 3]),
+    );
+    const gy: [string, PlayerId, string][] = [
+      ["g-creature", p2, "Creature — Bear"],
+      ["g-instant", p2, "Instant"],
+      ["g-sorcery", p1, "Sorcery"],
+      ["g-land", p2, "Land"],
+      ["g-artcreature", p2, "Artifact Creature — Golem"],
+    ];
+    for (const [cid, owner, type] of gy) {
+      state = put(state, owner, cid, card(cid, type), "graveyard");
+    }
+  });
+
+  it("exiles a card from any graveyard and links it to the Curator", () => {
+    const s = exileWithCurator(state, "g-creature");
+    expect(s.zones.get(`${p2}-exile`)!.cardIds).toContain(id("g-creature"));
+    expect(s.cards.get(id("g-creature"))!.exiledWith?.sourceId).toBe(
+      id("curator"),
+    );
+    const own = exileWithCurator(s, "g-sorcery");
+    expect(own.zones.get(`${p1}-exile`)!.cardIds).toContain(id("g-sorcery"));
+  });
+
+  it("gets +4/+4 and trample at four card types, not three", () => {
+    let s = state;
+    for (const c of ["g-creature", "g-instant", "g-sorcery"]) {
+      s = exileWithCurator(s, c);
+    }
+    s = refreshScriptedStatics(s);
+    expect(s.cards.get(id("curator"))!.scriptStaticPT).toBeUndefined();
+    expect(hasKeyword(s.cards.get(id("curator"))!, "trample")).toBe(false);
+    s = refreshScriptedStatics(exileWithCurator(s, "g-land"));
+    const curator = s.cards.get(id("curator"))!;
+    expect(curator.scriptStaticPT).toEqual({ power: 4, toughness: 4 });
+    expect(getEffectivePower(curator)).toBe(7);
+    expect(hasKeyword(curator, "trample")).toBe(true);
+  });
+
+  it("counts each card type once, including both types of an artifact creature", () => {
+    let s = state;
+    for (const c of ["g-creature", "g-artcreature", "g-land"]) {
+      s = exileWithCurator(s, c);
+    }
+    // creature, artifact, land = three types; the second creature adds none.
+    s = refreshScriptedStatics(s);
+    expect(s.cards.get(id("curator"))!.scriptStaticPT).toBeUndefined();
+  });
+
+  it("a new Curator object doesn't count cards the old one exiled (CR 400.7)", () => {
+    let s = state;
+    for (const c of ["g-creature", "g-instant", "g-sorcery", "g-land"]) {
+      s = exileWithCurator(s, c);
+    }
+    const cards = new Map(s.cards);
+    const old = cards.get(id("curator"))!;
+    cards.set(id("curator"), {
+      ...old,
+      enteredBattlefieldTimestamp: old.enteredBattlefieldTimestamp + 1,
+    });
+    s = refreshScriptedStatics({ ...s, cards });
+    expect(s.cards.get(id("curator"))!.scriptStaticPT).toBeUndefined();
+  });
+
+  it("a card re-exiled by another source loses its old link (CR 400.7)", () => {
+    let s = exileWithCurator(state, "g-creature");
+    const zones = new Map(s.zones);
+    const exile = zones.get(`${p2}-exile`)!;
+    zones.set(`${p2}-exile`, {
+      ...exile,
+      cardIds: exile.cardIds.filter((c) => c !== id("g-creature")),
+    });
+    const gy = zones.get(`${p2}-graveyard`)!;
+    zones.set(`${p2}-graveyard`, {
+      ...gy,
+      cardIds: [...gy.cardIds, id("g-creature")],
+    });
+    const cards = new Map(s.cards);
+    cards.set(id("g-creature"), {
+      ...cards.get(id("g-creature"))!,
+      currentZoneKey: `${p2}-graveyard`,
+    });
+    s = resolveScriptedEffects({ ...s, zones, cards }, exileEffects(), {
+      controllerId: p1,
+      sourceCardId: null,
+      targets: [{ type: "card", targetId: id("g-creature"), isValid: true }],
+    } as unknown as StackObject);
+    expect(s.zones.get(`${p2}-exile`)!.cardIds).toContain(id("g-creature"));
+    expect(s.cards.get(id("g-creature"))!.exiledWith).toBeUndefined();
+  });
+
+  it("an exile by a card without the bonus leaves no link", () => {
+    const s = resolveScriptedEffects(state, exileEffects(), {
+      controllerId: p1,
+      sourceCardId: null,
+      targets: [{ type: "card", targetId: id("g-creature"), isValid: true }],
+    } as unknown as StackObject);
+    expect(s.cards.get(id("g-creature"))!.exiledWith).toBeUndefined();
+  });
+});
+
+describe("Soulstone Sanctuary: a land that becomes a 3/3 creature (#2614)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  const animate = (s: GameState) =>
+    resolveScriptedEffects(
+      s,
+      getCardScript("Soulstone Sanctuary")!.activated![1].effects!,
+      {
+        controllerId: p1,
+        sourceCardId: id("sanctuary"),
+        targets: [],
+      } as unknown as StackObject,
+    );
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1] = Array.from(state.players.keys());
+    const data = {
+      ...card("Soulstone Sanctuary", "Land"),
+      oracle_text:
+        "{T}: Add {C}.\n{4}: This land becomes a 3/3 creature with vigilance and all creature types. It's still a land.",
+    } as ScryfallCard;
+    state = put(state, p1, "sanctuary", data);
+  });
+
+  it("is a plain land without vigilance until the ability resolves", () => {
+    const land = state.cards.get(id("sanctuary"))!;
+    expect(land.cardData.type_line).toBe("Land");
+    expect(hasKeyword(land, "vigilance")).toBe(false);
+  });
+
+  it("becomes a 3/3 Land Creature with vigilance and all creature types", () => {
+    const land = animate(state).cards.get(id("sanctuary"))!;
+    expect(land.cardData.type_line).toBe("Land Creature");
+    expect(getEffectivePower(land)).toBe(3);
+    expect(getEffectiveToughness(land)).toBe(3);
+    expect(hasKeyword(land, "vigilance")).toBe(true);
+    expect(hasSubtype(land, "Elf")).toBe(true);
+    // All creature types, not land types (CR 205.3m).
+    expect(hasSubtype(land, "Forest")).toBe(false);
+  });
+
+  it("stays animated through a statics refresh while on the battlefield", () => {
+    const land = refreshScriptedStatics(animate(state)).cards.get(
+      id("sanctuary"),
+    )!;
+    expect(land.cardData.type_line).toBe("Land Creature");
+  });
+
+  it("a second activation the same turn doesn't stack the type change", () => {
+    const land = animate(animate(state)).cards.get(id("sanctuary"))!;
+    expect(land.cardData.type_line).toBe("Land Creature");
+    expect(land.animatedUntilEndOfTurn!.cardData.type_line).toBe("Land");
+  });
+
+  it("is a land again at end of turn", () => {
+    const land = clearUntilEndOfTurnPT(animate(state)).cards.get(
+      id("sanctuary"),
+    )!;
+    expect(land.cardData.type_line).toBe("Land");
+    expect(land.animatedUntilEndOfTurn).toBeUndefined();
+    expect(hasKeyword(land, "vigilance")).toBe(false);
+  });
+
+  it("goes to the graveyard as a land card (CR 400.7)", () => {
+    const s = destroyCard(animate(state), id("sanctuary"));
+    const after = refreshScriptedStatics(s.state);
+    const land = after.cards.get(id("sanctuary"))!;
+    expect(after.zones.get(`${p1}-graveyard`)!.cardIds).toContain(
+      id("sanctuary"),
+    );
+    expect(land.cardData.type_line).toBe("Land");
+  });
+});
+
+describe("Magda, the Hoardmaster: crimes make Treasures, three make a Dragon (#2614)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+  const targeting = (controllerId: PlayerId, targets: Target[]) => ({
+    controllerId,
+    targets,
+  });
+  const magdaTriggers = (s: GameState) =>
+    s.stack.filter((o) => o.sourceCardId === id("magda"));
+  const treasures = (s: GameState) =>
+    s.zones
+      .get(`${p1}-battlefield`)!
+      .cardIds.map((cid) => s.cards.get(cid)!)
+      .filter((c) => c.cardData.name === "Treasure");
+  const makeTreasures = (s: GameState, count: number) =>
+    resolveScriptedSpell(
+      s,
+      {
+        name: "X",
+        oracle: "x",
+        spell: [{ op: "CreatePredefinedToken", token: "treasure", count }],
+      } as CardScript,
+      spell(p1),
+    );
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+    state = put(
+      state,
+      p1,
+      "magda",
+      card(
+        "Magda, the Hoardmaster",
+        "Legendary Creature — Dwarf Berserker",
+        [2, 2],
+      ),
+    );
+    state = put(
+      state,
+      p1,
+      "mine",
+      card("Grizzly Bears", "Creature — Bear", [2, 2]),
+    );
+    state = put(
+      state,
+      p2,
+      "theirs",
+      card("Grizzly Bears", "Creature — Bear", [2, 2]),
+    );
+  });
+
+  it("targeting an opponent's creature is a crime, once each turn", () => {
+    const s = fireTargetedTriggers(
+      state,
+      targeting(p1, [cardTarget(id("theirs"))]),
+    );
+    expect(magdaTriggers(s)).toHaveLength(1);
+    const again = fireTargetedTriggers(s, targeting(p1, [playerTarget(p2)]));
+    expect(magdaTriggers(again)).toHaveLength(1);
+  });
+
+  it("targeting an opponent is a crime; targeting your own things isn't", () => {
+    expect(
+      magdaTriggers(
+        fireTargetedTriggers(state, targeting(p1, [playerTarget(p2)])),
+      ),
+    ).toHaveLength(1);
+    expect(
+      magdaTriggers(
+        fireTargetedTriggers(
+          state,
+          targeting(p1, [cardTarget(id("mine")), playerTarget(p1)]),
+        ),
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("an opponent's crime doesn't trigger Magda", () => {
+    expect(
+      magdaTriggers(
+        fireTargetedTriggers(state, targeting(p2, [playerTarget(p1)])),
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("can't activate with fewer than three Treasures", () => {
+    const s = makeTreasures(state, 2);
+    const r = canActivateAbility(s, p1, id("magda"), 0);
+    expect(r.canActivate).toBe(false);
+  });
+
+  it("sacrifices three Treasures, tapped ones first", () => {
+    let s = makeTreasures(state, 4);
+    const [first] = treasures(s);
+    const cards = new Map(s.cards);
+    cards.set(first.id, { ...first, isTapped: true });
+    s = {
+      ...s,
+      cards,
+      turn: {
+        ...s.turn,
+        activePlayerId: p1,
+        currentPhase: Phase.PRECOMBAT_MAIN,
+      },
+      priorityPlayerId: p1,
+    };
+    const r = activateAbility(s, p1, id("magda"), 0);
+    expect(r.error).toBeUndefined();
+    expect(r.success).toBe(true);
+    const left = treasures(r.state);
+    expect(left).toHaveLength(1);
+    expect(left[0].id).not.toBe(first.id);
   });
 });

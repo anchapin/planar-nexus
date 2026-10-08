@@ -266,8 +266,17 @@ export const ExileSchema = z
     op: z.literal("Exile"),
     ...removalFields,
     fromZone: z.enum(["battlefield", "graveyard"]).optional(),
+    /**
+     * With fromZone graveyard: whose graveyard the target card comes from
+     * (#2614 Keen-Eyed Curator: "target card from a graveyard" is any).
+     * Unset keeps the older targeting.
+     */
+    graveyard: z.enum(["you", "any"]).optional(),
   })
-  .strict();
+  .strict()
+  .refine((e) => !e.graveyard || e.fromZone === "graveyard", {
+    message: "graveyard needs fromZone graveyard",
+  });
 
 /** Tap or untap target permanent (#2538). Same filters as Destroy/Exile. */
 export const TapSchema = z
@@ -777,6 +786,24 @@ export const ShuffleLibrarySchema = z
   })
   .strict();
 
+/**
+ * "This land becomes a 3/3 creature with vigilance and all creature types.
+ * It's still a land." (#2614 Soulstone Sanctuary, CR 611.2a, layer 4/6/7b).
+ * Until end of turn the source keeps its types and adds Creature, with the
+ * given base power and toughness and keywords.
+ */
+export const AnimateSchema = z
+  .object({
+    op: z.literal("Animate"),
+    target: z.literal("self"),
+    power: z.number().int().min(0),
+    toughness: z.number().int().min(0),
+    keywords: z.array(z.enum(EQUIPMENT_KEYWORDS)).min(1).optional(),
+    all_creature_types: z.literal(true).optional(),
+    if_kicked: ifKicked,
+  })
+  .strict();
+
 export const EffectSchema = z.discriminatedUnion("op", [
   DealDamageSchema,
   DrawSchema,
@@ -806,6 +833,7 @@ export const EffectSchema = z.discriminatedUnion("op", [
   AddManaSchema,
   GrantKeywordSchema,
   CantBeBlockedSchema,
+  AnimateSchema,
 ]);
 
 /** True when no non-Discard effect follows a Discard (#2536). */
@@ -881,6 +909,9 @@ export const TriggerSchema = z
       // becomes the target of a spell or ability an opponent controls
       // (#2614 Surrak, Elusive Hunter).
       "targeted",
+      // crime: you target an opponent, anything they control, or a card in
+      // their graveyard (CR 700.13, #2614 Magda, the Hoardmaster).
+      "crime",
     ]),
     /**
      * etb, dies, attacks: whose entry, death or attack it watches
@@ -914,6 +945,8 @@ export const TriggerSchema = z
         "multicolored",
       ])
       .optional(),
+    /** crime only: "This ability triggers only once each turn." */
+    once_per_turn: z.literal(true).optional(),
     /** cast only: "a spell with a single target" (exactly one target). */
     targets: z.literal("single").optional(),
     effects: effects.optional(),
@@ -930,6 +963,9 @@ export const TriggerSchema = z
   })
   .refine((t) => t.event === "upkeep" || t.whose === undefined, {
     message: "whose is only for upkeep triggers",
+  })
+  .refine((t) => t.event === "crime" || t.once_per_turn === undefined, {
+    message: "once_per_turn is only for crime triggers",
   })
   .refine((t) => t.event === "attacks" || t.once === undefined, {
     message: "once is only for attacks triggers",
@@ -984,6 +1020,17 @@ export const ActivatedSchema = z
           .optional(),
         tap: z.boolean().default(false),
         sacrifice: z.boolean().default(false),
+        /**
+         * "Sacrifice three Treasures" (#2614 Magda, the Hoardmaster): that
+         * many permanents of the subtype you control, sacrificed as a cost.
+         */
+        sacrifice_permanents: z
+          .object({
+            count: z.number().int().min(1).max(9),
+            subtype: z.string().min(1),
+          })
+          .strict()
+          .optional(),
         /**
          * #2594 follow-up: "Exile this artifact" as a cost (Phoenix Down,
          * Ether, Elixir — FIN #29, etc.). When true, the engine
@@ -1342,6 +1389,22 @@ export const CardScriptSchema = z
      * turns" (`extra_land_plays`, CR 305.2) and "You may play lands from your
      * graveyard" (`from_graveyard`).
      */
+    /**
+     * "As long as there are N or more card types among cards exiled with
+     * this creature, it gets +P/+T and has ..." (#2614 Keen-Eyed Curator,
+     * CR 607.2a). Cards this permanent's scripted Exile effects exile are
+     * linked to it; the bonus applies to itself only.
+     */
+    exiled_types_bonus: z
+      .object({
+        text: z.string().min(1),
+        min_types: z.number().int().min(1).max(9),
+        power: z.number().int(),
+        toughness: z.number().int(),
+        keywords: z.array(z.enum(TOKEN_KEYWORDS)).min(1).optional(),
+      })
+      .strict()
+      .optional(),
     land_rules: z
       .object({
         extra_land_plays: z.number().int().min(1).max(2).optional(),
