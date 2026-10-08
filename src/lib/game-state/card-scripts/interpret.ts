@@ -187,10 +187,7 @@ function effectTargetLegal(
   // sweeps the chosen player's graveyard. Returning true keeps the
   // dispatcher's legality check happy, but the actual sweep uses
   // `effect.controller` and ignores `target`.
-  if (
-    effect.op === "Exile" &&
-    effect.fromZone === "opponent_graveyard"
-  ) {
+  if (effect.op === "Exile" && effect.fromZone === "opponent_graveyard") {
     return true;
   }
   // #2594 follow-up (lane 13): "Counter target red or green spell"
@@ -875,6 +872,8 @@ function applyEffect(
           ? opponentsOf(state, ctx.controllerId)[0]
           : ctx.controllerId;
       if (!creator) return state;
+      if (effect.if_behold && !canBehold(state, creator, effect.if_behold))
+        return state;
       const r = resolveTokenCreationEffect(
         state,
         sourceId,
@@ -1311,6 +1310,19 @@ function applyEffect(
         ? addUntilEndOfTurnKeywords(animated, cardId, effect.keywords)
         : animated;
     }
+    case "AddSubtype": {
+      const id = ctx.sourceId;
+      const card = id ? state.cards.get(id) : undefined;
+      if (!id || !card || !isOnBattlefield(state, id)) return state;
+      const prev = card.untilEndOfTurnSubtypes ?? [];
+      if (prev.includes(effect.subtype)) return state;
+      const cards = new Map(state.cards);
+      cards.set(id, {
+        ...card,
+        untilEndOfTurnSubtypes: [...prev, effect.subtype],
+      });
+      return { ...state, cards };
+    }
     case "Earthbend": {
       // #2614 Ba Sing Se: target land you control (CR 608.2b re-check).
       const cardId = ctx.target?.targetId as CardInstanceId | undefined;
@@ -1518,6 +1530,18 @@ export function resolveScriptedEffects(
       }
       continue;
     }
+    // #2614 — "if it has N or more quest counters on it", read from the
+    // source as this effect resolves (after earlier effects of the same
+    // ability). A skipped effect still uses up its target slot.
+    if (
+      "if_source_counters" in effect &&
+      effect.if_source_counters &&
+      !sourceHasCounters(current, stackObject, effect.if_source_counters)
+    ) {
+      next += effectTargetCount(effect);
+      previous = undefined;
+      continue;
+    }
     let target: Target | undefined;
     let fighter: Target | undefined;
     const count = effectTargetCount(effect);
@@ -1590,6 +1614,42 @@ export function resolveScriptedEffects(
     });
   }
   return current;
+}
+
+/**
+ * Whether `playerId` can behold a `subtype`: a permanent of that subtype
+ * they control, or a card of it in their hand (#2614 Sarkhan).
+ */
+function canBehold(
+  state: GameState,
+  playerId: PlayerId,
+  subtype: string,
+): boolean {
+  for (const card of state.cards.values()) {
+    if (!hasSubtype(card, subtype)) continue;
+    if (card.controllerId === playerId && isOnBattlefield(state, card.id))
+      return true;
+    if (card.currentZoneKey === `${playerId}-hand`) return true;
+  }
+  return false;
+}
+
+/**
+ * Whether the ability's source has at least `gate.min` counters of
+ * `gate.counter` (#2614 Earthbender Ascension). A source that left the
+ * battlefield is read as it is now, which drops its counters; the engine
+ * does not keep last known information for this check.
+ */
+function sourceHasCounters(
+  state: GameState,
+  stackObject: ScriptStackObject,
+  gate: { counter: string; min: number },
+): boolean {
+  const id = stackObject.sourceCardId as CardInstanceId | undefined;
+  const source = id ? state.cards.get(id) : undefined;
+  if (!source || !isOnBattlefield(state, source.id)) return false;
+  const have = source.counters.find((c) => c.type === gate.counter)?.count ?? 0;
+  return have >= gate.min;
 }
 
 /**
