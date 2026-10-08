@@ -28,6 +28,7 @@ export const REMOVAL_TARGETS = [
   "enchantment",
   "artifact_or_enchantment",
   "nonland_permanent",
+  "nonbasic_land",
 ] as const;
 export type RemovalTarget = (typeof REMOVAL_TARGETS)[number];
 
@@ -67,6 +68,10 @@ export function matchesRemovalFilter(
       break;
     case "nonland_permanent":
       typeOk = !hasType(card, "Land");
+      break;
+    case "nonbasic_land":
+      // Demolition Field (#2614). "Basic" is a supertype (CR 205.4a).
+      typeOk = hasType(card, "Land") && !hasType(card, "Basic");
       break;
   }
   if (!typeOk) return false;

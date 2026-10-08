@@ -98,6 +98,13 @@ export function parseManaAbility(oracleText: string): ManaAbilityOption[] {
     if (nextAbilityMatch !== -1) {
       endIdx = nextAbilityMatch;
     }
+    // Each ability is its own line of oracle text (CR 113.2). Without this,
+    // Demolition Field's "{T}: Add {C}." swallowed the {2} cost of the
+    // next line, which starts "{2}, {T}, ..." rather than "{T}:" (#2614).
+    const nextLine = text.indexOf("\n", startIdx);
+    if (nextLine !== -1 && nextLine < endIdx) {
+      endIdx = nextLine;
+    }
 
     const abilityText = text.substring(startIdx, endIdx).trim();
     const abilityContent = abilityText.replace(/^\{t\}:\s*add\s+/i, "").trim();

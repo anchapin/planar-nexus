@@ -173,6 +173,19 @@ function playerFor(
     : undefined;
 }
 
+/**
+ * The controller of `ctx.target` (a card), read from the card itself so a
+ * permanent destroyed by an earlier effect still answers with its last
+ * known controller (CR 608.2h). Demolition Field (#2614).
+ */
+function targetControllerOf(
+  state: GameState,
+  ctx: EffectContext,
+): PlayerId | undefined {
+  if (ctx.target?.type !== "card") return undefined;
+  return state.cards.get(ctx.target.targetId as CardInstanceId)?.controllerId;
+}
+
 function opponentsOf(state: GameState, playerId: PlayerId): PlayerId[] {
   return [...state.players.keys()].filter((p) => p !== playerId);
 }
@@ -428,7 +441,10 @@ function searchLibrary(
   const who = effect.who ?? "you";
   const destination = effect.destination ?? "hand";
   const shuffle = effect.shuffle ?? true;
-  const searcher = playerFor(who, ctx);
+  const searcher =
+    who === "target_controller"
+      ? targetControllerOf(state, ctx)
+      : playerFor(who, ctx);
   if (!searcher) return state;
   const libraryKey = `${searcher}-library`;
   const library = state.zones.get(libraryKey);
@@ -1137,6 +1153,12 @@ export function resolveScriptedEffects(
       fighter = previous;
     if (effect.op === "GrantKeyword" && effect.target === "it") {
       // No legal previous target: the grant does nothing (CR 608.2b).
+      if (!previous) continue;
+      target = previous;
+    }
+    if (effect.op === "SearchLibrary" && effect.who === "target_controller") {
+      // "That land's controller may search ...": nobody searches when the
+      // earlier target was illegal (CR 608.2b).
       if (!previous) continue;
       target = previous;
     }
