@@ -6832,3 +6832,127 @@ describe("scripted end-step and life-gain triggers (#2594 follow-up)", () => {
     expect(triggers[0].trigger.event).toBe("lifeGain");
   });
 });
+
+describe("Demolition Field: destroy a nonbasic land, both players search (#2614)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+
+  const DEMOLISH =
+    "Destroy target nonbasic land an opponent controls. That land's controller may search their library for a basic land card, put it onto the battlefield, then shuffle. You may search your library for a basic land card, put it onto the battlefield, then shuffle.";
+
+  const demolishAbility = (targetId: string) =>
+    ({
+      id: "ab-demolish",
+      type: "ability",
+      sourceCardId: id("field"),
+      controllerId: p1,
+      text: DEMOLISH,
+      targets: [cardTarget(targetId)],
+      triggered: false,
+      activated: true,
+    }) as unknown as StackObject;
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+  });
+
+  const setup = () => {
+    let s = put(
+      state,
+      p1,
+      "field",
+      card("Demolition Field", "Land"),
+      "graveyard",
+    );
+    s = put(s, p2, "temple", card("Temple of Mystery", "Land"));
+    s = put(s, p2, "their-forest", card("Forest", "Basic Land — Forest"));
+    s = put(s, p1, "my-lib", card("Forest", "Basic Land — Forest"), "library");
+    s = put(
+      s,
+      p2,
+      "their-lib",
+      card("Island", "Basic Land — Island"),
+      "library",
+    );
+    return s;
+  };
+
+  const zoneOf = (s: GameState, cardId: string) =>
+    [...s.zones.entries()].find(([, z]) => z.cardIds.includes(id(cardId)))?.[0];
+
+  it("validates nonbasic_land and SearchLibrary's target_controller", () => {
+    const ok = (effects: object[]) =>
+      CardScriptSchema.safeParse({ name: "X", oracle: "x", spell: effects })
+        .success;
+    expect(ok([{ op: "Destroy", target: "nonbasic_land" }])).toBe(true);
+    expect(
+      ok([
+        {
+          op: "SearchLibrary",
+          who: "target_controller",
+          filter: { basic_land: true },
+        },
+      ]),
+    ).toBe(true);
+    expect(
+      ok([
+        {
+          op: "SearchLibrary",
+          who: "land_owner",
+          filter: { basic_land: true },
+        },
+      ]),
+    ).toBe(false);
+  });
+
+  it("matches only nonbasic lands", () => {
+    const s = setup();
+    const filter = { target: "nonbasic_land" as const };
+    expect(matchesRemovalFilter(s.cards.get(id("temple"))!, filter)).toBe(true);
+    expect(matchesRemovalFilter(s.cards.get(id("their-forest"))!, filter)).toBe(
+      false,
+    );
+  });
+
+  it("destroys the land and puts a basic land onto the battlefield for each player", () => {
+    const out = resolveScriptedAbility(setup(), demolishAbility("temple"))!;
+    expect(zoneOf(out, "temple")).toBe(`${p2}-graveyard`);
+    expect(zoneOf(out, "their-lib")).toBe(`${p2}-battlefield`);
+    expect(zoneOf(out, "my-lib")).toBe(`${p1}-battlefield`);
+    expect(out.cards.get(id("their-lib"))!.isTapped).toBe(false);
+    expect(out.cards.get(id("my-lib"))!.isTapped).toBe(false);
+  });
+
+  it("lets nobody search the target's library when the land already left", () => {
+    // The land left before resolution: its controller gets no search
+    // (CR 608.2b). The whole-ability fizzle when every target is illegal
+    // happens on the stack, before the script runs.
+    let s = setup();
+    s = destroyCard(s, id("temple")).state ?? s;
+    const out = resolveScriptedAbility(s, demolishAbility("temple")) ?? s;
+    expect(zoneOf(out, "their-lib")).toBe(`${p2}-library`);
+  });
+
+  it("taps for exactly {C}, not the {2} from the next ability", () => {
+    const field = JSON.parse(
+      readFileSync(join(CARDS_DIR, "demolition_field.json"), "utf8"),
+    ) as { oracle: string; activated: { text: string }[] };
+    expect(parseManaAbility(field.oracle)).toEqual([
+      { description: expect.any(String), mana: { colorless: 1 } },
+    ]);
+  });
+
+  it("Demolition Field's script matches Scryfall's oracle", () => {
+    const field = JSON.parse(
+      readFileSync(join(CARDS_DIR, "demolition_field.json"), "utf8"),
+    ) as { oracle: string; activated: { text: string }[] };
+    expect(field.oracle).toBe(
+      `{T}: Add {C}.\n{2}, {T}, Sacrifice this land: ${DEMOLISH}`,
+    );
+    expect(field.activated.map((a) => a.text)).toEqual(["Add {C}.", DEMOLISH]);
+  });
+});
