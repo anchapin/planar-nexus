@@ -4619,6 +4619,119 @@ describe("scripted GrantKeyword (#2567)", () => {
     });
     expect(hasKeyword(s.cards.get(id("bear"))!, "double strike")).toBe(true);
   });
+
+  it("Boros Charm's second mode grants indestructible to ALL the controller's permanents (#2594 #14)", () => {
+    // v1 limitation: mode 2 was scripted as `target: "creature" +
+    // controller: "you"`, which only granted indestructible to creatures
+    // you control — artifacts, enchantments, planeswalkers, and lands
+    // missed the grant. With `target: "permanents_you_control"` the
+    // engine fans out to every permanent the controller owns on
+    // resolution, matching the card text.
+    const f = fresh();
+    // Set up a battlefield with a creature, an artifact, and an
+    // enchantment under p1's control. The artifact and enchantment
+    // would be skipped by the v1 creature-only path.
+    let s0 = f.state;
+    s0 = put(
+      s0,
+      f.p1,
+      "bear",
+      card("Bear", "Creature — Bear", [2, 2]),
+    );
+    s0 = put(
+      s0,
+      f.p1,
+      "rock",
+      card("Rock", "Artifact"),
+    );
+    s0 = put(
+      s0,
+      f.p1,
+      "bestow",
+      card("Bestow Test", "Enchantment — Aura"),
+    );
+    // An opponent's creature that should NOT be granted indestructible.
+    s0 = put(
+      s0,
+      f.p2,
+      "theirs",
+      card("Foe", "Creature — Beast", [1, 1]),
+    );
+
+    const s = resolveScriptedSpell(s0, getCardScript("Boros Charm")!, {
+      ...spell(f.p1, []),
+      chosenModes: [
+        "Permanents you control gain indestructible until end of turn.",
+      ],
+    });
+
+    // All three of p1's permanents get indestructible.
+    expect(hasKeyword(s.cards.get(id("bear"))!, "indestructible")).toBe(true);
+    expect(hasKeyword(s.cards.get(id("rock"))!, "indestructible")).toBe(true);
+    expect(hasKeyword(s.cards.get(id("bestow"))!, "indestructible")).toBe(true);
+    // p2's creature does NOT.
+    expect(hasKeyword(s.cards.get(id("theirs"))!, "indestructible")).toBe(
+      false,
+    );
+  });
+
+  it("GrantKeyword `permanents_you_control` with no permanents on the battlefield is a no-op", () => {
+    const f = fresh();
+    // Empty battlefield — the fan-out iterates over zero cards and
+    // returns the state unchanged.
+    const s = resolveScriptedSpell(
+      { ...f.state, players: new Map(f.state.players).set(f.p1, {
+        ...f.state.players.get(f.p1)!,
+        manaPool: { ...f.state.players.get(f.p1)!.manaPool, white: 0, red: 0 },
+      }) },
+      getCardScript("Boros Charm")!,
+      {
+        ...spell(f.p1, []),
+        chosenModes: [
+          "Permanents you control gain indestructible until end of turn.",
+        ],
+      },
+    );
+    // State should be the same except for the spell resolution
+    // timestamp — the simplest assertion is the battlefield is empty.
+    expect(s.zones.get(`${f.p1}-battlefield`)!.cardIds).toEqual([]);
+  });
+
+  it("schema accepts `permanents_you_control` on GrantKeyword and rejects `controller`", () => {
+    // The new target is a "plural" — the controller filter is
+    // encoded in the target value, so a `controller` field is
+    // rejected (it would be a redundant/conflicting filter).
+    const ok = CardScriptSchema.safeParse({
+      name: "Test",
+      oracle: "x",
+      spell: [
+        {
+          op: "GrantKeyword",
+          keyword: "indestructible",
+          target: "permanents_you_control",
+          until: "end_of_turn",
+        },
+      ],
+    });
+    expect(ok.success).toBe(true);
+
+    // The schema is `.strict()`, so an unexpected `controller` field
+    // on a `permanents_you_control` target is rejected.
+    const withController = CardScriptSchema.safeParse({
+      name: "Test",
+      oracle: "x",
+      spell: [
+        {
+          op: "GrantKeyword",
+          keyword: "indestructible",
+          target: "permanents_you_control",
+          controller: "you",
+          until: "end_of_turn",
+        },
+      ],
+    });
+    expect(withController.success).toBe(false);
+  });
 });
 
 describe("SearchLibrary tapped + Solemn Simulacrum, Campus Guide fix (#2566)", () => {
