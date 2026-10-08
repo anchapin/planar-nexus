@@ -244,7 +244,10 @@ export function getActivationCondition(
   for (const raw of cardOracleText(card).split("\n")) {
     const line = raw.trim().toLowerCase();
     if (!line.includes(":") || !line.includes(key)) continue;
-    const m = /\bactivate only if (.+?)(?:\s+and only once)?\.?\s*$/.exec(line);
+    const m =
+      /\bactivate only if (.+?)(?:\s+and only once(?: each turn)?)?\.?\s*$/.exec(
+        line,
+      );
     return m ? m[1] : null;
   }
   return null;

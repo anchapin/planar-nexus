@@ -7277,3 +7277,149 @@ describe("Demolition Field: destroy a nonbasic land, both players search (#2614)
     expect(field.activated.map((a) => a.text)).toEqual(["Add {C}.", DEMOLISH]);
   });
 });
+
+describe("Hired Claw: Lizard attack ping and conditional counter (#2614)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+  const ORACLE =
+    "Whenever you attack with one or more Lizards, this creature deals 1 damage to target opponent.\n{1}{R}: Put a +1/+1 counter on this creature. Activate only if an opponent lost life this turn and only once each turn.";
+  const claw = () =>
+    ({
+      ...card("Hired Claw", "Creature — Lizard Mercenary", [1, 2]),
+      oracle_text: ORACLE,
+      mana_cost: "{R}",
+      cmc: 1,
+      colors: ["R"],
+    }) as ScryfallCard;
+  const sources = (s: GameState) => s.stack.map((o) => o.sourceCardId);
+  const bothPass = (s: GameState) => passPriority(passPriority(s, p1), p2);
+  const ready = (s: GameState, cardId: string): GameState => {
+    const cards = new Map(s.cards);
+    cards.set(id(cardId), {
+      ...cards.get(id(cardId))!,
+      hasSummoningSickness: false,
+    });
+    return { ...s, cards };
+  };
+  const at = (s: GameState, phase: Phase): GameState => ({
+    ...s,
+    stack: [],
+    priorityPlayerId: p1,
+    turn: { ...s.turn, activePlayerId: p1, currentPhase: phase },
+  });
+  const fund = (s: GameState): GameState => {
+    const players = new Map(s.players);
+    const p = players.get(p1)!;
+    players.set(p1, {
+      ...p,
+      manaPool: { ...p.manaPool, generic: 1, red: 1 },
+    });
+    return { ...s, players };
+  };
+  const lostLife = (s: GameState, who: PlayerId, n: number): GameState => {
+    const players = new Map(s.players);
+    players.set(who, { ...players.get(who)!, lastTurnLifeLost: n });
+    return { ...s, players };
+  };
+  const counters = (s: GameState) =>
+    s.cards
+      .get(id("claw"))!
+      .counters.filter((c) => c.type === "+1/+1")
+      .reduce((n, c) => n + c.count, 0);
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+    state = put(state, p1, "claw", claw());
+  });
+
+  it("parses into a once-per-combat Lizard attack trigger", () => {
+    const [ability] = getTriggeredAbilities(claw());
+    expect(ability.trigger).toMatchObject({
+      event: "attacked",
+      subject: "any",
+      enteringFilter: {
+        types: ["creature"],
+        controller: "you",
+        subtype: "Lizard",
+      },
+      attackFilter: { once: true },
+    });
+  });
+
+  it("triggers once when Lizards attack and pings the opponent", () => {
+    state = put(
+      state,
+      p1,
+      "lizard",
+      card("Lizard", "Creature — Lizard", [2, 2]),
+    );
+    state = at(ready(ready(state, "claw"), "lizard"), Phase.DECLARE_ATTACKERS);
+    const attacked = autoChooseTriggerTargets(
+      declareAttackers(state, [
+        { cardId: id("claw"), defenderId: p2 },
+        { cardId: id("lizard"), defenderId: p2 },
+      ]).state,
+      p1,
+    );
+    expect(sources(attacked)).toEqual([id("claw")]);
+    expect(attacked.stack[0].targets).toEqual([
+      expect.objectContaining({ type: "player", targetId: p2 }),
+    ]);
+    expect(bothPass(attacked).players.get(p2)!.life).toBe(19);
+  });
+
+  it("doesn't trigger when only non-Lizards attack", () => {
+    state = put(state, p1, "bear", card("Bear", "Creature — Bear", [2, 2]));
+    state = at(ready(state, "bear"), Phase.DECLARE_ATTACKERS);
+    const attacked = declareAttackers(state, [
+      { cardId: id("bear"), defenderId: p2 },
+    ]).state;
+    expect(sources(attacked)).toEqual([]);
+  });
+
+  it("can't put a counter on until an opponent lost life this turn", () => {
+    const s = fund(at(state, Phase.PRECOMBAT_MAIN));
+    expect(activateAbility(s, p1, id("claw"), 0).success).toBe(false);
+    expect(activateAbility(lostLife(s, p1, 3), p1, id("claw"), 0).success).toBe(
+      false,
+    );
+    const r = activateAbility(lostLife(s, p2, 1), p1, id("claw"), 0);
+    expect(r.success).toBe(true);
+    const resolved = resolveScriptedAbility(
+      r.state,
+      r.state.stack[r.state.stack.length - 1],
+    )!;
+    expect(counters(resolved)).toBe(1);
+  });
+
+  it("activates only once each turn", () => {
+    const s = fund(lostLife(at(state, Phase.PRECOMBAT_MAIN), p2, 2));
+    const first = activateAbility(s, p1, id("claw"), 0);
+    expect(first.success).toBe(true);
+    expect(activateAbility(fund(first.state), p1, id("claw"), 0).success).toBe(
+      false,
+    );
+  });
+
+  it("rejects a subtype on a self trigger", () => {
+    const ok = (extra: object) =>
+      CardScriptSchema.safeParse({
+        name: "X",
+        oracle: "X",
+        triggers: [
+          {
+            text: "X",
+            event: "attacks",
+            effects: [{ op: "Draw", amount: 1 }],
+            ...extra,
+          },
+        ],
+      }).success;
+    expect(ok({ subject: "any", subtype: "Lizard" })).toBe(true);
+    expect(ok({ subject: "self", subtype: "Lizard" })).toBe(false);
+  });
+});

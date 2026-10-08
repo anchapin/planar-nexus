@@ -26,6 +26,15 @@ export function evaluateInterveningIfClause(
 
   const negate = /^(you (?:do not|don't) control|you control no)\b/.test(c);
 
+  // "an opponent lost life this turn" (Hired Claw, #2614; the counter
+  // spectacle reads, CR 702.135a).
+  if (/^(?:if )?an opponent (?:has )?lost life this turn$/.test(c)) {
+    for (const [id, p] of state.players) {
+      if (id !== controllerId && (p.lastTurnLifeLost ?? 0) > 0) return true;
+    }
+    return false;
+  }
+
   // Raid: "if you attacked this turn".
   if (RAID_CONDITION.test(c)) {
     return hasAttackedThisTurn(state, controllerId);
