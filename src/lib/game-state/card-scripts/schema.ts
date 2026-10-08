@@ -62,8 +62,11 @@ export const DealDamageSchema = z
   .object({
     op: z.literal("DealDamage"),
     amount: xAmount,
-    /** each_opponent is untargeted: damage to every opponent. */
-    target: z.enum(["any", "creature", "player", "each_opponent"]),
+    /**
+     * each_opponent is untargeted: damage to every opponent. opponent is
+     * "target opponent" (#2614).
+     */
+    target: z.enum(["any", "creature", "player", "opponent", "each_opponent"]),
     controller,
     /**
      * CR 702.33d — "If this spell was kicked, it deals N damage instead."
@@ -780,6 +783,12 @@ export const TriggerSchema = z
     subject: z.enum(["self", "another", "any"]).default("self"),
     /** With subject another/any: only creatures you or an opponent control. */
     controller: z.enum(["you", "opponent"]).optional(),
+    /**
+     * With subject another/any: only creatures of this creature type,
+     * singular ("Whenever you attack with one or more Lizards" is
+     * attacks/any/you/once with subtype "Lizard"), #2614.
+     */
+    subtype: z.string().min(1).optional(),
     /** attacks only: "whenever you attack", once per combat, not per attacker. */
     once: z.boolean().optional(),
     /** upkeep only: whose upkeep (CR 503.1a). */
@@ -840,6 +849,12 @@ export const TriggerSchema = z
       t.controller === undefined ||
       (t.subject !== "self" && ["etb", "dies", "attacks"].includes(t.event)),
     { message: "controller needs subject another/any on etb, dies or attacks" },
+  )
+  .refine(
+    (t) =>
+      t.subtype === undefined ||
+      (t.subject !== "self" && ["etb", "dies", "attacks"].includes(t.event)),
+    { message: "subtype needs subject another/any on etb, dies or attacks" },
   );
 
 /** An activated ability (CR 602). `text` is the part after the colon. */

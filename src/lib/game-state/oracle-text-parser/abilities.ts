@@ -129,6 +129,8 @@ export interface TriggerCondition {
     types: string[];
     controller?: "you" | "opponent";
     nontoken?: boolean;
+    /** Only creatures of this creature type, singular ("Lizard"), #2614. */
+    subtype?: string;
   };
   /**
    * Attack triggers (CR 508.1m): "once" for "whenever you attack" / "one or

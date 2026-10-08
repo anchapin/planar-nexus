@@ -104,6 +104,7 @@ function scriptedCondition(t: ScriptedTrigger): TriggerCondition {
     condition.enteringFilter = {
       types: t.event === "etb" ? [] : ["creature"],
       ...(t.controller ? { controller: t.controller } : {}),
+      ...(t.subtype ? { subtype: t.subtype } : {}),
     };
   }
   if (t.event === "attacks" && t.once) condition.attackFilter = { once: true };
@@ -193,7 +194,8 @@ export function getActivatedAbilities(
  */
 function scriptedCycling(script: CardScript): ParsedActivatedAbility {
   const cyc = script.cycling!;
-  const variant: "cycling" | "typecycling" | "landcycling" | "basic_landcycling" =
+  const variant:
+    "cycling" | "typecycling" | "landcycling" | "basic_landcycling" =
     cyc.variant ?? "cycling";
   const effectText = cyclingEffectText({ ...cyc, variant });
   return {
@@ -222,11 +224,7 @@ function scriptedCycling(script: CardScript): ParsedActivatedAbility {
  */
 function cyclingEffectText(cyc: {
   cost: string;
-  variant?:
-    | "cycling"
-    | "typecycling"
-    | "landcycling"
-    | "basic_landcycling";
+  variant?: "cycling" | "typecycling" | "landcycling" | "basic_landcycling";
   type?: string;
   basicLandType?: string;
 }): string {
