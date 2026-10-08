@@ -1,0 +1,16 @@
+{
+  "name": "Ravenous Amulet",
+  "oracle": "{1}, {T}, Sacrifice a creature: Draw a card and put a soul counter on this artifact. Activate only as a sorcery.",
+  "activated": [
+    {
+      "text": "Sacrifice a creature: Draw a card.",
+      "cost": {
+        "mana": "{1}",
+        "tap": true,
+        "sacrifice_permanents": { "count": 1, "type": "Creature" }
+      },
+      "timing": "sorcery",
+      "effects": [{ "op": "Draw", "amount": 1, "who": "you" }]
+    }
+  ]
+}
