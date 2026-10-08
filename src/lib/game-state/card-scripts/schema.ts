@@ -1316,6 +1316,22 @@ export const CardScriptSchema = z
       })
       .strict()
       .optional(),
+    /**
+     * Land-play statics while this permanent is on the battlefield (#2614
+     * Icetill Explorer): "You may play an additional land on each of your
+     * turns" (`extra_land_plays`, CR 305.2) and "You may play lands from your
+     * graveyard" (`from_graveyard`).
+     */
+    land_rules: z
+      .object({
+        extra_land_plays: z.number().int().min(1).max(2).optional(),
+        from_graveyard: z.literal(true).optional(),
+      })
+      .strict()
+      .refine((r) => r.extra_land_plays !== undefined || r.from_graveyard, {
+        message: "land_rules needs extra_land_plays or from_graveyard",
+      })
+      .optional(),
     harmonize: z
       .object({
         cost: z.string().regex(/^(\{(?:[0-9]+|[WUBRGC])\})+$/),

@@ -1,0 +1,12 @@
+{
+  "name": "Icetill Explorer",
+  "oracle": "You may play an additional land on each of your turns.\nYou may play lands from your graveyard.\nLandfall — Whenever a land you control enters, mill a card.",
+  "land_rules": { "extra_land_plays": 1, "from_graveyard": true },
+  "triggers": [
+    {
+      "text": "Landfall — Whenever a land you control enters, mill a card.",
+      "event": "landfall",
+      "effects": [{ "op": "Mill", "amount": 1, "who": "you" }]
+    }
+  ]
+}
