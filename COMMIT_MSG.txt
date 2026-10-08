@@ -1,0 +1,67 @@
+feat(card-scripts): exile this artifact as an activated cost (#2594 follow-up)
+
+The drafter has 3 FIN cards wanting this — Phoenix Down (FIN #29,
+"{1}{W}, {T}, Exile this artifact: Exile target creature."),
+Ether ("{2}, {T}, Exile this artifact: Return target creature
+you control to its owner's hand."), and Elixir ("{T}, Exile
+this artifact: You gain 3 life."). The script-side activated
+`cost` only had `mana` / `tap` / `sacrifice`; the engine's
+`activateAbility` path didn't move the source card to exile as
+part of activation. This lane adds `exileSelf: boolean` to the
+activated-cost schema and threads the engine's `activateAbility`
+cost loop so the source card moves from the battlefield to the
+controller's exile zone as part of the activation cost.
+
+## Schema
+- `ActivatedSchema.cost` gains `exileSelf: z.boolean().default(false)`.
+
+## Engine
+- `abilities/activated.ts`: after the existing `sacrifice` cost
+  branch, if `ability.costs.exileSelf` is set, call
+  `exileCard(currentState, cardId)`. If exile fails (e.g. the
+  source isn't on the battlefield), abort the activation by
+  returning the pre-cost state with an error.
+- `abilities/parse.ts` / `oracle-text-parser/abilities.ts`:
+  extend `ParsedActivatedAbility.costs` with `exileSelf: boolean`
+  (scripted source) and the parser's default cost literal.
+  The parser's existing `exile: boolean` field is for "exile
+  from graveyard" — a different cost — so a separate flag is
+  the right move.
+- `exileCard` already lives in `keyword-actions/removal.ts` and
+  uses the card's `currentZoneKey` to find the source zone.
+
+## Sample cards
+- `cards/phoenix_down.json`: `{1}{W}, {T}, Exile this artifact:
+  Exile target creature.`
+- `cards/ether.json`: `{2}, {T}, Exile this artifact: Return
+  target creature you control to its owner's hand.`
+- `cards/elixir.json`: `{T}, Exile this artifact: You gain 3
+  life.`
+
+## Tests
+5 new in `exile-self-cost.test.ts`:
+- `Phoenix Down` script declares `exileSelf: true`
+- `Ether` script declares `exileSelf: true` + tap
+- `Elixir` script declares `exileSelf: true` (no mana cost)
+- the engine's `moveCardToZone` primitive moves an artifact to
+  the controller's exile zone
+- end-to-end: `activateAbility` with a synthetic script that
+  has `cost.exileSelf: true` lands the source card in the
+  controller's exile zone as the activation cost
+
+## Test fixture updates
+- `tests/card-scripts-draft-lib.test.ts`: the cost-object
+  assertion now includes `exileSelf: false` (the new field's
+  default value on parse).
+- `card-scripts/__tests__/card-scripts.test.ts`: 3 cost
+  objects in scripted-spell fixtures add `exileSelf: false`
+  to keep them in sync with the schema.
+
+## Numbers
+- Test count: 13564 -> 13572 (+8 cases; 5 from this lane, 3
+  from the new card files' auto-discovery)
+- Suite count: 669 -> 670
+- `docs/onboarding.md` and `docs/TEST_VIDEO_FIXTURES.md`
+  test-count blocks ratcheted by `npm run ratchet:test-count`
+- Lint: 0 errors (warnings unchanged)
+- Typecheck: clean

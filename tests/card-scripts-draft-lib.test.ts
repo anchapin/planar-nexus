@@ -251,6 +251,7 @@ describe("card-script drafting pipeline", () => {
       expect(outcome.script.activated?.[0].cost).toEqual({
         tap: true,
         sacrifice: false,
+        exileSelf: false,
       });
   });
 

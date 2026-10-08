@@ -10,7 +10,7 @@ import { isPriorityPlayer } from "../priority-guard";
 import { hasSplitSecondOnStack } from "../auto-pass-priority";
 import { isManaAbility, spendMana, addMana } from "../mana";
 import { parseManaFromEffect } from "./mana";
-import { destroyCard, discardCards } from "../keyword-actions";
+import { destroyCard, discardCards, exileCard } from "../keyword-actions";
 import {
   findNamedCardInHand,
   getDiscardNamedCost,
@@ -377,6 +377,28 @@ export function activateAbility(
     if (result.success) {
       currentState = result.state;
     }
+  }
+
+  // #2594 follow-up: "Exile this artifact" as a cost (Phoenix Down,
+  // Ether, Elixir — FIN #29, etc.). The source card is the
+  // activated ability's source; exiling it is the cost payment,
+  // before the ability resolves. The engine's `exileCard` uses the
+  // card's `currentZoneKey` to find the source zone (the
+  // battlefield for an artifact) and moves it to the controller's
+  // exile zone. If the exile fails (e.g. the source isn't on
+  // the battlefield), we abort the activation by returning the
+  // pre-cost state so the rest of the cost flow doesn't run.
+  if (ability.costs.exileSelf) {
+    const result = exileCard(currentState, cardId);
+    if (!result.success) {
+      return {
+        success: false,
+        state: currentState,
+        description: "",
+        error: "Failed to exile the source as part of the activation cost.",
+      };
+    }
+    currentState = result.state;
   }
 
   const namedDiscardCost = getDiscardNamedCost(ability.costs.additionalCosts);
