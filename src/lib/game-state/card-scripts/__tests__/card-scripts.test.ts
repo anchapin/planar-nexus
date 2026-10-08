@@ -6354,3 +6354,95 @@ describe("Fabled Passage: untap the found land with four or more lands (#2614)",
     expect(passage.activated.map((a) => a.text)).toEqual([PASSAGE]);
   });
 });
+
+describe("Escape Tunnel: can't be blocked this turn (#2614)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+
+  const SEARCH =
+    "Search your library for a basic land card, put it onto the battlefield tapped, then shuffle.";
+  const EVADE =
+    "Target creature with power 2 or less can't be blocked this turn.";
+
+  const evadeAbility = (sourceCardId: string, targetId: string) =>
+    ({
+      id: "ab-tunnel",
+      type: "ability",
+      sourceCardId: id(sourceCardId),
+      controllerId: p1,
+      text: EVADE,
+      targets: [cardTarget(targetId)],
+      triggered: false,
+      activated: true,
+    }) as unknown as StackObject;
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+  });
+
+  const setup = (power: number) => {
+    let s = put(
+      state,
+      p1,
+      "tunnel",
+      card("Escape Tunnel", "Land"),
+      "graveyard",
+    );
+    s = put(s, p1, "attacker", card("Runner", "Creature — Elf", [power, 2]));
+    s = put(s, p2, "blocker", card("Wall", "Creature — Wall", [0, 4]));
+    return s;
+  };
+
+  it("validates CantBeBlocked", () => {
+    const ok = (effect: object) =>
+      CardScriptSchema.safeParse({
+        name: "X",
+        oracle: "x",
+        spell: [{ op: "CantBeBlocked", until: "end_of_turn", ...effect }],
+      }).success;
+    expect(ok({ target: "creature", max_power: 2 })).toBe(true);
+    expect(ok({ target: "self" })).toBe(true);
+    expect(ok({ target: "self", controller: "you" })).toBe(false);
+    expect(ok({ target: "player" })).toBe(false);
+    expect(ok({ target: "creature", until: "next_turn" })).toBe(false);
+  });
+
+  it("makes a creature with power 2 or less unblockable this turn", () => {
+    const s = setup(2);
+    expect(canBlock(s, id("blocker"), id("attacker")).canBlock).toBe(true);
+    const out = resolveScriptedAbility(s, evadeAbility("tunnel", "attacker"))!;
+    expect(canBlock(out, id("blocker"), id("attacker")).canBlock).toBe(false);
+  });
+
+  it("does nothing if the target's power is above 2 on resolution", () => {
+    const s = setup(3);
+    const out = resolveScriptedAbility(s, evadeAbility("tunnel", "attacker"));
+    const after = out ?? s;
+    expect(canBlock(after, id("blocker"), id("attacker")).canBlock).toBe(true);
+  });
+
+  it("wears off in the cleanup step", () => {
+    const out = resolveScriptedAbility(
+      setup(1),
+      evadeAbility("tunnel", "attacker"),
+    )!;
+    const cleaned = clearUntilEndOfTurnPT(out);
+    expect(canBlock(cleaned, id("blocker"), id("attacker")).canBlock).toBe(
+      true,
+    );
+  });
+
+  it("Escape Tunnel's script matches Scryfall's oracle", () => {
+    const tunnel = JSON.parse(
+      readFileSync(join(CARDS_DIR, "escape_tunnel.json"), "utf8"),
+    ) as { oracle: string; activated: { text: string }[] };
+    expect(tunnel.oracle).toBe(
+      `{T}, Sacrifice this land: ${SEARCH}\n{T}, Sacrifice this land: ${EVADE}`,
+    );
+    expect(tunnel.activated.map((a) => a.text)).toEqual([SEARCH, EVADE]);
+  });
+});

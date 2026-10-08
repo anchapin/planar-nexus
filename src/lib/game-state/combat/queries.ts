@@ -35,6 +35,7 @@ import { hasFlyingStrict } from "../keyword-actions/flying";
 import { hasReachStrict } from "../keyword-actions/reach";
 import { hasVigilanceStrict } from "../keyword-actions/vigilance";
 import { isThresholdUnblockable } from "../keyword-actions/threshold";
+import { cantBeBlockedThisTurn } from "../pt-until-end-of-turn";
 
 /**
  * Result of a combat action
@@ -172,7 +173,8 @@ export function canBlock(
     const attacker = state.cards.get(attackerId);
     if (attacker && isCreature(attacker)) {
       // Threshold "can't be blocked" (issue #2300).
-      if (isThresholdUnblockable(attacker)) {
+      // "Can't be blocked this turn" from a resolved effect (#2614).
+      if (isThresholdUnblockable(attacker) || cantBeBlockedThisTurn(attacker)) {
         return { canBlock: false, reason: "Attacker can't be blocked" };
       }
       // CR 702.9 / 702.12 — flying evasion, with reach as the exception.

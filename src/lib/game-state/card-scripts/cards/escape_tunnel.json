@@ -1,0 +1,39 @@
+{
+  "name": "Escape Tunnel",
+  "oracle": "{T}, Sacrifice this land: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle.\n{T}, Sacrifice this land: Target creature with power 2 or less can't be blocked this turn.",
+  "activated": [
+    {
+      "text": "Search your library for a basic land card, put it onto the battlefield tapped, then shuffle.",
+      "cost": {
+        "tap": true,
+        "sacrifice": true
+      },
+      "effects": [
+        {
+          "op": "SearchLibrary",
+          "filter": {
+            "basic_land": true
+          },
+          "destination": "battlefield",
+          "tapped": true,
+          "shuffle": true
+        }
+      ]
+    },
+    {
+      "text": "Target creature with power 2 or less can't be blocked this turn.",
+      "cost": {
+        "tap": true,
+        "sacrifice": true
+      },
+      "effects": [
+        {
+          "op": "CantBeBlocked",
+          "target": "creature",
+          "max_power": 2,
+          "until": "end_of_turn"
+        }
+      ]
+    }
+  ]
+}

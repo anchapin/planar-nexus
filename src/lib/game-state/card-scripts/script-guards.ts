@@ -78,6 +78,7 @@ export function isTargetedEffect(effect: CardEffect): boolean {
     case "PutCounters":
     case "AttachEquipment":
     case "GrantKeyword":
+    case "CantBeBlocked":
       return effect.target === "creature";
     case "Destroy":
     case "Exile":
