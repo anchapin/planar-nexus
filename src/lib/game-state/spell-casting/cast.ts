@@ -53,6 +53,7 @@ import {
 } from "../keyword-actions/enchant";
 import { copySpellOnStack } from "./resolve";
 import { getCardScript } from "../card-scripts/registry";
+import { affinityReduction } from "./affinity";
 import { isCreature, getPower } from "../card-instance";
 import { scriptedModeChoiceError } from "../card-scripts/script-guards";
 import { fireCastTriggers } from "../keyword-actions/cast-triggers";
@@ -1231,6 +1232,17 @@ export function castSpell(
           return { success: false, state, error: improviseError };
         }
       }
+    }
+
+    // CR 702.41 - Affinity for <subtype>: {1} less per matching permanent
+    // the caster controls; generic mana only (#2614 Sapling Nursery).
+    const affinitySaving = affinityReduction(
+      state,
+      playerId,
+      card.cardData.name,
+    );
+    if (affinitySaving > 0) {
+      totalGeneric = Math.max(0, totalGeneric - affinitySaving);
     }
 
     // Check if player has enough mana to cast the spell

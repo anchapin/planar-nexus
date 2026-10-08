@@ -460,6 +460,12 @@ export const GrantKeywordSchema = z
      *   indestructible until end of turn.").
      */
     target: z.enum(["creature", "self", "it", "permanents_you_control"]),
+    /**
+     * With target "permanents_you_control": only permanents with one of
+     * these subtypes (#2614 Sapling Nursery — "Treefolk and Forests you
+     * control gain indestructible until end of turn.").
+     */
+    subtypes: z.array(z.string().min(1)).min(1).optional(),
     controller,
     until: z.literal("end_of_turn"),
     if_kicked: ifKicked,
@@ -468,6 +474,10 @@ export const GrantKeywordSchema = z
   .refine(
     (e) => e.controller === undefined || e.target === "creature",
     controllerNeedsCreatureTarget,
+  )
+  .refine(
+    (e) => e.subtypes === undefined || e.target === "permanents_you_control",
+    { message: "subtypes needs target permanents_you_control" },
   );
 
 /**
@@ -1290,6 +1300,17 @@ export const CardScriptSchema = z
      * that cost by {X}, where X is its power. Then exile this spell."
      * Instants and sorceries only, like flashback.
      */
+    /**
+     * Affinity for <subtype> (CR 702.41, #2614 Sapling Nursery) — "This
+     * spell costs {1} less to cast for each <subtype> you control." Only
+     * generic mana is reduced.
+     */
+    affinity: z
+      .object({
+        subtype: z.string().min(1),
+      })
+      .strict()
+      .optional(),
     harmonize: z
       .object({
         cost: z.string().regex(/^(\{(?:[0-9]+|[WUBRGC])\})+$/),
