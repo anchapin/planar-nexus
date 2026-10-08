@@ -275,9 +275,13 @@ export const ExileSchema = z
      *   targeted opponent's graveyard (lane 14, Angel of Finality).
      *   The `target` enum is overridden by `target_player`; the
      *   effect iterates the graveyard in the engine's `applyEffect`.
+     * - `"library_top"` — sweep: exile the top card of each player's
+     *   library (lane 16, Etali, Primal Storm — FDN). The engine
+     *   iterates `state.players`, finds the top card of each
+     *   `${playerId}-library` zone, and moves it to exile.
      */
     fromZone: z
-      .enum(["battlefield", "graveyard", "opponent_graveyard"])
+      .enum(["battlefield", "graveyard", "opponent_graveyard", "library_top"])
       .optional(),
     /**
      * With fromZone graveyard: whose graveyard the target card comes from

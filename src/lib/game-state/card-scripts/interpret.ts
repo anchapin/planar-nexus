@@ -189,7 +189,8 @@ function effectTargetLegal(
   // `effect.controller` and ignores `target`.
   if (
     effect.op === "Exile" &&
-    effect.fromZone === "opponent_graveyard"
+    (effect.fromZone === "opponent_graveyard" ||
+      effect.fromZone === "library_top")
   ) {
     return true;
   }
@@ -959,7 +960,9 @@ function applyEffect(
       // `effect.controller` directly and iterates the chosen
       // player's graveyard. Skip the target legality check
       // (handled by the sweep branch below).
-      const isSweep = effect.fromZone === "opponent_graveyard";
+      const isSweep =
+        effect.fromZone === "opponent_graveyard" ||
+        effect.fromZone === "library_top";
       if (
         !isSweep &&
         (!target ||
@@ -1000,6 +1003,22 @@ function applyEffect(
         const ids: CardInstanceId[] = [...gy.cardIds];
         for (const id of ids) {
           const r = exileCard(next, id);
+          if (r.success) next = r.state;
+        }
+        return next;
+      }
+      // #2594 follow-up (lane 16): "exile the top card of each
+      // player's library" (Etali, Primal Storm — FDN). The engine
+      // iterates every player's library, takes the top card (last
+      // id in the array; libraries are drawn from the end), and
+      // exiles it. Libraries with no cards are silently skipped.
+      if (effect.fromZone === "library_top") {
+        let next = state;
+        for (const playerId of state.players.keys()) {
+          const lib = state.zones.get(`${playerId}-library`);
+          if (!lib || lib.cardIds.length === 0) continue;
+          const topId = lib.cardIds[lib.cardIds.length - 1];
+          const r = exileCard(next, topId);
           if (r.success) next = r.state;
         }
         return next;
