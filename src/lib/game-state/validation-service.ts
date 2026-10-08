@@ -331,7 +331,8 @@ export class ValidationService {
       if (
         !(altType === "foretell" && isForetold) &&
         !(altType === "escape" && inGrave) &&
-        !(altType === "flashback" && inGrave)
+        !(altType === "flashback" && inGrave) &&
+        !(altType === "harmonize" && inGrave)
       ) {
         return {
           isValid: false,
