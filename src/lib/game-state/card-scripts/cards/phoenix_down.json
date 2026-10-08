@@ -1,0 +1,13 @@
+{
+  "name": "Phoenix Down",
+  "oracle": "{1}{W}, {T}, Exile this artifact: Exile target creature.",
+  "activated": [
+    {
+      "text": "Exile target creature.",
+      "cost": { "mana": "{1}{W}", "tap": true, "sacrifice": false, "exileSelf": true },
+      "effects": [
+        { "op": "Exile", "target": "creature" }
+      ]
+    }
+  ]
+}

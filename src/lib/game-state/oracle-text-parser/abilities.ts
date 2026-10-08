@@ -42,6 +42,13 @@ export interface ParsedActivatedAbility {
     exile: boolean;
     discard: boolean;
     payLife: number;
+    /**
+     * #2594 follow-up: "Exile this artifact" as a cost (Phoenix Down,
+     * Ether, Elixir). The script's `cost.exileSelf` is the source
+     * for this flag; the parser's `cost.exile` (graveyard exile) is
+     * a different cost entirely and remains on its own line.
+     */
+    exileSelf: boolean;
     additionalCosts: string[];
   };
   effect: string;
@@ -349,6 +356,7 @@ function parseAbilityCost(
     exile: false,
     discard: false,
     payLife: 0,
+    exileSelf: false,
     additionalCosts: [],
   };
 

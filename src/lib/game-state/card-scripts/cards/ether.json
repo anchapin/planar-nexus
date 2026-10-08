@@ -1,0 +1,13 @@
+{
+  "name": "Ether",
+  "oracle": "{2}, {T}, Exile this artifact: Return target creature you control to its owner's hand.",
+  "activated": [
+    {
+      "text": "Return target creature you control to its owner's hand.",
+      "cost": { "mana": "{2}", "tap": true, "sacrifice": false, "exileSelf": true },
+      "effects": [
+        { "op": "ReturnToHand", "target": "creature" }
+      ]
+    }
+  ]
+}
