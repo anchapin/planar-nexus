@@ -55,7 +55,7 @@ import {
   parseManaAbility,
 } from "../../mana";
 import { activateAbility } from "../../abilities/activated";
-import { affinityReduction } from "../../spell-casting/affinity";
+import { affinityReduction, hasSubtype } from "../../spell-casting/affinity";
 import { refreshDomainPower } from "../../keyword-actions/domain";
 import { extraLandPlays } from "../../mana/land-rules";
 import { fireTargetedTriggers } from "../../keyword-actions/targeted";
@@ -8411,5 +8411,82 @@ describe("Keen-Eyed Curator: exile from a graveyard, grow with card types (#2614
       targets: [{ type: "card", targetId: id("g-creature"), isValid: true }],
     } as unknown as StackObject);
     expect(s.cards.get(id("g-creature"))!.exiledWith).toBeUndefined();
+  });
+});
+
+describe("Soulstone Sanctuary: a land that becomes a 3/3 creature (#2614)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  const animate = (s: GameState) =>
+    resolveScriptedEffects(
+      s,
+      getCardScript("Soulstone Sanctuary")!.activated![1].effects!,
+      {
+        controllerId: p1,
+        sourceCardId: id("sanctuary"),
+        targets: [],
+      } as unknown as StackObject,
+    );
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1] = Array.from(state.players.keys());
+    const data = {
+      ...card("Soulstone Sanctuary", "Land"),
+      oracle_text:
+        "{T}: Add {C}.\n{4}: This land becomes a 3/3 creature with vigilance and all creature types. It's still a land.",
+    } as ScryfallCard;
+    state = put(state, p1, "sanctuary", data);
+  });
+
+  it("is a plain land without vigilance until the ability resolves", () => {
+    const land = state.cards.get(id("sanctuary"))!;
+    expect(land.cardData.type_line).toBe("Land");
+    expect(hasKeyword(land, "vigilance")).toBe(false);
+  });
+
+  it("becomes a 3/3 Land Creature with vigilance and all creature types", () => {
+    const land = animate(state).cards.get(id("sanctuary"))!;
+    expect(land.cardData.type_line).toBe("Land Creature");
+    expect(getEffectivePower(land)).toBe(3);
+    expect(getEffectiveToughness(land)).toBe(3);
+    expect(hasKeyword(land, "vigilance")).toBe(true);
+    expect(hasSubtype(land, "Elf")).toBe(true);
+    // All creature types, not land types (CR 205.3m).
+    expect(hasSubtype(land, "Forest")).toBe(false);
+  });
+
+  it("stays animated through a statics refresh while on the battlefield", () => {
+    const land = refreshScriptedStatics(animate(state)).cards.get(
+      id("sanctuary"),
+    )!;
+    expect(land.cardData.type_line).toBe("Land Creature");
+  });
+
+  it("a second activation the same turn doesn't stack the type change", () => {
+    const land = animate(animate(state)).cards.get(id("sanctuary"))!;
+    expect(land.cardData.type_line).toBe("Land Creature");
+    expect(land.animatedUntilEndOfTurn!.cardData.type_line).toBe("Land");
+  });
+
+  it("is a land again at end of turn", () => {
+    const land = clearUntilEndOfTurnPT(animate(state)).cards.get(
+      id("sanctuary"),
+    )!;
+    expect(land.cardData.type_line).toBe("Land");
+    expect(land.animatedUntilEndOfTurn).toBeUndefined();
+    expect(hasKeyword(land, "vigilance")).toBe(false);
+  });
+
+  it("goes to the graveyard as a land card (CR 400.7)", () => {
+    const s = destroyCard(animate(state), id("sanctuary"));
+    const after = refreshScriptedStatics(s.state);
+    const land = after.cards.get(id("sanctuary"))!;
+    expect(after.zones.get(`${p1}-graveyard`)!.cardIds).toContain(
+      id("sanctuary"),
+    );
+    expect(land.cardData.type_line).toBe("Land");
   });
 });

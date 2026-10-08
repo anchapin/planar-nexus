@@ -112,13 +112,76 @@ export function addUntilEndOfTurnKeyword(
 export function clearUntilEndOfTurnPT(state: GameState): GameState {
   let cards: GameState["cards"] | null = null;
   for (const [id, card] of state.cards) {
-    if (!card.untilEndOfTurnPT && !card.untilEndOfTurnKeywords) continue;
+    if (
+      !card.untilEndOfTurnPT &&
+      !card.untilEndOfTurnKeywords &&
+      !card.animatedUntilEndOfTurn
+    )
+      continue;
     cards ??= new Map(state.cards);
-    cards.set(id, {
+    const updated = {
       ...card,
       untilEndOfTurnPT: undefined,
       untilEndOfTurnKeywords: undefined,
-    });
+    };
+    if (card.animatedUntilEndOfTurn) {
+      updated.cardData = card.animatedUntilEndOfTurn.cardData;
+      delete updated.animatedUntilEndOfTurn;
+    }
+    cards.set(id, updated);
+  }
+  return cards ? { ...state, cards } : state;
+}
+
+/**
+ * "This land becomes a P/T creature until end of turn" (#2614 Soulstone
+ * Sanctuary, CR 611.2a). The printed card data is kept so end of turn, or
+ * leaving the battlefield, restores it; a second activation the same turn
+ * resets base P/T from the printed card, not the animated one.
+ */
+export function animateUntilEndOfTurn(
+  state: GameState,
+  cardId: CardInstanceId,
+  opts: { power: number; toughness: number; allCreatureTypes: boolean },
+): GameState {
+  const card = state.cards.get(cardId);
+  if (!card) return state;
+  const printed = card.animatedUntilEndOfTurn?.cardData ?? card.cardData;
+  const [types, subtypes] = (printed.type_line ?? "").split(/\s+[\u2014-]\s+/);
+  const typeLine = /\bCreature\b/.test(types ?? "")
+    ? (printed.type_line ?? "")
+    : `${types} Creature${subtypes ? ` \u2014 ${subtypes}` : ""}`;
+  const cards = new Map(state.cards);
+  cards.set(cardId, {
+    ...card,
+    cardData: {
+      ...printed,
+      type_line: typeLine,
+      power: String(opts.power),
+      toughness: String(opts.toughness),
+    },
+    animatedUntilEndOfTurn: {
+      cardData: printed,
+      ...(opts.allCreatureTypes ? { allCreatureTypes: true } : {}),
+    },
+  });
+  return { ...state, cards };
+}
+
+/**
+ * An animated permanent that left the battlefield is a new object with its
+ * printed characteristics (CR 400.7): restore them. Returns the same state
+ * when nothing changed.
+ */
+export function restoreAnimatedOffBattlefield(state: GameState): GameState {
+  let cards: GameState["cards"] | null = null;
+  for (const [id, card] of state.cards) {
+    if (!card.animatedUntilEndOfTurn) continue;
+    if (card.currentZoneKey?.endsWith("-battlefield")) continue;
+    cards ??= new Map(state.cards);
+    const updated = { ...card, cardData: card.animatedUntilEndOfTurn.cardData };
+    delete updated.animatedUntilEndOfTurn;
+    cards.set(id, updated);
   }
   return cards ? { ...state, cards } : state;
 }

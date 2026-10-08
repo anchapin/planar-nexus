@@ -81,6 +81,13 @@ export function hasKeyword(card: CardInstance, keyword: string): boolean {
   // through scriptStaticKeywords, not read from the oracle line.
   const bonusText = getCardScript(card.cardData.name)?.exiled_types_bonus?.text;
   if (bonusText) oracleText = oracleText.replace(bonusText.toLowerCase(), "");
+  // An Animate ability's keywords (#2614 Soulstone Sanctuary: "becomes a
+  // 3/3 creature with vigilance") apply only once it resolves, through
+  // untilEndOfTurnKeywords above.
+  for (const a of getCardScript(card.cardData.name)?.activated ?? []) {
+    if (a.effects?.some((e) => e.op === "Animate"))
+      oracleText = oracleText.replace(a.text.toLowerCase(), "");
+  }
 
   return (
     keywords.some((k) => k.toLowerCase() === keyword.toLowerCase()) ||
