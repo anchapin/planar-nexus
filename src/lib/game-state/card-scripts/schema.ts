@@ -250,6 +250,24 @@ const removalFields = {
   target: z.enum([...REMOVAL_TARGETS, ...REMOVAL_ALL_TARGETS]),
   min_power: z.number().int().optional(),
   max_power: z.number().int().optional(),
+  /**
+   * #2594 follow-up (lane 18): bound the card's mana value across
+   * types — "destroy each nonland permanent with mana value X"
+   * (Steel Hellkite — FDN #138, {X}: Destroy each nonland
+   * permanent with mana value X), "exile target creature with
+   * mana value 3 or less", etc. `min_mana_value` is the lower
+   * bound (inclusive), `max_mana_value` is the upper bound
+   * (inclusive). The filter only applies to cards with a numeric
+   * mana value (tokens default to 0).
+   */
+  // "X" on a mana-value bound (Steel Hellkite's "{X}: destroy each
+  // nonland permanent with mana value X") is accepted by the
+  // schema but the engine's scripted-spell resolver currently
+  // resolves it to 0 via `withX`. A future lane should bind the
+  // resolved X from the activated ability's xValue so the sweeper
+  // honors the chosen X at activation time.
+  min_mana_value: z.union([z.number().int().min(0), X]).optional(),
+  max_mana_value: z.union([z.number().int().min(0), X]).optional(),
   controller,
   if_kicked: ifKicked,
 };
@@ -283,9 +301,13 @@ export const ExileSchema = z
      *   targeted opponent's graveyard (lane 14, Angel of Finality).
      *   The `target` enum is overridden by `target_player`; the
      *   effect iterates the graveyard in the engine's `applyEffect`.
+     * - `"library_top"` — sweep: exile the top card of each player's
+     *   library (lane 16, Etali, Primal Storm — FDN). The engine
+     *   iterates `state.players`, finds the top card of each
+     *   `${playerId}-library` zone, and moves it to exile.
      */
     fromZone: z
-      .enum(["battlefield", "graveyard", "opponent_graveyard"])
+      .enum(["battlefield", "graveyard", "opponent_graveyard", "library_top"])
       .optional(),
     /**
      * With fromZone graveyard: whose graveyard the target card comes from
@@ -1160,13 +1182,29 @@ export const ActivatedSchema = z
         /**
          * "Sacrifice three Treasures" (#2614 Magda, the Hoardmaster): that
          * many permanents of the subtype you control, sacrificed as a cost.
+         * "Sacrifice a creature" (Ravenous Amulet, Eaten Alive — FDN):
+         * any number of any creature you control. When `type` is set,
+         * the engine matches cards whose type line starts with the
+         * given type ("Creature", "Artifact", "Enchantment"). `subtype`
+         * and `type` are mutually exclusive — pick one. (#2594
+         * follow-up, lane 17.)
          */
         sacrifice_permanents: z
           .object({
             count: z.number().int().min(1).max(9),
-            subtype: z.string().min(1),
+            subtype: z.string().min(1).optional(),
+            type: z
+              .enum(["Creature", "Artifact", "Enchantment", "Land", "Planeswalker"])
+              .optional(),
           })
           .strict()
+          .refine(
+            (s) =>
+              Boolean(s.subtype) !== Boolean(s.type),
+            {
+              message: "sacrifice_permanents needs exactly one of subtype or type",
+            },
+          )
           .optional(),
         /**
          * #2594 follow-up: "Exile this artifact" as a cost (Phoenix Down,

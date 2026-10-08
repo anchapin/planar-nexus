@@ -49,8 +49,17 @@ export interface ParsedActivatedAbility {
      * a different cost entirely and remains on its own line.
      */
     exileSelf: boolean;
-    /** "Sacrifice three Treasures" (#2614 Magda), from the card script. */
-    sacrificePermanents?: { count: number; subtype: string };
+    /**
+     * "Sacrifice three Treasures" (#2614 Magda) or "Sacrifice a
+     * creature" (Ravenous Amulet — FDN, lane 17). One of `subtype`
+     * (e.g. "Treasure") or `type` (e.g. "Creature") is set per the
+     * scripted cost.
+     */
+    sacrificePermanents?: {
+      count: number;
+      subtype?: string;
+      type?: "Creature" | "Artifact" | "Enchantment" | "Land" | "Planeswalker";
+    };
     additionalCosts: string[];
   };
   effect: string;
