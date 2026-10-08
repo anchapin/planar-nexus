@@ -197,6 +197,7 @@ export function castSpell(
       | "buyback"
       | "flashback"
       | "harmonize"
+      | "warp"
       | "bestow"
       | "escape"
       | "spectacle"
@@ -351,6 +352,16 @@ export function castSpell(
       exileZone.cardIds.includes(cardId)
     ) {
       // CR 702.142c: a foretold card is cast from its owner's exile.
+      sourceZone = `${playerId}-exile`;
+    } else if (
+      !alternativeCost &&
+      exileZone &&
+      exileZone.cardIds.includes(cardId) &&
+      card.warpExiledTurn !== undefined &&
+      state.turn.turnNumber > card.warpExiledTurn
+    ) {
+      // CR 702.185a: a card exiled by warp may be cast from exile on a later
+      // turn (for its normal cost).
       sourceZone = `${playerId}-exile`;
     } else if (!handZone || !handZone.cardIds.includes(cardId)) {
       return { success: false, state, error: "Card not in hand." };
@@ -625,6 +636,31 @@ export function castSpell(
             totalGreen += flashbackCost.green - manaCost.green;
             alternativeCostsUsed.push("flashback");
           }
+          break;
+        }
+        case "warp": {
+          // CR 702.185a - Warp: an alternative cost that REPLACES the mana
+          // cost, cast from hand only. Script-first: cards declare it
+          // (`warp.cost`).
+          const warpCost = getCardScript(card.cardData.name)?.warp?.cost;
+          if (!warpCost) {
+            return {
+              success: false,
+              state,
+              error: "This card does not have warp.",
+            };
+          }
+          const wc = parseManaCost(warpCost);
+          if (!wc) {
+            return { success: false, state, error: "Invalid warp cost." };
+          }
+          totalGeneric += wc.generic - manaCost.generic;
+          totalWhite += wc.white - manaCost.white;
+          totalBlue += wc.blue - manaCost.blue;
+          totalBlack += wc.black - manaCost.black;
+          totalRed += wc.red - manaCost.red;
+          totalGreen += wc.green - manaCost.green;
+          alternativeCostsUsed.push("warp");
           break;
         }
         case "harmonize": {
