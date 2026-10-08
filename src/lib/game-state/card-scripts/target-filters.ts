@@ -70,6 +70,14 @@ export interface RemovalFilter {
   target: RemovalTarget | RemovalAllTarget;
   min_power?: number;
   max_power?: number;
+  /**
+   * #2594 follow-up (lane 18): bound the card's mana value across
+   * types — used by Steel Hellkite-style sweepers and similar.
+   * `string` allows the `"X"` literal from `xCount` so scripts can
+   * declare `max_mana_value: "X"` for {X}-cost sweepers.
+   */
+  min_mana_value?: number | string;
+  max_mana_value?: number | string;
 }
 
 function hasType(card: CardInstance, type: string): boolean {
@@ -126,12 +134,43 @@ export function matchesRemovalFilter(
       break;
   }
   if (!typeOk) return false;
-  if (filter.min_power === undefined && filter.max_power === undefined)
-    return true;
-  if (!isCreature(card)) return false;
-  const power = getPower(card);
-  return (
-    (filter.min_power === undefined || power >= filter.min_power) &&
-    (filter.max_power === undefined || power <= filter.max_power)
-  );
+  if (
+    filter.min_power !== undefined ||
+    filter.max_power !== undefined
+  ) {
+    if (!isCreature(card)) return false;
+    const power = getPower(card);
+    if (
+      (filter.min_power !== undefined && power < filter.min_power) ||
+      (filter.max_power !== undefined && power > filter.max_power)
+    ) {
+      return false;
+    }
+  }
+  // #2594 follow-up (lane 18): apply the mana-value bound across all
+  // types. Steel Hellkite's "{X}: destroy each nonland permanent
+  // with mana value X" reads `max_mana_value: X`. Cards with no
+  // numeric mana value (tokens default to 0 via `cmc ?? 0`) are
+  // included only if the bound allows 0.
+  if (
+    filter.min_mana_value !== undefined ||
+    filter.max_mana_value !== undefined
+  ) {
+    const mv = card.cardData.cmc ?? 0;
+    if (
+      filter.min_mana_value !== undefined &&
+      filter.min_mana_value !== "X" &&
+      mv < (filter.min_mana_value as number)
+    ) {
+      return false;
+    }
+    if (
+      filter.max_mana_value !== undefined &&
+      filter.max_mana_value !== "X" &&
+      mv > (filter.max_mana_value as number)
+    ) {
+      return false;
+    }
+  }
+  return true;
 }

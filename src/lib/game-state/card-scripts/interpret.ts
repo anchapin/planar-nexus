@@ -934,7 +934,9 @@ function applyEffect(
             // indestructible + regenerate shields are still respected
             // by `destroyCard`. The filter also re-checks
             // min_power/max_power for "all_creatures with power X+".
-            if (matchesRemovalFilter(inst, effect)) ids.push(id);
+            if (matchesRemovalFilter(inst, effect)) {
+              ids.push(id);
+            }
           }
         }
         for (const id of ids) {
