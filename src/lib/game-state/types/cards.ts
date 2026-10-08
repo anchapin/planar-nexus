@@ -342,6 +342,11 @@ export interface CardInstance {
    */
   /** Turn a once-each-turn crime trigger last fired (#2614 Magda). */
   crimeTriggerTurn?: number;
+  /**
+   * Set while this land is earthbent (#2614): `cardData` carries the 0/0
+   * creature type line, and this keeps the printed card to restore.
+   */
+  earthbent?: { cardData: ScryfallCard };
   animatedUntilEndOfTurn?: {
     cardData: ScryfallCard;
     allCreatureTypes?: boolean;

@@ -53,6 +53,8 @@ import { isThresholdOnlyKeyword } from "./keyword-actions/threshold";
  * Check if a card has a specific keyword
  */
 export function hasKeyword(card: CardInstance, keyword: string): boolean {
+  // An earthbent land has haste (#2614).
+  if (card.earthbent && keyword.toLowerCase() === "haste") return true;
   // Granted by an attached Aura (issue #2464).
   if (card.auraKeywords?.includes(keyword.toLowerCase())) return true;
   // Granted by an attached Equipment (issue #2561).

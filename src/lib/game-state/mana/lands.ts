@@ -95,9 +95,17 @@ export function playLand(
   }
 
   const oracleText = card.cardData.oracle_text?.toLowerCase() || "";
-  const defaultEntersTapped =
+  let defaultEntersTapped =
     oracleText.includes("enters tapped") ||
     oracleText.includes("enters the battlefield tapped");
+  // "This land enters tapped unless you control a basic land." (#2614 Ba
+  // Sing Se)
+  if (oracleText.includes("enters tapped unless you control a basic land")) {
+    const field = state.zones.get(`${card.controllerId}-battlefield`);
+    defaultEntersTapped = !(field?.cardIds ?? []).some((id) =>
+      /\bBasic\b.*\bLand\b/.test(state.cards.get(id)?.cardData.type_line ?? ""),
+    );
+  }
 
   const landEnterEvent: ReplacementEvent = {
     type: "landEnterBattlefield",
