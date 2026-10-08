@@ -1411,6 +1411,17 @@ export const CardScriptSchema = z
      * detect it (see `parseCantBeCountered`).
      */
     cantBeCountered: z.boolean().optional(),
+    /**
+     * #2594 follow-up (lane 19): "This creature enters the
+     * battlefield tapped." (Diregraf Ghoul — FDN #80.) When true,
+     * the engine stamps `isTapped: true` on the card instance as
+     * it enters the battlefield (via cast spell, `ReturnFromZone`
+     * to the battlefield, or `SearchLibrary` with destination
+     * battlefield). SearchLibrary's per-call `tapped` flag is
+     * still respected as before — this top-level flag applies
+     * regardless of how the card arrived.
+     */
+    entersTapped: z.boolean().optional(),
     /** Effects of an instant or sorcery, applied in order on resolution. */
     spell: effects.optional(),
     /** A modal instant or sorcery's modes, instead of `spell`. */

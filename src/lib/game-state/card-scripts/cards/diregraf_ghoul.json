@@ -1,0 +1,12 @@
+{
+  "name": "Diregraf Ghoul",
+  "oracle": "This creature enters tapped.",
+  "entersTapped": true,
+  "statics": [
+    {
+      "text": "Enters tapped (handled at ETB by entersTapped flag)",
+      "affects": { "controller": "you" },
+      "keywords": ["defender"]
+    }
+  ]
+}
