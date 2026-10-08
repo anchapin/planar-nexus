@@ -96,6 +96,13 @@ export function isTargetedEffect(effect: CardEffect): boolean {
         effect.target as RemovalAllTarget,
       );
     case "Exile":
+      // #2594 follow-up (lane 14): "exile each card in target
+      // player's graveyard" (Angel of Finality) doesn't take a
+      // spell/ability target slot — the player is narrowed by
+      // `effect.controller`. Returning false keeps
+      // `effectTargetCount` at 0, so the dispatcher doesn't try to
+      // consume a target slot.
+      return effect.fromZone !== "opponent_graveyard";
     case "Tap":
     case "Untap":
     case "ReturnToHand":
