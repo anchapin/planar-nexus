@@ -1,0 +1,18 @@
+{
+  "name": "Ambush Wolf",
+  "oracle": "Whenever Ambush Wolf attacks, you may exile up to one target card from a graveyard.",
+  "triggers": [
+    {
+      "text": "Whenever Ambush Wolf attacks, you may exile up to one target card from a graveyard.",
+      "event": "attacks",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "Exile",
+          "target": "creature",
+          "fromZone": "graveyard"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "name": "Soul-Guide Lantern",
+  "oracle": "{T}, Exile a card from your graveyard: Add one mana of any color.",
+  "activated": [
+    {
+      "text": "Exile a card from your graveyard: Add one mana of any color.",
+      "cost": { "tap": true, "sacrifice": false },
+      "effects": [
+        {
+          "op": "Exile",
+          "target": "creature",
+          "fromZone": "graveyard"
+        },
+        {
+          "op": "AddMana",
+          "amount": 1,
+          "colors": "any"
+        }
+      ]
+    }
+  ]
+}
