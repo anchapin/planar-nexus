@@ -1,0 +1,8 @@
+{
+  "name": "Fumigate",
+  "oracle": "Destroy all creatures. You gain 2 life for each creature destroyed this way.",
+  "spell": [
+    { "op": "Destroy", "target": "all_creatures" },
+    { "op": "GainLife", "amount": 2, "who": "you" }
+  ]
+}

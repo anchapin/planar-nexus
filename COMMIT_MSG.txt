@@ -1,0 +1,64 @@
+feat(card-scripts): destroy all [type] sweeper targets (#2594 follow-up)
+
+The drafter has 3 FDN cards wanting this — Day of Judgment
+("Destroy all creatures."), Fumigate ("Destroy all creatures.
+You gain 2 life for each creature destroyed this way."), and
+Ultima ("Destroy all artifacts."). The current `Destroy` op
+only supports single targets via `REMOVAL_TARGETS`; sweepers
+needed a separate "all <type>" enum value. This lane adds
+`REMOVAL_ALL_TARGETS` (`"all_creatures"`, `"all_artifacts"`,
+`"all_enchantments"`, `"all_nonland_permanents"`) and threads
+the engine's `applyEffect` path to iterate the battlefield and
+call `destroyCard` for each matching permanent.
+
+## Schema
+- `target-filters.ts`: new `REMOVAL_ALL_TARGETS` constant and
+  `RemovalAllTarget` type. `RemovalFilter.target` is widened to
+  accept the union of single-target and sweeper values.
+- `schema.ts`: `removalFields.target` is a union of the two
+  enums. Both `DestroySchema` and `ExileSchema` (the lane only
+  threads Destroy; Exile keeps single-target support for now)
+  accept the wider enum.
+- `matchesRemovalFilter`: the existing switch in
+  `target-filters.ts` is extended with the four sweeper cases.
+
+## Engine
+- `interpret.ts` `case "Destroy"`: when `effect.target` is in
+  `REMOVAL_ALL_TARGETS`, the engine iterates over the
+  battlefield(s) narrowed by `effect.controller` (default: all
+  players), filters by `matchesRemovalFilter`, and calls
+  `destroyCard` on each match. `destroyCard` already handles
+  indestructible + regenerate shields; `min_power` / `max_power`
+  still apply for "all_creatures with power X+" sweepers.
+- `script-guards.ts` `isTargetedEffect`: the `Destroy` case
+  returns false for sweeper targets so `effectTargetCount`
+  reads as 0 — the dispatcher loop doesn't try to consume a
+  non-existent target slot from the spell's `targets` list.
+
+## Sample cards
+- `cards/day_of_judgment.json`: "Destroy all creatures."
+- `cards/fumigate.json`: "Destroy all creatures. You gain 2
+  life for each creature destroyed this way."
+- `cards/ultima.json`: "Destroy all artifacts."
+
+## Tests
+6 new in `destroy-all.test.ts`:
+- Day of Judgment card-script declares `all_creatures`
+- Fumigate card-script declares `all_creatures` + GainLife
+- Ultima card-script declares `all_artifacts`
+- end-to-end: Day of Judgment's `all_creatures` sweep moves
+  every creature on every battlefield to its owner's graveyard
+  while leaving pure artifacts (Mind Stone) in place
+- end-to-end: Ultima's `all_artifacts` sweep destroys artifacts
+  and artifact creatures, but leaves pure creatures in place
+- end-to-end: Fumigate's `all_creatures` + GainLife chain
+  resolves both effects
+
+## Numbers
+- Test count: 13583 -> 13592 (+9 cases; 6 from this lane, 3
+  from the new card files' auto-discovery)
+- Suite count: 671 -> 672
+- `docs/onboarding.md` and `docs/TEST_VIDEO_FIXTURES.md`
+  test-count blocks ratcheted by `npm run ratchet:test-count`
+- Lint: 0 errors (warnings unchanged)
+- Typecheck: clean
