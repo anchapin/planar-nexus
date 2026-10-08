@@ -576,6 +576,13 @@ export const SearchLibrarySchema = z
      * when `destination` is "battlefield"; ignored for other destinations.
      */
     tapped: z.boolean().optional(),
+    /**
+     * Fabled Passage: "Then if you control four or more lands, untap that
+     * land." After the search, untap the found cards when the searcher
+     * controls at least this many lands (the found land counts). Only read
+     * with `tapped` on a battlefield search.
+     */
+    untap_if_lands: z.number().int().min(1).optional(),
     if_kicked: ifKicked,
   })
   .strict();

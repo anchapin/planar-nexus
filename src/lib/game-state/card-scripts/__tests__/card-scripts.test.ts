@@ -102,7 +102,7 @@ function put(
   playerId: PlayerId,
   cardId: string,
   data: ScryfallCard,
-  zone: "battlefield" | "library" | "hand" = "battlefield",
+  zone: "battlefield" | "library" | "hand" | "graveyard" = "battlefield",
 ): GameState {
   const key = `${playerId}-${zone}`;
   const cards = new Map(state.cards);
@@ -2609,9 +2609,7 @@ describe("scripted X activation cost (#2559, #2594 #18)", () => {
       {
         text: "This creature gets +X/+X until end of turn.",
         cost: { mana: "{X}{G}", tap: true, sacrifice: false },
-        effects: [
-          { op: "Pump", power: "X", toughness: "X", target: "self" },
-        ],
+        effects: [{ op: "Pump", power: "X", toughness: "X", target: "self" }],
       },
     ],
   };
@@ -2679,9 +2677,7 @@ describe("scripted X activation cost (#2559, #2594 #18)", () => {
         {
           text: "{X}{G}: +X/+X.",
           cost: { mana: "{X}{G}" },
-          effects: [
-            { op: "Pump", power: "X", toughness: "X", target: "self" },
-          ],
+          effects: [{ op: "Pump", power: "X", toughness: "X", target: "self" }],
         },
       ],
     });
@@ -2736,7 +2732,12 @@ describe("scripted X activation cost (#2559, #2594 #18)", () => {
     // Wildwood-style X-cost permanent cast with X=3, then activated.
     // 3 generic + 1 green = 4 mana total. The pool is fully drained
     // by the activation, and the +X/+X pump is applied on resolution.
-    let s = put(state, p1, "xhydra", card("Test X Hydra", "Creature — Hydra", [0, 0]));
+    let s = put(
+      state,
+      p1,
+      "xhydra",
+      card("Test X Hydra", "Creature — Hydra", [0, 0]),
+    );
     s = ready(stampX(s, "xhydra", 3), "xhydra");
     s = fundPool(s, 3, 1);
 
@@ -2759,7 +2760,12 @@ describe("scripted X activation cost (#2559, #2594 #18)", () => {
   it("activation refuses the {X} cost when the pool is short of X", () => {
     // X=4 chosen, but only 3 generic in the pool. The engine must not
     // silently spend the printed green while refusing the X.
-    let s = put(state, p1, "xhydra", card("Test X Hydra", "Creature — Hydra", [0, 0]));
+    let s = put(
+      state,
+      p1,
+      "xhydra",
+      card("Test X Hydra", "Creature — Hydra", [0, 0]),
+    );
     s = ready(stampX(s, "xhydra", 4), "xhydra");
     s = fundPool(s, 3, 1);
 
@@ -2775,7 +2781,12 @@ describe("scripted X activation cost (#2559, #2594 #18)", () => {
     // Cast with X=0 (a hypothetical "use no X" case) — the engine pays
     // 0 generic + 1 green, drains the green, and applies +0/+0 on
     // resolution.
-    let s = put(state, p1, "xhydra", card("Test X Hydra", "Creature — Hydra", [0, 0]));
+    let s = put(
+      state,
+      p1,
+      "xhydra",
+      card("Test X Hydra", "Creature — Hydra", [0, 0]),
+    );
     s = ready(stampX(s, "xhydra", 0), "xhydra");
     s = fundPool(s, 0, 1);
 
@@ -6228,5 +6239,118 @@ describe("Mono-Red / Mono-Green self-play decks, slice 1 (#2614)", () => {
     );
     expect(battlefield(out, p1)).toHaveLength(before);
     expect(out.zones.get(`${p1}-library`)!.cardIds).toContain(id("lib-bear"));
+  });
+});
+
+describe("Fabled Passage: untap the found land with four or more lands (#2614)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+
+  const PASSAGE =
+    "Search your library for a basic land card, put it onto the battlefield tapped, then shuffle. Then if you control four or more lands, untap that land.";
+
+  const passageAbility = (sourceCardId: string) =>
+    ({
+      id: "ab-passage",
+      type: "ability",
+      sourceCardId: id(sourceCardId),
+      controllerId: p1,
+      text: PASSAGE,
+      targets: [],
+      triggered: false,
+      activated: true,
+    }) as unknown as StackObject;
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1] = Array.from(state.players.keys());
+  });
+
+  const withLands = (s: GameState, n: number) => {
+    let out = s;
+    for (let i = 0; i < n; i++) {
+      out = put(out, p1, `bf-land-${i}`, card("Forest", "Basic Land — Forest"));
+    }
+    return out;
+  };
+
+  it("validates SearchLibrary's untap_if_lands", () => {
+    const ok = (extra: object) =>
+      CardScriptSchema.safeParse({
+        name: "X",
+        oracle: "x",
+        spell: [
+          {
+            op: "SearchLibrary",
+            filter: { basic_land: true },
+            destination: "battlefield",
+            tapped: true,
+            ...extra,
+          },
+        ],
+      }).success;
+    expect(ok({ untap_if_lands: 4 })).toBe(true);
+    expect(ok({ untap_if_lands: 0 })).toBe(false);
+    expect(ok({ untap_if_lands: "four" })).toBe(false);
+  });
+
+  it("untaps the found land when you then control four or more lands", () => {
+    // Three lands already out (the sacrificed Passage is gone): the found
+    // land makes four.
+    let s = withLands(state, 3);
+    s = put(s, p1, "passage", card("Fabled Passage", "Land"), "graveyard");
+    s = put(
+      s,
+      p1,
+      "lib-forest",
+      card("Forest", "Basic Land — Forest"),
+      "library",
+    );
+    const out = resolveScriptedAbility(s, passageAbility("passage"))!;
+    expect(battlefield(out, p1)).toContain(id("lib-forest"));
+    expect(out.cards.get(id("lib-forest"))!.isTapped).toBe(false);
+  });
+
+  it("leaves the found land tapped with fewer than four lands", () => {
+    // One land out plus the found land is two: it stays tapped.
+    let s = withLands(state, 1);
+    s = put(s, p1, "passage", card("Fabled Passage", "Land"), "graveyard");
+    s = put(
+      s,
+      p1,
+      "lib-forest",
+      card("Forest", "Basic Land — Forest"),
+      "library",
+    );
+    const out = resolveScriptedAbility(s, passageAbility("passage"))!;
+    expect(out).toBeDefined();
+    expect(battlefield(out, p1)).toContain(id("lib-forest"));
+    expect(out.cards.get(id("lib-forest"))!.isTapped).toBe(true);
+  });
+
+  it("does not count the sacrificed Passage (two lands plus the found land)", () => {
+    // Two lands out plus the found land is three. The Passage itself is in
+    // the graveyard (sacrificed as a cost), so it does not make a fourth.
+    let s = withLands(state, 2);
+    s = put(s, p1, "passage", card("Fabled Passage", "Land"), "graveyard");
+    s = put(
+      s,
+      p1,
+      "lib-forest",
+      card("Forest", "Basic Land — Forest"),
+      "library",
+    );
+    const out = resolveScriptedAbility(s, passageAbility("passage"))!;
+    expect(out.cards.get(id("lib-forest"))!.isTapped).toBe(true);
+  });
+
+  it("Fabled Passage's script matches Scryfall's oracle", () => {
+    const passage = JSON.parse(
+      readFileSync(join(CARDS_DIR, "fabled_passage.json"), "utf8"),
+    ) as { oracle: string; activated: { text: string }[] };
+    expect(passage.oracle).toBe(`{T}, Sacrifice this land: ${PASSAGE}`);
+    expect(passage.activated.map((a) => a.text)).toEqual([PASSAGE]);
   });
 });
