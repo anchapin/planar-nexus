@@ -1,0 +1,25 @@
+{
+  "name": "Fabled Passage",
+  "oracle": "{T}, Sacrifice this land: Search your library for a basic land card, put it onto the battlefield tapped, then shuffle. Then if you control four or more lands, untap that land.",
+  "activated": [
+    {
+      "text": "Search your library for a basic land card, put it onto the battlefield tapped, then shuffle. Then if you control four or more lands, untap that land.",
+      "cost": {
+        "tap": true,
+        "sacrifice": true
+      },
+      "effects": [
+        {
+          "op": "SearchLibrary",
+          "filter": {
+            "basic_land": true
+          },
+          "destination": "battlefield",
+          "tapped": true,
+          "shuffle": true,
+          "untap_if_lands": 4
+        }
+      ]
+    }
+  ]
+}

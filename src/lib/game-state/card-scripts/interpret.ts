@@ -505,6 +505,24 @@ function searchLibrary(
   }
 
   zones.set(libraryKey, nextLibrary);
+
+  // Fabled Passage: "Then if you control four or more lands, untap that
+  // land." Counted after the found land is on the battlefield.
+  if (entersTapped && effect.untap_if_lands !== undefined) {
+    const battlefieldIds = zones.get(`${searcher}-battlefield`)?.cardIds ?? [];
+    const lands = battlefieldIds.filter((id) =>
+      /land/i.test(cards.get(id)?.cardData.type_line ?? ""),
+    ).length;
+    if (lands >= effect.untap_if_lands) {
+      for (const id of chosen) {
+        const inst = cards.get(id);
+        if (inst && inst.currentZoneKey === `${searcher}-battlefield`) {
+          cards.set(id, { ...inst, isTapped: false });
+        }
+      }
+    }
+  }
+
   return { ...state, zones, cards };
 }
 
