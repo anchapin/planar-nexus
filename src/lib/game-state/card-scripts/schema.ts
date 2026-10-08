@@ -788,6 +788,7 @@ export const AnimateSchema = z
     toughness: z.number().int().min(0),
     keywords: z.array(z.enum(EQUIPMENT_KEYWORDS)).min(1).optional(),
     all_creature_types: z.literal(true).optional(),
+    if_kicked: ifKicked,
   })
   .strict();
 
