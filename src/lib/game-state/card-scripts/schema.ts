@@ -1037,6 +1037,45 @@ export const CardScriptSchema = z
      */
     aura: AuraSchema.optional(),
     /**
+     * Cycling (CR 702.30 + 702.31 for the typecycling/landcycling
+     * variants, issue #2566): a discard-this-card activated ability from
+     * the hand. "Cycling {cost}" draws a card; "[Type]cycling {cost}"
+     * searches the library for a card of the named type;
+     * "Landcycling {cost}" / "Basic landcycling {cost}" search for a
+     * (basic) land.
+     *
+     * The `cost` is the printed cycling mana cost (e.g. "{2}", "{1}{U}").
+     * `variant` defaults to base cycling. `type` is required for
+     * typecycling (the named card type, e.g. "Wizard"). `basicLandType` is
+     * required for "[Type] landcycling" (e.g. "Island") and optional for
+     * the bare "Landcycling" form.
+     *
+     * v1 limitation: the engine's `cycleCard` still reads the cycling
+     * keyword from `card.cardData.oracle_text` (existing `parseCycling`
+     * path, #2566). The script's `cycling` field is the structured form
+     * the drafter writes; the LLM should mirror the cycling line into
+     * the `oracle` field too so the engine can find it. A future lane
+     * will thread the script's cycling data into `cycleCard` directly
+     * so the oracle-text fallback is no longer required.
+     */
+    cycling: z
+      .object({
+        cost: z.string().regex(/^(\{(?:[0-9]+|[WUBRGC])\})+$/),
+        variant: z
+          .enum(["cycling", "typecycling", "landcycling", "basic_landcycling"])
+          .default("cycling"),
+        /** Typecycling only: the named card type (e.g. "Wizard"). */
+        type: z.string().min(1).optional(),
+        /**
+         * Landcycling: the basic land type (e.g. "Island" for
+         * "Island landcycling"). Omit for the bare "Landcycling" form
+         * (any land).
+         */
+        basicLandType: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
+    /**
      * Flashback (CR 702.143) — an alternative cost: "you may cast this card
      * from your graveyard for its flashback cost. If you do, exile it instead
      * of putting it anywhere else any time it would leave the stack." Only
@@ -1126,10 +1165,15 @@ export const CardScriptSchema = z
       s.activated ||
       s.statics ||
       s.equipment ||
-      s.aura,
+      s.aura ||
+      // #2566: a card with only `cycling` (no other ability) is legal —
+      // e.g. "Hill Gigas" is a creature with just Cycling {2}. The
+      // engine exposes the cycling ability via `getActivatedAbilities`
+      // from the script's `cycling` field.
+      s.cycling,
     {
       message:
-        "a card script needs spell, modes, triggers, activated, statics, equipment, or aura",
+        "a card script needs spell, modes, triggers, activated, statics, equipment, aura, or cycling",
     },
   )
   .refine(
