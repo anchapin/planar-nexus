@@ -1,5 +1,5 @@
 import type { CardInstance } from "../types";
-import { getPower, isCreature } from "../card-instance";
+import { getPower, isCreature, isPlaneswalker } from "../card-instance";
 
 /**
  * Whose permanent a targeted effect may pick (#2532): "you" is "target
@@ -29,6 +29,11 @@ export const REMOVAL_TARGETS = [
   "artifact_or_enchantment",
   "nonland_permanent",
   "nonbasic_land",
+  // #2594 #14: "destroy target planeswalker" (Hero's Downfall, Deadly
+  // Plot) and the "planeswalker target" gap surfaced by the drafter.
+  // The engine's `destroyCard` / `exileCard` already work on any
+  // permanent type; this is a filter-level addition.
+  "planeswalker",
 ] as const;
 export type RemovalTarget = (typeof REMOVAL_TARGETS)[number];
 
@@ -72,6 +77,12 @@ export function matchesRemovalFilter(
     case "nonbasic_land":
       // Demolition Field (#2614). "Basic" is a supertype (CR 205.4a).
       typeOk = hasType(card, "Land") && !hasType(card, "Basic");
+      break;
+    case "planeswalker":
+      // #2594 #14: "destroy target planeswalker" (Hero's Downfall,
+      // Deadly Plot). `isPlaneswalker` checks the type line for
+      // "Planeswalker".
+      typeOk = isPlaneswalker(card);
       break;
   }
   if (!typeOk) return false;

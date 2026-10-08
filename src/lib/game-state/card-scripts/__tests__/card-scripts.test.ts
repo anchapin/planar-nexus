@@ -1100,7 +1100,7 @@ describe("scripted modal triggered and activated abilities (#2525)", () => {
   });
 });
 
-describe("destroy and exile target filters (#2528)", () => {
+describe("destroy and exile target filters (#2528, #2594 #14)", () => {
   let state: GameState;
   let p1: PlayerId;
   let p2: PlayerId;
@@ -1121,12 +1121,26 @@ describe("destroy and exile target filters (#2528)", () => {
       card("Golem", "Artifact Creature — Golem", [3, 3]),
     );
     state = put(state, p2, "forest", card("Forest", "Basic Land — Forest"));
+    // #2594 #14: Hero's Downfall / Deadly Plot "destroy target
+    // planeswalker".
+    state = put(
+      state,
+      p2,
+      "planeswalker",
+      card("Test Walker", "Legendary Planeswalker — Test"),
+    );
   });
 
   const matching = (filter: Parameters<typeof matchesRemovalFilter>[1]) =>
-    ["bear", "giant", "rock", "aura", "golem", "forest"].filter((c) =>
-      matchesRemovalFilter(state.cards.get(id(c))!, filter),
-    );
+    [
+      "bear",
+      "giant",
+      "rock",
+      "aura",
+      "golem",
+      "forest",
+      "planeswalker",
+    ].filter((c) => matchesRemovalFilter(state.cards.get(id(c))!, filter));
 
   it("matches permanents by type and creatures by power", () => {
     expect(matching({ target: "artifact" })).toEqual(["rock", "golem"]);
@@ -1142,6 +1156,7 @@ describe("destroy and exile target filters (#2528)", () => {
       "rock",
       "aura",
       "golem",
+      "planeswalker",
     ]);
     expect(matching({ target: "creature", min_power: 4 })).toEqual(["giant"]);
     expect(matching({ target: "creature", max_power: 3 })).toEqual([
@@ -1149,6 +1164,9 @@ describe("destroy and exile target filters (#2528)", () => {
       "golem",
     ]);
     expect(matching({ target: "artifact", min_power: 3 })).toEqual(["golem"]);
+    // #2594 #14: "destroy target planeswalker" only matches the
+    // planeswalker (Hero's Downfall, Deadly Plot).
+    expect(matching({ target: "planeswalker" })).toEqual(["planeswalker"]);
   });
 
   it("accepts the new targets and rejects unknown ones", () => {
@@ -1158,7 +1176,31 @@ describe("destroy and exile target filters (#2528)", () => {
     expect(ok({ op: "Destroy", target: "artifact_or_enchantment" })).toBe(true);
     expect(ok({ op: "Exile", target: "nonland_permanent" })).toBe(true);
     expect(ok({ op: "Destroy", target: "creature", min_power: 4 })).toBe(true);
+    // #2594 #14: planeswalker target is now in the schema.
+    expect(ok({ op: "Destroy", target: "planeswalker" })).toBe(true);
+    expect(ok({ op: "Exile", target: "planeswalker" })).toBe(true);
     expect(ok({ op: "Destroy", target: "land" })).toBe(false);
+  });
+
+  it("destroying a planeswalker sends it to the graveyard (#2594 #14)", () => {
+    // Hero's Downfall path: cast { op: "Destroy", target:
+    // "planeswalker" } with the walker as the target; the walker
+    // ends up in p2's graveyard.
+    const pw = state.cards.get(id("planeswalker"))!;
+    expect(pw.controllerId).toBe(p2);
+    const cast = spell(p1, [cardTarget("planeswalker")]);
+    const result = resolveScriptedSpell(
+      state,
+      {
+        name: "Test Destroy Planeswalker",
+        oracle: "Destroy target planeswalker.",
+        spell: [{ op: "Destroy", target: "planeswalker" }],
+      } as CardScript,
+      cast,
+    );
+    expect(result.zones.get(`${p2}-graveyard`)!.cardIds).toContain(
+      id("planeswalker"),
+    );
   });
 
   it("Battle Menu's Magic mode only targets power 4 or greater", () => {
