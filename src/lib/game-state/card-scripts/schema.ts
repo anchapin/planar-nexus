@@ -1059,13 +1059,29 @@ export const ActivatedSchema = z
         /**
          * "Sacrifice three Treasures" (#2614 Magda, the Hoardmaster): that
          * many permanents of the subtype you control, sacrificed as a cost.
+         * "Sacrifice a creature" (Ravenous Amulet, Eaten Alive — FDN):
+         * any number of any creature you control. When `type` is set,
+         * the engine matches cards whose type line starts with the
+         * given type ("Creature", "Artifact", "Enchantment"). `subtype`
+         * and `type` are mutually exclusive — pick one. (#2594
+         * follow-up, lane 17.)
          */
         sacrifice_permanents: z
           .object({
             count: z.number().int().min(1).max(9),
-            subtype: z.string().min(1),
+            subtype: z.string().min(1).optional(),
+            type: z
+              .enum(["Creature", "Artifact", "Enchantment", "Land", "Planeswalker"])
+              .optional(),
           })
           .strict()
+          .refine(
+            (s) =>
+              Boolean(s.subtype) !== Boolean(s.type),
+            {
+              message: "sacrifice_permanents needs exactly one of subtype or type",
+            },
+          )
           .optional(),
         /**
          * #2594 follow-up: "Exile this artifact" as a cost (Phoenix Down,
