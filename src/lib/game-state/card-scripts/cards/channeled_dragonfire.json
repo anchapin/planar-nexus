@@ -1,0 +1,6 @@
+{
+  "name": "Channeled Dragonfire",
+  "oracle": "Channeled Dragonfire deals 2 damage to any target.\nHarmonize {5}{R}{R} (You may cast this card from your graveyard for its harmonize cost. You may tap a creature you control to reduce that cost by {X}, where X is its power. Then exile this spell.)",
+  "spell": [{ "op": "DealDamage", "amount": 2, "target": "any" }],
+  "harmonize": { "cost": "{5}{R}{R}" }
+}

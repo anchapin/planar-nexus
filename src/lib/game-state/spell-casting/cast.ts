@@ -53,6 +53,7 @@ import {
 } from "../keyword-actions/enchant";
 import { copySpellOnStack } from "./resolve";
 import { getCardScript } from "../card-scripts/registry";
+import { isCreature, getPower } from "../card-instance";
 import { scriptedModeChoiceError } from "../card-scripts/script-guards";
 import { fireCastTriggers } from "../keyword-actions/cast-triggers";
 import { createEngineUncaughtException } from "../errors";
@@ -195,6 +196,7 @@ export function castSpell(
     type:
       | "buyback"
       | "flashback"
+      | "harmonize"
       | "bestow"
       | "escape"
       | "spectacle"
@@ -224,6 +226,12 @@ export function castSpell(
      * does NOT restrict it (CR 302.6 only restricts {T}/{Q} activated costs).
      */
     convokeCreatures?: CardInstanceId[];
+    /**
+     * CR 702.180 - Harmonize: an untapped creature the player chooses to tap
+     * while casting this spell for its harmonize cost. The cost is reduced
+     * by {X}, where X is that creature's power (generic mana only).
+     */
+    harmonizeTapCreature?: CardInstanceId;
     /**
      * CR 702.126 - Improvise: untapped artifacts the player chooses to tap
      * while casting this spell. Each pays for {1} of the GENERIC portion only
@@ -323,6 +331,14 @@ export function castSpell(
     ) {
       sourceZone = `${playerId}-graveyard`;
     } else if (
+      alternativeCost?.type === "harmonize" &&
+      graveZone &&
+      graveZone.cardIds.includes(cardId)
+    ) {
+      // CR 702.180a: a card with harmonize may be cast from its owner's
+      // graveyard for its harmonize cost.
+      sourceZone = `${playerId}-graveyard`;
+    } else if (
       alternativeCost?.type === "escape" &&
       graveZone &&
       graveZone.cardIds.includes(cardId)
@@ -413,6 +429,8 @@ export function castSpell(
 
     // Track alternative costs used
     const alternativeCostsUsed: string[] = [];
+    /** Harmonize: the creature tapped to reduce the cost, tapped on cast. */
+    let harmonizeTapId: CardInstanceId | undefined;
 
     // Add kicker cost if spell is kicked (CR 702.85).
     // For multikicker (CR 702.85 multikicker variant) the cost is paid N times
@@ -587,8 +605,9 @@ export function castSpell(
           // printed text — mirrors the kicker pattern above (#2564).
           const cardScript = getCardScript(card.cardData.name);
           const scriptedFlashbackCost = cardScript?.flashback?.cost;
-          let flashbackCost: ReturnType<typeof parseFlashback>["flashbackCost"] =
-            null;
+          let flashbackCost: ReturnType<
+            typeof parseFlashback
+          >["flashbackCost"] = null;
           if (scriptedFlashbackCost) {
             flashbackCost = parseManaCost(scriptedFlashbackCost);
           } else {
@@ -605,6 +624,54 @@ export function castSpell(
             totalRed += flashbackCost.red - manaCost.red;
             totalGreen += flashbackCost.green - manaCost.green;
             alternativeCostsUsed.push("flashback");
+          }
+          break;
+        }
+        case "harmonize": {
+          // CR 702.180a - Harmonize: an alternative cost that replaces the
+          // mana cost, cast from the graveyard; the spell is exiled instead
+          // of going anywhere else when it leaves the stack. Only scripted
+          // cards declare it (`harmonize.cost`).
+          const harmonizeCost = getCardScript(card.cardData.name)?.harmonize
+            ?.cost;
+          if (!harmonizeCost) {
+            return {
+              success: false,
+              state,
+              error: "This card does not have harmonize.",
+            };
+          }
+          const hc = parseManaCost(harmonizeCost);
+          totalGeneric += hc.generic - manaCost.generic;
+          totalWhite += hc.white - manaCost.white;
+          totalBlue += hc.blue - manaCost.blue;
+          totalBlack += hc.black - manaCost.black;
+          totalRed += hc.red - manaCost.red;
+          totalGreen += hc.green - manaCost.green;
+          alternativeCostsUsed.push("harmonize");
+          // CR 702.180b: tap an untapped creature you control to reduce the
+          // cost by {X}, X its power. Only generic mana is reduced.
+          const tapId = alternativeCost.harmonizeTapCreature;
+          if (tapId !== undefined) {
+            const tapper = state.cards.get(tapId);
+            if (
+              !tapper ||
+              tapper.controllerId !== playerId ||
+              tapper.currentZoneKey !== `${playerId}-battlefield` ||
+              !isCreature(tapper) ||
+              tapper.isTapped
+            ) {
+              return {
+                success: false,
+                state,
+                error: "Harmonize must tap an untapped creature you control.",
+              };
+            }
+            totalGeneric = Math.max(
+              0,
+              totalGeneric - Math.max(0, getPower(tapper)),
+            );
+            harmonizeTapId = tapId;
           }
           break;
         }
@@ -1384,6 +1451,16 @@ export function castSpell(
         flashback: true,
         currentZoneKey: "stack",
       });
+    } else if (alternativeCost?.type === "harmonize") {
+      // CR 702.180b: the chosen creature is tapped as the cost is paid.
+      updatedCards = new Map(currentState.cards);
+      updatedCards.set(cardId, { ...card, currentZoneKey: "stack" });
+      if (harmonizeTapId !== undefined) {
+        const tapper = updatedCards.get(harmonizeTapId);
+        if (tapper) {
+          updatedCards.set(harmonizeTapId, { ...tapper, isTapped: true });
+        }
+      }
     } else if (kickerChargeCount > 0) {
       // CR 702.32, #2564 — Kicker: stamp the card with the `kicked` flag
       // so a permanent's ETB "if kicked" trigger can read it after the

@@ -498,8 +498,11 @@ function resolveSpellCompletion(
         //     this means exile instead of graveyard on resolution.
         const wasEscaped =
           stackObject.alternativeCostsUsed?.includes("escape") ?? false;
+        // Harmonize (CR 702.180a) exiles the same way as flashback.
         const wasFlashback =
-          stackObject.alternativeCostsUsed?.includes("flashback") ?? false;
+          (stackObject.alternativeCostsUsed?.includes("flashback") ||
+            stackObject.alternativeCostsUsed?.includes("harmonize")) ??
+          false;
         destinationZone =
           wasEscaped || wasFlashback
             ? `${card.controllerId}-exile`
