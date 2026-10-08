@@ -1,0 +1,7 @@
+{
+  "name": "Day of Judgment",
+  "oracle": "Destroy all creatures.",
+  "spell": [
+    { "op": "Destroy", "target": "all_creatures" }
+  ]
+}

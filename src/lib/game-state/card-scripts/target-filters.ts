@@ -38,11 +38,36 @@ export const REMOVAL_TARGETS = [
 export type RemovalTarget = (typeof REMOVAL_TARGETS)[number];
 
 /**
+ * What a scripted Destroy or Exile may sweep (#2594 follow-up, lane 12).
+ * "Destroy all creatures" (Day of Judgment, Fumigate) and "destroy all
+ * artifacts" (Ultima) need a "all <type>" target. The engine iterates the
+ * battlefield for the matching controller filter and applies the operation
+ * to each permanent. Regen shields (`indestructible`, `regenerate`) are
+ * still respected by `destroyCard`. The `controller` field of the schema
+ * narrows which player's battlefield is swept.
+ *
+ * Sweeper targets intentionally do NOT include "planeswalker" alone — the
+ * drafter surfaces a "destroy all" gap for creatures, artifacts,
+ * enchantments, and nonland permanents. Add to this list as new sweeper
+ * cards are surfaced.
+ */
+export const REMOVAL_ALL_TARGETS = [
+  "all_creatures",
+  "all_artifacts",
+  "all_enchantments",
+  "all_nonland_permanents",
+] as const;
+export type RemovalAllTarget = (typeof REMOVAL_ALL_TARGETS)[number];
+
+/**
  * A removal target plus optional power bounds ("creature with power 4 or
- * greater"). Power bounds only match creatures.
+ * greater"). Power bounds only match creatures. `target` accepts both the
+ * single-target set (`RemovalTarget`) and the sweeper set
+ * (`RemovalAllTarget`) — engine code paths distinguish by which set the
+ * value belongs to.
  */
 export interface RemovalFilter {
-  target: RemovalTarget;
+  target: RemovalTarget | RemovalAllTarget;
   min_power?: number;
   max_power?: number;
 }
@@ -83,6 +108,21 @@ export function matchesRemovalFilter(
       // Deadly Plot). `isPlaneswalker` checks the type line for
       // "Planeswalker".
       typeOk = isPlaneswalker(card);
+      break;
+    // Sweeper targets (lane 12, #2594 follow-up). The same predicate
+    // shape as the single-target case; the engine iterates over the
+    // battlefield in the sweeper branch.
+    case "all_creatures":
+      typeOk = isCreature(card);
+      break;
+    case "all_artifacts":
+      typeOk = hasType(card, "Artifact");
+      break;
+    case "all_enchantments":
+      typeOk = hasType(card, "Enchantment");
+      break;
+    case "all_nonland_permanents":
+      typeOk = !hasType(card, "Land");
       break;
   }
   if (!typeOk) return false;

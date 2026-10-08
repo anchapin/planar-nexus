@@ -52,6 +52,7 @@ import { PREDEFINED_TOKENS } from "./predefined-tokens";
 import {
   matchesController,
   matchesRemovalFilter,
+  REMOVAL_ALL_TARGETS,
   type RemovalFilter,
   type TargetController,
 } from "./target-filters";
@@ -817,6 +818,54 @@ function applyEffect(
       return { ...r.state, cards };
     }
     case "Destroy": {
+      // #2594 follow-up (lane 12): sweeper targets ("all_creatures",
+      // "all_artifacts", "all_enchantments", "all_nonland_permanents")
+      // iterate the battlefield instead of resolving a single target.
+      // When the source's controller hasn't narrowed the sweep via
+      // `controller`, every player's battlefield is affected
+      // (Day of Judgment, Fumigate). Otherwise only the matching
+      // controller's battlefield is swept.
+      if ((REMOVAL_ALL_TARGETS as readonly string[]).includes(effect.target)) {
+        let next = state;
+        const controllers = new Set<PlayerId>(state.players.keys());
+        if (effect.controller) {
+          // Narrow: only the source's controller or its opponent.
+          if (effect.controller === "you") {
+            if (!ctx.controllerId) return state;
+            controllers.clear();
+            controllers.add(ctx.controllerId);
+          } else {
+            // opponent — pick the one player whose id isn't the
+            // source controller (single-opponent 2-player games).
+            if (!ctx.controllerId) return state;
+            const opp = [...state.players.keys()].find(
+              (p) => p !== ctx.controllerId,
+            );
+            if (!opp) return state;
+            controllers.clear();
+            controllers.add(opp);
+          }
+        }
+        // Snapshot ids because `destroyCard` mutates zones.
+        const ids: CardInstanceId[] = [];
+        for (const playerId of controllers) {
+          const zone = state.zones.get(`${playerId}-battlefield`);
+          if (!zone) continue;
+          for (const id of zone.cardIds) {
+            const inst = next.cards.get(id);
+            if (!inst) continue;
+            // indestructible + regenerate shields are still respected
+            // by `destroyCard`. The filter also re-checks
+            // min_power/max_power for "all_creatures with power X+".
+            if (matchesRemovalFilter(inst, effect)) ids.push(id);
+          }
+        }
+        for (const id of ids) {
+          const r = destroyCard(next, id);
+          if (r.success) next = r.state;
+        }
+        return next;
+      }
       // A target that no longer matches is illegal: nothing happens (CR 608.2b).
       if (
         !target ||

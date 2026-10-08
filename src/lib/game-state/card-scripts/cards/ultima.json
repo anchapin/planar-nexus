@@ -1,0 +1,7 @@
+{
+  "name": "Ultima",
+  "oracle": "Destroy all artifacts.",
+  "spell": [
+    { "op": "Destroy", "target": "all_artifacts" }
+  ]
+}
