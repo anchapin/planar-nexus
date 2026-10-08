@@ -327,7 +327,12 @@ function effectTargetSpecs(effect: CardEffect): TriggerTargetSpec[] | null {
   }
   if (effect.op === "Pump" || effect.op === "PutCounters") {
     return [
-      { ...base, kind: "creature", controller: effect.controller ?? "any" },
+      {
+        ...base,
+        kind: "creature",
+        controller: effect.controller ?? "any",
+        optional: effect.op === "PutCounters" && Boolean(effect.optional),
+      },
     ];
   }
   if (effect.op === "ReturnFromZone") {

@@ -115,6 +115,7 @@ export function clearUntilEndOfTurnPT(state: GameState): GameState {
     if (
       !card.untilEndOfTurnPT &&
       !card.untilEndOfTurnKeywords &&
+      !card.untilEndOfTurnSubtypes &&
       !card.animatedUntilEndOfTurn
     )
       continue;
@@ -123,6 +124,7 @@ export function clearUntilEndOfTurnPT(state: GameState): GameState {
       ...card,
       untilEndOfTurnPT: undefined,
       untilEndOfTurnKeywords: undefined,
+      untilEndOfTurnSubtypes: undefined,
     };
     if (card.animatedUntilEndOfTurn) {
       updated.cardData = card.animatedUntilEndOfTurn.cardData;
