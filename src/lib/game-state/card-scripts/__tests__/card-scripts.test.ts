@@ -85,7 +85,6 @@ import { createCardInstance } from "../../card-instance";
 import {
   getEffectivePower,
   getEffectiveToughness,
-  hasKeyword,
 } from "../../evergreen-keywords";
 import type {
   CardInstance,
