@@ -11,7 +11,11 @@
  */
 import { z } from "zod";
 import { PREDEFINED_TOKEN_KINDS } from "./predefined-tokens";
-import { REMOVAL_ALL_TARGETS, REMOVAL_TARGETS, TARGET_CONTROLLERS } from "./target-filters";
+import {
+  REMOVAL_ALL_TARGETS,
+  REMOVAL_TARGETS,
+  TARGET_CONTROLLERS,
+} from "./target-filters";
 
 const amount = z.number().int().min(0);
 
@@ -873,6 +877,10 @@ export const TriggerSchema = z
       "cast",
       "phaseEnds",
       "lifeGain",
+      // targeted: a creature you control or a creature spell you control
+      // becomes the target of a spell or ability an opponent controls
+      // (#2614 Surrak, Elusive Hunter).
+      "targeted",
     ]),
     /**
      * etb, dies, attacks: whose entry, death or attack it watches
@@ -1327,6 +1335,22 @@ export const CardScriptSchema = z
         subtype: z.string().min(1),
       })
       .strict()
+      .optional(),
+    /**
+     * Land-play statics while this permanent is on the battlefield (#2614
+     * Icetill Explorer): "You may play an additional land on each of your
+     * turns" (`extra_land_plays`, CR 305.2) and "You may play lands from your
+     * graveyard" (`from_graveyard`).
+     */
+    land_rules: z
+      .object({
+        extra_land_plays: z.number().int().min(1).max(2).optional(),
+        from_graveyard: z.literal(true).optional(),
+      })
+      .strict()
+      .refine((r) => r.extra_land_plays !== undefined || r.from_graveyard, {
+        message: "land_rules needs extra_land_plays or from_graveyard",
+      })
       .optional(),
     harmonize: z
       .object({

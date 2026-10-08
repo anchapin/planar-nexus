@@ -7,6 +7,7 @@ import type {
 } from "./types";
 import { getGameMode } from "./format-rules";
 import { affinityReduction } from "./spell-casting/affinity";
+import { canPlayLandsFromGraveyard, extraLandPlays } from "./mana/land-rules";
 import {
   canTarget as canTargetKeyword,
   canBlockProtectedAttacker,
@@ -118,13 +119,16 @@ export class ValidationService {
         (gameMode as unknown as Record<string, unknown>).maxLandsPerTurn !==
           undefined
       ) {
-        return (gameMode as unknown as Record<string, unknown>)
-          .maxLandsPerTurn as number;
+        return (
+          ((gameMode as unknown as Record<string, unknown>)
+            .maxLandsPerTurn as number) + extraLandPlays(state, playerId)
+        );
       }
     }
 
-    // Fall back to player's maxLandsPerTurn (can be modified by effects)
-    return player.maxLandsPerTurn || 1;
+    // Fall back to player's maxLandsPerTurn (can be modified by effects),
+    // plus scripted "play an additional land" statics (#2614).
+    return (player.maxLandsPerTurn || 1) + extraLandPlays(state, playerId);
   }
 
   /**
@@ -245,7 +249,11 @@ export class ValidationService {
     }
 
     const handZone = state.zones.get(`${action.playerId}-hand`);
-    if (!handZone || !handZone.cardIds.includes(cardId)) {
+    const graveyardZone = state.zones.get(`${action.playerId}-graveyard`);
+    const fromGraveyard =
+      !!graveyardZone?.cardIds.includes(cardId) &&
+      canPlayLandsFromGraveyard(state, action.playerId);
+    if ((!handZone || !handZone.cardIds.includes(cardId)) && !fromGraveyard) {
       return {
         isValid: false,
         reason: "Card not in hand",

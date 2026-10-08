@@ -16,6 +16,7 @@ import type {
   StackObject,
   Target,
 } from "../types";
+import { fireTargetedTriggers } from "../keyword-actions/targeted";
 import { isCreature, getPower, getToughness } from "../card-instance";
 import { canTargetCard } from "../targeting-validation";
 import { getActivatedAbilities } from "../abilities/parse";
@@ -35,12 +36,7 @@ import {
 } from "../card-scripts/target-filters";
 
 export type TriggerTargetKind =
-  | "creature"
-  | "permanent"
-  | "player"
-  | "opponent"
-  | "any"
-  | "graveyard_card";
+  "creature" | "permanent" | "player" | "opponent" | "any" | "graveyard_card";
 
 export interface TriggerTargetSpec {
   kind: TriggerTargetKind;
@@ -211,7 +207,11 @@ function legalTargetsForSpec(
         ? controllerId
         : [...state.players.keys()].find((p) => p !== controllerId);
     if (graveyardOwner) {
-      for (const card of graveyardCards(state, graveyardOwner, spec.graveyardFilter)) {
+      for (const card of graveyardCards(
+        state,
+        graveyardOwner,
+        spec.graveyardFilter,
+      )) {
         ids.push(card.id);
       }
     }
@@ -710,12 +710,16 @@ export function chooseTriggerTargets(
   }));
   return {
     success: true,
-    state: {
-      ...state,
-      stack: state.stack.map((o) =>
-        o.id === stackObjectId ? { ...o, targets, targetsChosen: true } : o,
-      ),
-    },
+    // "Becomes the target" triggers (#2614 Surrak) once targets are chosen.
+    state: fireTargetedTriggers(
+      {
+        ...state,
+        stack: state.stack.map((o) =>
+          o.id === stackObjectId ? { ...o, targets, targetsChosen: true } : o,
+        ),
+      },
+      { targets, controllerId: obj.controllerId },
+    ),
   };
 }
 

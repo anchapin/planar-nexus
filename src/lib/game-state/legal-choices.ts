@@ -32,6 +32,7 @@
  * later slices of #2612.
  */
 import type { CardInstanceId, GameState, PlayerId, Target } from "./types";
+import { canPlayLandsFromGraveyard } from "./mana/land-rules";
 import { isPriorityPlayer } from "./priority-guard";
 import { canPlayLand, playLand } from "./mana/lands";
 import { castSpell, canCastSpell } from "./spell-casting/cast";
@@ -229,6 +230,14 @@ export function listPriorityChoices(
       continue;
     }
     choices.push(...spellChoices(state, playerId, cardId));
+  }
+  // "You may play lands from your graveyard" (#2614 Icetill Explorer).
+  if (landOk && canPlayLandsFromGraveyard(state, playerId)) {
+    for (const cardId of zoneCards(state, playerId, "graveyard")) {
+      if (isLandCard(state, cardId)) {
+        choices.push({ kind: "play_land", cardId });
+      }
+    }
   }
   for (const cardId of zoneCards(state, playerId, "battlefield")) {
     if (state.cards.get(cardId)?.controllerId !== playerId) continue;

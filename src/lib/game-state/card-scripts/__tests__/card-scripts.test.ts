@@ -57,6 +57,10 @@ import {
 import { activateAbility } from "../../abilities/activated";
 import { affinityReduction } from "../../spell-casting/affinity";
 import { refreshDomainPower } from "../../keyword-actions/domain";
+import { extraLandPlays } from "../../mana/land-rules";
+import { fireTargetedTriggers } from "../../keyword-actions/targeted";
+import { playLand } from "../../mana/lands";
+import { listPriorityChoices } from "../../legal-choices";
 import { parseManaFromEffect } from "../../abilities/mana";
 import { PREDEFINED_TOKENS } from "../predefined-tokens";
 import { declareAttackers, declareBlockers } from "../../combat/declaration";
@@ -8088,5 +8092,201 @@ describe("Lumbering Worldwagon: lands-count power, land search on enter or attac
     expect(after.cards.get(id("libbear"))!.currentZoneKey).toBe(
       `${p1}-library`,
     );
+  });
+});
+
+describe("Icetill Explorer: extra land, lands from graveyard, landfall mill (#2614)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+  const main = (s: GameState): GameState => ({
+    ...s,
+    turn: {
+      ...s.turn,
+      currentPhase: Phase.PRECOMBAT_MAIN,
+      activePlayerId: p1,
+    },
+    priorityPlayerId: p1,
+    stack: [],
+  });
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+    state = main(state);
+  });
+
+  it("adds a land play only while you control it", () => {
+    expect(extraLandPlays(state, p1)).toBe(0);
+    const s = put(
+      state,
+      p1,
+      "explorer",
+      card("Icetill Explorer", "Creature — Insect Scout", [2, 4]),
+    );
+    expect(extraLandPlays(s, p1)).toBe(1);
+    expect(extraLandPlays(s, p2)).toBe(0);
+  });
+
+  it("lets you play a second land in a turn", () => {
+    let s = put(
+      state,
+      p1,
+      "explorer",
+      card("Icetill Explorer", "Creature — Insect Scout", [2, 4]),
+    );
+    s = put(s, p1, "h1", card("Forest", "Basic Land — Forest", [0, 0]), "hand");
+    s = put(s, p1, "h2", card("Forest", "Basic Land — Forest", [0, 0]), "hand");
+    s = put(s, p1, "h3", card("Forest", "Basic Land — Forest", [0, 0]), "hand");
+    const one = playLand(s, p1, id("h1"));
+    expect(one.success).toBe(true);
+    const two = playLand(main(one.state), p1, id("h2"));
+    expect(two.success).toBe(true);
+    const three = playLand(main(two.state), p1, id("h3"));
+    expect(three.success).toBe(false);
+  });
+
+  it("plays a land from the graveyard only with the Explorer out", () => {
+    const s = put(
+      state,
+      p1,
+      "g1",
+      card("Forest", "Basic Land — Forest", [0, 0]),
+      "graveyard",
+    );
+    expect(playLand(s, p1, id("g1")).success).toBe(false);
+    const withExplorer = put(
+      s,
+      p1,
+      "explorer",
+      card("Icetill Explorer", "Creature — Insect Scout", [2, 4]),
+    );
+    expect(
+      listPriorityChoices(withExplorer, p1).some(
+        (c) => c.kind === "play_land" && c.cardId === id("g1"),
+      ),
+    ).toBe(true);
+    const r = playLand(withExplorer, p1, id("g1"));
+    expect(r.success).toBe(true);
+    expect(r.state.zones.get(`${p1}-battlefield`)!.cardIds).toContain(id("g1"));
+    expect(r.state.zones.get(`${p1}-graveyard`)!.cardIds).not.toContain(
+      id("g1"),
+    );
+  });
+
+  it("landfall mills a card", () => {
+    let s = put(
+      state,
+      p1,
+      "lib1",
+      card("Grizzly Bears", "Creature — Bear", [2, 2]),
+      "library",
+    );
+    s = resolveScriptedEffects(
+      s,
+      getCardScript("Icetill Explorer")!.triggers![0].effects!,
+      {
+        controllerId: p1,
+        sourceCardId: null as never,
+        targets: [],
+      } as unknown as StackObject,
+    );
+    expect(s.zones.get(`${p1}-graveyard`)!.cardIds).toContain(id("lib1"));
+  });
+
+  it("schema needs a land rule", () => {
+    expect(
+      CardScriptSchema.safeParse({
+        name: "X",
+        oracle: "x",
+        land_rules: {},
+        spell: [{ op: "GainLife", amount: 1, who: "you" }],
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("Surrak, Elusive Hunter: draw when an opponent targets your creatures (#2614)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+  const targeting = (controllerId: PlayerId, targetId: string) => ({
+    controllerId,
+    targets: [{ type: "card" as const, targetId, isValid: true }],
+  });
+  const surrakTriggers = (s: GameState) =>
+    s.stack.filter((o) => o.sourceCardId === id("surrak"));
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+    state = put(
+      state,
+      p1,
+      "surrak",
+      card(
+        "Surrak, Elusive Hunter",
+        "Legendary Creature — Human Warrior",
+        [4, 3],
+      ),
+    );
+    state = put(
+      state,
+      p1,
+      "bear",
+      card("Grizzly Bears", "Creature — Bear", [2, 2]),
+    );
+    state = put(
+      state,
+      p2,
+      "theirs",
+      card("Grizzly Bears", "Creature — Bear", [2, 2]),
+    );
+  });
+
+  it("triggers when an opponent targets a creature you control", () => {
+    const s = fireTargetedTriggers(state, targeting(p2, "bear"));
+    expect(surrakTriggers(s)).toHaveLength(1);
+    expect(surrakTriggers(s)[0].controllerId).toBe(p1);
+  });
+
+  it("ignores your own targeting and the opponent's own creatures", () => {
+    expect(
+      surrakTriggers(fireTargetedTriggers(state, targeting(p1, "bear"))),
+    ).toHaveLength(0);
+    expect(
+      surrakTriggers(fireTargetedTriggers(state, targeting(p2, "theirs"))),
+    ).toHaveLength(0);
+  });
+
+  it("triggers once per targeted creature", () => {
+    const s = fireTargetedTriggers(state, {
+      controllerId: p2,
+      targets: [
+        { type: "card", targetId: "bear", isValid: true },
+        { type: "card", targetId: "surrak", isValid: true },
+        { type: "card", targetId: "bear", isValid: true },
+      ],
+    } as never);
+    expect(surrakTriggers(s)).toHaveLength(2);
+  });
+
+  it("the trigger draws a card, and the spell can't be countered", () => {
+    expect(getCardScript("Surrak, Elusive Hunter")!.cantBeCountered).toBe(true);
+    const before = state.zones.get(`${p1}-hand`)!.cardIds.length;
+    const s = resolveScriptedEffects(
+      state,
+      getCardScript("Surrak, Elusive Hunter")!.triggers![0].effects!,
+      {
+        controllerId: p1,
+        sourceCardId: id("surrak"),
+        targets: [],
+      } as unknown as StackObject,
+    );
+    expect(s.zones.get(`${p1}-hand`)!.cardIds.length).toBe(before + 1);
   });
 });
