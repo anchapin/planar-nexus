@@ -1,0 +1,52 @@
+{
+  "name": "Demolition Field",
+  "oracle": "{T}: Add {C}.\n{2}, {T}, Sacrifice this land: Destroy target nonbasic land an opponent controls. That land's controller may search their library for a basic land card, put it onto the battlefield, then shuffle. You may search your library for a basic land card, put it onto the battlefield, then shuffle.",
+  "activated": [
+    {
+      "text": "Add {C}.",
+      "cost": {
+        "tap": true,
+        "sacrifice": false
+      },
+      "effects": [
+        {
+          "op": "AddMana",
+          "amount": 1,
+          "colors": ["C"]
+        }
+      ]
+    },
+    {
+      "text": "Destroy target nonbasic land an opponent controls. That land's controller may search their library for a basic land card, put it onto the battlefield, then shuffle. You may search your library for a basic land card, put it onto the battlefield, then shuffle.",
+      "cost": {
+        "mana": "{2}",
+        "tap": true,
+        "sacrifice": true
+      },
+      "effects": [
+        {
+          "op": "Destroy",
+          "target": "nonbasic_land",
+          "controller": "opponent"
+        },
+        {
+          "op": "SearchLibrary",
+          "who": "target_controller",
+          "filter": {
+            "basic_land": true
+          },
+          "destination": "battlefield",
+          "shuffle": true
+        },
+        {
+          "op": "SearchLibrary",
+          "filter": {
+            "basic_land": true
+          },
+          "destination": "battlefield",
+          "shuffle": true
+        }
+      ]
+    }
+  ]
+}

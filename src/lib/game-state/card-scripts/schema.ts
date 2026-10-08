@@ -593,7 +593,13 @@ export type SearchLibraryFilter = z.infer<typeof SearchLibraryFilterSchema>;
 export const SearchLibrarySchema = z
   .object({
     op: z.literal("SearchLibrary"),
-    who: z.enum(["you", "target_player"]).default("you"),
+    /**
+     * "target_controller": the controller of the previous effect's target
+     * (Demolition Field: "That land's controller may search their library
+     * ..."). Uses the target's last known controller (CR 608.2h) and does
+     * nothing when that target was illegal.
+     */
+    who: z.enum(["you", "target_player", "target_controller"]).default("you"),
     filter: SearchLibraryFilterSchema,
     destination: z
       .enum(["hand", "battlefield", "library_top", "library_bottom"])
