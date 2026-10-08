@@ -60,6 +60,12 @@ import { refreshDomainPower } from "../../keyword-actions/domain";
 import { extraLandPlays } from "../../mana/land-rules";
 import { fireTargetedTriggers } from "../../keyword-actions/targeted";
 import { playLand } from "../../mana/lands";
+import {
+  getPower,
+  getToughness,
+  isCreature as isCreatureCard,
+} from "../../card-instance";
+import { hasKeyword } from "../../evergreen-keywords";
 import { listPriorityChoices } from "../../legal-choices";
 import { parseManaFromEffect } from "../../abilities/mana";
 import { PREDEFINED_TOKENS } from "../predefined-tokens";
@@ -79,7 +85,6 @@ import { createCardInstance } from "../../card-instance";
 import {
   getEffectivePower,
   getEffectiveToughness,
-  hasKeyword,
 } from "../../evergreen-keywords";
 import type {
   CardInstance,
@@ -8607,5 +8612,101 @@ describe("Magda, the Hoardmaster: crimes make Treasures, three make a Dragon (#2
     const left = treasures(r.state);
     expect(left).toHaveLength(1);
     expect(left[0].id).not.toBe(first.id);
+  });
+});
+
+describe("Ba Sing Se: earthbend 2 and enters tapped unless basic (#2614)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  const earthbend2 = (s: GameState, targetId: string) =>
+    resolveScriptedSpell(
+      s,
+      {
+        name: "X",
+        oracle: "x",
+        spell: [{ op: "Earthbend", target: "land_you_control", amount: 2 }],
+      } as CardScript,
+      spell(p1, [cardTarget(targetId)]),
+    );
+  const main = (s: GameState, p: PlayerId): GameState => ({
+    ...s,
+    turn: { ...s.turn, currentPhase: Phase.PRECOMBAT_MAIN, activePlayerId: p },
+    priorityPlayerId: p,
+    stack: [],
+  });
+  const zoneOf = (s: GameState, cid: string) =>
+    s.cards.get(cid as CardInstanceId)?.currentZoneKey;
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1] = Array.from(state.players.keys());
+    state = put(state, p1, "forest", card("Forest", "Basic Land — Forest"));
+  });
+
+  it("validates Earthbend", () => {
+    const ok = (effect: object) =>
+      CardScriptSchema.safeParse({ name: "X", oracle: "x", spell: [effect] })
+        .success;
+    expect(ok({ op: "Earthbend", target: "land_you_control", amount: 2 })).toBe(
+      true,
+    );
+    expect(ok({ op: "Earthbend", target: "land_you_control", amount: 0 })).toBe(
+      false,
+    );
+  });
+
+  it("turns the land into a 0/0 haste creature with two +1/+1 counters", () => {
+    const s = earthbend2(state, id("forest"));
+    const land = s.cards.get(id("forest"))!;
+    expect(land.cardData.type_line).toMatch(/Land Creature/);
+    expect(isCreatureCard(land)).toBe(true);
+    expect(getEffectivePower(land)).toBe(2);
+    expect(getEffectiveToughness(land)).toBe(2);
+    expect(hasKeyword(land, "haste")).toBe(true);
+  });
+
+  it("returns to the battlefield tapped as a plain land when it dies", () => {
+    let s = earthbend2(state, id("forest"));
+    s = destroyCard(s, id("forest")).state;
+    s = checkStateBasedActions(s).state;
+    const land = s.cards.get(id("forest"))!;
+    expect(s.zones.get(`${p1}-battlefield`)!.cardIds).toContain(id("forest"));
+    expect(land.isTapped).toBe(true);
+    expect(land.earthbent).toBeUndefined();
+    expect(isCreatureCard(land)).toBe(false);
+  });
+
+  it("won't earthbend a nonland permanent", () => {
+    const s0 = put(
+      state,
+      p1,
+      "bear",
+      card("Grizzly Bears", "Creature — Bear", [2, 2]),
+    );
+    const s = earthbend2(s0, id("bear"));
+    expect(s.cards.get(id("bear"))!.earthbent).toBeUndefined();
+  });
+
+  it("enters untapped only while you control a basic land", () => {
+    const basing = {
+      ...card("Ba Sing Se", "Land"),
+      oracle_text:
+        "This land enters tapped unless you control a basic land.\n{T}: Add {G}.",
+    };
+    const withBasic = put(main(state, p1), p1, "bss", basing, "hand");
+    const a = playLand(withBasic, p1, id("bss"));
+    expect(a.success).toBe(true);
+    expect(a.state.cards.get(id("bss"))!.isTapped).toBe(false);
+
+    const bare = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    const q1 = Array.from(bare.players.keys())[0];
+    const noBasic = put(main(bare, q1), q1, "bss", basing, "hand");
+    const b = playLand(noBasic, q1, id("bss"));
+    expect(b.success).toBe(true);
+    expect(b.state.cards.get(id("bss"))!.isTapped).toBe(true);
   });
 });
