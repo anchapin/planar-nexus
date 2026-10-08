@@ -116,12 +116,17 @@ export class ReplacementEffectManager {
     event: ReplacementEvent,
     apnapOrder?: APNAPOrder,
     maxIterations: number = 100,
+    options?: { preventionAllowed?: boolean },
   ): ReplacementEvent {
+    const preventionAllowed = options?.preventionAllowed ?? true;
     let currentEvent = { ...event };
     const appliedEffectIds = new Set<string>();
     const eventTypeHistory: ReplacementEventType[] = [];
     let iterations = 0;
-    let possibleEffects = this.getApplicableEffects(currentEvent);
+    let possibleEffects = this.getApplicableEffects(
+      currentEvent,
+      preventionAllowed,
+    );
 
     // CR 614.4: If replacement effects would create an infinite loop,
     // no effect of the replacement effect chain applies.
@@ -168,9 +173,10 @@ export class ReplacementEffectManager {
           break;
         }
       }
-      possibleEffects = this.getApplicableEffects(currentEvent).filter(
-        (e) => !appliedEffectIds.has(e.id),
-      );
+      possibleEffects = this.getApplicableEffects(
+        currentEvent,
+        preventionAllowed,
+      ).filter((e) => !appliedEffectIds.has(e.id));
     }
 
     if (iterations >= maxIterations) {
@@ -182,6 +188,7 @@ export class ReplacementEffectManager {
     }
 
     if (
+      preventionAllowed &&
       currentEvent.type === "damage" &&
       currentEvent.amount > 0 &&
       currentEvent.targetId
@@ -226,8 +233,11 @@ export class ReplacementEffectManager {
       appliedEffectIds?: Set<string>;
       affectedPlayerId?: PlayerId;
       maxIterations?: number;
+      /** CR 615.12: false while "damage can't be prevented" applies. */
+      preventionAllowed?: boolean;
     },
   ): ReplacementProcessingOutcome {
+    const preventionAllowed = context?.preventionAllowed ?? true;
     const appliedEffectIds = new Set<string>(
       context?.appliedEffectIds ?? new Set<string>(),
     );
@@ -239,9 +249,10 @@ export class ReplacementEffectManager {
     let currentEvent = { ...event };
     const eventTypeHistory: ReplacementEventType[] = [];
     let iterations = 0;
-    let possibleEffects = this.getApplicableEffects(currentEvent).filter(
-      (e) => !appliedEffectIds.has(e.id),
-    );
+    let possibleEffects = this.getApplicableEffects(
+      currentEvent,
+      preventionAllowed,
+    ).filter((e) => !appliedEffectIds.has(e.id));
 
     while (possibleEffects.length > 0 && iterations < maxIterations) {
       iterations++;
@@ -286,9 +297,10 @@ export class ReplacementEffectManager {
             }
           }
         }
-        possibleEffects = this.getApplicableEffects(currentEvent).filter(
-          (e) => !appliedEffectIds.has(e.id),
-        );
+        possibleEffects = this.getApplicableEffects(
+          currentEvent,
+          preventionAllowed,
+        ).filter((e) => !appliedEffectIds.has(e.id));
         continue;
       }
 
@@ -319,9 +331,10 @@ export class ReplacementEffectManager {
           break;
         }
       }
-      possibleEffects = this.getApplicableEffects(currentEvent).filter(
-        (e) => !appliedEffectIds.has(e.id),
-      );
+      possibleEffects = this.getApplicableEffects(
+        currentEvent,
+        preventionAllowed,
+      ).filter((e) => !appliedEffectIds.has(e.id));
     }
 
     if (iterations >= maxIterations) {
@@ -333,6 +346,7 @@ export class ReplacementEffectManager {
     }
 
     if (
+      preventionAllowed &&
       currentEvent.type === "damage" &&
       currentEvent.amount > 0 &&
       currentEvent.targetId
@@ -584,8 +598,15 @@ export class ReplacementEffectManager {
     return false;
   }
 
-  private getApplicableEffects(event: ReplacementEvent): ReplacementAbility[] {
+  private getApplicableEffects(
+    event: ReplacementEvent,
+    preventionAllowed: boolean = true,
+  ): ReplacementAbility[] {
     return this.effects.filter((e) => {
+      // CR 615.12: prevention effects don't apply when damage can't be
+      // prevented.
+      if (!preventionAllowed && e.effectType === "damage_prevention")
+        return false;
       const typeMatches = this.effectTypeMatches(e.effectType, event.type);
       return typeMatches && e.canApply(event);
     });

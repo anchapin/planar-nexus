@@ -11,6 +11,7 @@
  * protection and the whole replacement pipeline. See the `dealDamageToCard`
  * body for the full rationale.
  */
+import { scriptRuleActive } from "./scripted-statics";
 import type { GameState, CardInstanceId } from "../types";
 import { getToughness, isCreature, addCounters } from "../card-instance";
 import {
@@ -42,9 +43,16 @@ export function dealDamageToCard(
     };
   }
 
+  // CR 615.12: "Damage can't be prevented" (Sunspine Lynx, #2614) turns
+  // off protection's prevention (CR 702.16e) and every prevention effect.
+  const preventionAllowed = !scriptRuleActive(
+    state,
+    "damage_cant_be_prevented",
+  );
+
   // CR 702.16C: Check if damage should be prevented due to protection
   // Protection from a color prevents all damage from sources of that color
-  if (sourceId) {
+  if (sourceId && preventionAllowed) {
     const source = state.cards.get(sourceId);
     if (source && shouldPreventDamageToTarget(card, source)) {
       return {
@@ -81,6 +89,7 @@ export function dealDamageToCard(
     apnapOrder,
     {
       affectedPlayerId: card.controllerId,
+      preventionAllowed,
     },
   );
 

@@ -13,6 +13,7 @@
  * - Protection/shroud checking during resolution
  */
 
+import { scriptRuleActive } from "./keyword-actions/scripted-statics";
 import { revealUntilInstantOrSorcery } from "./keyword-actions/grandeur";
 import type {
   GameState,
@@ -67,6 +68,8 @@ function applyLifelinkLifeGain(
   if (!sourceId || damageDealt <= 0) return state;
   const sourceCard = state.cards.get(sourceId);
   if (!sourceCard || !hasLifelink(sourceCard)) return state;
+  // CR 119.7: lifelink is life gain, so "players can't gain life" stops it.
+  if (scriptRuleActive(state, "players_cant_gain_life")) return state;
   const controllerId = sourceCard.controllerId;
   const controller = state.players.get(controllerId);
   if (!controller) return state;
@@ -145,6 +148,10 @@ export function resolveLifeGainEffect(
     };
   }
 
+  // CR 119.7: "Players can't gain life" (#2614).
+  if (amount > 0 && scriptRuleActive(state, "players_cant_gain_life")) {
+    return { success: true, state, description: "Players can't gain life" };
+  }
   const updatedPlayers = new Map(state.players);
   const updatedPlayer = {
     ...playerData,
@@ -411,7 +418,10 @@ export function resolvePlayerDamageEffect(
     state.turn.activePlayerId,
     Array.from(state.players.keys()),
   );
-  const processedEvent = rem.processEvent(replacementEvent, apnapOrder);
+  // CR 615.12: "Damage can't be prevented" (Sunspine Lynx, #2614).
+  const processedEvent = rem.processEvent(replacementEvent, apnapOrder, 100, {
+    preventionAllowed: !scriptRuleActive(state, "damage_cant_be_prevented"),
+  });
   const actualDamage = processedEvent.amount;
 
   if (actualDamage <= 0) {

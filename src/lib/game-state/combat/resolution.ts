@@ -5,6 +5,7 @@
  * Issue #817: First Strike and Double Strike combat implementation (CR 702.7, CR 702.4)
  */
 
+import { scriptRuleActive } from "../keyword-actions/scripted-statics";
 import type { GameState, CardInstanceId, PlayerId } from "../types";
 import { Phase, isOnBattlefield } from "../types";
 import { isCreature, getPower } from "../card-instance";
@@ -252,7 +253,10 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
             }
           }
 
-          if (attackerHasLifelink) {
+          if (
+            attackerHasLifelink &&
+            !scriptRuleActive(updatedState, "players_cant_gain_life")
+          ) {
             // Gain life equal to damage dealt
             const attackerController = updatedState.players.get(
               attackerCard.controllerId,
@@ -344,7 +348,10 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
         // damage became counters — lifelink keys off the damage the blocker
         // *assigns* in the assignment step, and infect on the *attacker* does
         // not change what the blocker is lifelinked for.
-        if (blockerHasLifelink) {
+        if (
+          blockerHasLifelink &&
+          !scriptRuleActive(updatedState, "players_cant_gain_life")
+        ) {
           const blockerController = updatedState.players.get(
             blockerCard.controllerId,
           );

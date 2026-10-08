@@ -66,8 +66,21 @@ export const DealDamageSchema = z
      * each_opponent is untargeted: damage to every opponent. opponent is
      * "target opponent" (#2614).
      */
-    target: z.enum(["any", "creature", "player", "opponent", "each_opponent"]),
+    target: z.enum([
+      "any",
+      "creature",
+      "player",
+      "opponent",
+      "each_opponent",
+      "each_player",
+    ]),
     controller,
+    /**
+     * Per-player amount for an untargeted each_player effect (#2614, Sunspine
+     * Lynx): "deals damage to each player equal to the number of nonbasic
+     * lands that player controls" is amount 1 per nonbasic land (CR 205.4a).
+     */
+    per: z.literal("nonbasic_land").optional(),
     /**
      * CR 702.33d — "If this spell was kicked, it deals N damage instead."
      * Set on the `if_kicked: true` variant of a damage effect that REPLACES
@@ -85,7 +98,10 @@ export const DealDamageSchema = z
   .refine(
     (e) => e.controller === undefined || e.target === "creature",
     controllerNeedsCreatureTarget,
-  );
+  )
+  .refine((e) => e.per === undefined || e.target === "each_player", {
+    message: "per only applies to each_player damage",
+  });
 
 export const DrawSchema = z
   .object({
@@ -927,6 +943,24 @@ export const StaticSchema = z
   });
 
 /**
+ * A rule-changing static ability (#2614, Sunspine Lynx), CR 604.1: "Players
+ * can't gain life" (CR 119.7) and "Damage can't be prevented" (CR 615.12).
+ * Active while the source is on the battlefield.
+ */
+export const RULE_STATICS = [
+  "players_cant_gain_life",
+  "damage_cant_be_prevented",
+] as const;
+
+export const RuleStaticSchema = z
+  .object({
+    /** The static's line of oracle text. */
+    text: z.string().min(1),
+    rule: z.enum(RULE_STATICS),
+  })
+  .strict();
+
+/**
  * The static ability an Equipment grants the equipped creature (issue
  * #2561). Layer 6 (keywords) and layer 7c (P/T), per CR 613.3 — same shape
  * as Aura bonuses in `refreshAuraBonuses`. No `affects`: the host is
@@ -1089,6 +1123,8 @@ export const CardScriptSchema = z
     activated: z.array(ActivatedSchema).min(1).optional(),
     /** A permanent's static abilities (the full list when present). */
     statics: z.array(StaticSchema).min(1).optional(),
+    /** Rule-changing statics ("Players can't gain life"), #2614. */
+    rules: z.array(RuleStaticSchema).min(1).optional(),
     /**
      * An Equipment card (issue #2561). When set, the card has an
      * attached-creature static and an "Equip" activated ability; the schema
@@ -1233,6 +1269,7 @@ export const CardScriptSchema = z
       s.triggers ||
       s.activated ||
       s.statics ||
+      s.rules ||
       s.equipment ||
       s.aura ||
       // #2566: a card with only `cycling` (no other ability) is legal —
@@ -1242,11 +1279,15 @@ export const CardScriptSchema = z
       s.cycling,
     {
       message:
-        "a card script needs spell, modes, triggers, activated, statics, equipment, aura, or cycling",
+        "a card script needs spell, modes, triggers, activated, statics, rules, equipment, aura, or cycling",
     },
   )
   .refine(
-    (s) => !((s.spell || s.modes) && (s.triggers || s.activated || s.statics)),
+    (s) =>
+      !(
+        (s.spell || s.modes) &&
+        (s.triggers || s.activated || s.statics || s.rules)
+      ),
     { message: "a spell script can't also have permanent abilities" },
   )
   .refine((s) => !(s.spell && s.modes), {
@@ -1279,6 +1320,8 @@ export type CardScript = z.infer<typeof CardScriptSchema>;
 export type ScriptedTrigger = z.infer<typeof TriggerSchema>;
 export type ScriptedActivated = z.infer<typeof ActivatedSchema>;
 export type ScriptedStatic = z.infer<typeof StaticSchema>;
+export type ScriptedRuleStatic = z.infer<typeof RuleStaticSchema>;
+export type RuleStatic = (typeof RULE_STATICS)[number];
 export type ScriptedModes = z.infer<typeof ModesSchema>;
 export type ScriptedEquipment = z.infer<typeof EquipmentSchema>;
 export type ScriptedEquipmentStatic = z.infer<typeof EquipmentStaticSchema>;

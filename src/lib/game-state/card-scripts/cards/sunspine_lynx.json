@@ -1,0 +1,29 @@
+{
+  "name": "Sunspine Lynx",
+  "oracle": "Players can't gain life.\nDamage can't be prevented.\nWhen this creature enters, it deals damage to each player equal to the number of nonbasic lands that player controls.",
+  "rules": [
+    {
+      "text": "Players can't gain life.",
+      "rule": "players_cant_gain_life"
+    },
+    {
+      "text": "Damage can't be prevented.",
+      "rule": "damage_cant_be_prevented"
+    }
+  ],
+  "triggers": [
+    {
+      "text": "When this creature enters, it deals damage to each player equal to the number of nonbasic lands that player controls.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "DealDamage",
+          "amount": 1,
+          "target": "each_player",
+          "per": "nonbasic_land"
+        }
+      ]
+    }
+  ]
+}
