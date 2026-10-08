@@ -8377,6 +8377,33 @@ describe("Keen-Eyed Curator: exile from a graveyard, grow with card types (#2614
     expect(s.cards.get(id("curator"))!.scriptStaticPT).toBeUndefined();
   });
 
+  it("a card re-exiled by another source loses its old link (CR 400.7)", () => {
+    let s = exileWithCurator(state, "g-creature");
+    const zones = new Map(s.zones);
+    const exile = zones.get(`${p2}-exile`)!;
+    zones.set(`${p2}-exile`, {
+      ...exile,
+      cardIds: exile.cardIds.filter((c) => c !== id("g-creature")),
+    });
+    const gy = zones.get(`${p2}-graveyard`)!;
+    zones.set(`${p2}-graveyard`, {
+      ...gy,
+      cardIds: [...gy.cardIds, id("g-creature")],
+    });
+    const cards = new Map(s.cards);
+    cards.set(id("g-creature"), {
+      ...cards.get(id("g-creature"))!,
+      currentZoneKey: `${p2}-graveyard`,
+    });
+    s = resolveScriptedEffects({ ...s, zones, cards }, exileEffects(), {
+      controllerId: p1,
+      sourceCardId: null,
+      targets: [{ type: "card", targetId: id("g-creature"), isValid: true }],
+    } as unknown as StackObject);
+    expect(s.zones.get(`${p2}-exile`)!.cardIds).toContain(id("g-creature"));
+    expect(s.cards.get(id("g-creature"))!.exiledWith).toBeUndefined();
+  });
+
   it("an exile by a card without the bonus leaves no link", () => {
     const s = resolveScriptedEffects(state, exileEffects(), {
       controllerId: p1,
