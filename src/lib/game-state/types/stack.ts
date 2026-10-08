@@ -106,6 +106,17 @@ export interface StackObject {
    */
   splitSecond?: boolean;
   /**
+   * #2594 — "This spell can't be countered." (Curator of Destinies,
+   * Koma, World-Eater, Sphinx of the Final Word.)
+   *
+   * Set on a spell's StackObject from a `cantBeCountered: true` shape
+   * on the script's `spell` (or by parsing the oracle text). When
+   * `true`, `counterSpell` returns a "this spell can't be countered"
+   * error so the spell resolves normally (CR 701.5a, the "this spell
+   * can't be countered" rider applies).
+   */
+  cantBeCountered?: boolean;
+  /**
    * Storm (CR 702.41).
    *
    * Set on a spell's StackObject when its Oracle text contains "Storm". Storm

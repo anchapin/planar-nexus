@@ -1064,6 +1064,16 @@ export const CardScriptSchema = z
     name: z.string().min(1),
     /** Oracle text the script was written against, for review and drift checks. */
     oracle: z.string().min(1),
+    /**
+     * #2594 — "This spell can't be countered." (Curator of Destinies,
+     * Koma, World-Eater, Sphinx of the Final Word.) When true, the
+     * engine's `castSpell` stamps `cantBeCountered: true` on the
+     * StackObject and `counterSpell` returns a clear "this spell
+     * can't be countered" error. The drafter can also mirror the
+     * clause in `oracle` and the legacy oracle-text parser will
+     * detect it (see `parseCantBeCountered`).
+     */
+    cantBeCountered: z.boolean().optional(),
     /** Effects of an instant or sorcery, applied in order on resolution. */
     spell: effects.optional(),
     /** A modal instant or sorcery's modes, instead of `spell`. */

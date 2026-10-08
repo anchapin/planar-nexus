@@ -131,6 +131,9 @@ export function copySpellOnStack(
     timesKicked: source.timesKicked,
     splitSecond: source.splitSecond,
     storm: source.storm,
+    // #2594: a "this spell can't be countered" rider carries through
+    // copies (Twincast, storm copies) — the copy has the same rider.
+    cantBeCountered: source.cantBeCountered,
     isCopy: true,
     effects: source.effects,
   };
