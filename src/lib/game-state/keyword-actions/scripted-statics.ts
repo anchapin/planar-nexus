@@ -8,7 +8,7 @@
  */
 import type { CardInstance, GameState } from "../types";
 import { getCardScript } from "../card-scripts/registry";
-import type { ScriptedStatic } from "../card-scripts/schema";
+import type { RuleStatic, ScriptedStatic } from "../card-scripts/schema";
 
 function battlefieldCards(state: GameState): CardInstance[] {
   const out: CardInstance[] = [];
@@ -96,4 +96,17 @@ export function refreshScriptedStatics(state: GameState): GameState {
     cards.set(cardId, updated);
   }
   return cards ? { ...state, cards } : state;
+}
+
+/**
+ * True while a permanent with the scripted rule-changing static is on the
+ * battlefield (#2614): "Players can't gain life" (CR 119.7), "Damage can't be
+ * prevented" (CR 615.12).
+ */
+export function scriptRuleActive(state: GameState, rule: RuleStatic): boolean {
+  for (const card of battlefieldCards(state)) {
+    const rules = getCardScript(card.cardData.name)?.rules;
+    if (rules?.some((r) => r.rule === rule)) return true;
+  }
+  return false;
 }

@@ -210,6 +210,19 @@ function firstControlledCreature(
   return undefined;
 }
 
+/** Nonbasic lands a player controls (CR 205.4a). */
+function nonbasicLandCount(state: GameState, playerId: PlayerId): number {
+  const zone = state.zones.get(`${playerId}-battlefield`);
+  let n = 0;
+  for (const id of zone?.cardIds ?? []) {
+    const card = state.cards.get(id);
+    if (!card || card.controllerId !== playerId) continue;
+    const typeLine = card.cardData.type_line ?? "";
+    if (/\bLand\b/.test(typeLine) && !/\bBasic\b/.test(typeLine)) n++;
+  }
+  return n;
+}
+
 function damagePlayer(
   state: GameState,
   amount: number,
@@ -568,6 +581,20 @@ function applyEffect(
         let next = state;
         for (const opp of opponentsOf(state, ctx.controllerId)) {
           next = damagePlayer(next, effect.amount, opp, ctx);
+        }
+        return next;
+      }
+      if (effect.target === "each_player") {
+        // CR 101.4: each player in APNAP order, active player first.
+        let next = state;
+        const ids = [...state.players.keys()];
+        const first = Math.max(0, ids.indexOf(state.turn.activePlayerId));
+        for (const pid of [...ids.slice(first), ...ids.slice(0, first)]) {
+          const amount =
+            effect.per === "nonbasic_land"
+              ? effect.amount * nonbasicLandCount(next, pid)
+              : effect.amount;
+          if (amount > 0) next = damagePlayer(next, amount, pid, ctx);
         }
         return next;
       }

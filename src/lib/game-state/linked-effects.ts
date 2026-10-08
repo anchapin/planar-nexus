@@ -10,6 +10,7 @@
  * When the second ability resolves, it looks up the linked object to apply its effect.
  */
 
+import { scriptRuleActive } from "./keyword-actions/scripted-statics";
 import type {
   CardInstanceId,
   GameState,
@@ -325,6 +326,8 @@ export function applyLinkedLifeGain(
 
   const player = state.players.get(playerId);
   if (!player) return state;
+  // CR 119.7: "Players can't gain life" (#2614).
+  if (scriptRuleActive(state, "players_cant_gain_life")) return state;
 
   const updatedPlayers = new Map(state.players);
   updatedPlayers.set(playerId, {
