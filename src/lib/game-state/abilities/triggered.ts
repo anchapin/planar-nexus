@@ -257,6 +257,16 @@ export function detectTriggeredAbilities(
             (ability.trigger.event === "abilityActivated" ||
               castTriggerMatches(state, card, ability.trigger, context));
           break;
+        case "chapter":
+          // CR 714.2b: a chapter ability triggers when lore counters bring
+          // the count from below its chapter number to at least it.
+          shouldTrigger =
+            ability.trigger.event === "chapter" &&
+            context?.sourceCardId === cardId &&
+            ability.trigger.chapter !== undefined &&
+            ability.trigger.chapter > (context.loreFrom ?? 0) &&
+            ability.trigger.chapter <= (context.loreTo ?? 0);
+          break;
         case "lifeGain":
           shouldTrigger = ability.trigger.event === "lifeGain";
           break;

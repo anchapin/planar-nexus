@@ -1,0 +1,17 @@
+{
+  "name": "Esper Origins // Summon: Esper Maduin",
+  "oracle": "Surveil 2. You gain 2 life. If this spell was cast from a graveyard, exile it, then put it onto the battlefield transformed under its owner's control with a finality counter on it. (If a creature with a finality counter on it would die, exile it instead.)\nFlashback {3}{G} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+  "spell": [
+    { "op": "Surveil", "amount": 2 },
+    { "op": "GainLife", "amount": 2, "who": "you" },
+    {
+      "op": "ReturnTransformed",
+      "if_cast_from": "graveyard",
+      "counter": "finality"
+    }
+  ],
+  "flashback": {
+    "cost": "{3}{G}",
+    "destinations": { "on_resolution": "exile" }
+  }
+}

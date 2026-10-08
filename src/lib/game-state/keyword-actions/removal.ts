@@ -1,4 +1,5 @@
 import { returnToFrontFace } from "./transform";
+import { addLoreCounters, isSaga } from "./saga";
 import { fireLandfallTriggers } from "./landfall";
 import { fireEntersTriggers } from "./enters";
 import { detectDiesTriggers } from "./dies";
@@ -382,6 +383,11 @@ export function moveCardToZone(
   cardId: CardInstanceId,
   targetZoneType: "graveyard" | "exile" | "hand" | "library" | "battlefield",
 ): KeywordActionResult {
+  // Finality counter (CR 122.1h): a creature with one that would die is
+  // exiled instead, so it never dies (#2614 Esper Origins).
+  if (targetZoneType === "graveyard" && hasFinalityCounter(state, cardId)) {
+    targetZoneType = "exile";
+  }
   // CR 603.10a: dies triggers look back at the battlefield before the move.
   const diesTriggers =
     targetZoneType === "graveyard" ? detectDiesTriggers(state, cardId) : [];
@@ -398,9 +404,25 @@ export function moveCardToZone(
     // CR 614.1c: "enters with" counters are on it before any trigger sees it.
     const withCounters = applyEntersWithCounters(result.state, cardId);
     const withLandfall = fireLandfallTriggers(withCounters, cardId);
-    return { ...result, state: fireEntersTriggers(withLandfall, cardId) };
+    const entered = fireEntersTriggers(withLandfall, cardId);
+    // CR 714.3a: a Saga enters with a lore counter (chapter I triggers).
+    const saga = entered.cards.get(cardId);
+    return {
+      ...result,
+      state: saga && isSaga(saga) ? addLoreCounters(entered, cardId) : entered,
+    };
   }
   return result;
+}
+
+function hasFinalityCounter(state: GameState, cardId: CardInstanceId): boolean {
+  const card = state.cards.get(cardId);
+  if (!card || !isCreatureOnCurrentFace(card)) return false;
+  const battlefield = state.zones.get(`${card.controllerId}-battlefield`);
+  if (!battlefield?.cardIds.includes(cardId)) return false;
+  return (
+    card.counters?.some((c) => c.type === "finality" && c.count > 0) ?? false
+  );
 }
 
 function moveCardToZoneWithoutTriggers(
