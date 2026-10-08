@@ -663,6 +663,12 @@ export const SearchLibrarySchema = z
      * with `tapped` on a battlefield search.
      */
     untap_if_lands: z.number().int().min(1).optional(),
+    /**
+     * Magmatic Hellkite: "puts it onto the battlefield tapped with a stun
+     * counter on it" (CR 122.1d). Stun counters on each found card. Only
+     * read with `tapped` on a battlefield search.
+     */
+    stun: z.number().int().min(1).optional(),
     if_kicked: ifKicked,
   })
   .strict();

@@ -15,7 +15,7 @@ import type {
 } from "../types";
 import { Phase } from "../types";
 import type { ScryfallCard } from "../types";
-import { createCardInstance, untapCard } from "../card-instance";
+import { createCardInstance, untapOrRemoveStun } from "../card-instance";
 import { createPlayerZones, createSharedZones } from "../zones";
 import { isPriorityPlayer } from "../priority-guard";
 import {
@@ -546,7 +546,7 @@ export function processUntapStep(state: GameState): UntapStepResult {
 
       let updatedCard = card;
       if (card.isTapped) {
-        updatedCard = untapCard(updatedCard);
+        updatedCard = untapOrRemoveStun(updatedCard);
       }
       if (card.hasSummoningSickness) {
         updatedCard = { ...updatedCard, hasSummoningSickness: false };

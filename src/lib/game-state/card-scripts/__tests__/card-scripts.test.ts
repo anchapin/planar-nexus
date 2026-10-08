@@ -7684,3 +7684,90 @@ describe("Smaug the Magnificent: Treasure-scaled attack damage (#2614)", () => {
     expect(ok("defending_player")).toBe(false);
   });
 });
+
+describe("Magmatic Hellkite: land destruction and stun counters (#2614)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+  const zoneOf = (s: GameState, cardId: string) =>
+    [...s.zones.entries()].find(([, z]) => z.cardIds.includes(id(cardId)))?.[0];
+  const stunOf = (s: GameState, cardId: string) =>
+    s.cards.get(id(cardId))!.counters.find((c) => c.type === "stun")?.count ??
+    0;
+  const etb = (targetId: string) =>
+    ({
+      id: "ab-magmatic",
+      type: "ability",
+      sourceCardId: id("hellkite"),
+      controllerId: p1,
+      text: getCardScript("Magmatic Hellkite")!.triggers![0].text,
+      targets: [cardTarget(targetId)],
+      triggered: true,
+      activated: false,
+    }) as unknown as StackObject;
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+  });
+
+  it("destroys the land and its controller fetches a stunned basic", () => {
+    let s = put(
+      state,
+      p1,
+      "hellkite",
+      card("Magmatic Hellkite", "Creature — Dragon", [4, 5]),
+    );
+    s = put(s, p2, "temple", card("Temple of Mystery", "Land"));
+    s = put(
+      s,
+      p2,
+      "their-lib",
+      card("Island", "Basic Land — Island"),
+      "library",
+    );
+    const [trigger] = getCardScript("Magmatic Hellkite")!.triggers!;
+    const after = resolveScriptedEffects(s, trigger.effects!, etb("temple"));
+    expect(zoneOf(after, "temple")).toBe(`${p2}-graveyard`);
+    expect(zoneOf(after, "their-lib")).toBe(`${p2}-battlefield`);
+    expect(after.cards.get(id("their-lib"))!.isTapped).toBe(true);
+    expect(stunOf(after, "their-lib")).toBe(1);
+  });
+
+  it("a stun counter is removed instead of untapping", () => {
+    let s = put(state, p1, "land", card("Mountain", "Basic Land — Mountain"));
+    const cards = new Map(s.cards);
+    cards.set(id("land"), {
+      ...cards.get(id("land"))!,
+      isTapped: true,
+      counters: [{ type: "stun", count: 1 }],
+    });
+    s = { ...s, cards };
+    const first = processUntapStep(s).state;
+    expect(first.cards.get(id("land"))!.isTapped).toBe(true);
+    expect(stunOf(first, "land")).toBe(0);
+    const second = processUntapStep(first).state;
+    expect(second.cards.get(id("land"))!.isTapped).toBe(false);
+  });
+
+  it("schema: stun is a positive count on SearchLibrary", () => {
+    const ok = (stun: number) =>
+      CardScriptSchema.safeParse({
+        name: "X",
+        oracle: "x",
+        spell: [
+          {
+            op: "SearchLibrary",
+            filter: { basic_land: true },
+            destination: "battlefield",
+            tapped: true,
+            stun,
+          },
+        ],
+      }).success;
+    expect(ok(1)).toBe(true);
+    expect(ok(0)).toBe(false);
+  });
+});

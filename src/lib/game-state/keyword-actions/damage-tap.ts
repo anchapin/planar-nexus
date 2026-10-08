@@ -13,7 +13,12 @@
  */
 import { scriptRuleActive } from "./scripted-statics";
 import type { GameState, CardInstanceId } from "../types";
-import { getToughness, isCreature, addCounters } from "../card-instance";
+import {
+  getToughness,
+  isCreature,
+  addCounters,
+  untapOrRemoveStun,
+} from "../card-instance";
 import {
   shouldPreventDamageToTarget,
   hasDeathtouch,
@@ -289,10 +294,8 @@ export function untapCardAction(
     };
   }
 
-  const updatedCard = {
-    ...card,
-    isTapped: false,
-  };
+  // CR 122.1d: a stun counter is removed instead of untapping.
+  const updatedCard = untapOrRemoveStun(card);
 
   const updatedCards = new Map(state.cards);
   updatedCards.set(cardId, updatedCard);
