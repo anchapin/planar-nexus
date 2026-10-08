@@ -56,6 +56,7 @@ import {
 } from "../../mana";
 import { activateAbility } from "../../abilities/activated";
 import { affinityReduction } from "../../spell-casting/affinity";
+import { refreshDomainPower } from "../../keyword-actions/domain";
 import { parseManaFromEffect } from "../../abilities/mana";
 import { PREDEFINED_TOKENS } from "../predefined-tokens";
 import { declareAttackers, declareBlockers } from "../../combat/declaration";
@@ -8003,5 +8004,89 @@ describe("Sapling Nursery: affinity for Forests, Treefolk tokens, indestructible
       ],
     };
     expect(CardScriptSchema.safeParse(bad).success).toBe(false);
+  });
+});
+
+describe("Lumbering Worldwagon: lands-count power, land search on enter or attack (#2614)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+  const wagon = () => getCardScript("Lumbering Worldwagon")!;
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+    state = put(
+      state,
+      p1,
+      "wagon",
+      card("Lumbering Worldwagon", "Artifact — Vehicle"),
+    );
+    const c = state.cards.get(id("wagon"))!;
+    const cards = new Map(state.cards);
+    cards.set(id("wagon"), {
+      ...c,
+      cardData: {
+        ...c.cardData,
+        power: "*",
+        toughness: "4",
+        oracle_text:
+          "This Vehicle's power is equal to the number of lands you control.\nWhenever this Vehicle enters or attacks, you may search your library for a basic land card, put it onto the battlefield tapped, then shuffle.\nCrew 4",
+      },
+    });
+    state = { ...state, cards };
+  });
+
+  it("power tracks the number of lands you control, not the opponent's", () => {
+    let s = put(state, p1, "f1", card("Forest", "Basic Land — Forest", [0, 0]));
+    s = put(s, p1, "f2", card("Forest", "Basic Land — Forest", [0, 0]));
+    s = put(s, p1, "dual", card("Dual", "Land — Forest Mountain", [0, 0]));
+    s = put(s, p2, "f3", card("Forest", "Basic Land — Forest", [0, 0]));
+    expect(refreshDomainPower(s).cards.get(id("wagon"))!.domainPower).toBe(3);
+    const more = put(
+      s,
+      p1,
+      "f4",
+      card("Forest", "Basic Land — Forest", [0, 0]),
+    );
+    expect(refreshDomainPower(more).cards.get(id("wagon"))!.domainPower).toBe(
+      4,
+    );
+  });
+
+  it("has an enters trigger and an attacks trigger with the same search", () => {
+    const events = wagon().triggers!.map((t) => t.event);
+    expect(events).toEqual(["etb", "attacks"]);
+    expect(wagon().triggers![0].effects).toEqual(wagon().triggers![1].effects);
+  });
+
+  it("the search puts a basic land onto the battlefield tapped", () => {
+    let s = put(
+      state,
+      p1,
+      "libforest",
+      card("Forest", "Basic Land — Forest", [0, 0]),
+      "library",
+    );
+    s = put(
+      s,
+      p1,
+      "libbear",
+      card("Grizzly Bears", "Creature — Bear", [2, 2]),
+      "library",
+    );
+    const after = resolveScriptedEffects(s, wagon().triggers![1].effects!, {
+      controllerId: p1,
+      sourceCardId: id("wagon"),
+      targets: [],
+    } as unknown as StackObject);
+    const land = after.cards.get(id("libforest"))!;
+    expect(land.currentZoneKey).toBe(`${p1}-battlefield`);
+    expect(land.isTapped).toBe(true);
+    expect(after.cards.get(id("libbear"))!.currentZoneKey).toBe(
+      `${p1}-library`,
+    );
   });
 });
