@@ -275,6 +275,12 @@ export function detectTriggeredAbilities(
             context.targetingPlayerId !== card.controllerId;
           break;
         }
+        case "crime":
+          // "Whenever you commit a crime" (CR 700.13, #2614 Magda).
+          shouldTrigger =
+            ability.trigger.event === "crime" &&
+            context?.targetingPlayerId === card.controllerId;
+          break;
         case "lifeLost":
           shouldTrigger = ability.trigger.event === "lifeLost";
           break;

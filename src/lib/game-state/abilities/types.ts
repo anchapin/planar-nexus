@@ -27,7 +27,8 @@ export type TriggerEvent =
   | "cleanupStep"
   | "stateTrigger"
   | "abilityActivated"
-  | "targeted";
+  | "targeted"
+  | "crime";
 
 export interface TriggerContext {
   sourceCardId?: CardInstanceId;

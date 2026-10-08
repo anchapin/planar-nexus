@@ -897,6 +897,9 @@ export const TriggerSchema = z
       // becomes the target of a spell or ability an opponent controls
       // (#2614 Surrak, Elusive Hunter).
       "targeted",
+      // crime: you target an opponent, anything they control, or a card in
+      // their graveyard (CR 700.13, #2614 Magda, the Hoardmaster).
+      "crime",
     ]),
     /**
      * etb, dies, attacks: whose entry, death or attack it watches
@@ -930,6 +933,8 @@ export const TriggerSchema = z
         "multicolored",
       ])
       .optional(),
+    /** crime only: "This ability triggers only once each turn." */
+    once_per_turn: z.literal(true).optional(),
     /** cast only: "a spell with a single target" (exactly one target). */
     targets: z.literal("single").optional(),
     effects: effects.optional(),
@@ -946,6 +951,9 @@ export const TriggerSchema = z
   })
   .refine((t) => t.event === "upkeep" || t.whose === undefined, {
     message: "whose is only for upkeep triggers",
+  })
+  .refine((t) => t.event === "crime" || t.once_per_turn === undefined, {
+    message: "once_per_turn is only for crime triggers",
   })
   .refine((t) => t.event === "attacks" || t.once === undefined, {
     message: "once is only for attacks triggers",
@@ -1000,6 +1008,17 @@ export const ActivatedSchema = z
           .optional(),
         tap: z.boolean().default(false),
         sacrifice: z.boolean().default(false),
+        /**
+         * "Sacrifice three Treasures" (#2614 Magda, the Hoardmaster): that
+         * many permanents of the subtype you control, sacrificed as a cost.
+         */
+        sacrifice_permanents: z
+          .object({
+            count: z.number().int().min(1).max(9),
+            subtype: z.string().min(1),
+          })
+          .strict()
+          .optional(),
         /**
          * #2594 follow-up: "Exile this artifact" as a cost (Phoenix Down,
          * Ether, Elixir — FIN #29, etc.). When true, the engine
