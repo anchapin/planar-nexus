@@ -1,0 +1,22 @@
+{
+  "name": "Smaug the Magnificent",
+  "oracle": "Flying, haste\nWhenever Smaug attacks, he deals damage equal to the number of Treasures you control to any target.\nAt the beginning of your upkeep, create a Treasure token.",
+  "triggers": [
+    {
+      "text": "Whenever Smaug attacks, he deals damage equal to the number of Treasures you control to any target.",
+      "event": "attacks",
+      "subject": "self",
+      "effects": [
+        { "op": "DealDamage", "amount": 1, "target": "any", "per": "treasure" }
+      ]
+    },
+    {
+      "text": "At the beginning of your upkeep, create a Treasure token.",
+      "event": "upkeep",
+      "whose": "you",
+      "effects": [
+        { "op": "CreatePredefinedToken", "token": "treasure", "count": 1 }
+      ]
+    }
+  ]
+}

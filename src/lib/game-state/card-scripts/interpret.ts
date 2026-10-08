@@ -223,6 +223,17 @@ function nonbasicLandCount(state: GameState, playerId: PlayerId): number {
   return n;
 }
 
+function treasureCount(state: GameState, playerId: PlayerId): number {
+  const zone = state.zones.get(`${playerId}-battlefield`);
+  let n = 0;
+  for (const id of zone?.cardIds ?? []) {
+    const card = state.cards.get(id);
+    if (!card || card.controllerId !== playerId) continue;
+    if (/\bTreasure\b/.test(card.cardData.type_line ?? "")) n++;
+  }
+  return n;
+}
+
 function artifactCount(state: GameState, playerId: PlayerId): number {
   const zone = state.zones.get(`${playerId}-battlefield`);
   let n = 0;
@@ -651,10 +662,15 @@ function applyEffect(
       // the "instead" rule rather than adding the default +1 per kick. The
       // un-kicked effect (no `if_kicked` or `if_kicked: false`) supplies
       // the base amount; the kicked effect supplies the replacement.
-      const damageAmount =
+      const baseAmount =
         ctx.wasKicked && effect.kickedAmount !== undefined
           ? effect.kickedAmount
           : effect.amount;
+      const damageAmount =
+        effect.per === "treasure"
+          ? baseAmount * treasureCount(state, ctx.controllerId)
+          : baseAmount;
+      if (effect.per === "treasure" && damageAmount <= 0) return state;
       const stackEffect: {
         effectType: "damage";
         amount: number;
