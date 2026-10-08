@@ -39,7 +39,10 @@ import {
 import { startDiscard } from "../keyword-actions/discard-choice";
 import { addCounters, isCreature } from "../card-instance";
 import { getEffectivePower } from "../evergreen-keywords";
-import { addUntilEndOfTurnKeywords } from "../pt-until-end-of-turn";
+import {
+  addUntilEndOfTurnKeywords,
+  animateUntilEndOfTurn,
+} from "../pt-until-end-of-turn";
 import { copySpellOnStack } from "../spell-casting/resolve";
 import { attachEquipment } from "../keyword-actions/equip";
 import {
@@ -1188,6 +1191,20 @@ function applyEffect(
       return copyTriggeringSpell(state, effect.gain ?? [], ctx);
     case "SearchLibrary":
       return searchLibrary(state, effect, ctx);
+    case "Animate": {
+      // #2614 Soulstone Sanctuary: the source becomes a creature until end
+      // of turn; it keeps its other types ("It's still a land").
+      const cardId = ctx.sourceId;
+      if (!cardId || !isOnBattlefield(state, cardId)) return state;
+      const animated = animateUntilEndOfTurn(state, cardId, {
+        power: effect.power,
+        toughness: effect.toughness,
+        allCreatureTypes: effect.all_creature_types === true,
+      });
+      return effect.keywords
+        ? addUntilEndOfTurnKeywords(animated, cardId, effect.keywords)
+        : animated;
+    }
     case "ShuffleLibrary": {
       const who = effect.who ?? "you";
       const player = playerFor(who, ctx);

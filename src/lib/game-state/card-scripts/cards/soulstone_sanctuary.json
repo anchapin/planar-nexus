@@ -1,0 +1,25 @@
+{
+  "name": "Soulstone Sanctuary",
+  "oracle": "{T}: Add {C}.\n{4}: This land becomes a 3/3 creature with vigilance and all creature types. It's still a land.",
+  "activated": [
+    {
+      "text": "Add {C}.",
+      "cost": { "tap": true, "sacrifice": false },
+      "effects": [{ "op": "AddMana", "amount": 1, "colors": ["C"] }]
+    },
+    {
+      "text": "This land becomes a 3/3 creature with vigilance and all creature types. It's still a land.",
+      "cost": { "mana": "{4}", "tap": false, "sacrifice": false },
+      "effects": [
+        {
+          "op": "Animate",
+          "target": "self",
+          "power": 3,
+          "toughness": 3,
+          "keywords": ["vigilance"],
+          "all_creature_types": true
+        }
+      ]
+    }
+  ]
+}

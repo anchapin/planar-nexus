@@ -774,6 +774,23 @@ export const ShuffleLibrarySchema = z
   })
   .strict();
 
+/**
+ * "This land becomes a 3/3 creature with vigilance and all creature types.
+ * It's still a land." (#2614 Soulstone Sanctuary, CR 611.2a, layer 4/6/7b).
+ * Until end of turn the source keeps its types and adds Creature, with the
+ * given base power and toughness and keywords.
+ */
+export const AnimateSchema = z
+  .object({
+    op: z.literal("Animate"),
+    target: z.literal("self"),
+    power: z.number().int().min(0),
+    toughness: z.number().int().min(0),
+    keywords: z.array(z.enum(EQUIPMENT_KEYWORDS)).min(1).optional(),
+    all_creature_types: z.literal(true).optional(),
+  })
+  .strict();
+
 export const EffectSchema = z.discriminatedUnion("op", [
   DealDamageSchema,
   DrawSchema,
@@ -803,6 +820,7 @@ export const EffectSchema = z.discriminatedUnion("op", [
   AddManaSchema,
   GrantKeywordSchema,
   CantBeBlockedSchema,
+  AnimateSchema,
 ]);
 
 /** True when no non-Discard effect follows a Discard (#2536). */

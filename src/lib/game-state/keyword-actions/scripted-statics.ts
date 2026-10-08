@@ -9,6 +9,7 @@
 import type { CardInstance, GameState } from "../types";
 import { getCardScript } from "../card-scripts/registry";
 import type { RuleStatic, ScriptedStatic } from "../card-scripts/schema";
+import { restoreAnimatedOffBattlefield } from "../pt-until-end-of-turn";
 
 function battlefieldCards(state: GameState): CardInstance[] {
   const out: CardInstance[] = [];
@@ -87,14 +88,19 @@ export function staticAffects(
   if (other && source.id === target.id) return false;
   const sameController = source.controllerId === target.controllerId;
   if (controller === "you" ? !sameController : sameController) return false;
-  return !subtype || subtypesOf(target).includes(subtype);
+  return (
+    !subtype ||
+    Boolean(target.animatedUntilEndOfTurn?.allCreatureTypes) ||
+    subtypesOf(target).includes(subtype)
+  );
 }
 
 /**
  * Recompute `scriptStaticPT` and `scriptStaticKeywords` for every card.
  * Returns the same state object when nothing changed.
  */
-export function refreshScriptedStatics(state: GameState): GameState {
+export function refreshScriptedStatics(input: GameState): GameState {
+  const state = restoreAnimatedOffBattlefield(input);
   const onField = battlefieldCards(state);
   const sources: { card: CardInstance; statics: ScriptedStatic[] }[] = [];
   for (const card of onField) {

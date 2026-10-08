@@ -8,6 +8,8 @@ import { getCardScript } from "../card-scripts/registry";
 
 /** True when the card's type line lists `subtype` after the dash. */
 export function hasSubtype(card: CardInstance, subtype: string): boolean {
+  // "All creature types" (#2614 Soulstone Sanctuary, CR 205.3m).
+  if (card.animatedUntilEndOfTurn?.allCreatureTypes) return true;
   const typeLine = card.cardData.type_line || "";
   const front = typeLine.split(" // ")[0];
   const parts = front.split(/\s+[—-]\s+/);
