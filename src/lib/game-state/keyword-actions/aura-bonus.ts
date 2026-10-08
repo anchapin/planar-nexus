@@ -103,6 +103,10 @@ export function refreshAuraBonuses(state: GameState): GameState {
   const keywords = new Map<string, string[]>();
   const restrictAttack = new Map<string, string[]>();
   const restrictBlock = new Map<string, string[]>();
+  // #2594 #9: "doesn't untap during your untap step" — the engine
+  // surfaces these to the enchanted card as `auraRestrictUntap` so
+  // `processUntapStep` can skip the untap (CR 303.4d / 502.2).
+  const restrictUntap = new Map<string, string[]>();
 
   for (const aura of onField) {
     const target = aura.attachedToId;
@@ -162,6 +166,14 @@ export function refreshAuraBonuses(state: GameState): GameState {
         if (!list.includes(aura.cardData.name)) list.push(aura.cardData.name);
         restrictBlock.set(target, list);
       }
+      // #2594 #9: surface the "doesn't untap" restriction. Same shape
+      // as restrictAttack / restrictBlock — a list of aura names so
+      // the consumer can show "Starlight Snare prevents untapping."
+      if (scriptedStatic.restrictUntap) {
+        const list = restrictUntap.get(target) ?? [];
+        if (!list.includes(aura.cardData.name)) list.push(aura.cardData.name);
+        restrictUntap.set(target, list);
+      }
     }
   }
 
@@ -182,12 +194,15 @@ export function refreshAuraBonuses(state: GameState): GameState {
     const wasRA = card.auraRestrictAttack ?? [];
     const nextRB = restrictBlock.get(cardId) ?? [];
     const wasRB = card.auraRestrictBlock ?? [];
+    const nextRU = restrictUntap.get(cardId) ?? [];
+    const wasRU = card.auraRestrictUntap ?? [];
     if (
       (was?.power ?? 0) === (next?.power ?? 0) &&
       (was?.toughness ?? 0) === (next?.toughness ?? 0) &&
       nextKw.join("|") === wasKw.join("|") &&
       sameStringList(wasRA, nextRA) &&
-      sameStringList(wasRB, nextRB)
+      sameStringList(wasRB, nextRB) &&
+      sameStringList(wasRU, nextRU)
     ) {
       continue;
     }
@@ -201,6 +216,8 @@ export function refreshAuraBonuses(state: GameState): GameState {
     else delete updated.auraRestrictAttack;
     if (nextRB.length > 0) updated.auraRestrictBlock = nextRB;
     else delete updated.auraRestrictBlock;
+    if (nextRU.length > 0) updated.auraRestrictUntap = nextRU;
+    else delete updated.auraRestrictUntap;
     cards.set(cardId, updated);
   }
   return cards ? { ...state, cards } : state;

@@ -1,0 +1,12 @@
+{
+  "name": "Starlight Snare",
+  "oracle": "Enchant creature\nEnchanted creature doesn't untap during your untap step.",
+  "aura": {
+    "text": "Enchanted creature doesn't untap during your untap step.",
+    "target": "creature",
+    "static": {
+      "text": "Enchanted creature doesn't untap during your untap step.",
+      "restrictUntap": true
+    }
+  }
+}
