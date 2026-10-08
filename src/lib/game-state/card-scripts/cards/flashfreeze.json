@@ -1,0 +1,7 @@
+{
+  "name": "Flashfreeze",
+  "oracle": "Counter target red or green spell.",
+  "spell": [
+    { "op": "Counter", "target": "spell", "colors": ["R", "G"] }
+  ]
+}

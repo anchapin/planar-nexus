@@ -176,6 +176,24 @@ function effectTargetLegal(
     }
     return true;
   }
+  // #2594 follow-up (lane 13): "Counter target red or green spell"
+  // (Flashfreeze) — the targeted spell's source card must have at
+  // least one color in the script's `colors` filter. The spell is
+  // a stack object; its colors come from the underlying source
+  // card's color identity. A spell whose source card has no
+  // colors (e.g. a colorless artifact spell) is not legal.
+  if (effect.op === "Counter" && effect.colors && effect.colors.length > 0) {
+    if (target.type !== "stack") return false;
+    const so = state.stack.find((o) => o.id === target.targetId);
+    if (!so) return false;
+    const sourceCard = so.sourceCardId
+      ? state.cards.get(so.sourceCardId as CardInstanceId)
+      : undefined;
+    const cardData = sourceCard?.cardData;
+    const identity: string[] = cardData?.color_identity ?? [];
+    const matches = effect.colors.some((c) => identity.includes(c));
+    return matches;
+  }
   return targetStillLegal(state, target);
 }
 
