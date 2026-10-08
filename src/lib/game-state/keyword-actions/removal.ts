@@ -21,6 +21,7 @@ import {
 } from "../card-instance";
 import { hasIndestructibleKeyword } from "./indestructible";
 import { KeywordActionResult } from "./shared";
+import { getCardScript } from "../card-scripts/registry";
 
 /**
  * Check if a card has indestructible
@@ -544,6 +545,15 @@ function moveCardToZoneWithoutTriggers(
     };
     // Initialize loyalty counters for planeswalkers (CR 306.5b)
     updatedCard = initializePlaneswalkerLoyalty(updatedCard);
+    // #2594 follow-up (lane 19): "This creature enters the
+    // battlefield tapped." (Diregraf Ghoul — FDN #80.) When the
+    // script's `entersTapped` flag is set, stamp isTapped here
+    // (the engine's ETB triggers below fire as the card is
+    // already on the battlefield with the tapped state set).
+    const script = getCardScript(card.cardData.name);
+    if (script?.entersTapped) {
+      updatedCard = { ...updatedCard, isTapped: true };
+    }
   }
 
   // Update zones
