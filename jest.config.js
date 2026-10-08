@@ -85,7 +85,7 @@ module.exports = {
   // See: https://github.com/anchapin/planar-nexus/issues/922
   coverageThreshold: {
     global: {
-      branches: 57,
+      branches: 58,
       functions: 59,
       lines: 67,
       statements: 66,
