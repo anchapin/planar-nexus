@@ -13,6 +13,7 @@ import type {
   Target,
   Zone,
 } from "../types";
+import { hasSubtype } from "../spell-casting/affinity";
 import {
   resolveCardDrawEffect,
   resolveCounterEffect,
@@ -995,7 +996,12 @@ function applyEffect(
         const battlefield = state.zones.get(battlefieldKey);
         if (!battlefield) return state;
         let next: GameState = state;
+        const subtypes = effect.subtypes;
         for (const id of battlefield.cardIds) {
+          if (subtypes) {
+            const card = state.cards.get(id);
+            if (!card || !subtypes.some((t) => hasSubtype(card, t))) continue;
+          }
           next = addUntilEndOfTurnKeyword(next, id, effect.keyword);
         }
         return next;

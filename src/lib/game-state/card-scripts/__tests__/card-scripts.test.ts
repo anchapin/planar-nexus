@@ -55,6 +55,7 @@ import {
   parseManaAbility,
 } from "../../mana";
 import { activateAbility } from "../../abilities/activated";
+import { affinityReduction } from "../../spell-casting/affinity";
 import { parseManaFromEffect } from "../../abilities/mana";
 import { PREDEFINED_TOKENS } from "../predefined-tokens";
 import { declareAttackers, declareBlockers } from "../../combat/declaration";
@@ -64,7 +65,11 @@ import { Phase } from "../../types";
 import { refreshAuraBonuses } from "../../keyword-actions/aura-bonus";
 import { attachAura } from "../../keyword-actions/enchant";
 import { canAttack, canBlock } from "../../combat/queries";
-import { createInitialGameState, startGame, processUntapStep } from "../../game-state";
+import {
+  createInitialGameState,
+  startGame,
+  processUntapStep,
+} from "../../game-state";
 import { createCardInstance } from "../../card-instance";
 import {
   getEffectivePower,
@@ -1136,15 +1141,9 @@ describe("destroy and exile target filters (#2528, #2594 #14)", () => {
   });
 
   const matching = (filter: Parameters<typeof matchesRemovalFilter>[1]) =>
-    [
-      "bear",
-      "giant",
-      "rock",
-      "aura",
-      "golem",
-      "forest",
-      "planeswalker",
-    ].filter((c) => matchesRemovalFilter(state.cards.get(id(c))!, filter));
+    ["bear", "giant", "rock", "aura", "golem", "forest", "planeswalker"].filter(
+      (c) => matchesRemovalFilter(state.cards.get(id(c))!, filter),
+    );
 
   it("matches permanents by type and creatures by power", () => {
     expect(matching({ target: "artifact" })).toEqual(["rock", "golem"]);
@@ -4687,31 +4686,11 @@ describe("scripted GrantKeyword (#2567)", () => {
     // enchantment under p1's control. The artifact and enchantment
     // would be skipped by the v1 creature-only path.
     let s0 = f.state;
-    s0 = put(
-      s0,
-      f.p1,
-      "bear",
-      card("Bear", "Creature — Bear", [2, 2]),
-    );
-    s0 = put(
-      s0,
-      f.p1,
-      "rock",
-      card("Rock", "Artifact"),
-    );
-    s0 = put(
-      s0,
-      f.p1,
-      "bestow",
-      card("Bestow Test", "Enchantment — Aura"),
-    );
+    s0 = put(s0, f.p1, "bear", card("Bear", "Creature — Bear", [2, 2]));
+    s0 = put(s0, f.p1, "rock", card("Rock", "Artifact"));
+    s0 = put(s0, f.p1, "bestow", card("Bestow Test", "Enchantment — Aura"));
     // An opponent's creature that should NOT be granted indestructible.
-    s0 = put(
-      s0,
-      f.p2,
-      "theirs",
-      card("Foe", "Creature — Beast", [1, 1]),
-    );
+    s0 = put(s0, f.p2, "theirs", card("Foe", "Creature — Beast", [1, 1]));
 
     const s = resolveScriptedSpell(s0, getCardScript("Boros Charm")!, {
       ...spell(f.p1, []),
@@ -4735,10 +4714,17 @@ describe("scripted GrantKeyword (#2567)", () => {
     // Empty battlefield — the fan-out iterates over zero cards and
     // returns the state unchanged.
     const s = resolveScriptedSpell(
-      { ...f.state, players: new Map(f.state.players).set(f.p1, {
-        ...f.state.players.get(f.p1)!,
-        manaPool: { ...f.state.players.get(f.p1)!.manaPool, white: 0, red: 0 },
-      }) },
+      {
+        ...f.state,
+        players: new Map(f.state.players).set(f.p1, {
+          ...f.state.players.get(f.p1)!,
+          manaPool: {
+            ...f.state.players.get(f.p1)!.manaPool,
+            white: 0,
+            red: 0,
+          },
+        }),
+      },
       getCardScript("Boros Charm")!,
       {
         ...spell(f.p1, []),
@@ -5249,12 +5235,7 @@ describe("scripted Aura restrictUntap (#2594 #9)", () => {
       "bear",
       card("Grizzly Bears", "Creature — Bear", [2, 2]),
     );
-    s0 = put(
-      s0,
-      p1,
-      "snare",
-      card("Starlight Snare", "Enchantment — Aura"),
-    );
+    s0 = put(s0, p1, "snare", card("Starlight Snare", "Enchantment — Aura"));
     s0 = attachAura(s0, id("snare"), id("bear"));
     s0 = refreshAuraBonuses(s0);
     // Tap the bear so the untap step would ordinarily untap it.
@@ -5281,12 +5262,7 @@ describe("scripted Aura restrictUntap (#2594 #9)", () => {
       "bear",
       card("Grizzly Bears", "Creature — Bear", [2, 2]),
     );
-    s0 = put(
-      s0,
-      p1,
-      "snare",
-      card("Starlight Snare", "Enchantment — Aura"),
-    );
+    s0 = put(s0, p1, "snare", card("Starlight Snare", "Enchantment — Aura"));
     s0 = attachAura(s0, id("snare"), id("bear"));
     s0 = refreshAuraBonuses(s0);
     // Tap + run the untap step — bear stays tapped.
@@ -5354,18 +5330,8 @@ describe("scripted Aura restrictUntap (#2594 #9)", () => {
       "bear",
       card("Grizzly Bears", "Creature — Bear", [2, 2]),
     );
-    s0 = put(
-      s0,
-      p1,
-      "friend",
-      card("Ally", "Creature — Human", [1, 1]),
-    );
-    s0 = put(
-      s0,
-      p1,
-      "snare",
-      card("Starlight Snare", "Enchantment — Aura"),
-    );
+    s0 = put(s0, p1, "friend", card("Ally", "Creature — Human", [1, 1]));
+    s0 = put(s0, p1, "snare", card("Starlight Snare", "Enchantment — Aura"));
     s0 = attachAura(s0, id("snare"), id("bear"));
     s0 = refreshAuraBonuses(s0);
     // Tap both bear and friend.
@@ -6599,8 +6565,7 @@ describe("scripted cycling (#2566)", () => {
   // the engine's `parseCycling` / `cycleCard` paths can find it (v1).
   const hillGigasScript: CardScript = {
     name: "Test Hill Gigas",
-    oracle:
-      "{5}{R}\nCycling {2} ({2}, Discard this card: Draw a card.)",
+    oracle: "{5}{R}\nCycling {2} ({2}, Discard this card: Draw a card.)",
     cycling: { cost: "{2}", variant: "cycling" },
   };
   // A typecycling card to exercise the variant effect text.
@@ -6611,16 +6576,16 @@ describe("scripted cycling (#2566)", () => {
   };
 
   beforeAll(() =>
-    registerCardScripts([...RAW_CARD_SCRIPTS, hillGigasScript, wizardCyclerScript]),
+    registerCardScripts([
+      ...RAW_CARD_SCRIPTS,
+      hillGigasScript,
+      wizardCyclerScript,
+    ]),
   );
   afterAll(() => registerCardScripts(RAW_CARD_SCRIPTS));
 
   it("getActivatedAbilities synthesizes a Cycling {cost} ability", () => {
-    const hillGigas = card(
-      "Test Hill Gigas",
-      "Creature — Giant",
-      [3, 3],
-    );
+    const hillGigas = card("Test Hill Gigas", "Creature — Giant", [3, 3]);
     const abilities = getActivatedAbilities(hillGigas);
     expect(abilities).toHaveLength(1);
     const a = abilities[0];
@@ -6638,11 +6603,7 @@ describe("scripted cycling (#2566)", () => {
   });
 
   it("getActivatedAbilities synthesizes a typecycling ability with the named type", () => {
-    const wiz = card(
-      "Test Wizard Cycler",
-      "Creature — Human Wizard",
-      [1, 1],
-    );
+    const wiz = card("Test Wizard Cycler", "Creature — Human Wizard", [1, 1]);
     const abilities = getActivatedAbilities(wiz);
     expect(abilities).toHaveLength(1);
     expect(abilities[0].effect).toBe("Wizardcycling {2}.");
@@ -6653,11 +6614,7 @@ describe("scripted cycling (#2566)", () => {
   it("a cycling card with no other ability is valid and surfaces one ability", () => {
     // The schema's required-field refine explicitly allows
     // `cycling`-only scripts; confirm the synthesis still works.
-    const hillGigas = card(
-      "Test Hill Gigas",
-      "Creature — Giant",
-      [3, 3],
-    );
+    const hillGigas = card("Test Hill Gigas", "Creature — Giant", [3, 3]);
     const abilities = getActivatedAbilities(hillGigas);
     expect(abilities).toHaveLength(1);
     expect(abilities[0].effect).toMatch(/^Cycling /);
@@ -6681,11 +6638,7 @@ describe("scripted cycling (#2566)", () => {
     };
     registerCardScripts([...RAW_CARD_SCRIPTS, script]);
     try {
-      const cd = card(
-        "Test Cycler + Activated",
-        "Creature — Spirit",
-        [2, 2],
-      );
+      const cd = card("Test Cycler + Activated", "Creature — Spirit", [2, 2]);
       const abilities = getActivatedAbilities(cd);
       expect(abilities).toHaveLength(2);
       const effects = abilities.map((a) => a.effect).sort();
@@ -7064,9 +7017,7 @@ describe("scripted end-step and life-gain triggers (#2594 follow-up)", () => {
         text: "At the beginning of your end step, this creature deals 1 damage to each opponent.",
         event: "phaseEnds",
         subject: "self",
-        effects: [
-          { op: "DealDamage", amount: 1, target: "each_opponent" },
-        ],
+        effects: [{ op: "DealDamage", amount: 1, target: "each_opponent" }],
       },
     ],
   };
@@ -7075,8 +7026,7 @@ describe("scripted end-step and life-gain triggers (#2594 follow-up)", () => {
   // Ajani's Pridemate." — life-gain event, subject=self.
   const ajanisPridemateScript: CardScript = {
     name: "Test Ajani's Pridemate",
-    oracle:
-      "Whenever you gain life, put a +1/+1 counter on Ajani's Pridemate.",
+    oracle: "Whenever you gain life, put a +1/+1 counter on Ajani's Pridemate.",
     triggers: [
       {
         text: "Whenever you gain life, put a +1/+1 counter on this creature.",
@@ -7949,5 +7899,109 @@ describe("Meltstrider's Resolve: enchanted creature fights; max one blocker (#26
       }).success;
     expect(parses("enchanted")).toBe(true);
     expect(parses("it")).toBe(false);
+  });
+});
+
+describe("Sapling Nursery: affinity for Forests, Treefolk tokens, indestructible (#2614)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+  const nursery = () => getCardScript("Sapling Nursery")!;
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+  });
+
+  it("costs {1} less for each Forest you control, not an opponent's", () => {
+    let s = put(state, p1, "f1", card("Forest", "Basic Land — Forest", [0, 0]));
+    s = put(s, p1, "f2", card("Forest", "Basic Land — Forest", [0, 0]));
+    s = put(s, p1, "m1", card("Mountain", "Basic Land — Mountain", [0, 0]));
+    s = put(s, p2, "f3", card("Forest", "Basic Land — Forest", [0, 0]));
+    expect(affinityReduction(s, p1, "Sapling Nursery")).toBe(2);
+    expect(affinityReduction(s, p2, "Sapling Nursery")).toBe(1);
+    expect(affinityReduction(s, p1, "Grizzly Bears")).toBe(0);
+  });
+
+  it("landfall makes a 3/4 green Treefolk with reach", () => {
+    const after = resolveScriptedEffects(
+      state,
+      nursery().triggers![0].effects!,
+      {
+        controllerId: p1,
+        sourceCardId: null as never,
+        targets: [],
+      } as unknown as StackObject,
+    );
+    const tokens = Array.from(after.cards.values()).filter(
+      (c) => c.cardData.name.includes("Treefolk") && c.controllerId === p1,
+    );
+    expect(tokens).toHaveLength(1);
+    expect(tokens[0].cardData.type_line).toContain("Treefolk");
+    expect(tokens[0].cardData.power).toBe("3");
+    expect(tokens[0].cardData.toughness).toBe("4");
+    expect(
+      (tokens[0].cardData.keywords ?? []).map((k) => k.toLowerCase()),
+    ).toContain("reach");
+  });
+
+  it("the exile ability gives only Treefolk and Forests indestructible", () => {
+    let s = put(
+      state,
+      p1,
+      "tree",
+      card("Treefolk", "Token Creature — Treefolk", [3, 4]),
+    );
+    s = put(s, p1, "forest", card("Forest", "Basic Land — Forest", [0, 0]));
+    s = put(s, p1, "bear", card("Grizzly Bears", "Creature — Bear", [2, 2]));
+    s = put(
+      s,
+      p2,
+      "foetree",
+      card("Treefolk", "Token Creature — Treefolk", [3, 4]),
+    );
+    const after = resolveScriptedEffects(s, nursery().activated![0].effects!, {
+      controllerId: p1,
+      sourceCardId: null as never,
+      targets: [],
+    } as unknown as StackObject);
+    const kw = (cid: string) =>
+      after.cards.get(id(cid))!.untilEndOfTurnKeywords ?? [];
+    expect(kw("tree")).toContain("indestructible");
+    expect(kw("forest")).toContain("indestructible");
+    expect(kw("bear")).not.toContain("indestructible");
+    expect(kw("foetree")).not.toContain("indestructible");
+  });
+
+  it("exiles itself as part of the activation cost", () => {
+    let s = put(state, p1, "nursery", card("Sapling Nursery", "Enchantment"));
+    const players = new Map(s.players);
+    const pl = players.get(p1)!;
+    players.set(p1, { ...pl, manaPool: { ...pl.manaPool, green: 2 } });
+    s = { ...s, players };
+    const r = activateAbility(s, p1, id("nursery"), 0);
+    expect(r.success).toBe(true);
+    expect(r.state.cards.get(id("nursery"))!.currentZoneKey).toBe(
+      `${p1}-exile`,
+    );
+  });
+
+  it("schema only allows subtypes with permanents_you_control", () => {
+    const bad = {
+      name: "X",
+      oracle: "x",
+      spell: [
+        {
+          op: "GrantKeyword",
+          keyword: "indestructible",
+          target: "creature",
+          subtypes: ["Forest"],
+          until: "end_of_turn",
+        },
+      ],
+    };
+    expect(CardScriptSchema.safeParse(bad).success).toBe(false);
   });
 });
