@@ -5,6 +5,7 @@
  * card behaves exactly like the hand-written paths do today; the script only
  * replaces the step of reading oracle text to decide what happens.
  */
+import { earthbend } from "../keyword-actions/earthbend";
 import type {
   CardInstanceId,
   GameState,
@@ -1256,6 +1257,13 @@ function applyEffect(
       return effect.keywords
         ? addUntilEndOfTurnKeywords(animated, cardId, effect.keywords)
         : animated;
+    }
+    case "Earthbend": {
+      // #2614 Ba Sing Se: target land you control (CR 608.2b re-check).
+      const cardId = ctx.target?.targetId as CardInstanceId | undefined;
+      if (!cardId || !isOnBattlefield(state, cardId)) return state;
+      if (!controllerStillMatches(state, cardId, "you", ctx)) return state;
+      return earthbend(state, cardId, effect.amount);
     }
     case "ShuffleLibrary": {
       const who = effect.who ?? "you";

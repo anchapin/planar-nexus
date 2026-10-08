@@ -10,6 +10,7 @@ import type { CardInstance, GameState } from "../types";
 import { getCardScript } from "../card-scripts/registry";
 import type { RuleStatic, ScriptedStatic } from "../card-scripts/schema";
 import { restoreAnimatedOffBattlefield } from "../pt-until-end-of-turn";
+import { returnEarthbentLands } from "./earthbend";
 
 function battlefieldCards(state: GameState): CardInstance[] {
   const out: CardInstance[] = [];
@@ -100,7 +101,7 @@ export function staticAffects(
  * Returns the same state object when nothing changed.
  */
 export function refreshScriptedStatics(input: GameState): GameState {
-  const state = restoreAnimatedOffBattlefield(input);
+  const state = restoreAnimatedOffBattlefield(returnEarthbentLands(input));
   const onField = battlefieldCards(state);
   const sources: { card: CardInstance; statics: ScriptedStatic[] }[] = [];
   for (const card of onField) {

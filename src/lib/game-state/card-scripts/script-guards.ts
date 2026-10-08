@@ -92,9 +92,7 @@ export function isTargetedEffect(effect: CardEffect): boolean {
       // `applyEffect`. Returning false here keeps `effectTargetCount`
       // at 0, so the dispatch loop in `resolveScriptedEffects`
       // doesn't try to read a non-existent target slot.
-      return !REMOVAL_ALL_TARGETS.includes(
-        effect.target as RemovalAllTarget,
-      );
+      return !REMOVAL_ALL_TARGETS.includes(effect.target as RemovalAllTarget);
     case "Exile":
     case "Tap":
     case "Untap":
@@ -103,6 +101,7 @@ export function isTargetedEffect(effect: CardEffect): boolean {
     case "Counter":
     case "Fight":
     case "Bite":
+    case "Earthbend":
       return true;
     case "Draw":
     case "GainLife":
