@@ -43,11 +43,13 @@ export function hasSubtype(card: CardInstance, subtype: string): boolean {
     !NONCREATURE_SUBTYPES.has(subtype.toLowerCase())
   )
     return true;
+  const want = subtype.toLowerCase();
+  if (card.untilEndOfTurnSubtypes?.some((t) => t.toLowerCase() === want))
+    return true;
   const typeLine = card.cardData.type_line || "";
   const front = typeLine.split(" // ")[0];
   const parts = front.split(/\s+[—-]\s+/);
   if (parts.length < 2) return false;
-  const want = subtype.toLowerCase();
   return parts[1].split(/\s+/).some((w) => w.toLowerCase() === want);
 }
 

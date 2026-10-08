@@ -225,6 +225,14 @@ export const CreatePredefinedTokenSchema = z
     who: z.enum(["you", "opponent"]).optional(),
     /** The tokens enter tapped ("creates a tapped Treasure token"). */
     tapped: z.boolean().optional(),
+    /**
+     * "You may behold a [subtype]. If you do, create ..." (#2614 Sarkhan,
+     * Dragon Ascendant). Beholding means choosing a permanent of that
+     * subtype you control or revealing a card of it from your hand; the
+     * engine always beholds when it can (revealing costs nothing) and
+     * skips the tokens when it can't.
+     */
+    if_behold: z.string().min(1).optional(),
     if_kicked: ifKicked,
   })
   .strict();
@@ -874,6 +882,21 @@ export const EarthbendSchema = z
   })
   .strict();
 
+/**
+ * "[This creature] becomes a [subtype] in addition to its other types until
+ * end of turn" (#2614 Sarkhan, Dragon Ascendant). Adds the subtype to the
+ * source's `untilEndOfTurnSubtypes`; cleanup clears it.
+ */
+export const AddSubtypeSchema = z
+  .object({
+    op: z.literal("AddSubtype"),
+    target: z.literal("self"),
+    subtype: z.string().min(1),
+    until: z.literal("end_of_turn"),
+    if_kicked: ifKicked,
+  })
+  .strict();
+
 export const EffectSchema = z.discriminatedUnion("op", [
   DealDamageSchema,
   DrawSchema,
@@ -905,6 +928,7 @@ export const EffectSchema = z.discriminatedUnion("op", [
   CantBeBlockedSchema,
   AnimateSchema,
   EarthbendSchema,
+  AddSubtypeSchema,
 ]);
 
 /** True when no non-Discard effect follows a Discard (#2536). */
