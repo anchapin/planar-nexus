@@ -130,7 +130,7 @@ describe("This spell can't be countered (#2594 follow-up)", () => {
       ...hand,
       cardIds: [...hand.cardIds, inst.id],
     });
-    let s: GameState = { ...state, cards, zones };
+    const s: GameState = { ...state, cards, zones };
     if (extraScript) {
       registerCardScripts([...RAW_CARD_SCRIPTS, extraScript as never]);
     }
