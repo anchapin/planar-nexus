@@ -444,6 +444,25 @@ function blockLimits(state: GameState): Record<string, BlockLimit> {
 }
 
 /**
+ * Drop blocks that break an attacker's limit (a lone blocker on a menace
+ * creature, a second blocker past an Aura's cap) instead of sending an
+ * illegal declaration.
+ */
+export function dropLimitBreakingBlocks(
+  blocks: BlockAssignment[],
+  limits?: Record<string, BlockLimit>,
+): BlockAssignment[] {
+  const count = new Map<string, number>();
+  for (const b of blocks)
+    count.set(b.attackerId, (count.get(b.attackerId) ?? 0) + 1);
+  return blocks.filter((b) => {
+    const limit = limits?.[b.attackerId];
+    const n = count.get(b.attackerId) ?? 0;
+    return !limit || (n >= limit.min && (limit.max ?? n) >= n);
+  });
+}
+
+/**
  * A uniformly random legal action for `prompt`: the baseline agent for
  * smoke runs. Attacks and blocks with each available creature on a coin
  * flip.
@@ -468,18 +487,7 @@ export function randomAction(
           blockerId: o.cardId,
           attackerId: pickOne(o.attackers),
         }));
-      // Drop a block that breaks an attacker's limit (a lone blocker on a
-      // menace creature) instead of sending an illegal declaration.
-      const count = new Map<string, number>();
-      for (const b of blocks)
-        count.set(b.attackerId, (count.get(b.attackerId) ?? 0) + 1);
-      return {
-        blocks: blocks.filter((b) => {
-          const limit = prompt.limits?.[b.attackerId];
-          const n = count.get(b.attackerId) ?? 0;
-          return !limit || (n >= limit.min && (limit.max ?? n) >= n);
-        }),
-      };
+      return { blocks: dropLimitBreakingBlocks(blocks, prompt.limits) };
     }
     case "game_over":
       throw new TrainingRulesError("The game is over");
