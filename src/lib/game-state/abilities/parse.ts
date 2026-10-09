@@ -106,11 +106,14 @@ function scriptedCondition(t: ScriptedTrigger): TriggerCondition {
   if (t.event === "crime") return { event: "crime" };
   // chapter: a Saga chapter ability (#2614); see keyword-actions/saga.ts.
   if (t.event === "chapter") return { event: "chapter", chapter: t.chapter };
+  // The script index is installed without a zod parse (registry.ts), so the
+  // schema's subject default never runs: a missing subject means "self".
+  const subject = t.subject ?? "self";
   const condition: TriggerCondition = {
     event: SUBJECT_EVENT[t.event],
-    subject: t.subject,
+    subject,
   };
-  if (t.subject !== "self") {
+  if (subject !== "self") {
     // Script subjects are creatures (CR 603.6a); ETB keeps its old any-permanent reading.
     condition.enteringFilter = {
       types: t.event === "etb" ? [] : ["creature"],

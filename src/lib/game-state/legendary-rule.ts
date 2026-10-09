@@ -23,6 +23,7 @@ import type {
 import { isOnBattlefield } from "./types";
 import { getToughness } from "./card-instance";
 import { destroyCard } from "./keyword-actions";
+import { registerOfferResolver } from "./spell-casting/choices";
 
 /** Waiting-choice type value used for the legendary rule. */
 export const LEGENDARY_CHOICE_TYPE = "choose_legend" as const;
@@ -269,3 +270,7 @@ export function applyLegendaryViolation(
   }
   return { state: updatedState, destroyed };
 }
+
+// Answer the legend-rule choice through resolveWaitingChoice, so the game
+// board and automated controllers (training sessions) can keep a legend.
+registerOfferResolver(LEGENDARY_CHOICE_TYPE, resolveLegendaryChoice);

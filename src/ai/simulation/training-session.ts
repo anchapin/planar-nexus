@@ -47,6 +47,7 @@ import {
   type PlayerId,
   type PriorityChoice,
 } from "@/lib/game-state";
+import { getMenaceMinimumBlockers } from "@/lib/game-state/evergreen-keywords";
 import { buildDeck, type SimDeckArchetype } from "./game-simulator";
 
 type DeckList = ReturnType<typeof buildDeck>;
@@ -78,9 +79,21 @@ export function trainingDeck(archetype: SimDeckArchetype): DeckList {
 export type TrainingPrompt =
   | { kind: "priority"; playerId: PlayerId; options: PriorityChoice[] }
   | { kind: "attack"; playerId: PlayerId; options: AttackerOption[] }
-  | { kind: "block"; playerId: PlayerId; options: BlockerOption[] }
+  | {
+      kind: "block";
+      playerId: PlayerId;
+      options: BlockerOption[];
+      /** Per-attacker blocker counts (menace min, "no more than one" max). */
+      limits?: Record<string, BlockLimit>;
+    }
   | { kind: "choice"; playerId: PlayerId; options: DecisionAnswer[] }
   | { kind: "game_over"; result: TrainingResult };
+
+/** How many creatures may block one attacker (CR 702.70, CR 509.1b). */
+export interface BlockLimit {
+  min: number;
+  max?: number;
+}
 
 export type TrainingAction =
   | { index: number }
@@ -382,7 +395,12 @@ export class TrainingSession {
         const options = this.peek(() => listBlockerOptions(s, id));
         if (options.length > 0) {
           snap.blocksDone = -1;
-          return { kind: "block", playerId: id, options };
+          return {
+            kind: "block",
+            playerId: id,
+            options,
+            limits: blockLimits(s),
+          };
         }
       }
     }
@@ -412,6 +430,19 @@ export class TrainingSession {
   }
 }
 
+/** Blocker limits for every attacking creature that has one. */
+function blockLimits(state: GameState): Record<string, BlockLimit> {
+  const out: Record<string, BlockLimit> = {};
+  for (const { cardId } of state.combat.attackers) {
+    const card = state.cards.get(cardId);
+    if (!card) continue;
+    const min = getMenaceMinimumBlockers(card);
+    const max = card.auraMaxBlockers;
+    if (min > 1 || max !== undefined) out[cardId] = { min, max };
+  }
+  return out;
+}
+
 /**
  * A uniformly random legal action for `prompt`: the baseline agent for
  * smoke runs. Attacks and blocks with each available creature on a coin
@@ -430,15 +461,26 @@ export function randomAction(
           .filter(() => random() < 0.5)
           .map((o) => ({ cardId: o.cardId, defenderId: pickOne(o.defenders) })),
       };
-    case "block":
+    case "block": {
+      const blocks = prompt.options
+        .filter(() => random() < 0.5)
+        .map((o) => ({
+          blockerId: o.cardId,
+          attackerId: pickOne(o.attackers),
+        }));
+      // Drop a block that breaks an attacker's limit (a lone blocker on a
+      // menace creature) instead of sending an illegal declaration.
+      const count = new Map<string, number>();
+      for (const b of blocks)
+        count.set(b.attackerId, (count.get(b.attackerId) ?? 0) + 1);
       return {
-        blocks: prompt.options
-          .filter(() => random() < 0.5)
-          .map((o) => ({
-            blockerId: o.cardId,
-            attackerId: pickOne(o.attackers),
-          })),
+        blocks: blocks.filter((b) => {
+          const limit = prompt.limits?.[b.attackerId];
+          const n = count.get(b.attackerId) ?? 0;
+          return !limit || (n >= limit.min && (limit.max ?? n) >= n);
+        }),
       };
+    }
     case "game_over":
       throw new TrainingRulesError("The game is over");
     default:
