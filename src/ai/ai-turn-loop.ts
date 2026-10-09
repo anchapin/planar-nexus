@@ -22,6 +22,7 @@ import {
   type AIAction,
   getAvailableAttackers,
   getAIGameState,
+  aiFlashbackCost,
 } from "./ai-action-executor";
 import {
   decideOpponentMulligan,
@@ -1840,6 +1841,19 @@ async function castCreatures(
  * a reasoning string containing the spell name and difficulty, so the
  * post-game replay shows the deliberate hold.
  */
+/**
+ * Mana value of a flashback cost string like `"{2}{R}"` (#2607). Card-script
+ * flashback costs are generic digits and single colored/colorless symbols.
+ */
+export function flashbackManaValue(cost: string): number {
+  let total = 0;
+  for (const sym of cost.match(/\{([^}]+)\}/g) ?? []) {
+    const inner = sym.slice(1, -1);
+    total += /^\d+$/.test(inner) ? Number(inner) : 1;
+  }
+  return total;
+}
+
 async function castOtherSpells(
   gameState: EngineGameState,
   aiPlayerId: PlayerId,
@@ -1930,6 +1944,28 @@ async function castOtherSpells(
     });
   }
 
+  // #2607: instants and sorceries with flashback in the graveyard join the
+  // same pool, priced at their flashback cost's mana value.
+  const graveZone = currentState.zones.get(`${aiPlayerId}-graveyard`);
+  for (const cardId of graveZone?.cardIds ?? []) {
+    const card = currentState.cards.get(cardId);
+    if (!card) continue;
+    const typeLine = card.cardData.type_line.toLowerCase();
+    if (!typeLine.includes("instant") && !typeLine.includes("sorcery")) {
+      continue;
+    }
+    const cost = aiFlashbackCost(currentState, cardId);
+    if (!cost) continue;
+    spellEntries.push({
+      cardId,
+      name: card.cardData.name,
+      cmc: flashbackManaValue(cost),
+      typeLine,
+      oracleText: (card.cardData as { oracle_text?: string }).oracle_text,
+      flashback: true,
+    });
+  }
+
   // Expert: pick the single optimal spell up front. The "cast" set is the
   // optimal winner plus any ties; every other spell is force-skipped via
   // decideSpellGate (isOptimalCast=false). Non-Expert tiers ignore this and
@@ -1970,9 +2006,17 @@ async function castOtherSpells(
       continue;
     }
 
+    const spellLabel = entry.flashback
+      ? `${card.cardData.name} (flashback)`
+      : card.cardData.name;
     const result = await executeAIAction(
       currentState,
-      { type: "cast_spell", cardId, reasoning: `Cast ${card.cardData.name}` },
+      {
+        type: "cast_spell",
+        cardId,
+        flashback: entry.flashback,
+        reasoning: `Cast ${spellLabel}`,
+      },
       aiPlayerId,
     );
 
@@ -1981,9 +2025,10 @@ async function castOtherSpells(
       actions.push({
         type: "cast_spell",
         cardId,
-        reasoning: `Cast ${card.cardData.name}`,
+        flashback: entry.flashback,
+        reasoning: `Cast ${spellLabel}`,
       });
-      config.onCommentary?.(`Casts ${card.cardData.name}`);
+      config.onCommentary?.(`Casts ${spellLabel}`);
       // Issue #1231: tutors consult the difficulty-scaled selector so a
       // cast `Demonic Tutor` actually picks the right card to fetch
       // instead of letting the engine pick arbitrarily. Non-tutor

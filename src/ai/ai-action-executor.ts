@@ -30,6 +30,7 @@ import { passPriority } from "@/lib/game-state";
 import { moveCardBetweenZones, shuffleZone, drawCards } from "@/lib/game-state";
 import { canAffordMana, getSpellManaCost, isConvergeX } from "@/lib/game-state";
 import { parseImprovise, grantsNoncreatureImprovise } from "@/lib/game-state";
+import { parseFlashback, getCardScript } from "@/lib/game-state";
 import { quickScore } from "./game-state-evaluator";
 import type { GameState } from "./game-state-evaluator";
 
@@ -48,6 +49,8 @@ export interface AIAction {
   // Variable cost support
   xValue?: number;
   kicked?: boolean;
+  /** Cast from the graveyard for its flashback cost (CR 702.34). */
+  flashback?: boolean;
   // Modal spell support
   mode?: string;
 }
@@ -95,6 +98,7 @@ export async function executeAIAction(
           action.targetIds || action.targetId,
           action.mode ? [action.mode] : [],
           action.xValue || 0,
+          action.flashback === true,
         );
 
       case "attack":
@@ -194,7 +198,20 @@ function executeCastSpell(
   targetIdOrIds?: string | PlayerId | string[],
   chosenModes: string[] = [],
   xValue: number = 0,
+  useFlashback: boolean = false,
 ): AIActionResult {
+  // #2607: flashback casts from the graveyard. The engine's canCastSpell
+  // only looks in hand, so this path checks the zone and cost itself and
+  // leaves priority, timing and mana to castSpell's own validation.
+  if (useFlashback) {
+    return executeFlashbackCast(
+      gameState,
+      playerId,
+      cardId,
+      targetIdOrIds,
+      chosenModes,
+    );
+  }
   // canCastSpell returns { canCast: boolean; reason?: string } — guard on the
   // boolean field, not the object (which is always truthy). Previously this
   // checked `!canCast`, a dead branch that never short-circuited, so the AI
@@ -296,6 +313,105 @@ function executeCastSpell(
 }
 
 /**
+ * The flashback cost the AI would pay for `cardId` (#2607, CR 702.34), as a
+ * mana-cost string like `"{2}{R}"`. The card script's `flashback.cost` wins
+ * over the oracle text, matching castSpell. Returns null when the card has
+ * no flashback or its flashback cost has {X} (the AI doesn't pick X there).
+ */
+export function aiFlashbackCost(
+  gameState: EngineGameState,
+  cardId: CardInstanceId,
+): string | null {
+  const card = gameState.cards.get(cardId);
+  if (!card) return null;
+  const scripted = getCardScript(card.cardData.name)?.flashback?.cost;
+  if (scripted) return scripted;
+  const oracle = (card.cardData as { oracle_text?: string }).oracle_text ?? "";
+  const parsed = parseFlashback(oracle);
+  if (!parsed.hasFlashback) return null;
+  const cost = parsed.description.replace(/^flashback\s*/i, "");
+  if (!cost || /\{X\}/i.test(cost)) return null;
+  return cost;
+}
+
+/**
+ * Cast `cardId` from the AI's graveyard for its flashback cost (#2607),
+ * tapping artifacts for improvise when the spell has it and the pool can't
+ * cover the flashback cost's generic part (#2481).
+ */
+function executeFlashbackCast(
+  gameState: EngineGameState,
+  playerId: PlayerId,
+  cardId: CardInstanceId,
+  targetIdOrIds: string | PlayerId | string[] | undefined,
+  chosenModes: string[],
+): AIActionResult {
+  const fail = (error: string): AIActionResult => ({
+    success: false,
+    error,
+    action: {
+      type: "cast_spell",
+      cardId,
+      targetId: targetIdOrIds as string,
+      flashback: true,
+    },
+  });
+  const grave = gameState.zones.get(`${playerId}-graveyard`);
+  if (!grave?.cardIds.includes(cardId)) {
+    return fail("Flashback: card is not in your graveyard");
+  }
+  const cost = aiFlashbackCost(gameState, cardId);
+  if (!cost) return fail("Flashback: card has no flashback cost");
+
+  let targets;
+  if (Array.isArray(targetIdOrIds)) {
+    targets = targetIdOrIds.map((tid) => ({
+      type: "card" as const,
+      targetId: tid,
+      isValid: true,
+    }));
+  } else if (targetIdOrIds) {
+    targets = [
+      { type: "card" as const, targetId: targetIdOrIds, isValid: true },
+    ];
+  }
+
+  const improviseArtifacts = chooseAIImproviseArtifacts(
+    gameState,
+    playerId,
+    cardId,
+    0,
+    cost,
+  );
+  const result = engineCastSpell(
+    gameState,
+    playerId,
+    cardId,
+    targets,
+    chosenModes,
+    0,
+    false,
+    improviseArtifacts.length > 0
+      ? { type: "flashback", improviseArtifacts }
+      : { type: "flashback" },
+  );
+  if (!result.success) {
+    return fail(result.error || "Failed to cast spell with flashback");
+  }
+  return {
+    success: true,
+    newState: result.state,
+    action: {
+      type: "cast_spell",
+      cardId,
+      targetId: targetIdOrIds as string,
+      mode: chosenModes[0],
+      flashback: true,
+    },
+  };
+}
+
+/**
  * Whether `cardId` has improvise for `playerId`: printed (CR 702.126) or, for
  * a noncreature spell, granted by a permanent they control ("Noncreature
  * spells you cast have improvise", e.g. Ironheart, Clever Champion).
@@ -333,17 +449,22 @@ export function aiSpellHasImprovise(
  * rocks, and taps artifact creatures last (they could attack or block).
  * Returns [] when the spell has no improvise, the pool already pays, the
  * colored part is unaffordable, or there aren't enough artifacts.
+ * `manaCostOverride` is the cost actually being paid (a flashback cost).
  */
 export function chooseAIImproviseArtifacts(
   gameState: EngineGameState,
   playerId: PlayerId,
   cardId: CardInstanceId,
   xValue: number = 0,
+  manaCostOverride?: string,
 ): CardInstanceId[] {
   if (!aiSpellHasImprovise(gameState, playerId, cardId)) return [];
-  const data = gameState.cards.get(cardId)?.cardData as
+  const printed = gameState.cards.get(cardId)?.cardData as
     { mana_cost?: string } | undefined;
-  if (!data) return [];
+  if (!printed) return [];
+  // A flashback cast pays the flashback cost instead of the mana cost.
+  const data =
+    manaCostOverride !== undefined ? { mana_cost: manaCostOverride } : printed;
   const { white, blue, black, red, green, generic } = getSpellManaCost(data);
   const colored = { white, blue, black, red, green };
   const totalGeneric = generic + Math.max(0, xValue);
