@@ -17,9 +17,9 @@
  * has the same `decisions` / `returns` shape as manamind's imitation data.
  */
 
-import type { DeckList } from "@/lib/game-state";
 import {
   TrainingSession,
+  type trainingDeck,
   type TrainingAction,
   type TrainingPrompt,
 } from "@/ai/simulation/training-session";
@@ -33,6 +33,8 @@ import {
 } from "./forge-search";
 
 type Live = Exclude<TrainingPrompt, { kind: "game_over" }>;
+/** A deck as `TrainingSession.reset` takes it. */
+type DeckList = ReturnType<typeof trainingDeck>;
 
 export type SearchTarget = number[] | number[][];
 
