@@ -135,3 +135,6 @@ When all priority-order lanes (1–4) are either shipped or marked as multi-lane
 
 - 688 suites / 13746 tests passing (was 687 / 13738 at loop start; +1 suite / +8 tests from lane 25 + concurrent merge #2678).
 - Lint 0 errors, typecheck clean, engine-size budget at limit (interpret.ts = 2000/2000).
+
+- **Lane 26 — SHIPPED** (PR #2686, commit `83a5f553`): `intervening_if: z.string().min(1).optional()` added to `TriggerSchema`; plumbed through `scriptedTrigger` (abilities/parse.ts) to the engine's existing `evaluateInterveningIfClause` evaluator. Sample card: **Crypt Feaster** (FDN #59). Single trigger `event: "attacks" subject: "self"` + `intervening_if: "there are seven or more cards in your graveyard"`. Same plumbing unlocks **morbid** (`"a creature died this turn"`) and **raid** (`"you attacked with a creature this turn"`) trigger cards in a follow-up lane — those are now zero-schema-work one-line additions. Remaining gap for those lanes is identifying a real FDN/FIN sample card (Cackling Prowler/Wardens of the Cycle are morbid per the existing engine, but need scripted card coverage; raid cards need a sample).
+- **Lane 27 — NEXT**: ReturnFromZone with count > 1 on graveyard (extension of lane 20's `count` field). Verify a real FDN/FIN sample card first; if none, ship schema+engine with a minimal synthetic fixture.
