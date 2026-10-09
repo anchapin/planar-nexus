@@ -1170,6 +1170,15 @@ export const TriggerSchema = z
     chapter: z.number().int().min(1).max(6).optional(),
     effects: effects.optional(),
     /**
+     * Intervening-if (CR 603.4). The engine only puts the trigger
+     * on the stack (and re-checks at resolution) when this clause
+     * evaluates true. Today this gates threshold triggers
+     * ("there are seven or more cards in your graveyard"); the
+     * full regex set lives in `abilities/evaluate.ts`. (#2594
+     * lane 26, Crypt Feaster.)
+     */
+    intervening_if: z.string().min(1).optional(),
+    /**
      * A modal ability ("When this creature enters, choose one —"), instead of
      * `effects`. The controller picks the modes as it goes on the stack
      * (CR 603.3c, 700.2a); `text` is then the line up to the dash.
