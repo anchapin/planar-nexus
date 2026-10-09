@@ -138,3 +138,28 @@ When all priority-order lanes (1–4) are either shipped or marked as multi-lane
 
 - **Lane 26 — SHIPPED** (PR #2686, commit `83a5f553`): `intervening_if: z.string().min(1).optional()` added to `TriggerSchema`; plumbed through `scriptedTrigger` (abilities/parse.ts) to the engine's existing `evaluateInterveningIfClause` evaluator. Sample card: **Crypt Feaster** (FDN #59). Single trigger `event: "attacks" subject: "self"` + `intervening_if: "there are seven or more cards in your graveyard"`. Same plumbing unlocks **morbid** (`"a creature died this turn"`) and **raid** (`"you attacked with a creature this turn"`) trigger cards in a follow-up lane — those are now zero-schema-work one-line additions. Remaining gap for those lanes is identifying a real FDN/FIN sample card (Cackling Prowler/Wardens of the Cycle are morbid per the existing engine, but need scripted card coverage; raid cards need a sample).
 - **Lane 27 — NEXT**: ReturnFromZone with count > 1 on graveyard (extension of lane 20's `count` field). Verify a real FDN/FIN sample card first; if none, ship schema+engine with a minimal synthetic fixture.
+
+- **Lane 27 — SHIPPED** (PR #2690, commit `1843bfd8`): `count: "all"` added to ReturnFromZone as a sweep arm alongside the existing numeric/xCount branches. Sample card: **Raise the Past** (FDN #22) — single spell, mv_le:2 filter, count:"all". Engine budget bumped 2000 → 2050 with documented rationale (interpret.ts is the single scripted-effect dispatcher; can't decompose without re-routing 281 cards — parallel to layer-system.ts's mutation-gated monolith status).
+
+### Done — all priority-order lanes 1-4 are either shipped or documented-blocked
+
+#### Shipped
+
+| Lane | PR    | Commit     | Sample card              |
+| ---- | ----- | ---------- | ------------------------ |
+| 25   | #2679 | `087e1997` | Scrawling Crawler (FDN)  |
+| 26   | #2686 | `83a5f553` | Crypt Feaster (FDN #59)  |
+| 27   | #2690 | `1843bfd8` | Raise the Past (FDN #22) |
+
+#### Skipped (multi-lane work, deferred to #2614 plan work)
+
+- **Lane 24** — Add mana of any one color (Heraldic Banner): needs `chosenColor` instance field + Static `affects.color` + AddMana `chosen` arm + "as this enters, choose a color" schema. ~350-550 LOC. Each of the four underlying extensions is its own lane.
+- **Lane 28** — Copying a permanent (Self-Reflection, Rite of Replication, Extravagant Replication): `CopyPermanent` op with P/T + keyword snapshot semantics.
+- **Lane 29** — Copy a spell with new targets (Teach by Example): `CopySpell` op extension for activated/triggered abilities, plus new-targets picking.
+
+#### Test count snapshot at loop end
+
+- **693 suites / 13778 tests passing** (was 687 / 13738 at loop start; +6 suites / +40 tests from these lanes + concurrent merges).
+- Lint: 0 errors. Typecheck: clean. Engine-size budget: 2050 (raised from 2000 with documented rationale per the budget script's "raise SIZE_BUDGET_LINES" escape hatch).
+
+The loop should now stop. Further card-script work belongs to a new handoff session with a fresh scope (e.g., a follow-up Wave 4.5: morbid triggers + raid triggers via the lane 26 intervening_if plumbing, CopySpell op extensions for lanes 28/29, etc.).
