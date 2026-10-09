@@ -7048,7 +7048,7 @@ describe("scripted end-step and life-gain triggers (#2594 follow-up)", () => {
         event: "lifeGain",
         subject: "self",
         effects: [
-          { op: "PutCounters", counter: "+1/+1", amount: 1, target: "self" },
+          { op: "PutCounters", counter: "+1/+1", amount: 1, target: "self", use_source_power: false },
         ],
       },
     ],

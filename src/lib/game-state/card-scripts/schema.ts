@@ -624,7 +624,12 @@ export const PutCountersSchema = z
      * Earthbender Ascension: "put a quest counter on this enchantment").
      */
     counter: z.enum(["+1/+1", "quest"]),
-    amount: xCount,
+    /**
+     * The number of counters to add. Required when
+     * `use_source_power` is unset/false; ignored (and may be
+     * omitted entirely) when `use_source_power: true` (lane 23).
+     */
+    amount: xCount.optional(),
     target: z.enum(["creature", "self"]),
     controller,
     /**
@@ -635,6 +640,18 @@ export const PutCountersSchema = z
      * counter).
      */
     optional: z.boolean().optional(),
+    /**
+     * #2594 follow-up (lane 23): "Put X +1/+1 counters on Heroes'
+     * Bane, where X is its power" (Heroes' Bane — FDN #639). When
+     * true, the engine resolves `amount` to the ability source's
+     * effective power at apply-time (`getEffectivePower(source)`),
+     * ignoring `amount` (which may be omitted). Only valid with
+     * `counter: "+1/+1"` and `target: "self"` (the pattern is "put
+     * N counters on yourself, where N is your power"). Lane 23's v1
+     * limitation: not yet supported on quest counters or non-self
+     * targets.
+     */
+    use_source_power: z.boolean().default(false),
     if_kicked: ifKicked,
     if_source_counters: ifSourceCounters,
   })
@@ -648,7 +665,26 @@ export const PutCountersSchema = z
   })
   .refine((e) => e.optional === undefined || e.target === "creature", {
     message: "optional needs target creature",
-  });
+  })
+  .refine(
+    (e) =>
+      !e.use_source_power ||
+      (e.counter === "+1/+1" && e.target === "self"),
+    {
+      message:
+        "use_source_power needs counter '+1/+1' and target 'self' (#2594 follow-up, lane 23)",
+    },
+  )
+  .refine(
+    (e) =>
+      e.use_source_power ||
+      (typeof e.amount === "number" && e.amount >= 1) ||
+      e.amount === "X",
+    {
+      message:
+        "amount is required (>=1 or 'X') unless use_source_power is set",
+    },
+  );
 
 /**
  * Put the top N cards of a library into its owner's graveyard (#2534).

@@ -1,0 +1,18 @@
+{
+  "name": "Heroes' Bane",
+  "oracle": "This creature enters with four +1/+1 counters on it.\n{2}{G}: Put X +1/+1 counters on this creature, where X is its power.",
+  "activated": [
+    {
+      "text": "Put X +1/+1 counters on this creature, where X is its power.",
+      "cost": { "mana": "{2}{G}", "tap": false, "sacrifice": false },
+      "effects": [
+        {
+          "op": "PutCounters",
+          "counter": "+1/+1",
+          "target": "self",
+          "use_source_power": true
+        }
+      ]
+    }
+  ]
+}

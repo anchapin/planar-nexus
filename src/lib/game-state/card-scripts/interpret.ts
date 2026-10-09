@@ -1366,8 +1366,24 @@ function applyEffect(
       const cardId = creatureFor(state, effect.target, ctx, effect.controller);
       const card = cardId ? state.cards.get(cardId) : undefined;
       if (!cardId || !card) return state;
+      // #2594 follow-up (lane 23): "Put X +1/+1 counters on Heroes'
+      // Bane, where X is its power" (Heroes' Bane — FDN #639). When
+      // `use_source_power: true`, the resolved amount is the
+      // ability source's effective power at apply-time
+      // (`getEffectivePower(source)`). For target: "self", source and
+      // target are the same card; the source is read for its current
+      // (post-layer) power, including any +1/+1 counters on it (so
+      // re-activating Heroes' Bane compounds).
+      const resolvedAmount = effect.use_source_power
+        ? sourceId
+          ? Math.max(0, getEffectivePower(state.cards.get(sourceId)!))
+          : 0
+        : (effect.amount ?? 0);
       const cards = new Map(state.cards);
-      cards.set(cardId, addCounters(card, effect.counter, effect.amount));
+      cards.set(
+        cardId,
+        addCounters(card, effect.counter, resolvedAmount),
+      );
       return { ...state, cards };
     }
     case "Surveil": {
