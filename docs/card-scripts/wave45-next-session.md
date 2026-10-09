@@ -126,3 +126,71 @@ End each lane with: `git log --oneline -1` on main showing the new lane's commit
 When all priority-order lanes (1–4) are either shipped or marked as multi-lane blockers, write a final summary at the bottom of this file documenting the shipped lanes, the blocked gaps with their `#2614 plan work` references, and a fresh test-count snapshot. Then stop. Do not attempt priority-order lanes 5+ unless all of 1–4 are shipped/blocked.
 
 If even lane 1 (the no-schema-work morbid sample) is blocked, that means the engine changed since Wave 4 and the loop should be paused for human review before continuing.
+
+## Wave 4.5 loop — done
+
+Shipped 3 of the 4 priority-order lanes; lane 4 (Pyromancer's Goggles)
+is multi-lane work and was deferred to `#2614 plan work`. The loop
+stopped per the "done definition" rule above.
+
+### Shipped
+
+- **Lane 28 — Morbid (Cackling Prowler, FDN)** (#2691, commit
+  `839e3a1c`). Zero new schema or engine work: rides on lane 26's
+  `intervening_if` plumbing and `MORBID_CONDITION`. 6 new tests
+  in `card-scripts.test.ts` (registry, parse, evaluator negative
+  + positive, end-of-turn trigger gating negative + positive).
+- **Lane 29 — Raid (Skyship Buccaneer, FDN)** (#2692, commit
+  `f6c348c1`). Same shape as lane 28 but gated on
+  `you attacked this turn` and `RAID_CONDITION`. 6 new tests.
+- **Lane 30 — Static literal color anthem (Knight of Grace, FDN)**
+  (#2693, commit `cdb28eda`). Schema gets a new
+  `StaticSchema.affects.color: "W" | "U" | "B" | "R" | "G"`
+  literal; `staticAffects` filters by target color set. 7 new
+  tests including a CR 613.5 multicolored-creature test.
+  `interpret.ts` unchanged (2017/2050 lines — the lane touched
+  `scripted-statics.ts` only).
+
+### Blocked (multi-lane work, deferred to #2614 plan work)
+
+See `docs/card-scripts/wave4-blockers.md` for the full write-up
+with gap, blocker reason, and suggested follow-up issue number.
+
+- **Lane 31 — CopySpell on cast trigger (Pyromancer's Goggles)**.
+  Blocked: needs a per-color filter on `cast` triggers (new schema
+  field on `TriggerSchema.spell`) plus a "you may choose new
+  targets for the copy" extension to `CopySpellSchema` and
+  `copyTriggeringSpell`. The underlying `copySpellOnStack` already
+  accepts `newTargets`; only the schema + dispatch wiring is
+  missing.
+- **Lane 32 — Scaling P/T anthems (Smaug-style)**. Blocked: needs
+  a function-of-state form for `StaticSchema.power`/`toughness`
+  (e.g. `X: "treasures"`, `X: "creatures"`) plus the refresh-pass
+  arm. New schema + new engine work.
+
+### Test-count snapshot
+
+At end of Wave 4.5 loop (after #2693 merged):
+
+```
+**Test suites:** 693
+**Test cases:** 13804 (13797 passed + 7 skipped)
+```
+
+That's +26 tests vs the start of the session (13778 → 13804) across
+3 lanes + auto-discovered card files.
+
+### Process notes for the next agent
+
+- The lane 28 PR hit a CI flake on the first run: the AI
+  `expert-agent.test.ts` "is deterministic for a seed" test is
+  order-dependent with other tests in the suite. A `gh run rerun
+  --failed` cleared it cleanly; the failure was a pre-existing
+  flake on main, not a lane issue. Worth flagging to the test
+  reliability folks.
+- `ci-wait` can return FAILED on a freshly-opened PR with all
+  checks still pending. Wait a second call to `ci-wait` to get a
+  real verdict. Lane 30's PR tripped this.
+- `npm run ratchet:test-count` is reliable; run it in the same
+  commit as any test count change. Lane 28/29/30 each ratcheted
+  the same way.
