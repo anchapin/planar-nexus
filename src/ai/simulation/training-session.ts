@@ -49,6 +49,7 @@ import {
   type PriorityChoice,
 } from "@/lib/game-state";
 import { buildDeck, type SimDeckArchetype } from "./game-simulator";
+import { playerView, type PlayerView } from "./player-view";
 
 type DeckList = ReturnType<typeof buildDeck>;
 
@@ -282,6 +283,14 @@ export class TrainingSession {
       turns: s.turn.turnNumber,
       steps: snap.steps,
     };
+  }
+
+  /**
+   * `playerId`'s player-visible view in the Forge-bridge shape manamind's
+   * network reads (anchapin/manamind#86). Hidden information stays hidden.
+   */
+  playerView(playerId: PlayerId): PlayerView {
+    return playerView(this.snapshot().state, playerId);
   }
 
   /** Deterministic fingerprint of the whole game, for replay checks. */
