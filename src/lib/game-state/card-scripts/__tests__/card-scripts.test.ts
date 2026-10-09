@@ -49,6 +49,7 @@ import { refreshScriptedStatics } from "../../keyword-actions/scripted-statics";
 import { refreshTribalAnthems } from "../../keyword-actions/tribal-anthem";
 import { cycleCard } from "../../keyword-actions/cycling";
 import { markCreatureDiedThisTurn } from "../../keyword-actions/morbid";
+import { markAttackedThisTurn } from "../../keyword-actions/raid";
 import { detectTriggeredAbilities } from "../../abilities/triggered";
 import { checkStateBasedActions } from "../../state-based-actions";
 import { clearUntilEndOfTurnPT } from "../../pt-until-end-of-turn";
@@ -9498,6 +9499,115 @@ describe("Cackling Prowler: morbid intervening-if on phaseEnds trigger (#2594 la
     const resolved = resolveScriptedAbility(stacked, stackObject)!;
     const prowler = resolved.cards.get(id("prowler"))!;
     const counters = prowler.counters.filter((c) => c.type === "+1/+1");
+    expect(counters.reduce((sum, c) => sum + c.count, 0)).toBe(1);
+  });
+});
+
+describe("Skyship Buccaneer: raid intervening-if on phaseEnds trigger (#2594 lane 29)", () => {
+  // Skyship Buccaneer (FDN) — "Raid — At the beginning of your end
+  // step, if you attacked this turn, put a +1/+1 counter on this
+  // creature." (#2594 lane 29.) Like lane 28's Cackling Prowler, the
+  // raid pattern rides on lane 26's intervening_if plumbing; the
+  // engine's `RAID_CONDITION` regex (keyword-actions/raid.ts) matches
+  // "you attacked this turn" and `Player.attackedThisTurn` is set by
+  // `declareAttackers`.
+
+  it("registry exposes Skyship Buccaneer with the raid intervening_if", () => {
+    const buccaneer = getCardScript("Skyship Buccaneer");
+    expect(buccaneer).toBeDefined();
+    const trig = buccaneer!.triggers![0];
+    expect(trig.event).toBe("phaseEnds");
+    expect(trig.intervening_if).toBe("you attacked this turn");
+    expect(trig.effects).toEqual([
+      {
+        op: "PutCounters",
+        counter: "+1/+1",
+        amount: 1,
+        target: "self",
+      },
+    ]);
+  });
+
+  it("forwards intervening_if to ParsedTriggeredAbility", () => {
+    const abilities = getScriptedTriggeredAbilities(
+      { name: "Skyship Buccaneer" } as unknown as ScryfallCard,
+    );
+    expect(abilities).toBeDefined();
+    expect(abilities![0].interveningIf).toBe("you attacked this turn");
+  });
+
+  it("evaluator returns false when the controller has not attacked this turn", () => {
+    const state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    const [p1] = Array.from(state.players.keys());
+    expect(state.players.get(p1)?.attackedThisTurn).toBeFalsy();
+    expect(
+      evaluateInterveningIfClause("you attacked this turn", state, p1),
+    ).toBe(false);
+  });
+
+  it("evaluator returns true after markAttackedThisTurn flips the flag", () => {
+    const state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    const [p1] = Array.from(state.players.keys());
+    const attacked = markAttackedThisTurn(state, [p1]);
+    expect(attacked.players.get(p1)?.attackedThisTurn).toBe(true);
+    expect(
+      evaluateInterveningIfClause("you attacked this turn", attacked, p1),
+    ).toBe(true);
+  });
+
+  it("end-of-turn trigger is suppressed when the controller has not attacked this turn", () => {
+    let state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    const [p1] = Array.from(state.players.keys());
+    state = put(
+      state,
+      p1,
+      "buccaneer",
+      card("Skyship Buccaneer", "Creature — Human Pirate", [2, 2]),
+    );
+    expect(state.players.get(p1)?.attackedThisTurn).toBeFalsy();
+
+    const triggers = detectTriggeredAbilities(state, "endOfTurn");
+    const buccaneerTriggers = triggers.filter(
+      (t) => t.sourceCardId === id("buccaneer"),
+    );
+    expect(buccaneerTriggers).toHaveLength(0);
+  });
+
+  it("end-of-turn trigger fires when the controller has attacked, and resolves into a +1/+1 counter", () => {
+    let state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    const [p1] = Array.from(state.players.keys());
+    state = put(
+      state,
+      p1,
+      "buccaneer",
+      card("Skyship Buccaneer", "Creature — Human Pirate", [2, 2]),
+    );
+    state = markAttackedThisTurn(state, [p1]);
+
+    const triggers = detectTriggeredAbilities(state, "endOfTurn");
+    const buccaneerTriggers = triggers.filter(
+      (t) => t.sourceCardId === id("buccaneer"),
+    );
+    expect(buccaneerTriggers).toHaveLength(1);
+
+    const { state: stacked, triggeredAbilities } = putTriggersOnStack(
+      state,
+      buccaneerTriggers,
+    );
+    expect(triggeredAbilities).toHaveLength(1);
+    expect(stacked.stack).toHaveLength(1);
+    const stackObject = stacked.stack[0];
+    const resolved = resolveScriptedAbility(stacked, stackObject)!;
+    const buccaneer = resolved.cards.get(id("buccaneer"))!;
+    const counters = buccaneer.counters.filter((c) => c.type === "+1/+1");
     expect(counters.reduce((sum, c) => sum + c.count, 0)).toBe(1);
   });
 });
