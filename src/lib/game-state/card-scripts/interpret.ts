@@ -1183,20 +1183,37 @@ function applyEffect(
       return r.success ? r.state : state;
     }
     case "ReturnFromZone": {
-      // #2560: return a card from a non-battlefield zone to the battlefield.
-      // The target is a card in the chosen graveyard; we move it with
-      // `moveCardToZone`, which already fires ETB triggers (Renown, Tribute,
-      // scripted) and applies "enters with" counters (CR 614.1c).
+      // #2594 lane 27: `count: "all"` is a sweep (Raise the Past,
+      // FDN #22). #2560: single-target path below.
+      if (effect.count === "all") {
+        const ownerId =
+          (effect.filter?.controller ?? "you") === "you"
+            ? ctx.controllerId
+            : opponentsOf(state, ctx.controllerId)[0];
+        if (!ownerId) return state;
+        const gy = state.zones.get(`${ownerId}-graveyard`);
+        if (!gy) return state;
+        let next = state;
+        for (const id of [...gy.cardIds]) {
+          const card = next.cards.get(id);
+          if (!card) continue;
+          if (effect.filter?.creature === true && !isCreature(card)) continue;
+          if (effect.filter?.mv_le !== undefined &&
+              (card.cardData.cmc ?? 0) > effect.filter.mv_le) continue;
+          const prepared = card.controllerId !== ctx.controllerId
+            ? { ...next, cards: new Map(next.cards).set(id, { ...card, controllerId: ctx.controllerId }) }
+            : next;
+          const r = moveCardToZone(prepared, id, "battlefield");
+          if (r.success) next = r.state;
+        }
+        return next;
+      }
       if (!target) return state;
       if (!returnFromZoneStillMatches(state, target.targetId, effect, ctx))
         return state;
       const cardId = target.targetId as CardInstanceId;
-      // CR 400.3: a card put onto the battlefield by a player different
-      // from its owner is controlled by the player putting it there. The
-      // engine's `moveCardToZone` uses `card.controllerId` to pick the
-      // destination battlefield, so we transfer control to the effect's
-      // controller when the card's current controller differs (the
-      // "from an opponent's graveyard" path).
+      // CR 400.3: transferred control — `moveCardToZone` uses
+      // `card.controllerId` to pick the destination battlefield.
       const card = state.cards.get(cardId);
       if (!card) return state;
       const prepared =
