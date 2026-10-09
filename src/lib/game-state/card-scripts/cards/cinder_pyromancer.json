@@ -1,0 +1,19 @@
+{
+  "name": "Cinder Pyromancer",
+  "oracle": "Whenever you cast a red spell, Cinder Pyromancer deals 1 damage to any target.",
+  "triggers": [
+    {
+      "text": "Whenever you cast a red spell, Cinder Pyromancer deals 1 damage to any target.",
+      "event": "cast",
+      "caster": "you",
+      "cast_color": "R",
+      "effects": [
+        {
+          "op": "DealDamage",
+          "target": "any",
+          "amount": 1
+        }
+      ]
+    }
+  ]
+}

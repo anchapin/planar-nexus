@@ -116,6 +116,8 @@ function castTriggerMatches(
   if (filter.excludeTypes?.some((t) => typeLine.includes(t))) return false;
   if (filter.multicolored && (spell.cardData.colors ?? []).length < 2)
     return false;
+  if (filter.color && !(spell.cardData.colors ?? []).includes(filter.color))
+    return false;
   if (filter.singleTarget) {
     const onStack = castSpellStackObject(state, spell.id);
     if (!onStack || onStack.targets.length !== 1) return false;
