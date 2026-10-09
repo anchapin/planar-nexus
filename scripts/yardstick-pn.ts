@@ -1,18 +1,21 @@
 /**
  * anchapin/manamind#85: score an agent against the Planar Nexus Expert AI.
  *
- *     npx tsx scripts/yardstick-pn.ts [--agent random|expert] [--games 200]
- *         [--seed 1] [--out result.json]
+ *     npx tsx scripts/yardstick-pn.ts [--agent random|expert|model]
+ *         [--model forge_pointer.onnx] [--sims 16] [--sample]
+ *         [--games 200] [--seed 1] [--out result.json]
  *
  * Plays the #2614 deck pair (Mono-Red Aggro vs Mono-Green Landfall) through
  * the training session. Games come in pairs on the same seed with decks
  * swapped, and the deck on the play alternates by pair, so the candidate
  * plays each deck and each seat equally often. Prints JSON: wins, losses,
  * draws, score (a draw counts half) with a 95% Wilson interval, and a split
- * by the candidate's deck. A network checkpoint plugs in once it can play
- * in Planar Nexus (manamind#86).
+ * by the candidate's deck. `--agent model` plays a ForgePointerNet ONNX
+ * checkpoint through `forgeSearch` (manamind#86): the search's greedy pick by
+ * default, or a draw from its policy with `--sample`.
  */
 import { readFileSync, writeFileSync } from "node:fs";
+import * as ortNode from "onnxruntime-node";
 import { join } from "node:path";
 import { loadCardScripts, type PlayerId } from "@/lib/game-state";
 import type { ScryfallCard } from "@/app/actions";
@@ -24,17 +27,19 @@ import {
   type TrainingAction,
   type TrainingPrompt,
 } from "@/ai/simulation/training-session";
+import {
+  createForgePointerModel,
+  type ForgeOrtLike,
+  type ForgePointerModel,
+} from "@/ai/manamind/forge-pointer-model";
+import { forgeSearch } from "@/ai/manamind/forge-search";
 
 type Agent = (
   session: TrainingSession,
   prompt: TrainingPrompt,
   random: () => number,
-) => TrainingAction;
-
-const AGENTS: Record<string, Agent> = {
-  random: (_s, prompt, random) => randomAction(prompt, random),
-  expert: (session, prompt) => expertAction(session, prompt),
-};
+  move: number,
+) => TrainingAction | Promise<TrainingAction>;
 
 function arg(name: string, fallback: string): string {
   const i = process.argv.indexOf(`--${name}`);
@@ -45,6 +50,36 @@ const agentName = arg("agent", "random");
 const games = Number(arg("games", "200"));
 const firstSeed = Number(arg("seed", "1"));
 const out = arg("out", "");
+const modelPath = arg("model", "");
+const simulations = Number(arg("sims", "16"));
+const sample = process.argv.includes("--sample");
+let model: ForgePointerModel | null = null;
+
+/** ForgePointerNet through `forgeSearch`: greedy pick, or sampled. */
+async function modelAction(
+  session: TrainingSession,
+  random: () => number,
+  move: number,
+): Promise<TrainingAction> {
+  if (!model) throw new Error("--agent model needs --model");
+  const r = await forgeSearch(session, model, {
+    simulations,
+    seed: move >>> 0,
+  });
+  if (!sample || r.candidates.length < 2) return r.action;
+  let u = random();
+  for (let i = 0; i < r.policy.length; i++) {
+    u -= r.policy[i];
+    if (u <= 0) return r.candidates[i].action;
+  }
+  return r.action;
+}
+
+const AGENTS: Record<string, Agent> = {
+  random: (_s, prompt, random) => randomAction(prompt, random),
+  expert: (session, prompt) => expertAction(session, prompt),
+  model: (session, _prompt, random, move) => modelAction(session, random, move),
+};
 const candidate = AGENTS[agentName];
 if (!candidate) throw new Error(`Unknown agent ${agentName}`);
 if (games % 2 !== 0)
@@ -91,11 +126,11 @@ function wilson(p: number, n: number): [number, number] {
   return [+(c - h).toFixed(3), +(c + h).toFixed(3)];
 }
 
-function playGame(
+async function playGame(
   seed: number,
   candidateDeck: "red" | "green",
   candidateFirst: boolean,
-): "win" | "loss" | "draw" {
+): Promise<"win" | "loss" | "draw"> {
   const session = new TrainingSession();
   const other = candidateDeck === "red" ? "green" : "red";
   const [a, b] = candidateFirst
@@ -105,10 +140,11 @@ function playGame(
   const me: PlayerId = candidateFirst ? players[0] : players[1];
   const random = mulberry32(seed * 7919 + 1);
   let prompt = session.legalChoices();
+  let move = 0;
   while (prompt.kind !== "game_over") {
     const action =
       prompt.playerId === me
-        ? candidate(session, prompt, random)
+        ? await candidate(session, prompt, random, seed * 7919 + move++)
         : expertAction(session, prompt);
     prompt = session.step(action);
   }
@@ -119,6 +155,13 @@ function playGame(
 
 async function main(): Promise<void> {
   await loadCardScripts();
+  if (agentName === "model") {
+    if (!modelPath) throw new Error("--agent model needs --model");
+    model = await createForgePointerModel(
+      ortNode as unknown as ForgeOrtLike,
+      readFileSync(modelPath),
+    );
+  }
   const start = Date.now();
   const tally = { win: 0, loss: 0, draw: 0 };
   const byDeck = {
@@ -131,7 +174,7 @@ async function main(): Promise<void> {
     const candidateFirst = pair % 2 === 0;
     for (const d of ["red", "green"] as const) {
       try {
-        const r = playGame(seed, d, candidateFirst);
+        const r = await playGame(seed, d, candidateFirst);
         tally[r]++;
         byDeck[d][r]++;
       } catch (err) {
@@ -150,6 +193,7 @@ async function main(): Promise<void> {
   const result = {
     yardstick: "pn-expert",
     agent: agentName,
+    ...(agentName === "model" ? { model: modelPath, simulations, sample } : {}),
     opponent: "expert",
     decks: "mono-red-aggro vs mono-green-landfall (#2614)",
     games: n,
