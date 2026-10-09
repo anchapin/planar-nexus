@@ -42,12 +42,12 @@ import {
   type AttackerOption,
   type BlockAssignment,
   type BlockerOption,
+  getMenaceMinimumBlockers,
   type DecisionAnswer,
   type GameState,
   type PlayerId,
   type PriorityChoice,
 } from "@/lib/game-state";
-import { getMenaceMinimumBlockers } from "@/lib/game-state/evergreen-keywords";
 import { buildDeck, type SimDeckArchetype } from "./game-simulator";
 
 type DeckList = ReturnType<typeof buildDeck>;

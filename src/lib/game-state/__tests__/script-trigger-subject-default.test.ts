@@ -8,7 +8,7 @@ import { describe, it, expect, beforeAll } from "@jest/globals";
 import { registerCardScripts } from "../card-scripts/registry";
 import { RAW_CARD_SCRIPTS } from "../card-scripts/cards/index.generated";
 import { getScriptedTriggeredAbilities } from "../abilities/parse";
-import type { ScryfallCard } from "@/lib/card-database";
+import type { ScryfallCard } from "../types";
 
 const sarkhan = {
   name: "Sarkhan, Dragon Ascendant",

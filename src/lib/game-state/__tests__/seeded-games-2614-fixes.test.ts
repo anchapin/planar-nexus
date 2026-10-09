@@ -1,7 +1,8 @@
 /**
  * Rules gaps the #2614 seeded random-agent games hit: the legend-rule choice
  * had no answer path, an Aura spell was offered with no enchant target, and
- * the random agent sent a lone blocker at a menace creature.
+ * the random agent sent a lone blocker at a menace creature (that last one is
+ * covered in src/ai/__tests__/simulation/training-session.test.ts).
  */
 import { describe, it, expect, beforeEach } from "@jest/globals";
 import { createInitialGameState, startGame } from "../game-state";
@@ -12,10 +13,6 @@ import { RAW_CARD_SCRIPTS } from "../card-scripts/cards/index.generated";
 import { resolveWaitingChoice } from "../spell-casting/choices";
 import { createLegendaryWaitingChoice } from "../legendary-rule";
 import { listPriorityChoices } from "../legal-choices";
-import {
-  randomAction,
-  type TrainingPrompt,
-} from "@/ai/simulation/training-session";
 import { Phase } from "../types";
 import type { CardInstance, GameState, PlayerId, ScryfallCard } from "../types";
 
@@ -129,24 +126,5 @@ describe("#2614 seeded-game fixes", () => {
     expect(casts()).toEqual([
       { kind: "cast_spell", cardId: aura.id, targets: [mine.id] },
     ]);
-  });
-
-  it("random agent drops blocks that break an attacker's limit", () => {
-    const prompt: TrainingPrompt = {
-      kind: "block",
-      playerId: p2,
-      options: [
-        { cardId: "b1", attackers: ["menace"] },
-        { cardId: "b2", attackers: ["capped"] },
-        { cardId: "b3", attackers: ["capped"] },
-        { cardId: "b4", attackers: ["plain"] },
-      ],
-      limits: { menace: { min: 2 }, capped: { min: 1, max: 1 } },
-    } as unknown as TrainingPrompt;
-    // random() = 0 keeps every blocker and picks the first attacker.
-    const action = randomAction(prompt, () => 0);
-    expect(action).toEqual({
-      blocks: [{ blockerId: "b4", attackerId: "plain" }],
-    });
   });
 });
