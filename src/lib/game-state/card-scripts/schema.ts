@@ -1226,6 +1226,20 @@ export const ActivatedSchema = z
          * ability, so that case doesn't apply here).
          */
         exileSelf: z.boolean().default(false),
+        /**
+         * #2594 follow-up (lane 21): "Pay N life" as an activation
+         * cost (Ring of the Lucii — FIN #269: "{2}, {T}, Pay 1 life:
+         * Tap target nonland permanent"). Parallel to
+         * `sacrifice_permanents`. The engine's `payLife` field in
+         * `ParsedActivatedAbility.costs` is already paid in
+         * `abilities/activated.ts` (`activated.ts:412`); this lane
+         * wires the script's `cost.pay_life` into that field. Range
+         * 1..99 (v1 safeguard). The activation fails if the
+         * controller's life is below `pay_life` (CR 118.4, "If a
+         * player pays life, they lose that much life"; engine
+         * surfaces "Not enough life" via `canActivate`).
+         */
+        pay_life: z.number().int().min(1).max(99).optional(),
       })
       .strict(),
     /** CR 602.5b: "Activate only once" / "Activate only once each turn". */
