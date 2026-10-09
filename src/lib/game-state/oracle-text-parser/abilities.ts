@@ -188,6 +188,13 @@ export interface CastFilter {
   multicolored?: boolean;
   /** "a spell with a single target": the spell has exactly one target. */
   singleTarget?: boolean;
+  /**
+   * "a red spell" / "a white spell" (#2594 follow-up, lane 34,
+   * Pyromancer's Goggles — color half): the trigger fires only when
+   * the cast spell's `colors` includes this color. v1 supports a
+   * single color.
+   */
+  color?: "W" | "U" | "B" | "R" | "G";
   self?: boolean;
   unsupported?: boolean;
 }

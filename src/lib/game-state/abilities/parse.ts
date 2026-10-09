@@ -83,6 +83,7 @@ function castFilterOf(t: ScriptedTrigger): CastFilter {
     caster: t.caster ?? "you",
     ...SPELL_FILTER[t.spell ?? "any"],
     ...(t.targets === "single" ? { singleTarget: true } : {}),
+    ...(t.cast_color ? { color: t.cast_color } : {}),
   };
 }
 

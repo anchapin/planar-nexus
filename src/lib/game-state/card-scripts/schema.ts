@@ -1179,6 +1179,17 @@ export const TriggerSchema = z
         "multicolored",
       ])
       .optional(),
+    /**
+     * cast only: a single-color filter ("a red spell",
+     * "a white spell", CR 601.2i / 603.2). The trigger fires only when
+     * the cast spell's `colors` includes this color. Mutually
+     * independent from `spell` (e.g. `spell: "instant_or_sorcery"` +
+     * `cast_color: "R"` = "whenever you cast a red instant or
+     * sorcery"). v1 supports a single color; multicolored or "color
+     * identity" filters are a follow-up. (#2594 follow-up, lane 34,
+     * Pyromancer's Goggles — color half only.)
+     */
+    cast_color: z.enum(["W", "U", "B", "R", "G"]).optional(),
     /** crime only: "This ability triggers only once each turn." */
     once_per_turn: z.literal(true).optional(),
     /** cast only: "a spell with a single target" (exactly one target). */
@@ -1223,8 +1234,9 @@ export const TriggerSchema = z
       t.event === "cast" ||
       (t.caster === undefined &&
         t.spell === undefined &&
-        t.targets === undefined),
-    { message: "caster, spell and targets are only for cast triggers" },
+        t.targets === undefined &&
+        t.cast_color === undefined),
+    { message: "caster, spell, targets and cast_color are only for cast triggers" },
   )
   .refine(
     (t) =>
