@@ -1,0 +1,20 @@
+{
+  "name": "Skyship Buccaneer",
+  "oracle": "Raid — At the beginning of your end step, if you attacked this turn, put a +1/+1 counter on this creature.",
+  "triggers": [
+    {
+      "text": "Raid — At the beginning of your end step, if you attacked this turn, put a +1/+1 counter on this creature.",
+      "event": "phaseEnds",
+      "subject": "self",
+      "intervening_if": "you attacked this turn",
+      "effects": [
+        {
+          "op": "PutCounters",
+          "counter": "+1/+1",
+          "amount": 1,
+          "target": "self"
+        }
+      ]
+    }
+  ]
+}
