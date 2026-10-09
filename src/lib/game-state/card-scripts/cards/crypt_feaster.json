@@ -1,0 +1,20 @@
+{
+  "name": "Crypt Feaster",
+  "oracle": "Menace\nThreshold — Whenever this creature attacks, if there are seven or more cards in your graveyard, this creature gets +2/+0 until end of turn.",
+  "triggers": [
+    {
+      "text": "Threshold — Whenever this creature attacks, if there are seven or more cards in your graveyard, this creature gets +2/+0 until end of turn.",
+      "event": "attacks",
+      "subject": "self",
+      "intervening_if": "there are seven or more cards in your graveyard",
+      "effects": [
+        {
+          "op": "Pump",
+          "power": 2,
+          "toughness": 0,
+          "target": "self"
+        }
+      ]
+    }
+  ]
+}

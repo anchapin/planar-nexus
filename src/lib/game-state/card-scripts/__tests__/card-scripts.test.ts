@@ -39,8 +39,10 @@ import { matchesController, matchesRemovalFilter } from "../target-filters";
 import { RAW_CARD_SCRIPTS } from "../cards/index.generated";
 import {
   getActivatedAbilities,
+  getScriptedTriggeredAbilities,
   getTriggeredAbilities,
 } from "../../abilities/parse";
+import { evaluateInterveningIfClause } from "../../abilities/evaluate";
 import { detectLandfallTriggers } from "../../keyword-actions/landfall";
 import { putTriggersOnStack } from "../../trigger-system/stack-ops";
 import { refreshScriptedStatics } from "../../keyword-actions/scripted-statics";
@@ -9212,5 +9214,76 @@ describe("Discard each_player dispatch (#2594 lane 25)", () => {
     // opponent queued behind). Library and graveyard counts must be
     // unchanged until the player picks.
     expect(after.waitingChoice?.type).toBe("discard_cards");
+  });
+});
+
+describe("Crypt Feaster: threshold intervening-if on attacks trigger (#2594 lane 26)", () => {
+  it("passes intervening_if through scriptedTrigger to ParsedTriggeredAbility", () => {
+    const crypt = getCardScript("Crypt Feaster");
+    expect(crypt).toBeDefined();
+    const trig = crypt!.triggers![0];
+    expect(trig.intervening_if).toBe(
+      "there are seven or more cards in your graveyard",
+    );
+
+    const abilities = getScriptedTriggeredAbilities(
+      // any ScryfallCard with the right oracle works for parse; the
+      // engine looks at scriptedTrigger's `t` not the card text.
+      { name: "Crypt Feaster" } as unknown as ScryfallCard,
+    );
+    expect(abilities).toBeDefined();
+    expect(abilities![0].interveningIf).toBe(
+      "there are seven or more cards in your graveyard",
+    );
+  });
+
+  it("attack trigger is suppressed when the graveyard has 0 cards", () => {
+    // Direct evaluator: 0 cards in p1's graveyard → clause is false.
+    const state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    const [p1] = Array.from(state.players.keys());
+    const cluase = "there are seven or more cards in your graveyard";
+    expect(
+      evaluateInterveningIfClause(cluase, state, p1),
+    ).toBe(false);
+  });
+
+  it("attack trigger is suppressed when the graveyard has 6 cards", () => {
+    let state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    const [p1] = Array.from(state.players.keys());
+    // put 6 cards in p1's graveyard
+    for (let i = 0; i < 6; i++) {
+      const cardId = `g${i}` as CardInstanceId;
+      state = put(
+        state,
+        p1,
+        `g${i}`,
+        card("Discarded", "Creature — Rat"),
+        "graveyard",
+      );
+    }
+    const cluase = "there are seven or more cards in your graveyard";
+    expect(evaluateInterveningIfClause(cluase, state, p1)).toBe(false);
+  });
+
+  it("attack trigger fires when the graveyard has 7 cards", () => {
+    let state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    const [p1] = Array.from(state.players.keys());
+    for (let i = 0; i < 7; i++) {
+      state = put(
+        state,
+        p1,
+        `g${i}`,
+        card("Discarded", "Creature — Rat"),
+        "graveyard",
+      );
+    }
+    const cluase = "there are seven or more cards in your graveyard";
+    expect(evaluateInterveningIfClause(cluase, state, p1)).toBe(true);
   });
 });
