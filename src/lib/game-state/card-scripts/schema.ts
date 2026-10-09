@@ -315,6 +315,16 @@ export const ExileSchema = z
      * Unset keeps the older targeting.
      */
     graveyard: z.enum(["you", "any"]).optional(),
+    /**
+     * #2594 follow-up (lane 20): "exile up to N target cards from a
+     * graveyard" (Soul-Shackled Zombie — FDN #70: "exile up to two
+     * target cards from a single graveyard"). When `count` is set
+     * with `fromZone: "graveyard"`, the engine selects up to `count`
+     * card ids from the chosen graveyard and exiles them all.
+     * `count: undefined` falls back to the single-card branch (lane
+     * 10). Max 9 (v1 safeguard).
+     */
+    count: z.number().int().min(1).max(9).optional(),
   })
   .strict()
   .refine((e) => !e.graveyard || e.fromZone === "graveyard", {

@@ -1,0 +1,30 @@
+{
+  "name": "Soul-Shackled Zombie",
+  "oracle": "When this creature enters, exile up to two target cards from a single graveyard. If at least one creature card was exiled this way, each opponent loses 2 life and you gain 2 life.",
+  "triggers": [
+    {
+      "text": "When this creature enters, exile up to two target cards from a single graveyard. If at least one creature card was exiled this way, each opponent loses 2 life and you gain 2 life.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "Exile",
+          "target": "creature",
+          "fromZone": "graveyard",
+          "count": 2,
+          "graveyard": "any"
+        },
+        {
+          "op": "LoseLife",
+          "amount": 2,
+          "who": "each_opponent"
+        },
+        {
+          "op": "GainLife",
+          "amount": 2,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}
