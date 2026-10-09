@@ -150,7 +150,7 @@ export function cardFeatures(card: BridgeCard): number[] {
       generic += Number(sym);
       continue;
     }
-    for (const ch of sym.split("/")) if (ch in pips) pips[ch] += 1;
+    for (const ch of sym.split("/")) if (Object.hasOwn(pips, ch)) pips[ch] += 1;
   }
   for (const p of PIPS) feats.push(pips[p] / 5);
   feats.push(generic / 10);
