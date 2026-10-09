@@ -121,6 +121,26 @@ function viewCard(
   };
 }
 
+/**
+ * One card as `viewer` would see it in the Forge-bridge shape, wherever it
+ * is: a battlefield card is face-down-hidden for the other seat, and gets
+ * its effective power and toughness.
+ */
+export function viewCardFor(
+  state: GameState,
+  cardId: string,
+  viewer: PlayerId,
+): ViewCard | null {
+  const card = state.cards.get(cardId);
+  if (!card) return null;
+  const onBattlefield = (card.currentZoneKey ?? "").endsWith("-battlefield");
+  return viewCard(
+    card,
+    onBattlefield,
+    onBattlefield && card.isFaceDown && card.controllerId !== viewer,
+  );
+}
+
 function zoneIds(state: GameState, playerId: PlayerId, zone: string) {
   return state.zones.get(`${playerId}-${zone}`)?.cardIds ?? [];
 }
