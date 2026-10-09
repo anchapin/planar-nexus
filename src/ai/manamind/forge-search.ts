@@ -127,7 +127,10 @@ export function forgeDecision(
   }
 }
 
-function blockAttackers(prompt: Extract<Live, { kind: "block" }>): string[] {
+/** Attacker ids in the order the block decision lists them. */
+export function blockAttackers(
+  prompt: Extract<Live, { kind: "block" }>,
+): string[] {
   const ids: string[] = [];
   for (const o of prompt.options)
     for (const a of o.attackers) if (!ids.includes(a)) ids.push(a);
