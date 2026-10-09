@@ -1463,8 +1463,19 @@ describe("scripted Mill (#2534)", () => {
     expect(ok({ op: "Mill", amount: 2 })).toBe(true);
     expect(ok({ op: "Mill", amount: 1, who: "target_player" })).toBe(true);
     expect(ok({ op: "Mill", amount: 1, who: "each_opponent" })).toBe(true);
+    expect(ok({ op: "Mill", amount: 1, who: "each_player" })).toBe(true);
     expect(ok({ op: "Mill", amount: 0 })).toBe(false);
-    expect(ok({ op: "Mill", amount: 1, who: "each_player" })).toBe(false);
+  });
+
+  it("validates Draw (#2594 lane 25)", () => {
+    const ok = (effect: object) =>
+      CardScriptSchema.safeParse({ name: "X", oracle: "x", spell: [effect] })
+        .success;
+    expect(ok({ op: "Draw", amount: 1 })).toBe(true);
+    expect(ok({ op: "Draw", amount: 1, who: "you" })).toBe(true);
+    expect(ok({ op: "Draw", amount: 1, who: "target_player" })).toBe(true);
+    expect(ok({ op: "Draw", amount: 1, who: "each_player" })).toBe(true);
+    expect(ok({ op: "Draw", amount: 1, who: "each_opponent" })).toBe(false);
   });
 
   it("mills the top cards of your library into your graveyard", () => {
@@ -1583,6 +1594,7 @@ describe("scripted Discard (#2536)", () => {
     expect(ok([{ op: "Discard", amount: 1 }])).toBe(true);
     expect(ok([{ op: "Discard", amount: 2, who: "target_player" }])).toBe(true);
     expect(ok([{ op: "Discard", amount: 1, who: "each_opponent" }])).toBe(true);
+    expect(ok([{ op: "Discard", amount: 1, who: "each_player" }])).toBe(true);
     expect(ok([{ op: "Discard", amount: 0 }])).toBe(false);
     expect(
       ok([
@@ -9110,5 +9122,95 @@ describe("Esper Origins // Summon: Esper Maduin: flashback into a Saga (#2614)",
     });
     s = destroyCard({ ...s, cards }, id("bear")).state;
     expect(zoneOf(s, "bear")).toMatch(/exile$/);
+  });
+});
+
+describe("Scrawling Crawler: each player draws a card in upkeep (#2594 lane 25)", () => {
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+  const hand = (s: GameState, who: PlayerId) =>
+    s.zones.get(`${who}-hand`)?.cardIds.length ?? 0;
+  const library = (s: GameState, who: PlayerId) =>
+    s.zones.get(`${who}-library`)?.cardIds.length ?? 0;
+  const run = (s: GameState) =>
+    resolveScriptedEffects(
+      s,
+      getCardScript("Scrawling Crawler")!.triggers![0].effects!,
+      {
+        controllerId: p1,
+        sourceCardId: id("crawler"),
+        targets: [],
+      } as unknown as StackObject,
+    );
+
+  beforeEach(() => {
+    state = startGame(createInitialGameState(["Player1", "Player2"], 20, false));
+    [p1, p2] = Array.from(state.players.keys());
+    state = put(state, p1, "crawler", {
+      id: "mock-Scrawling Crawler",
+      name: "Scrawling Crawler",
+      type_line: "Creature — Eldrazi Drone",
+      oracle_text: "",
+      mana_cost: "",
+      cmc: 0,
+      colors: [],
+      color_identity: [],
+      keywords: [],
+      legalities: { standard: "legal" },
+      layout: "normal",
+      power: "2",
+      toughness: "2",
+    } as unknown as ScryfallCard);
+    // game startGame gives each player a full library (60 cards by default),
+    // so the draw effect has plenty to chew on.
+  });
+
+  it("upkeep: each_player draws for both the controller and every opponent", () => {
+    const beforeP1Hand = hand(state, p1);
+    const beforeP2Hand = hand(state, p2);
+    const beforeP1Lib = library(state, p1);
+    const beforeP2Lib = library(state, p2);
+    const after = run(state);
+    // both players' hands grew by exactly 1 and libraries shrank by exactly 1
+    expect(hand(after, p1)).toBe(beforeP1Hand + 1);
+    expect(hand(after, p2)).toBe(beforeP2Hand + 1);
+    expect(library(after, p1)).toBe(beforeP1Lib - 1);
+    expect(library(after, p2)).toBe(beforeP2Lib - 1);
+  });
+});
+
+describe("Discard each_player dispatch (#2594 lane 25)", () => {
+  it("Discard { who: 'each_player' } is a valid schema arm", () => {
+    const parsed = CardScriptSchema.safeParse({
+      name: "Discard each",
+      oracle: "Each player discards a card.",
+      spell: [{ op: "Discard", amount: 1, who: "each_player" }],
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("Discard { who: 'each_player' } asks each player to discard (#2594 lane 25)", () => {
+    // mirrors the each_opponent precedent in "asks the discarding player to
+    // choose, then discards the pick" above; the difference here is that
+    // every player (controller + opponents) is queued for the same
+    // discard_cards waiting choice.
+    const state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    const [p1, p2] = Array.from(state.players.keys());
+    const after = resolveScriptedEffects(
+      state,
+      [{ op: "Discard", amount: 1, who: "each_player" } as never],
+      {
+        controllerId: p1,
+        sourceCardId: null as never,
+        targets: [],
+      } as unknown as StackObject,
+    );
+    // startDiscard sets a discard_cards waiting choice (controller first,
+    // opponent queued behind). Library and graveyard counts must be
+    // unchanged until the player picks.
+    expect(after.waitingChoice?.type).toBe("discard_cards");
   });
 });

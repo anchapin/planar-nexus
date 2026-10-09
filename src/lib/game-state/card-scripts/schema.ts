@@ -121,11 +121,14 @@ export const DealDamageSchema = z
     },
   );
 
+/** #2594 lane 25: each_player draws a card for every player. */
 export const DrawSchema = z
   .object({
     op: z.literal("Draw"),
     amount: xAmount,
-    who: z.enum(["you", "target_player"]).default("you"),
+    who: z
+      .enum(["you", "target_player", "each_player"])
+      .default("you"),
     if_kicked: ifKicked,
   })
   .strict();
@@ -690,11 +693,14 @@ export const PutCountersSchema = z
  * Put the top N cards of a library into its owner's graveyard (#2534).
  * Milling more cards than the library holds mills what is there.
  */
+/** #2594 lane 25: each_player mills every player in the game. */
 export const MillSchema = z
   .object({
     op: z.literal("Mill"),
     amount: xCount,
-    who: z.enum(["you", "target_player", "each_opponent"]).default("you"),
+    who: z
+      .enum(["you", "target_player", "each_opponent", "each_player"])
+      .default("you"),
     if_kicked: ifKicked,
   })
   .strict();
@@ -708,7 +714,9 @@ export const DiscardSchema = z
   .object({
     op: z.literal("Discard"),
     amount: z.number().int().min(1),
-    who: z.enum(["you", "target_player", "each_opponent"]).default("you"),
+    who: z
+      .enum(["you", "target_player", "each_opponent", "each_player"])
+      .default("you"),
     /**
      * #2594 follow-up (lane 15): "Discard your hand" (Myojin of
      * Night's Reach — FDN #110, Nibelheim Aflame — FIN). When
