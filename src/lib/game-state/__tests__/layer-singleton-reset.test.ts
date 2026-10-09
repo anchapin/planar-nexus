@@ -12,7 +12,7 @@ describe("shared layer system reset on new game (#2620)", () => {
   it("leaves no overrides or cache entries behind when a new game starts", () => {
     createInitialGameState(["p1", "p2"], 20, false);
     for (let i = 0; i < 25; i++) {
-      layerSystem.getOverrides(`old-game-card-${i}`).power = i;
+      layerSystem.getOverrides(`old-game-card-${i}`).text = `old text ${i}`;
     }
     expect(layerSystem.getOverrideCount()).toBe(25);
 
@@ -20,7 +20,7 @@ describe("shared layer system reset on new game (#2620)", () => {
 
     expect(layerSystem.getOverrideCount()).toBe(0);
     expect(layerSystem.getCacheSize()).toBe(0);
-    expect(layerSystem.getOverrides("old-game-card-3").power).toBeUndefined();
+    expect(layerSystem.getOverrides("old-game-card-3").text).toBeUndefined();
   });
 
   it("keeps the shared layer system bounded across many games", () => {
