@@ -9611,3 +9611,172 @@ describe("Skyship Buccaneer: raid intervening-if on phaseEnds trigger (#2594 lan
     expect(counters.reduce((sum, c) => sum + c.count, 0)).toBe(1);
   });
 });
+
+describe("Knight of Grace: literal color anthem (#2594 lane 30)", () => {
+  // Knight of Grace is a sub-piece of the (multi-lane) Lane 24
+  // chosen-color anthem work; the static-ability schema gets a new
+  // `affects.color` literal (Scryfall "W"..."G" form) and the
+  // applicator in `staticAffects` filters by the target's color set.
+  // Sample card: "White creatures you control get +1/+1." — pumps
+  // white creatures the controller owns and leaves everyone else
+  // alone.
+
+  // Build a ScryfallCard that has real colors (the top-level `card()`
+  // helper hard-codes colors: []).
+  const coloredCard = (
+    name: string,
+    typeLine: string,
+    pt: [number, number],
+    colors: string[],
+  ): ScryfallCard =>
+    ({
+      id: `mock-${name}`,
+      name,
+      type_line: typeLine,
+      oracle_text: "",
+      mana_cost: "",
+      cmc: 0,
+      colors,
+      color_identity: colors,
+      keywords: [],
+      legalities: { standard: "legal" },
+      layout: "normal",
+      power: String(pt[0]),
+      toughness: String(pt[1]),
+    }) as unknown as ScryfallCard;
+
+  let state: GameState;
+  let p1: PlayerId;
+  let p2: PlayerId;
+
+  const pt = (s: GameState, cardId: string) => {
+    const c = s.cards.get(id(cardId))!;
+    return [getEffectivePower(c), getEffectiveToughness(c)];
+  };
+
+  beforeEach(() => {
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    [p1, p2] = Array.from(state.players.keys());
+  });
+
+  it("registry exposes Knight of Grace with the color filter", () => {
+    const knight = getCardScript("Knight of Grace");
+    expect(knight).toBeDefined();
+    expect(knight!.statics).toHaveLength(1);
+    const stat = knight!.statics![0];
+    expect(stat.affects.controller).toBe("you");
+    expect(stat.affects.color).toBe("W");
+    expect(stat.power).toBe(1);
+    expect(stat.toughness).toBe(1);
+  });
+
+  it("schema accepts `affects.color` literal for Static abilities", () => {
+    const ok = CardScriptSchema.safeParse({
+      name: "Test Color Anthem",
+      oracle: "White creatures you control get +1/+1.",
+      statics: [
+        {
+          text: "White creatures you control get +1/+1.",
+          affects: { controller: "you", color: "W" },
+          power: 1,
+          toughness: 1,
+        },
+      ],
+    });
+    expect(ok.success).toBe(true);
+  });
+
+  it("schema rejects an unknown color value", () => {
+    const bad = CardScriptSchema.safeParse({
+      name: "Bad Anthem",
+      oracle: "x",
+      statics: [
+        {
+          text: "x",
+          affects: { controller: "you", color: "X" as never },
+          power: 1,
+          toughness: 1,
+        },
+      ],
+    });
+    expect(bad.success).toBe(false);
+  });
+
+  it("pumps a white creature you control (+1/+1)", () => {
+    let s = put(
+      state,
+      p1,
+      "knight",
+      card("Knight of Grace", "Creature — Human Knight", [2, 2]),
+    );
+    s = put(
+      s,
+      p1,
+      "white-cat",
+      coloredCard("White Cat", "Creature — Cat", [1, 1], ["W"]),
+    );
+    s = refreshScriptedStatics(s);
+    expect(pt(s, "white-cat")).toEqual([2, 2]);
+  });
+
+  it("leaves a blue creature you control alone", () => {
+    let s = put(
+      state,
+      p1,
+      "knight",
+      card("Knight of Grace", "Creature — Human Knight", [2, 2]),
+    );
+    s = put(
+      s,
+      p1,
+      "blue-crab",
+      coloredCard("Blue Crab", "Creature — Crab", [1, 1], ["U"]),
+    );
+    s = refreshScriptedStatics(s);
+    expect(pt(s, "blue-crab")).toEqual([1, 1]);
+  });
+
+  it("does not affect a white creature an opponent controls", () => {
+    let s = put(
+      state,
+      p1,
+      "knight",
+      card("Knight of Grace", "Creature — Human Knight", [2, 2]),
+    );
+    s = put(
+      s,
+      p2,
+      "foe-white",
+      coloredCard("Foe White", "Creature — Human", [1, 1], ["W"]),
+    );
+    s = refreshScriptedStatics(s);
+    expect(pt(s, "foe-white")).toEqual([1, 1]);
+  });
+
+  it("applies to a multicolored creature that includes white", () => {
+    // CR 613.5: a multicolored creature is every color printed on it;
+    // a "white creatures" anthem affects it because white is one of
+    // its colors.
+    let s = put(
+      state,
+      p1,
+      "knight",
+      card("Knight of Grace", "Creature — Human Knight", [2, 2]),
+    );
+    s = put(
+      s,
+      p1,
+      "esper",
+      coloredCard(
+        "Esper",
+        "Creature — Human Wizard",
+        [1, 1],
+        ["W", "U", "B"],
+      ),
+    );
+    s = refreshScriptedStatics(s);
+    expect(pt(s, "esper")).toEqual([2, 2]);
+  });
+});

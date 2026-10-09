@@ -11,6 +11,7 @@ import { getCardScript } from "../card-scripts/registry";
 import type { RuleStatic, ScriptedStatic } from "../card-scripts/schema";
 import { restoreAnimatedOffBattlefield } from "../pt-until-end-of-turn";
 import { returnEarthbentLands } from "./earthbend";
+import { getCardColors } from "../evergreen-keywords";
 
 function battlefieldCards(state: GameState): CardInstance[] {
   const out: CardInstance[] = [];
@@ -85,10 +86,27 @@ export function staticAffects(
   target: CardInstance,
 ): boolean {
   if (!isCreature(target)) return false;
-  const { controller, other, subtype } = stat.affects;
+  const { controller, other, subtype, color } = stat.affects;
   if (other && source.id === target.id) return false;
   const sameController = source.controllerId === target.controllerId;
   if (controller === "you" ? !sameController : sameController) return false;
+  // Color filter (#2594 lane 30): a single-color anthem like Knight of
+  // Grace's "White creatures you control get +1/+1" only applies to
+  // creatures whose colors include the named color. Scryfall stores
+  // colors as single letters ("W"..."G"); getCardColors normalises to
+  // lowercase words ("white"..."green"), so we map before comparing.
+  if (color) {
+    const COLOR_MAP: Record<string, string> = {
+      W: "white",
+      U: "blue",
+      B: "black",
+      R: "red",
+      G: "green",
+    };
+    const wanted = COLOR_MAP[color];
+    const targetColors = getCardColors(target);
+    if (!targetColors.includes(wanted)) return false;
+  }
   return (
     !subtype ||
     Boolean(target.animatedUntilEndOfTurn?.allCreatureTypes) ||

@@ -1346,6 +1346,13 @@ export const StaticSchema = z
         other: z.boolean().optional(),
         /** Only creatures with this creature type, singular ("Dinosaur"). */
         subtype: z.string().min(1).optional(),
+        /**
+         * Only creatures of this color, single-letter Scryfall form
+         * ("W", "U", "B", "R", "G"). Used by single-color anthem
+         * patterns like Knight of Grace's "White creatures you
+         * control get +1/+1" (#2594 lane 30).
+         */
+        color: z.enum(["W", "U", "B", "R", "G"]).optional(),
       })
       .strict(),
     power: z.number().int().optional(),

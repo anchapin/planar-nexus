@@ -1,0 +1,15 @@
+{
+  "name": "Knight of Grace",
+  "oracle": "White creatures you control get +1/+1.",
+  "statics": [
+    {
+      "text": "White creatures you control get +1/+1.",
+      "affects": {
+        "controller": "you",
+        "color": "W"
+      },
+      "power": 1,
+      "toughness": 1
+    }
+  ]
+}
