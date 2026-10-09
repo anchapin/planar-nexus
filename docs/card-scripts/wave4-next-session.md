@@ -114,3 +114,24 @@ End each lane with: `git log --oneline -1` on main showing the new lane's commit
 ## Done definition for the loop
 
 When all priority-order lanes (1–4) are either shipped or marked as multi-lane blockers, write a final summary at the bottom of this file documenting the shipped lanes, the blocked gaps with their `#2614 plan work` references, and a fresh test-count snapshot. Then stop. Do not attempt priority-order lanes 5–6 unless all of 1–4 are shipped/blocked.
+
+---
+
+## Wave 4 Loop Progress
+
+### Shipped
+
+- **Lane 24 — SKIPPED**: Add mana of any one color. Genuinely multi-lane (350-550 LOC: `chosenColor` instance field + `Static.affects.color` schema/engine + `AddMana.chosen` arm + "as this enters, choose a color" plumbing). Per handoff rule: "skip and document". Heraldic Banner ships when the underlying schema work is scheduled as its own lanes.
+- **Lane 25 — SHIPPED** (PR #2679, commit `087e1997`): `Draw.who / Discard.who / Mill.who` enums widened with `each_player`, mirroring the existing `each_opponent` precedent. Each dispatch arm iterates `state.players.keys()`. Sample card: Scrawling Crawler (FDN) using existing `upkeep` trigger event. Closes the "at the beginning of your upkeep, each player draws a card" drafter gap. Dragon Mage (FDN #621) remains blocked on a separate `deals_combat_damage_to_player` trigger lane, as flagged in the original handoff.
+
+### Blocked / future lanes
+
+- **Lane 26 — NEXT**: Threshold / morbid / raid conditions. `if_condition` field on `TriggerSchema`. Sample: pick the simplest of Cackling Prowler / Needletooth Pack / Wardens of the Cycle. Fallback: just `threshold`.
+- **Lane 27**: `ReturnFromZone` with count > 1 on graveyard. Need to verify a real FDN/FIN card sample first.
+- **Lane 28 / 29**: Copying permanent / copying spell — multi-lane, likely skipped.
+- **Replacement-effect-for-death, granting triggered abilities, additional costs, casting spells from non-hand zones, stun/finality counters** etc.: all multi-lane script+EP. Mark as `#2614 plan work`.
+
+### Test count snapshot at loop close
+
+- 688 suites / 13746 tests passing (was 687 / 13738 at loop start; +1 suite / +8 tests from lane 25 + concurrent merge #2678).
+- Lint 0 errors, typecheck clean, engine-size budget at limit (interpret.ts = 2000/2000).
