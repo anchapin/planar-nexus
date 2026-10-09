@@ -187,3 +187,5 @@ export { getManaValue as getManaValueFromOracleTextParser } from "./oracle-text-
 
 // Card scripts load in their own chunk; game pages await this first (#1814).
 export { cardScriptsLoaded, loadCardScripts } from "./card-scripts/registry";
+// #2614: menace minimum for block prompts outside the engine.
+export { getMenaceMinimumBlockers } from "./evergreen-keywords";

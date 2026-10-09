@@ -52,6 +52,7 @@ import {
   parseTriggerTargetSpec,
 } from "./trigger-system/trigger-targets";
 import { tapLandsForCost } from "./keyword-actions/hand-activations";
+import { isAuraCard, validateAuraSpellTarget } from "./keyword-actions/enchant";
 import { passPriority } from "./game-state";
 import {
   canAttack,
@@ -152,11 +153,41 @@ function spellChoices(
   const slots = specs.map((_, i) =>
     getLegalSpellTargetsAt(state, playerId, cardId, i),
   );
+  // CR 303.4a: an Aura spell targets what it will enchant. Its "Enchant ..."
+  // line is not a spell effect, so it has no target slot above (#2614).
+  if (slots.length === 0) {
+    const aura = auraTargets(state, playerId, cardId);
+    if (aura) slots.push(aura);
+  }
   return targetCombinations(slots).map((targets) => ({
     kind: "cast_spell" as const,
     cardId,
     targets,
   }));
+}
+
+/** Legal "enchant" targets for an Aura spell, or null for a non-Aura. */
+function auraTargets(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: CardInstanceId,
+): string[] | null {
+  const aura = state.cards.get(cardId);
+  if (!aura || !isAuraCard(aura)) return null;
+  // No restriction we can read (or bestow handled elsewhere): cast untargeted.
+  if (validateAuraSpellTarget(state, aura, playerId, undefined).valid) {
+    return null;
+  }
+  const ids: string[] = [];
+  for (const [zoneKey, zone] of state.zones) {
+    if (!zoneKey.endsWith("-battlefield")) continue;
+    for (const id of zone.cardIds) {
+      if (validateAuraSpellTarget(state, aura, playerId, id).valid) {
+        ids.push(id);
+      }
+    }
+  }
+  return ids;
 }
 
 function abilityChoices(
