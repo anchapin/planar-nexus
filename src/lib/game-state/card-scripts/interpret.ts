@@ -1200,6 +1200,21 @@ function applyEffect(
     }
     case "Counter": {
       if (!target) return state;
+      // #2594 follow-up (lane 22): "Counter target activated or
+      // triggered ability" (Stifle — TSP #88). The script's
+      // `target` enum distinguishes "spell" vs "ability"; the
+      // targeted stack object's type must match. A spell targeted
+      // by an ability-counter fizzles (CR 608.2b — illegal target),
+      // and an ability targeted by a spell-counter likewise fizzles.
+      // The target's `targetId` is the stack object id; we look up
+      // the stack object directly because `target.type` is "stack"
+      // for both spells and abilities.
+      const stackObj = state.stack.find((o) => o.id === target.targetId);
+      if (!stackObj) return state;
+      const matchesType =
+        (effect.target === "spell" && stackObj.type === "spell") ||
+        (effect.target === "ability" && stackObj.type === "ability");
+      if (!matchesType) return state;
       const r = resolveCounterEffect(state, sourceId, target.targetId);
       return r.success ? r.state : state;
     }

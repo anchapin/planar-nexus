@@ -427,14 +427,17 @@ export const BiteSchema = z
 export const CounterSchema = z
   .object({
     op: z.literal("Counter"),
-    target: z.enum(["spell"]),
+    target: z.enum(["spell", "ability"]),
     /**
      * #2594 follow-up: "counter target red or green spell" filter
      * (Flashfreeze — FDN #590). When set, the targeted spell's
      * source card must have at least one color in this list on its
      * color identity. An empty array is rejected; the field is
      * optional and defaults to no filter (the existing
-     * counter-anything behavior).
+     * counter-anything behavior). Valid only when
+     * `target: "spell"` (lane 22); abilities on the stack don't
+     * carry a single "spell color" — they belong to their source
+     * permanent. Future work may extend the filter to abilities.
      */
     colors: z
       .array(z.enum(["W", "U", "B", "R", "G"]))
@@ -442,7 +445,13 @@ export const CounterSchema = z
       .optional(),
     if_kicked: ifKicked,
   })
-  .strict();
+  .strict()
+  .refine(
+    (c) => c.target !== "ability" || c.colors === undefined,
+    {
+      message: "Counter.colors is only valid when target is 'spell' (#2594 follow-up, lane 22).",
+    },
+  );
 
 /**
  * Attach an Equipment (or other permanent) to a creature. The source of the
