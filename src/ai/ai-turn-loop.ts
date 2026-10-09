@@ -22,6 +22,7 @@ import {
   type AIAction,
   getAvailableAttackers,
   getAIGameState,
+  aiImproviseCapacity,
   aiFlashbackCost,
 } from "./ai-action-executor";
 import {
@@ -1935,12 +1936,14 @@ async function castOtherSpells(
     if (!card) continue;
     const typeLine = card.cardData.type_line.toLowerCase();
     if (typeLine.includes("creature") || typeLine.includes("land")) continue;
+    const improviseMana = aiImproviseCapacity(currentState, aiPlayerId, cardId);
     spellEntries.push({
       cardId,
       name: card.cardData.name,
       cmc: card.cardData.cmc,
       typeLine,
       oracleText: (card.cardData as { oracle_text?: string }).oracle_text,
+      ...(improviseMana > 0 ? { improviseMana } : {}),
     });
   }
 

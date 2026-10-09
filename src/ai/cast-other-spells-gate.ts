@@ -257,6 +257,11 @@ export interface NonCreatureSpellEntry {
   /** Oracle text — used to detect removal/tutor/draw patterns. */
   oracleText?: string;
   /**
+   * #2607: generic mana the AI's untapped artifacts could pay through
+   * improvise (0 or absent when the spell has no improvise).
+   */
+  improviseMana?: number;
+  /**
    * #2607: the card is in the graveyard and would be cast for its flashback
    * cost; `cmc` then holds that cost's mana value.
    */
@@ -302,7 +307,9 @@ export function scoreNonCreatureSpell(inputs: SpellScoreInputs): number {
   // a hand where every spell is unaffordable returns `optimal=null` (hold all)
   // from `selectOptimalExpertSpell`. They still outrank nothing (a 0-score
   // spell is simply ineligible to be the "optimal" pick).
-  const affordable = spell.cmc <= board.availableMana;
+  // #2607: improvise lets untapped artifacts pay generic mana.
+  const affordable =
+    spell.cmc <= board.availableMana + (spell.improviseMana ?? 0);
   if (!affordable) {
     return 0;
   }

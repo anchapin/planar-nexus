@@ -8,7 +8,10 @@ import {
   executeAIAction,
   chooseAIImproviseArtifacts,
   aiSpellHasImprovise,
+  aiImproviseCapacity,
+  chooseAIXValue,
 } from "../ai-action-executor";
+import { scoreNonCreatureSpell } from "../cast-other-spells-gate";
 import { createInitialGameState, startGame } from "@/lib/game-state/game-state";
 import { createCardInstance } from "@/lib/game-state/card-instance";
 import { addMana } from "@/lib/game-state/mana";
@@ -268,5 +271,87 @@ describe("AI improvise payment (#2607)", () => {
     const spell = putInHand(state, aliceId, blueSorcery());
     expect(chooseAIImproviseArtifacts(state, aliceId, reactor)).toEqual([]);
     expect(chooseAIImproviseArtifacts(state, aliceId, spell)).toEqual([]);
+  });
+});
+
+const xSorcery = (): ScryfallCard =>
+  makeCard({
+    id: "x-draw",
+    name: "Stroke of Insight",
+    type_line: "Sorcery",
+    oracle_text: "Draw X cards.",
+    mana_cost: "{X}{U}",
+    cmc: 1,
+    colors: ["U"],
+    color_identity: ["U"],
+  });
+
+describe("AI improvise affordability (#2607)", () => {
+  it("counts untapped artifacts up to the generic cost", () => {
+    const { state, aliceId } = makeFixture();
+    ["t1", "t2", "t3", "t4"].forEach((id) =>
+      putOnBattlefield(state, aliceId, trinket(id)),
+    );
+    putOnBattlefield(state, aliceId, trinket("tapped"), { tapped: true });
+    const reactor = putInHand(state, aliceId, arcReactor());
+    const plain = putInHand(state, aliceId, blueSorcery());
+    expect(aiImproviseCapacity(state, aliceId, reactor)).toBe(4);
+    // Divination has no improvise without Ironheart.
+    expect(aiImproviseCapacity(state, aliceId, plain)).toBe(0);
+    putOnBattlefield(state, aliceId, ironheart());
+    // {2}{U}: capped at the 2 generic, even with 5 untapped artifacts.
+    expect(aiImproviseCapacity(state, aliceId, plain)).toBe(2);
+  });
+
+  it("raises X off artifacts when the spell has improvise", () => {
+    const { state: s0, aliceId } = makeFixture();
+    const state = addMana(s0, aliceId, { blue: 1, colorless: 1 });
+    const spell = putInHand(state, aliceId, xSorcery());
+    expect(chooseAIXValue(state, aliceId, spell)).toBe(1);
+    putOnBattlefield(state, aliceId, ironheart(), { tapped: true });
+    ["t1", "t2"].forEach((id) => putOnBattlefield(state, aliceId, trinket(id)));
+    expect(chooseAIXValue(state, aliceId, spell)).toBe(3);
+  });
+
+  it("casts an improvise X spell with the artifacts paying part of X", async () => {
+    const { state: s0, aliceId } = makeFixture();
+    const state = addMana(s0, aliceId, { blue: 1, colorless: 1 });
+    putOnBattlefield(state, aliceId, ironheart(), { tapped: true });
+    const t = ["t1", "t2"].map((id) =>
+      putOnBattlefield(state, aliceId, trinket(id)),
+    );
+    const spell = putInHand(state, aliceId, xSorcery());
+    const result = await executeAIAction(
+      state,
+      { type: "cast_spell", cardId: spell },
+      aliceId,
+    );
+    expect(result.success).toBe(true);
+    expect(result.action?.xValue).toBe(3);
+    for (const a of t) {
+      expect(result.newState?.cards.get(a.id)?.isTapped).toBe(true);
+    }
+  });
+
+  it("scores an improvise spell as affordable when artifacts cover the gap", () => {
+    const board = {
+      availableMana: 2,
+      opponentCreatureCount: 0,
+      ownCreatureCount: 0,
+      turnNumber: 5,
+      phase: "precombat_main",
+      maxOpposingCreaturePower: 0,
+    };
+    const spell = {
+      cardId: "reactor" as CardInstanceId,
+      name: "Arc Reactor",
+      cmc: 5,
+      typeLine: "artifact",
+      oracleText: "{T}: Add {C}{C}{C}.",
+    };
+    expect(scoreNonCreatureSpell({ spell, board })).toBe(0);
+    expect(
+      scoreNonCreatureSpell({ spell: { ...spell, improviseMana: 3 }, board }),
+    ).toBeGreaterThan(0);
   });
 });

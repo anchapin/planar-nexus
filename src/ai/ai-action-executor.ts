@@ -511,12 +511,44 @@ export function chooseAIImproviseArtifacts(
   return candidates.slice(0, shortfall);
 }
 
+/**
+ * Generic mana improvise could pay for this spell (#2607): the AI's untapped
+ * artifacts, capped at the generic part of the printed cost. 0 when the
+ * spell has no improvise. X is not counted here; see {@link chooseAIXValue}.
+ */
+export function aiImproviseCapacity(
+  gameState: EngineGameState,
+  playerId: PlayerId,
+  cardId: CardInstanceId,
+  includeX: boolean = false,
+): number {
+  if (!aiSpellHasImprovise(gameState, playerId, cardId)) return 0;
+  const data = gameState.cards.get(cardId)?.cardData as
+    { mana_cost?: string } | undefined;
+  if (!data) return 0;
+  const artifacts = (
+    gameState.zones.get(`${playerId}-battlefield`)?.cardIds ?? []
+  ).filter((id) => {
+    const c = gameState.cards.get(id);
+    return (
+      !!c &&
+      id !== cardId &&
+      c.controllerId === playerId &&
+      !c.isTapped &&
+      (c.cardData.type_line || "").toLowerCase().includes("artifact")
+    );
+  }).length;
+  if (includeX) return artifacts;
+  return Math.min(artifacts, getSpellManaCost(data).generic);
+}
+
 /** Highest X the AI would ever pay; keeps the affordability loop bounded. */
 const MAX_AI_X = 20;
 
 /**
  * X the AI picks for a spell with {X} in its mana cost (#2552): everything
- * left in its pool after the rest of the cost (CR 107.3, 601.2b). Returns 0
+ * left in its pool after the rest of the cost (CR 107.3, 601.2b), plus
+ * untapped artifacts when the spell has improvise (#2607). Returns 0
  * for spells without a chosen X, including converge X, which the engine
  * sets from the colors spent.
  */
@@ -530,6 +562,9 @@ export function chooseAIXValue(
   if (!data || !/\{X\}/i.test(data.mana_cost ?? "")) return 0;
   if (isConvergeX(data.oracle_text)) return 0;
   const { white, blue, black, red, green, generic } = getSpellManaCost(data);
+  // #2607: with improvise, untapped artifacts pay generic mana, X included,
+  // so they raise X too.
+  const artifacts = aiImproviseCapacity(gameState, playerId, cardId, true);
   let x = 0;
   while (
     x < MAX_AI_X &&
@@ -539,7 +574,7 @@ export function chooseAIXValue(
       black,
       red,
       green,
-      generic: generic + x + 1,
+      generic: Math.max(0, generic + x + 1 - artifacts),
     })
   ) {
     x++;
