@@ -807,6 +807,20 @@ function applyEffect(
       );
     }
     case "Draw": {
+      // #2594 lane 25: each_player (Scrawling Crawler, FDN).
+      if (effect.who === "each_player") {
+        let next = state;
+        for (const pid of state.players.keys()) {
+          const r = resolveCardDrawEffect(
+            next,
+            sourceId ?? ("unknown" as CardInstanceId),
+            effect.amount,
+            pid,
+          );
+          if (r.success) next = r.state;
+        }
+        return next;
+      }
       const player = playerFor(effect.who, ctx);
       if (!player) return state;
       const r = resolveCardDrawEffect(
@@ -1418,6 +1432,14 @@ function applyEffect(
         }
         return next;
       }
+      // #2594 lane 25.
+      if (effect.who === "each_player") {
+        let next = state;
+        for (const pid of state.players.keys()) {
+          next = millPlayer(next, pid, effect.amount);
+        }
+        return next;
+      }
       const player = playerFor(effect.who, ctx);
       return player ? millPlayer(state, player, effect.amount) : state;
     }
@@ -1438,6 +1460,14 @@ function applyEffect(
           }
           return next;
         }
+        if (effect.who === "each_player") {
+          let next = state;
+          for (const pid of state.players.keys()) {
+            const r = discardEntireHand(next, pid);
+            if (r.success) next = r.state;
+          }
+          return next;
+        }
         const player = playerFor(effect.who, ctx);
         if (!player) return state;
         const r = discardEntireHand(state, player);
@@ -1447,6 +1477,14 @@ function applyEffect(
         let next = state;
         for (const opp of opponentsOf(state, ctx.controllerId)) {
           next = startDiscard(next, opp, effect.amount);
+        }
+        return next;
+      }
+      // #2594 lane 25.
+      if (effect.who === "each_player") {
+        let next = state;
+        for (const pid of state.players.keys()) {
+          next = startDiscard(next, pid, effect.amount);
         }
         return next;
       }
