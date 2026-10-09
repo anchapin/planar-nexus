@@ -966,9 +966,16 @@ function applyEffect(
       // `effect.controller` directly and iterates the chosen
       // player's graveyard. Skip the target legality check
       // (handled by the sweep branch below).
+      // #2594 follow-up (lane 20): the count-based graveyard
+      // exile (Soul-Shackled Zombie — "exile up to N from a
+      // single graveyard") does not require a target either — the
+      // engine picks up to `count` ids from the chosen graveyard.
       const isSweep =
         effect.fromZone === "opponent_graveyard" ||
-        effect.fromZone === "library_top";
+        effect.fromZone === "library_top" ||
+        (effect.fromZone === "graveyard" &&
+          effect.count !== undefined &&
+          effect.count > 1);
       if (
         !isSweep &&
         (!target ||
@@ -1039,6 +1046,75 @@ function applyEffect(
       // and the target zone must contain it).
       const targetId = target?.targetId as CardInstanceId | undefined;
       if (effect.fromZone === "graveyard") {
+        // #2594 follow-up (lane 20): "exile up to N target cards from
+        // a single graveyard" (Soul-Shackled Zombie — FDN #70).
+        // When `count` is set on the graveyard-exile effect, the
+        // engine takes up to `count` card ids from the chosen
+        // graveyard and exiles them. The targeted card (if any) is
+        // the first choice; remaining slots are filled from the
+        // graveyard's current contents in order.
+        const count =
+          effect.count && effect.count > 1 ? effect.count : 0;
+        if (count > 0) {
+          let ownerId: PlayerId;
+          if (targetId) {
+            const card = state.cards.get(targetId);
+            if (!card) return state;
+            ownerId = card.ownerId || card.controllerId;
+            const gy = state.zones.get(`${ownerId}-graveyard`);
+            if (!gy || !gy.cardIds.includes(targetId)) {
+              return state;
+            }
+            if (
+              effect.graveyard === "you" &&
+              ownerId !== ctx.controllerId
+            ) {
+              return state;
+            }
+          } else {
+            // No targeted card: the drafter hints via
+            // `graveyard`. "you" = controller's graveyard; "any"
+            // = the opponent's (single-opponent 2-player default
+            // is the other player).
+            if (effect.graveyard === "you") {
+              ownerId = ctx.controllerId;
+            } else if (effect.graveyard === "any") {
+              const opp = [...state.players.keys()].find(
+                (p) => p !== ctx.controllerId,
+              );
+              ownerId = opp ?? ctx.controllerId;
+            } else {
+              ownerId = ctx.controllerId;
+            }
+          }
+          const gy = state.zones.get(`${ownerId}-graveyard`);
+          if (!gy || gy.cardIds.length === 0) return state;
+          const ids: CardInstanceId[] = [];
+          // Prefer the targeted card first if it's in the
+          // graveyard; fall through to scanning the rest.
+          if (
+            targetId &&
+            gy.cardIds.includes(targetId) &&
+            !ids.includes(targetId)
+          ) {
+            ids.push(targetId);
+          }
+          for (const id of gy.cardIds) {
+            if (ids.length >= count) break;
+            if (!ids.includes(id)) ids.push(id);
+          }
+          let next = state;
+          for (const id of ids) {
+            const r = exileCard(next, id);
+            if (r.success) next = r.state;
+          }
+          for (const id of ids) {
+            next = linkExiledCard(next, id, ctx);
+          }
+          return next;
+        }
+        // Single-card branch (lane 10): when count is unset or 1,
+        // route through the existing targeted exile path.
         if (!targetId) return state;
         const card = state.cards.get(targetId);
         if (!card) return state;
@@ -1050,6 +1126,9 @@ function applyEffect(
         if (effect.graveyard === "you" && ownerId !== ctx.controllerId) {
           return state;
         }
+        const r = exileCard(state, targetId);
+        if (!r.success) return state;
+        return linkExiledCard(r.state, targetId, ctx);
       }
       if (!targetId) return state;
       const r = exileCard(state, targetId);

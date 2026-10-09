@@ -100,9 +100,17 @@ export function isTargetedEffect(effect: CardEffect): boolean {
       // `effect.controller`. Returning false keeps
       // `effectTargetCount` at 0, so the dispatcher doesn't try to
       // consume a target slot.
+      // #2594 follow-up (lane 20): "exile up to N from a single
+      // graveyard" (Soul-Shackled Zombie) also doesn't take a
+      // target slot — the engine reads `effect.count` directly
+      // and picks up to that many card ids from the chosen
+      // graveyard.
       return (
         effect.fromZone !== "opponent_graveyard" &&
-        effect.fromZone !== "library_top"
+        effect.fromZone !== "library_top" &&
+        !(effect.fromZone === "graveyard" &&
+          effect.count !== undefined &&
+          effect.count > 1)
       );
     case "Tap":
     case "Untap":
