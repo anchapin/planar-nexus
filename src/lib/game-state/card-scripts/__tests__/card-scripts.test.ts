@@ -48,6 +48,8 @@ import { putTriggersOnStack } from "../../trigger-system/stack-ops";
 import { refreshScriptedStatics } from "../../keyword-actions/scripted-statics";
 import { refreshTribalAnthems } from "../../keyword-actions/tribal-anthem";
 import { cycleCard } from "../../keyword-actions/cycling";
+import { markCreatureDiedThisTurn } from "../../keyword-actions/morbid";
+import { detectTriggeredAbilities } from "../../abilities/triggered";
 import { checkStateBasedActions } from "../../state-based-actions";
 import { clearUntilEndOfTurnPT } from "../../pt-until-end-of-turn";
 import {
@@ -9376,5 +9378,126 @@ describe("Raise the Past: count:\"all\" graveyard sweep (#2594 lane 27)", () => 
 
     expect(after.zones.get(`${p1}-battlefield`)?.cardIds.length).toBe(beforeBattlefield + 3);
     expect(after.zones.get(`${p1}-graveyard`)?.cardIds.length).toBe(beforeYard - 3);
+  });
+});
+
+describe("Cackling Prowler: morbid intervening-if on phaseEnds trigger (#2594 lane 28)", () => {
+  // Cackling Prowler (FDN 1/3/2, 2G) — "At the beginning of your end step,
+  // if a creature died this turn, put a +1/+1 counter on this creature."
+  // (#2594 lane 28.) The existing lane 26 intervening_if plumbing covers
+  // this without any new schema or engine work; the lane ships one
+  // sample card + a small test that proves:
+  //   1. the script is in the registry with the right intervening_if,
+  //   2. the parse pipeline forwards intervening_if to the
+  //      ParsedTriggeredAbility,
+  //   3. the clause evaluator returns false with no death, true with one,
+  //   4. resolving the end-of-turn ability actually puts a +1/+1 counter
+  //      on Cackling Prowler only when the morbid flag is set.
+
+  it("registry exposes Cackling Prowler with the morbid intervening_if", () => {
+    const prowler = getCardScript("Cackling Prowler");
+    expect(prowler).toBeDefined();
+    const trig = prowler!.triggers![0];
+    expect(trig.event).toBe("phaseEnds");
+    expect(trig.intervening_if).toBe("a creature died this turn");
+    expect(trig.effects).toEqual([
+      {
+        op: "PutCounters",
+        counter: "+1/+1",
+        amount: 1,
+        target: "self",
+      },
+    ]);
+  });
+
+  it("forwards intervening_if to ParsedTriggeredAbility", () => {
+    const abilities = getScriptedTriggeredAbilities(
+      { name: "Cackling Prowler" } as unknown as ScryfallCard,
+    );
+    expect(abilities).toBeDefined();
+    expect(abilities![0].interveningIf).toBe("a creature died this turn");
+  });
+
+  it("evaluator returns false on a clean turn (no creature has died)", () => {
+    const state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    const [p1] = Array.from(state.players.keys());
+    expect(state.turn.creatureDiedThisTurn).toBeFalsy();
+    expect(
+      evaluateInterveningIfClause("a creature died this turn", state, p1),
+    ).toBe(false);
+  });
+
+  it("evaluator returns true after markCreatureDiedThisTurn flips the flag", () => {
+    const state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    const [p1] = Array.from(state.players.keys());
+    const flagged = markCreatureDiedThisTurn(state);
+    expect(flagged.turn.creatureDiedThisTurn).toBe(true);
+    expect(
+      evaluateInterveningIfClause("a creature died this turn", flagged, p1),
+    ).toBe(true);
+  });
+
+  it("end-of-turn trigger is suppressed when no creature died this turn", () => {
+    // The intervening_if clause (CR 603.4) is checked in the trigger
+    // detection pipeline (`abilities/triggered.ts`), not in the
+    // resolution layer. With no creature having died, the trigger
+    // must NOT be put on the stack at the end of turn.
+    let state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    const [p1] = Array.from(state.players.keys());
+    state = put(
+      state,
+      p1,
+      "prowler",
+      card("Cackling Prowler", "Creature — Horror", [1, 3]),
+    );
+    expect(state.turn.creatureDiedThisTurn).toBeFalsy();
+
+    const triggers = detectTriggeredAbilities(state, "endOfTurn");
+    const prowlerTriggers = triggers.filter(
+      (t) => t.sourceCardId === id("prowler"),
+    );
+    expect(prowlerTriggers).toHaveLength(0);
+  });
+
+  it("end-of-turn trigger fires when a creature has died this turn, and resolves into a +1/+1 counter", () => {
+    // Flip the morbid flag, then re-detect: the trigger must now be
+    // present, get pushed onto the stack, and resolve into a +1/+1
+    // counter on Cackling Prowler.
+    let state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    const [p1] = Array.from(state.players.keys());
+    state = put(
+      state,
+      p1,
+      "prowler",
+      card("Cackling Prowler", "Creature — Horror", [1, 3]),
+    );
+    state = markCreatureDiedThisTurn(state);
+
+    const triggers = detectTriggeredAbilities(state, "endOfTurn");
+    const prowlerTriggers = triggers.filter(
+      (t) => t.sourceCardId === id("prowler"),
+    );
+    expect(prowlerTriggers).toHaveLength(1);
+
+    // Put the trigger on the stack, then resolve it.
+    const { state: stacked, triggeredAbilities } = putTriggersOnStack(
+      state,
+      prowlerTriggers,
+    );
+    expect(triggeredAbilities).toHaveLength(1);
+    expect(stacked.stack).toHaveLength(1);
+    const stackObject = stacked.stack[0];
+    const resolved = resolveScriptedAbility(stacked, stackObject)!;
+    const prowler = resolved.cards.get(id("prowler"))!;
+    const counters = prowler.counters.filter((c) => c.type === "+1/+1");
+    expect(counters.reduce((sum, c) => sum + c.count, 0)).toBe(1);
   });
 });
