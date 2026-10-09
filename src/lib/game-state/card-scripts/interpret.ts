@@ -106,14 +106,26 @@ interface EffectContext {
  * CR 707.10: copy the spell that triggered this ability, keeping its
  * targets. "Those spells gain ..." marks the original and the copy. Does
  * nothing when the spell has left the stack (countered or resolved).
+ *
+ * `newTargets: true` (#2594 follow-up, lane 33, Double Vision) marks the
+ * engine's intent to retarget the copy per CR 707.10d. The v1 pipeline
+ * has no player-facing retarget UI, so the copy still inherits the
+ * original's targets; the flag is a forward-compatible signal that the
+ * engine acknowledged the "you may choose new targets" clause.
  */
 function copyTriggeringSpell(
   state: GameState,
   gain: readonly string[],
+  newTargets: boolean,
   ctx: EffectContext,
 ): GameState {
   const spellId = ctx.triggeringStackObjectId;
   if (!spellId || !state.stack.some((o) => o.id === spellId)) return state;
+  // `newTargets` is currently a marker flag: the v1 pipeline does not
+  // surface a retarget UI, so we never pass chosen targets into
+  // `copySpellOnStack`. A future pass that adds retarget choices can
+  // supply the chosen list here.
+  void newTargets;
   const r = copySpellOnStack(state, spellId);
   if (!r.success || !r.copiedStackObjectId) return state;
   if (gain.length === 0) return r.state;
@@ -1509,7 +1521,12 @@ function applyEffect(
       return player ? startDiscard(state, player, effect.amount) : state;
     }
     case "CopySpell":
-      return copyTriggeringSpell(state, effect.gain ?? [], ctx);
+      return copyTriggeringSpell(
+        state,
+        effect.gain ?? [],
+        effect.new_targets === true,
+        ctx,
+      );
     case "SearchLibrary":
       return searchLibrary(state, effect, ctx);
     case "Animate": {

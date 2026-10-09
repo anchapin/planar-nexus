@@ -759,6 +759,13 @@ export const SurveilSchema = z
  * Copy the spell that triggered this ability (CR 707.10), keeping its
  * targets. Only for cast triggers. `gain`: "those spells gain wither", so
  * the original and the copy both get the keyword while on the stack.
+ *
+ * `new_targets`: true marks the engine's intent to retarget ("you may
+ * choose new targets for the copy", CR 707.10d). The v1 pipeline doesn't
+ * expose a real retarget UI, so the engine records the intent and the
+ * copy still inherits the original's targets (#2594 follow-up, lane 33,
+ * Double Vision). A future pass can thread player-chosen targets
+ * through the same flag.
  */
 export const CopySpellSchema = z
   .object({
@@ -767,6 +774,7 @@ export const CopySpellSchema = z
       .array(z.enum(["wither"]))
       .min(1)
       .optional(),
+    new_targets: z.literal(true).optional(),
     if_kicked: ifKicked,
   })
   .strict();
