@@ -2,7 +2,7 @@
  * manamind#87: write ForgePointerNet self-play games for training.
  *
  *   npx tsx scripts/selfplay-forge.ts --model forge_pointer.onnx
- *     [--games 20] [--seed 1] [--sims 16] [--explore 30]
+ *     [--games 20] [--seed 1] [--sims 16] [--explore all|N]
  *     [--deck-a aggro] [--deck-b midrange] [--max-turns 80]
  *     --out selfplay.jsonl.gz
  *
@@ -35,7 +35,9 @@ async function main() {
   const games = Number(arg("games", "20"));
   const firstSeed = Number(arg("seed", "1"));
   const simulations = Number(arg("sims", "16"));
-  const exploreMoves = Number(arg("explore", "30"));
+  const exploreArg = arg("explore", "all");
+  const exploreMoves =
+    exploreArg === "all" ? Number.POSITIVE_INFINITY : Number(exploreArg);
   const maxTurns = Number(arg("max-turns", "80"));
   const decks = [
     trainingDeck(arg("deck-a", "aggro") as SimDeckArchetype),

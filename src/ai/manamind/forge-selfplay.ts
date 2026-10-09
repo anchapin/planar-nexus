@@ -60,7 +60,11 @@ export interface SelfPlayOptions {
   deckA: DeckList;
   deckB: DeckList;
   simulations?: number;
-  /** Sample the move from the search policy for this many decisions. */
+  /**
+   * Sample the move from the search policy for this many decisions with
+   * more than one candidate (default: the whole game). Greedy play from a
+   * cold-start network passes every turn and draws at the turn limit.
+   */
   exploreMoves?: number;
   maxTurns?: number;
 }
@@ -138,7 +142,7 @@ export async function playSelfPlayGame(
     deckA,
     deckB,
     simulations = 16,
-    exploreMoves = 30,
+    exploreMoves = Number.POSITIVE_INFINITY,
     maxTurns,
   } = options;
   const session = new TrainingSession({ maxTurns });
@@ -147,6 +151,9 @@ export async function playSelfPlayGame(
   const decisions: SelfPlayDecision[] = [];
   let prompt = session.legalChoices();
   let move = 0;
+  // Exploration counts real choices only; forced passes would use it up
+  // in the first turn.
+  let choices = 0;
   while (prompt.kind !== "game_over") {
     const result = await forgeSearch(session, model, {
       simulations,
@@ -161,7 +168,8 @@ export async function playSelfPlayGame(
       });
     }
     let action: TrainingAction = result.action;
-    if (move < exploreMoves && result.candidates.length > 1) {
+    const real = result.candidates.length > 1;
+    if (real && choices++ < exploreMoves) {
       let r = random();
       for (let i = 0; i < result.policy.length; i++) {
         r -= result.policy[i];
