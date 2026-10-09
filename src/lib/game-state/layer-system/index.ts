@@ -1176,7 +1176,20 @@ export class LayerSystem {
     this.dependencies = [];
     this.cdas = [];
     this.overrides.clear();
+    this.cardInstances.clear();
     this.effectiveCharacteristicsCache.clear();
+    this.sortedEffectsCache = null;
+    this.effectsVersion++;
+  }
+
+  /** Number of cards with override entries (for leak tests, #2620). */
+  getOverrideCount(): number {
+    return this.overrides.size;
+  }
+
+  /** Number of cached effective-characteristics entries (for leak tests, #2620). */
+  getCacheSize(): number {
+    return this.effectiveCharacteristicsCache.size;
   }
 
   /**

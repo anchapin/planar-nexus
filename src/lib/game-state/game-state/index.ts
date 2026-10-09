@@ -32,7 +32,7 @@ import {
   resolveTopOfStack,
 } from "../spell-casting";
 import { ReplacementEffectManager } from "../replacement-effects";
-import { LayerSystem } from "../layer-system";
+import { LayerSystem, layerSystem as sharedLayerSystem } from "../layer-system";
 import {
   checkStateBasedActions as checkSBAs,
   drawWithSBAChecking,
@@ -145,6 +145,12 @@ export function createInitialGameState(
 
   // Create a new layer system for this game instance
   const layerSystem = new LayerSystem();
+
+  // Combat still reads power and toughness through the module-level layer
+  // system. Start each game with it empty so overrides and cached
+  // characteristics from an earlier game neither leak into this one nor
+  // pile up across a long session (#2620).
+  sharedLayerSystem.clear();
 
   const gameId = generateGameId();
   const players = new Map<PlayerId, Player>();
