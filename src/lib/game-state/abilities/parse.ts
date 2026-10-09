@@ -39,7 +39,13 @@ function scriptedActivated(a: ScriptedActivated): ParsedActivatedAbility {
       sacrifice: a.cost.sacrifice,
       exile: false,
       discard: false,
-      payLife: 0,
+      // #2594 follow-up (lane 21): wire the script's `cost.pay_life`
+      // (Ring of the Lucii — FIN #269) into the engine's payLife
+      // cost slot. The engine deducts `payLife` from the
+      // controller's life total at activation time
+      // (`abilities/activated.ts:412`). The activation fails if the
+      // controller has less life than `pay_life`.
+      payLife: a.cost.pay_life ?? 0,
       exileSelf: a.cost.exileSelf,
       ...(a.cost.sacrifice_permanents
         ? { sacrificePermanents: a.cost.sacrifice_permanents }

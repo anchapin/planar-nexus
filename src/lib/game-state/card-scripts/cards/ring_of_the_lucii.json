@@ -1,0 +1,21 @@
+{
+  "name": "Ring of the Lucii",
+  "oracle": "{T}: Add {C}{C}.\n{2}, {T}, Pay 1 life: Tap target nonland permanent.",
+  "activated": [
+    {
+      "text": "{T}: Add {C}{C}.",
+      "cost": { "tap": true, "sacrifice": false },
+      "effects": [{ "op": "AddMana", "amount": 2, "colors": ["C"] }]
+    },
+    {
+      "text": "{2}, {T}, Pay 1 life: Tap target nonland permanent.",
+      "cost": {
+        "mana": "{2}",
+        "tap": true,
+        "sacrifice": false,
+        "pay_life": 1
+      },
+      "effects": [{ "op": "Tap", "target": "nonland_permanent" }]
+    }
+  ]
+}
