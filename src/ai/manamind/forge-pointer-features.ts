@@ -133,7 +133,7 @@ const COST_SYMBOL = /\{([^}]*)\}/g;
 /** Numeric features for one card dict (manamind `card_features`). */
 export function cardFeatures(card: BridgeCard): number[] {
   const typeLine = String(card.type ?? "").toLowerCase();
-  const feats = TYPE_WORDS.map((w) => (typeLine.includes(w) ? 1 : 0));
+  const feats: number[] = TYPE_WORDS.map((w) => (typeLine.includes(w) ? 1 : 0));
   feats.push(
     Math.min(Number(card.cmc ?? 0), 15) / 10,
     Number(card.power ?? 0) / 10,
