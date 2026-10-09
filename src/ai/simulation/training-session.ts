@@ -266,6 +266,51 @@ export class TrainingSession {
     this.saved.delete(handle);
   }
 
+  /**
+   * Resample what `viewer` cannot see, in place: the opponent's hand and
+   * library are dealt again from their combined cards (sizes kept), and
+   * both libraries are shuffled. For search over hidden information; pair
+   * it with `save` / `restore`. Uses `random`, not the session's stream.
+   */
+  determinize(viewer: PlayerId, random: () => number): void {
+    const snap = this.snapshot();
+    const s = snap.state;
+    const zones = new Map(s.zones);
+    const cards = new Map(s.cards);
+    const shuffle = (ids: string[]) => {
+      for (let i = ids.length - 1; i > 0; i--) {
+        const j = Math.floor(random() * (i + 1));
+        [ids[i], ids[j]] = [ids[j], ids[i]];
+      }
+      return ids;
+    };
+    const place = (key: string, ids: string[]) => {
+      const zone = zones.get(key);
+      if (!zone) return;
+      zones.set(key, { ...zone, cardIds: ids });
+      for (const id of ids) {
+        const card = cards.get(id);
+        if (card && card.currentZoneKey !== key) {
+          cards.set(id, { ...card, currentZoneKey: key });
+        }
+      }
+    };
+    for (const playerId of s.players.keys()) {
+      const handKey = `${playerId}-hand`;
+      const libKey = `${playerId}-library`;
+      const hand = zones.get(handKey)?.cardIds ?? [];
+      const library = zones.get(libKey)?.cardIds ?? [];
+      if (playerId === viewer) {
+        place(libKey, shuffle([...library]));
+      } else {
+        const pool = shuffle([...hand, ...library]);
+        place(handKey, pool.slice(0, hand.length));
+        place(libKey, pool.slice(hand.length));
+      }
+    }
+    snap.state = { ...s, zones, cards };
+  }
+
   result(): TrainingResult {
     const snap = this.snapshot();
     const s = snap.state;
