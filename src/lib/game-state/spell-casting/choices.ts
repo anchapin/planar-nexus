@@ -236,7 +236,9 @@ export function resolveWaitingChoice(
   if (
     type === "corpse_offer" ||
     type === "tribute_offer" ||
-    type === "attack_return_offer"
+    type === "attack_return_offer" ||
+    // CR 704.5j legend rule: the answer is the one legend to keep (#2614).
+    type === "choose_legend"
   ) {
     const value = Array.isArray(selectedValue)
       ? selectedValue[0]

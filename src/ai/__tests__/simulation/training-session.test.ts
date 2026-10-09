@@ -9,6 +9,7 @@ import {
   TrainingSession,
   trainingDeck,
   type TrainingAction,
+  type TrainingPrompt,
 } from "@/ai/simulation/training-session";
 
 function newSession(seed: number): TrainingSession {
@@ -151,4 +152,24 @@ describe("TrainingSession (#2612)", () => {
       prompt = session.step(randomAction(prompt, random));
     }
   }, 60_000);
+
+  // #2614: menace needs two blockers, an Aura can cap an attacker at one.
+  it("random agent drops blocks that break an attacker's limit", () => {
+    const prompt: TrainingPrompt = {
+      kind: "block",
+      playerId: "p2",
+      options: [
+        { cardId: "b1", attackers: ["menace"] },
+        { cardId: "b2", attackers: ["capped"] },
+        { cardId: "b3", attackers: ["capped"] },
+        { cardId: "b4", attackers: ["plain"] },
+      ],
+      limits: { menace: { min: 2 }, capped: { min: 1, max: 1 } },
+    } as unknown as TrainingPrompt;
+    // random() = 0 keeps every blocker and picks the first attacker.
+    const action = randomAction(prompt, () => 0);
+    expect(action).toEqual({
+      blocks: [{ blockerId: "b4", attackerId: "plain" }],
+    });
+  });
 });
