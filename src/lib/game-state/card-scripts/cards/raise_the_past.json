@@ -1,0 +1,13 @@
+{
+  "name": "Raise the Past",
+  "oracle": "Return all creature cards with mana value 2 or less from your graveyard to the battlefield.",
+  "spell": [
+    {
+      "op": "ReturnFromZone",
+      "from": "graveyard",
+      "to": "battlefield",
+      "filter": { "creature": true, "mv_le": 2 },
+      "count": "all"
+    }
+  ]
+}

@@ -352,9 +352,9 @@ export const ReturnToHandSchema = z
   .strict();
 
 /**
- * Return a card from a non-battlefield zone to the battlefield (#2560).
- * Currently only `from: "graveyard"` and `to: "battlefield"` are supported,
- * covering the 46 cards in the op frontier (BLB/FDN/FIN/MKM/SOS/TDC).
+ * Return a card from a non-battlefield zone to the battlefield (#2560,
+ * #2594 follow-up lane 27). `from: "graveyard"` and `to: "battlefield"`
+ * only.
  *
  * The `target` is a card in the chosen graveyard. `filter` narrows which
  * cards may be picked: `creature` (only creatures), `mv_le` (mana value
@@ -364,9 +364,18 @@ export const ReturnToHandSchema = z
  * normally, and gets "enters with" counters via the engine's
  * `applyEntersWithCounters` (CR 614.1c).
  *
- * `count` is the number of cards to return. With the default of 1, the
- * player picks a single target card; the effect does not silently move
- * others. Only `count: 1` is exercised by today's 46 cards.
+ * `count` (#2594 follow-up, lane 27):
+ *   - default / `count: N` (numeric): up to N cards matching `filter`;
+ *     the targeted card first if provided, fills from the graveyard in
+ *     order. Used by `Gravedigger`-style (count: 1) and lane 20
+ *     multiples.
+ *   - `count: "all"`: every card matching `filter` — sweep mode. The
+ *     effect consumes no target slot (mirrors lane 20's
+ *     `isTargetedEffect` gate). Used by Raise the Past (FDN #22):
+ *     "Return all creature cards with mana value 2 or less from your
+ *     graveyard to the battlefield."
+ *   - `count: "X"` is permitted for X-spells (schema support only —
+ *     not exercised by any current FDN/FIN card).
  */
 export const ReturnFromZoneSchema = z
   .object({
@@ -383,7 +392,7 @@ export const ReturnFromZoneSchema = z
       })
       .strict()
       .optional(),
-    count: xCount.optional(),
+    count: z.union([xCount, z.literal("all")]).optional(),
     if_kicked: ifKicked,
   })
   .strict();

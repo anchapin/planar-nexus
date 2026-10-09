@@ -9287,3 +9287,94 @@ describe("Crypt Feaster: threshold intervening-if on attacks trigger (#2594 lane
     expect(evaluateInterveningIfClause(cluase, state, p1)).toBe(true);
   });
 });
+
+describe("Raise the Past: count:\"all\" graveyard sweep (#2594 lane 27)", () => {
+  it("validates count:\"all\" in ReturnFromZone schema", () => {
+    const parsed = CardScriptSchema.safeParse({
+      name: "Raise the Past",
+      oracle: "Return all creature cards with mana value 2 or less from your graveyard to the battlefield.",
+      spell: [
+        {
+          op: "ReturnFromZone",
+          from: "graveyard",
+          to: "battlefield",
+          filter: { creature: true, mv_le: 2 },
+          count: "all",
+        },
+      ],
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("count:\"all\" is not a targeted effect (script-guards gate)", () => {
+    const parsed = CardScriptSchema.parse({
+      name: "Raise the Past",
+      oracle: "x",
+      spell: [
+        {
+          op: "ReturnFromZone",
+          from: "graveyard",
+          to: "battlefield",
+          filter: { creature: true },
+          count: "all",
+        },
+      ],
+    });
+    const effect = parsed.spell![0];
+    expect(isTargetedEffect(effect)).toBe(false);
+  });
+
+  it("count (numeric) is still a targeted effect (regression — preserves lane 20 semantics)", () => {
+    const parsed = CardScriptSchema.parse({
+      name: "Test",
+      oracle: "x",
+      spell: [
+        {
+          op: "ReturnFromZone",
+          from: "graveyard",
+          to: "battlefield",
+          filter: { creature: true },
+          count: 2,
+          target: "card",
+        },
+      ],
+    });
+    const effect = parsed.spell![0];
+    expect(isTargetedEffect(effect)).toBe(true);
+  });
+
+  it("count:\"all\" returns every matching creature on resolution", () => {
+    let state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    const [p1] = Array.from(state.players.keys());
+    // Put 3 creatures in p1's graveyard (all MV ≤ 2): a Grizzly Bears,
+    // a Skyhunter Skirmisher, and an Elvish Warrior (all MV 2).
+    state = put(state, p1, "g1", card("Grizzly Bears", "Creature — Bear", [2, 2]), "graveyard");
+    state = put(state, p1, "g2", card("Skyhunter Skirmisher", "Creature — Cat", [2, 2]), "graveyard");
+    state = put(state, p1, "g3", card("Elvish Warrior", "Creature — Elf", [2, 2]), "graveyard");
+    const beforeBattlefield = state.zones.get(`${p1}-battlefield`)?.cardIds.length ?? 0;
+    const beforeYard = state.zones.get(`${p1}-graveyard`)?.cardIds.length ?? 0;
+
+    const after = resolveScriptedEffects(
+      state,
+      [
+        {
+          op: "ReturnFromZone",
+          from: "graveyard",
+          to: "battlefield",
+          filter: { creature: true, mv_le: 2 },
+          count: "all",
+        },
+      ] as never,
+      {
+        controllerId: p1,
+        sourceCardId: null as never,
+        targets: [],
+      } as unknown as StackObject,
+    );
+
+    expect(after.zones.get(`${p1}-battlefield`)?.cardIds.length).toBe(beforeBattlefield + 3);
+    expect(after.zones.get(`${p1}-graveyard`)?.cardIds.length).toBe(beforeYard - 3);
+  });
+});
