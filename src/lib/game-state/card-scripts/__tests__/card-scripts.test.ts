@@ -39,8 +39,10 @@ import { matchesController, matchesRemovalFilter } from "../target-filters";
 import { RAW_CARD_SCRIPTS } from "../cards/index.generated";
 import {
   getActivatedAbilities,
+  getScriptedTriggeredAbilities,
   getTriggeredAbilities,
 } from "../../abilities/parse";
+import { evaluateInterveningIfClause } from "../../abilities/evaluate";
 import { detectLandfallTriggers } from "../../keyword-actions/landfall";
 import { putTriggersOnStack } from "../../trigger-system/stack-ops";
 import { refreshScriptedStatics } from "../../keyword-actions/scripted-statics";
@@ -9212,5 +9214,167 @@ describe("Discard each_player dispatch (#2594 lane 25)", () => {
     // opponent queued behind). Library and graveyard counts must be
     // unchanged until the player picks.
     expect(after.waitingChoice?.type).toBe("discard_cards");
+  });
+});
+
+describe("Crypt Feaster: threshold intervening-if on attacks trigger (#2594 lane 26)", () => {
+  it("passes intervening_if through scriptedTrigger to ParsedTriggeredAbility", () => {
+    const crypt = getCardScript("Crypt Feaster");
+    expect(crypt).toBeDefined();
+    const trig = crypt!.triggers![0];
+    expect(trig.intervening_if).toBe(
+      "there are seven or more cards in your graveyard",
+    );
+
+    const abilities = getScriptedTriggeredAbilities(
+      // any ScryfallCard with the right oracle works for parse; the
+      // engine looks at scriptedTrigger's `t` not the card text.
+      { name: "Crypt Feaster" } as unknown as ScryfallCard,
+    );
+    expect(abilities).toBeDefined();
+    expect(abilities![0].interveningIf).toBe(
+      "there are seven or more cards in your graveyard",
+    );
+  });
+
+  it("attack trigger is suppressed when the graveyard has 0 cards", () => {
+    // Direct evaluator: 0 cards in p1's graveyard → clause is false.
+    const state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    const [p1] = Array.from(state.players.keys());
+    const cluase = "there are seven or more cards in your graveyard";
+    expect(
+      evaluateInterveningIfClause(cluase, state, p1),
+    ).toBe(false);
+  });
+
+  it("attack trigger is suppressed when the graveyard has 6 cards", () => {
+    let state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    const [p1] = Array.from(state.players.keys());
+    // put 6 cards in p1's graveyard
+    for (let i = 0; i < 6; i++) {
+      const cardId = `g${i}` as CardInstanceId;
+      state = put(
+        state,
+        p1,
+        `g${i}`,
+        card("Discarded", "Creature — Rat"),
+        "graveyard",
+      );
+    }
+    const cluase = "there are seven or more cards in your graveyard";
+    expect(evaluateInterveningIfClause(cluase, state, p1)).toBe(false);
+  });
+
+  it("attack trigger fires when the graveyard has 7 cards", () => {
+    let state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    const [p1] = Array.from(state.players.keys());
+    for (let i = 0; i < 7; i++) {
+      state = put(
+        state,
+        p1,
+        `g${i}`,
+        card("Discarded", "Creature — Rat"),
+        "graveyard",
+      );
+    }
+    const cluase = "there are seven or more cards in your graveyard";
+    expect(evaluateInterveningIfClause(cluase, state, p1)).toBe(true);
+  });
+});
+
+describe("Raise the Past: count:\"all\" graveyard sweep (#2594 lane 27)", () => {
+  it("validates count:\"all\" in ReturnFromZone schema", () => {
+    const parsed = CardScriptSchema.safeParse({
+      name: "Raise the Past",
+      oracle: "Return all creature cards with mana value 2 or less from your graveyard to the battlefield.",
+      spell: [
+        {
+          op: "ReturnFromZone",
+          from: "graveyard",
+          to: "battlefield",
+          filter: { creature: true, mv_le: 2 },
+          count: "all",
+        },
+      ],
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("count:\"all\" is not a targeted effect (script-guards gate)", () => {
+    const parsed = CardScriptSchema.parse({
+      name: "Raise the Past",
+      oracle: "x",
+      spell: [
+        {
+          op: "ReturnFromZone",
+          from: "graveyard",
+          to: "battlefield",
+          filter: { creature: true },
+          count: "all",
+        },
+      ],
+    });
+    const effect = parsed.spell![0];
+    expect(isTargetedEffect(effect)).toBe(false);
+  });
+
+  it("count (numeric) is still a targeted effect (regression — preserves lane 20 semantics)", () => {
+    const parsed = CardScriptSchema.parse({
+      name: "Test",
+      oracle: "x",
+      spell: [
+        {
+          op: "ReturnFromZone",
+          from: "graveyard",
+          to: "battlefield",
+          filter: { creature: true },
+          count: 2,
+          target: "card",
+        },
+      ],
+    });
+    const effect = parsed.spell![0];
+    expect(isTargetedEffect(effect)).toBe(true);
+  });
+
+  it("count:\"all\" returns every matching creature on resolution", () => {
+    let state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    const [p1] = Array.from(state.players.keys());
+    // Put 3 creatures in p1's graveyard (all MV ≤ 2): a Grizzly Bears,
+    // a Skyhunter Skirmisher, and an Elvish Warrior (all MV 2).
+    state = put(state, p1, "g1", card("Grizzly Bears", "Creature — Bear", [2, 2]), "graveyard");
+    state = put(state, p1, "g2", card("Skyhunter Skirmisher", "Creature — Cat", [2, 2]), "graveyard");
+    state = put(state, p1, "g3", card("Elvish Warrior", "Creature — Elf", [2, 2]), "graveyard");
+    const beforeBattlefield = state.zones.get(`${p1}-battlefield`)?.cardIds.length ?? 0;
+    const beforeYard = state.zones.get(`${p1}-graveyard`)?.cardIds.length ?? 0;
+
+    const after = resolveScriptedEffects(
+      state,
+      [
+        {
+          op: "ReturnFromZone",
+          from: "graveyard",
+          to: "battlefield",
+          filter: { creature: true, mv_le: 2 },
+          count: "all",
+        },
+      ] as never,
+      {
+        controllerId: p1,
+        sourceCardId: null as never,
+        targets: [],
+      } as unknown as StackObject,
+    );
+
+    expect(after.zones.get(`${p1}-battlefield`)?.cardIds.length).toBe(beforeBattlefield + 3);
+    expect(after.zones.get(`${p1}-graveyard`)?.cardIds.length).toBe(beforeYard - 3);
   });
 });

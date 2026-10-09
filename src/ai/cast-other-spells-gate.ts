@@ -246,7 +246,7 @@ export interface SpellBoardContext {
   maxOpposingCreaturePower?: number;
 }
 
-/** A non-creature spell in hand positioned for the gating decision. */
+/** A non-creature spell (in hand, or flashback in the graveyard) for the gate. */
 export interface NonCreatureSpellEntry {
   cardId: CardInstanceId;
   name: string;
@@ -261,6 +261,11 @@ export interface NonCreatureSpellEntry {
    * improvise (0 or absent when the spell has no improvise).
    */
   improviseMana?: number;
+  /**
+   * #2607: the card is in the graveyard and would be cast for its flashback
+   * cost; `cmc` then holds that cost's mana value.
+   */
+  flashback?: boolean;
 }
 
 /** Inputs to {@link scoreNonCreatureSpell}. */

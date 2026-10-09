@@ -138,6 +138,10 @@ function scriptedTrigger(t: ScriptedTrigger): ParsedTriggeredAbility {
     effect: t.text,
     effectType: "generic",
     targets: [],
+    // #2594 follow-up (lane 26): pass-through for threshold-style
+    // intervening-if clauses (Crypt Feaster). String form matches
+    // the engine's existing evaluateInterveningIfClause input.
+    ...(t.intervening_if ? { interveningIf: t.intervening_if } : {}),
   };
 }
 

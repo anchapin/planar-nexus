@@ -115,12 +115,18 @@ export function isTargetedEffect(effect: CardEffect): boolean {
     case "Tap":
     case "Untap":
     case "ReturnToHand":
-    case "ReturnFromZone":
     case "Counter":
     case "Fight":
     case "Bite":
     case "Earthbend":
       return true;
+    case "ReturnFromZone":
+      // #2594 follow-up (lane 27): `count: "all"` is a sweep (Raise the
+      // Past, FDN #22) and consumes no target slot — every matching
+      // card is returned without interactive choice. Single-target or
+      // `count: N` paths still take one target slot via the standard
+      // `return true` branch.
+      return effect.count !== "all";
     case "Draw":
     case "GainLife":
     case "LoseLife":
