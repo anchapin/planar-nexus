@@ -1,0 +1,10 @@
+{
+  "name": "Stifle",
+  "oracle": "Counter target activated or triggered ability. (Mana abilities can't be targeted.)",
+  "spell": [
+    {
+      "op": "Counter",
+      "target": "ability"
+    }
+  ]
+}
