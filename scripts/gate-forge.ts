@@ -4,7 +4,7 @@
  *   npx tsx scripts/gate-forge.ts --candidate new.onnx --baseline old.onnx
  *     [--games 40] [--seed 1] [--sims 16] [--baseline-sims N]
  *     [--threshold 0.55]
- *     [--greedy] [--deck-a aggro] [--deck-b midrange] [--max-turns 80]
+ *     [--greedy | --pick greedy|sample|gumbel] [--deck-a aggro] [--deck-b midrange] [--max-turns 80]
  *     [--out gate.json]
  *
  * The candidate's seat alternates every game and the decks swap every two,
@@ -12,7 +12,10 @@
  * are #2614 decks (`red`, `green`) or simulator archetypes; see
  * scripts/sim-decks.ts. `--baseline-sims` gives the baseline its own search
  * budget (default: --sims); 0 plays its raw policy, so the same net as
- * candidate and baseline measures what search adds. Prints the
+ * candidate and baseline measures what search adds. `--pick gumbel` plays
+ * each search's own pick under Gumbel root noise (manamind#96); the
+ * default samples the search policy, `--greedy` plays the noise-free pick.
+ * Prints the
  * summary (score with a draw as half, Wilson 95% interval, promote) and
  * writes it with the per-game results to --out.
  */
@@ -48,7 +51,13 @@ async function main() {
     throw new Error("--baseline-sims must be a whole number >= 0");
   const threshold = Number(arg("threshold", "0.55"));
   const maxTurns = Number(arg("max-turns", "80"));
-  const sample = !process.argv.includes("--greedy");
+  const pick = arg(
+    "pick",
+    process.argv.includes("--greedy") ? "greedy" : "sample",
+  );
+  if (pick !== "greedy" && pick !== "sample" && pick !== "gumbel")
+    throw new Error(`--pick must be greedy, sample or gumbel, not ${pick}`);
+  const sample = pick === "sample";
   const out = arg("out", "");
   const decks = [
     simDeck(arg("deck-a", "aggro")),
@@ -77,7 +86,7 @@ async function main() {
         candidateSeat: (g % 2) as 0 | 1,
         simulations,
         baselineSimulations,
-        sample,
+        pick,
         maxTurns,
       }),
     );
@@ -88,6 +97,7 @@ async function main() {
     simulations,
     baseline_simulations: baselineSimulations,
     sample,
+    pick,
     ...gateSummary(results, threshold),
     seconds: +((performance.now() - t0) / 1000).toFixed(1),
   };

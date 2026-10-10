@@ -72,6 +72,12 @@ export interface SelfPlayOptions {
    * cold-start network passes every turn and draws at the turn limit.
    */
   exploreMoves?: number;
+  /**
+   * How an exploring decision picks its move: draw from the search policy
+   * (`"sample"`, default) or play the search's pick under Gumbel root noise
+   * (`"gumbel"`, manamind#96). Later decisions play the noise-free pick.
+   */
+  pick?: "sample" | "gumbel";
   maxTurns?: number;
   /** Who plays the other seat: the net itself (default) or the Expert AI. */
   opponent?: "self" | "expert";
@@ -156,6 +162,7 @@ export async function playSelfPlayGame(
     maxTurns,
     opponent = "self",
     netSeat = 0,
+    pick = "sample",
   } = options;
   const session = new TrainingSession({ maxTurns });
   const seats = session.reset(seed, deckA, deckB);
@@ -172,9 +179,11 @@ export async function playSelfPlayGame(
       prompt = session.step(expertAction(session, prompt));
       continue;
     }
+    const exploring = choices < exploreMoves;
     const result = await forgeSearch(session, model, {
       simulations,
       seed: (seed * 7919 + move) >>> 0,
+      gumbel: pick === "gumbel" && exploring,
     });
     const pi = searchTarget(prompt, result);
     if (pi && result.candidates.length > 1) {
@@ -186,7 +195,7 @@ export async function playSelfPlayGame(
     }
     let action: TrainingAction = result.action;
     const real = result.candidates.length > 1;
-    if (real && choices++ < exploreMoves) {
+    if (real && choices++ < exploreMoves && pick === "sample") {
       let r = random();
       for (let i = 0; i < result.policy.length; i++) {
         r -= result.policy[i];

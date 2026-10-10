@@ -3,6 +3,7 @@
  *
  *   npx tsx scripts/selfplay-forge.ts --model forge_pointer.onnx
  *     [--games 20] [--seed 1] [--sims 16] [--explore all|N]
+ *     [--pick sample|gumbel]
  *     [--deck-a aggro] [--deck-b midrange] [--max-turns 80]
  *     [--opponent self|expert] --out selfplay.jsonl.gz
  *
@@ -10,7 +11,9 @@
  * `decisions` / `returns` shape as manamind's imitation data; each decision
  * also carries `seat` and the search target `pi`. Seats swap decks on odd
  * seeds. Deck names are #2614 decks (`red`, `green`) or simulator
- * archetypes; see scripts/sim-decks.ts.
+ * archetypes; see scripts/sim-decks.ts. `--pick gumbel` (manamind#96)
+ * plays each exploring decision as the search's own pick under Gumbel root
+ * noise instead of a draw from the search policy (the default).
  *
  * `--opponent expert` (manamind#96): the net plays the Expert AI and only
  * its own decisions are written. Its seat alternates every two games, so
@@ -44,6 +47,9 @@ async function main() {
   const exploreMoves =
     exploreArg === "all" ? Number.POSITIVE_INFINITY : Number(exploreArg);
   const maxTurns = Number(arg("max-turns", "80"));
+  const pick = arg("pick", "sample");
+  if (pick !== "sample" && pick !== "gumbel")
+    throw new Error(`--pick must be sample or gumbel, not ${pick}`);
   const decks = [
     simDeck(arg("deck-a", "aggro")),
     simDeck(arg("deck-b", "midrange")),
@@ -77,6 +83,7 @@ async function main() {
       maxTurns,
       opponent,
       netSeat,
+      pick,
     });
     decisions += game.decisions.length;
     wins[game.winner === null ? 2 : game.winner]++;
