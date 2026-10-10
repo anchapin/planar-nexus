@@ -1387,8 +1387,20 @@ export const StaticSchema = z
          * ("W", "U", "B", "R", "G"). Used by single-color anthem
          * patterns like Knight of Grace's "White creatures you
          * control get +1/+1" (#2594 lane 30).
+         *
+         * `"chosen"` (#2594 follow-up, Wave 4.7 lane 40) is a
+         * sentinel meaning "use the source's `chosenColor` instance
+         * field". Only valid when the source has
+         * `enter_choice: { kind: "color" }`; the engine
+         * (`staticAffects` in `keyword-actions/scripted-statics.ts`)
+         * reads `source.chosenColor` and substitutes it. If
+         * `chosenColor` is null (the enter choice hasn't resolved
+         * yet) the anthem doesn't apply — the scripted anthem
+         * remains inert until the player makes the enter choice.
+         * Used by Heraldic Banner's "creatures you control of the
+         * chosen color get +1/+1".
          */
-        color: z.enum(["W", "U", "B", "R", "G"]).optional(),
+        color: z.enum(["W", "U", "B", "R", "G", "chosen"]).optional(),
       })
       .strict(),
     power: z.number().int().optional(),
