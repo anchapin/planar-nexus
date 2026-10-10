@@ -12,7 +12,9 @@ import type {
 } from "../types";
 import { completeHandTargeting } from "../hand-targeting";
 import {
+  CHOSEN_NAME_PROMPT_MARKER,
   ENTER_CHOICE_TYPE,
+  resolveChosenName,
   resolveEnterChoice,
 } from "../keyword-actions/enter-choice";
 
@@ -314,6 +316,27 @@ export function resolveWaitingChoice(
   }
 
   if (type === "choose_cards" && typeof selectedValue === "string") {
+    // Wave 4.7 phase 2 lane 49 (#2708 phase 2a): the
+    // chosen-name engine arm (Sorcerous Spyglass pattern)
+    // reuses the `choose_cards` waitingChoice shape so the UI
+    // doesn't need a new type. The chosen card is *not*
+    // exiled (Sorcerous Spyglass only knows the chosen card's
+    // name) so we dispatch to `resolveChosenName` rather than
+    // the Duress-style `completeHandTargeting`. The marker on
+    // the prompt identifies the chosen-name shape; the
+    // marker-prefixed value is the card id picked from the
+    // opponent's hand.
+    const pending = state.waitingChoice;
+    if (
+      pending &&
+      pending.type === "choose_cards" &&
+      pending.prompt.startsWith(CHOSEN_NAME_PROMPT_MARKER)
+    ) {
+      const r = resolveChosenName(state, playerId, selectedValue);
+      return r.success
+        ? { success: true, state: r.state }
+        : { success: false, state, error: r.description };
+    }
     const castingPlayerId = playerId;
     const opponentId = Array.from(state.players.keys()).find(
       (pid) => pid !== castingPlayerId && !state.players.get(pid)?.hasLost,

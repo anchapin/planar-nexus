@@ -112,29 +112,49 @@ export function enterChoiceOptionsForKind(
 
 /**
  * True iff the card carries a `script.enter_choice` whose `kind` is
- * supported by v1 (`"color"` or `"creature_type"` today). Lands use
- * `hasShocklandChoice`; this predicate covers scripted permanents
- * with an enter-time choice (Heraldic Banner, Banner of Kinship,
- * Test Goggles, …).
+ * supported by v1. Lands use `hasShocklandChoice`; this predicate
+ * covers scripted permanents with an enter-time choice (Heraldic
+ * Banner, Banner of Kinship, Sorcerous Spyglass, …).
+ *
+ * Supported kinds:
+ *  - `"color"` (Wave 4.7 lane 39): five-color enum, value-list.
+ *  - `"creature_type"` (Wave 4.7 follow-up lane 44, #2705a):
+ *    curated type list, value-list.
+ *  - `"chosen_name"` (Wave 4.7 phase 2 lane 49, #2708 phase 2a):
+ *    Sorcerous Spyglass pattern — surfaces a `choose_cards`
+ *    waitingChoice pointing at an opponent's hand.
+ *
+ * The `"player"` arm is documented-only and would crash if a card's
+ * script ever opted in.
  */
 export function hasEnterChoice(card: CardInstance): boolean {
   const script = getCardScript(card.cardData.name);
   if (!script) return false;
   const ec = script.enter_choice;
   if (!ec) return false;
-  // Wave 4.7 lane 39 only modelled "color"; Wave 4.7 follow-up
-  // lane 44 (#2705a) adds "creature_type". The "player" arm
-  // remains documented-only and would crash if a card's script
-  // ever opted in.
-  return ec.kind === "color" || ec.kind === "creature_type";
+  return (
+    ec.kind === "color" ||
+    ec.kind === "creature_type" ||
+    ec.kind === "chosen_name"
+  );
 }
 
 /**
- * Build the `enter_choice` {@link WaitingChoice} for `cardId`, or
- * null when the card no longer carries an enter_choice script (e.g.
- * another player's removal resolved first). Dispatches on
- * `kind`: `"color"` → five-color set, `"creature_type"` →
- * curated type list.
+ * Build the {@link WaitingChoice} for `cardId`, or null when the
+ * card no longer carries an enter_choice script (e.g. another
+ * player's removal resolved first). Dispatches on `kind`:
+ *
+ *  - `"color"` → `ENTER_CHOICE_TYPE` (5-color value-list).
+ *  - `"creature_type"` → `ENTER_CHOICE_TYPE` (curated type list).
+ *  - `"chosen_name"` → `choose_cards` waitingChoice pointing at
+ *    the opponent's hand (Wave 4.7 phase 2 lane 49, #2708 phase
+ *    2a). The chosen card stays in the opponent's hand; resolution
+ *    stamps `card.chosenCardName`.
+ *
+ * `playerId` is always the entering card's controller — for
+ * chosen_name, this is the controller who picks a card name from
+ * the opponent's hand (mirroring how Sorcerous Spyglass reads:
+ * "look at an opponent's hand, then choose any card name").
  */
 export function createEnterChoiceWaitingChoice(
   state: GameState,
@@ -147,6 +167,13 @@ export function createEnterChoiceWaitingChoice(
   // `hasEnterChoice` already filtered for a present + supported
   // script; the kind is therefore defined.
   const kind = script!.enter_choice!.kind;
+  // Wave 4.7 phase 2 lane 49: chosen_name uses the
+  // `choose_cards` waitingChoice type, not the value-list
+  // `enter_choice` shape. Route via the dedicated helper so the
+  // resolver can tell them apart.
+  if (kind === "chosen_name") {
+    return createChosenNameWaitingChoice(state, cardId);
+  }
   const options = enterChoiceOptionsForKind(kind);
   const choices: ChoiceOption[] = options.map((opt) => ({
     label: opt,
@@ -184,6 +211,206 @@ function defaultPrompt(
     case "chosen_name":
       return `As ${name} enters, choose a card name.`;
   }
+}
+
+/**
+ * Sentinel prefix used to flag a `choose_cards` waitingChoice as the
+ * chosen-name engine arm (Wave 4.7 phase 2 lane 49, #2708 phase 2a)
+ * rather than the Duress-style exiling flow. The resolve path in
+ * `spell-casting/choices.ts` strips the prefix and routes to
+ * {@link resolveChosenName}, which stamps `chosenCardName` on the
+ * entering card and leaves the chosen card in the opponent's hand.
+ *
+ * Kept as a private marker so the public WaitingChoice type stays
+ * narrow (no extra fields); the prompt is the cheapest place to
+ * embed it without disturbing other engine paths.
+ */
+export const CHOSEN_NAME_PROMPT_MARKER = "__enter_chosen_name__" as const;
+
+/**
+ * Build a `choose_cards` waitingChoice pointing at one opponent's
+ * hand for the Wave 4.7 phase 2 lane 49 chosen-name engine arm
+ * (#2708 phase 2a, Sorcerous Spyglass). The player picks a card from
+ * the opponent's hand; resolution stamps the entering card's
+ * `chosenCardName` (NOT a chosen color or creature type). Returns
+ * null when no opponent exists, when the chosen card is no longer
+ * on the battlefield, or when the opponent's hand is empty.
+ *
+ * Note: this function writes the `enter_choice` WaitingChoice to
+ * `state.waitingChoice` through the same path the ETB pipeline
+ * uses (see `spell-casting/resolve.ts:732`); `createEnterChoiceWaitingChoice`
+ * dispatches on the script's `kind` and returns the right shape.
+ * Exposed here as a public helper for the ETB pipeline and for
+ * tests that don't go through the full cast flow.
+ */
+export function createChosenNameWaitingChoice(
+  state: GameState,
+  cardId: CardInstanceId,
+): WaitingChoice | null {
+  const card = state.cards.get(cardId);
+  if (!card) return null;
+  const script = getCardScript(card.cardData.name);
+  if (!script || script.enter_choice?.kind !== "chosen_name") return null;
+  // Find the first non-losing opponent. The engine exposes
+  // `state.players` as a Map; a Sorcerous Spyglass-like card
+  // always has at least one opponent in a normal game.
+  const opponents: PlayerId[] = [];
+  for (const [pid, player] of state.players) {
+    if (pid !== card.controllerId && !player.hasLost) {
+      opponents.push(pid);
+    }
+  }
+  if (opponents.length === 0) return null;
+  const opponentId = opponents[0];
+  const oppHand = state.zones.get(`${opponentId}-hand`);
+  if (!oppHand) return null;
+  const handCards = oppHand.cardIds
+    .map((id) => state.cards.get(id))
+    .filter((c): c is CardInstance => Boolean(c));
+  if (handCards.length === 0) {
+    // Empty opponent hand — no choice to make. The caller treats
+    // this as "pass" (Sorcerous Spyglass still resolves but
+    // `chosenCardName` stays null; the chosen-name static block is
+    // inert). The engine surfaces no waitingChoice in this case.
+    return null;
+  }
+  const name = card.cardData.name || "this permanent";
+  const promptText =
+    script.enter_choice?.text ??
+    `As ${name} enters, look at an opponent's hand, then choose any card name.`;
+  // Embed the chosen-name marker in the prompt so the
+  // `choose_cards` resolver in `spell-casting/choices.ts` can
+  // dispatch to `resolveChosenName` without an extra field on
+  // WaitingChoice.
+  const prompt = `${CHOSEN_NAME_PROMPT_MARKER}:${promptText}`;
+  const choices: ChoiceOption[] = handCards.map((c) => ({
+    label: c.cardData.name,
+    value: c.id,
+    isValid: true,
+  }));
+  return {
+    type: "choose_cards",
+    playerId: card.controllerId,
+    stackObjectId: cardId,
+    prompt,
+    choices,
+    minChoices: 1,
+    maxChoices: 1,
+    presentedAt: Date.now(),
+  };
+}
+
+/**
+ * Result of {@link resolveChosenName}.
+ */
+export interface ChosenNameResolution {
+  success: boolean;
+  state: GameState;
+  description: string;
+}
+
+/**
+ * Resolve a pending chosen-name waitingChoice produced by
+ * {@link createChosenNameWaitingChoice}. Stamps
+ * `card.chosenCardName = chosenCard.cardData.name` on the entering
+ * Sorcerous-Spyglass-like card and clears the choice. The chosen
+ * card stays in the opponent's hand (unlike the Duress-style
+ * `completeHandTargeting` path, which exiles the selected card).
+ *
+ * Defensive: if the choice's `stackObjectId` doesn't match a card
+ * that still carries `enter_choice: { kind: "chosen_name" }`, the
+ * resolver returns a friendly error rather than silently misstamping
+ * a different card.
+ */
+export function resolveChosenName(
+  state: GameState,
+  playerId: PlayerId,
+  chosenCardId: string,
+): ChosenNameResolution {
+  const choice = state.waitingChoice;
+  if (!choice || choice.type !== "choose_cards") {
+    return {
+      success: false,
+      state,
+      description: "No pending chosen-name choice",
+    };
+  }
+  if (!choice.prompt.startsWith(CHOSEN_NAME_PROMPT_MARKER)) {
+    // The choose_cards resolver dispatches here only for
+    // chosen-name prompts; this branch catches direct callers that
+    // picked the wrong shape.
+    return {
+      success: false,
+      state,
+      description: "Pending choice is not a chosen-name choice",
+    };
+  }
+  if (choice.playerId !== playerId) {
+    return {
+      success: false,
+      state,
+      description: "Not this player's chosen-name choice to resolve",
+    };
+  }
+  const validOption = choice.choices.find((c) => c.value === chosenCardId);
+  if (!validOption || !validOption.isValid) {
+    return {
+      success: false,
+      state,
+      description: "Invalid choice for pending chosen-name choice",
+    };
+  }
+  const enteringId =
+    (choice.stackObjectId as CardInstanceId | null) ?? null;
+  if (!enteringId || !state.cards.has(enteringId)) {
+    return {
+      success: false,
+      state,
+      description: "Entering card not found",
+    };
+  }
+  const card = state.cards.get(enteringId)!;
+  const script = getCardScript(card.cardData.name);
+  if (!script || script.enter_choice?.kind !== "chosen_name") {
+    return {
+      success: false,
+      state,
+      description: "Entering card has no chosen-name script",
+    };
+  }
+  if (card.chosenCardName !== null) {
+    // Already resolved; idempotent no-op. Surface success so a
+    // duplicate resolveWaitingChoice call doesn't accidentally
+    // fall through to an unrelated path.
+    return {
+      success: true,
+      state: { ...state, waitingChoice: null },
+      description: "Chosen-name already resolved",
+    };
+  }
+  const chosenCard = state.cards.get(chosenCardId as CardInstanceId);
+  if (!chosenCard) {
+    return {
+      success: false,
+      state,
+      description: "Chosen card not found",
+    };
+  }
+  const updatedCards = new Map(state.cards);
+  updatedCards.set(enteringId, {
+    ...card,
+    chosenCardName: chosenCard.cardData.name,
+  });
+  return {
+    success: true,
+    state: {
+      ...state,
+      cards: updatedCards,
+      waitingChoice: null,
+      lastModifiedAt: Date.now(),
+    },
+    description: `Named ${chosenCard.cardData.name} for ${card.cardData.name}`,
+  };
 }
 
 /**
@@ -280,9 +507,14 @@ export function resolveEnterChoice(
     }
     updatedCards.set(cardId, { ...card, chosenCreatureType: chosenValue });
   } else {
-    // "player" arm is documented-only (#2705); the schema accepts
-    // it but the engine has no choice list. Surface a friendly
-    // error rather than silently misstamping.
+    // "player" is documented-only (#2705); "chosen_name"
+    // (Wave 4.7 phase 2 lane 49, #2708 phase 2a) uses a separate
+    // `choose_cards` waitingChoice that resolves via
+    // `resolveChosenName` — the engine routes dispatch in
+    // `spell-casting/choices.ts`. Reaching this branch means
+    // someone constructed a malformed `enter_choice` waiting
+    // choice; surface a friendly error rather than silently
+    // misstamping.
     return {
       success: false,
       state,
@@ -311,7 +543,7 @@ function resolveCardIdForChoice(
   // back to scanning the battlefield for the first card that
   // matches an enter_choice script and still has its choice field
   // (chosenColor for "color", chosenCreatureType for
-  // "creature_type") unset.
+  // "creature_type", chosenCardName for "chosen_name") unset.
   const stacked = _choice.stackObjectId as CardInstanceId | null;
   if (stacked && state.cards.has(stacked) && hasEnterChoice(state.cards.get(stacked)!)) {
     return stacked;
@@ -324,7 +556,8 @@ function resolveCardIdForChoice(
     const kind = script!.enter_choice!.kind;
     const choicePending =
       (kind === "color" && card.chosenColor === null) ||
-      (kind === "creature_type" && card.chosenCreatureType === null);
+      (kind === "creature_type" && card.chosenCreatureType === null) ||
+      (kind === "chosen_name" && card.chosenCardName === null);
     if (choicePending) return card.id;
   }
   return null;
