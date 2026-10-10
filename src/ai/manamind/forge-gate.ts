@@ -27,6 +27,12 @@ export interface GateGameOptions {
   /** Seat (0 or 1, in `reset` order) the candidate plays. */
   candidateSeat: 0 | 1;
   simulations?: number;
+  /**
+   * Search budget for the baseline seat (default: `simulations`). 0 plays
+   * the baseline's raw policy: greedy is the prior's top move, sampled
+   * draws from the prior (manamind#96 search-vs-policy check).
+   */
+  baselineSimulations?: number;
   /** Sample from the search policy (default) or play its greedy pick. */
   sample?: boolean;
   maxTurns?: number;
@@ -52,6 +58,7 @@ export async function playGateGame(
     deckB,
     candidateSeat,
     simulations = 16,
+    baselineSimulations = simulations,
     sample = true,
     maxTurns,
   } = options;
@@ -62,9 +69,9 @@ export async function playGateGame(
   let move = 0;
   while (prompt.kind !== "game_over") {
     const seat = seats.indexOf(prompt.playerId);
-    const model = seat === candidateSeat ? candidate : baseline;
-    const r = await forgeSearch(session, model, {
-      simulations,
+    const mine = seat === candidateSeat;
+    const r = await forgeSearch(session, mine ? candidate : baseline, {
+      simulations: mine ? simulations : baselineSimulations,
       seed: (seed * 7919 + move) >>> 0,
     });
     let action = r.action;
