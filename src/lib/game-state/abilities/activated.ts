@@ -10,7 +10,10 @@ import { Phase } from "../types";
 import { isPriorityPlayer } from "../priority-guard";
 import { hasSplitSecondOnStack } from "../auto-pass-priority";
 import { isManaAbility, spendMana, addMana } from "../mana";
-import { parseManaFromEffect } from "./mana";
+import {
+  parseManaFromEffect,
+  substituteChosenColorInEffect,
+} from "./mana";
 import { destroyCard, discardCards, exileCard } from "../keyword-actions";
 import {
   findNamedCardInHand,
@@ -315,6 +318,14 @@ export function activateAbility(
   // "Add one mana of any color" needs a color choice, which goes through
   // activateManaAbility (a Treasure, #2544). Refuse here before any cost is
   // paid, so the source isn't sacrificed for no mana.
+  // Wave 4.7 lane 41 (#2594 follow-up): "the chosen color" (Heraldic
+  // Banner) is a different pattern — it has a concrete color already
+  // chosen via `card.chosenColor`, so we substitute it into the
+  // effect text here and let `parseManaFromEffect` produce a real
+  // mana pool.
+  const substitutedEffect = isManaAbility(cardId, ability.effect)
+    ? substituteChosenColorInEffect(ability.effect ?? "", card)
+    : (ability.effect ?? "");
   if (
     isManaAbility(cardId, ability.effect) &&
     /any (?:one )?color/i.test(ability.effect) &&
@@ -548,7 +559,12 @@ export function activateAbility(
   }
 
   if (isManaAbility(cardId, ability.effect)) {
-    const parsedMana = parseManaFromEffect(ability.effect);
+    // Wave 4.7 lane 41: substitute "the chosen color" (Heraldic
+    // Banner's "{T}: Add one mana of the chosen color.") into a
+    // literal `{W}`-style symbol so the standard mana path can read
+    // it. The substitution no-ops when the source has no
+    // `chosenColor` yet — the activation then produces no mana.
+    const parsedMana = parseManaFromEffect(substitutedEffect);
     if (Object.keys(parsedMana).length > 0) {
       currentState = addMana(currentState, playerId, parsedMana);
     }

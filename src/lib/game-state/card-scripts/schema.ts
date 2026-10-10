@@ -934,7 +934,31 @@ export const AddManaSchema = z
   .object({
     op: z.literal("AddMana"),
     amount: z.number().int().min(1).default(1),
-    colors: z.union([z.array(z.enum(MANA_SYMBOLS)).min(1), z.literal("any")]),
+    /**
+     * `"chosen"` (#2594 follow-up, Wave 4.7 lane 41) is a sentinel
+     * meaning "use the source's `chosenColor` instance field"
+     * (Heraldic Banner's "{T}: Add one mana of the chosen color").
+     * Only valid as the SOLE entry of the array, never combined
+     * with literal colors or with `"any"` — the engine substitutes
+     * the source's chosen color and the multi-color and "any"
+     * branches have no chosen-color fallback. The engine's
+     * activated-ability mana path reads `source.chosenColor`;
+     * if null the activated ability produces nothing (and the
+     * engine surfaces a soft error so the UI can re-prompt or
+     * skip).
+     */
+    colors: z
+      .union([
+        z.array(z.enum([...MANA_SYMBOLS, "chosen"])).min(1),
+        z.literal("any"),
+      ])
+      .refine(
+        (c) => c === "any" || !c.includes("chosen") || c.length === 1,
+        {
+          message:
+            "AddMana.colors may only be the single 'chosen' sentinel (not mixed with literal colors or 'any')",
+        },
+      ),
     if_kicked: ifKicked,
   })
   .strict();
