@@ -1,0 +1,16 @@
+{
+  "name": "Smaug",
+  "oracle": "Flying. Smaug gets +X/+X where X is the number of Treasures you control.",
+  "statics": [
+    {
+      "text": "Smaug gets +X/+X where X is the number of Treasures you control.",
+      "affects": {
+        "controller": "you",
+        "self": true
+      },
+      "power": 0,
+      "toughness": 0,
+      "X": "treasures"
+    }
+  ]
+}

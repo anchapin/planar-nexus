@@ -1354,6 +1354,15 @@ export const ActivatedSchema = z
  * A static ability that pumps or grants keywords to creatures (CR 604, 611.3),
  * e.g. "Other Dinosaurs you control get +1/+1" or "Creatures you control have
  * haste" (#2496). Applied in layer 6 (keywords) and 7c (P/T).
+ *
+ * `X` (#2594 follow-up, lane 36, Smaug, Blanchwood Armor, Tempest Djinn) is
+ * a state-derived P/T contribution that overrides the integer
+ * `power`/`toughness` when present. The refresh pass in
+ * `keyword-actions/scripted-statics.ts` reads the named count from the
+ * current state and writes the effective P/T to `scriptStaticPT`. v1
+ * supports `treasures` (cards on the battlefield with the Treasure
+ * token type under your control), `creatures` (creatures you control),
+ * and `lands` (lands you control).
  */
 export const StaticSchema = z
   .object({
@@ -1364,6 +1373,13 @@ export const StaticSchema = z
         controller: z.enum(["you", "opponents"]),
         /** "Other creatures": excludes the source itself. */
         other: z.boolean().optional(),
+        /**
+         * "this creature" — only the source itself (Smaug,
+         * Blanchwood Armor — wait, Blanchwood is an Aura; this is
+         * for self-stating creatures like Smaug, Tempest Djinn).
+         * #2594 follow-up, lane 36.
+         */
+        self: z.boolean().optional(),
         /** Only creatures with this creature type, singular ("Dinosaur"). */
         subtype: z.string().min(1).optional(),
         /**
@@ -1377,14 +1393,23 @@ export const StaticSchema = z
       .strict(),
     power: z.number().int().optional(),
     toughness: z.number().int().optional(),
+    /**
+     * State-derived P/T contribution (#2594 follow-up, lane 36). When
+     * set, the refresh pass reads the named count and writes it to
+     * `scriptStaticPT` instead of the integer `power`/`toughness`.
+     * Sample card: Smaug ("Smaug gets +X/+X where X is the number of
+     * Treasures you control") — `power: 0, X: "treasures"` is the
+     * standard shape, but a card with "+1/+1 plus X" can stack both.
+     */
+    X: z.enum(["treasures", "creatures", "lands"]).optional(),
     keywords: z.array(z.enum(TOKEN_KEYWORDS)).min(1).optional(),
   })
   .strict()
   .refine((s) => (s.power === undefined) === (s.toughness === undefined), {
     message: "set both power and toughness, or neither",
   })
-  .refine((s) => s.power !== undefined || s.keywords, {
-    message: "a static needs power/toughness or keywords",
+  .refine((s) => s.power !== undefined || s.keywords || s.X !== undefined, {
+    message: "a static needs power/toughness, keywords, or X",
   });
 
 /**
