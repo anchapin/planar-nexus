@@ -246,3 +246,98 @@ human scoping before they become shippable lanes. In particular:
   the drafter list entry was a conflation) — n/a.
 
 Closes #2594 follow-up lanes 39–41 of the Wave 4.7 loop.
+
+## Wave 4.7 follow-up loop done summary
+
+Lanes 43–48 of the Wave 4.7 follow-up loop (#2704–#2708) shipped
+in a single uninterrupted run on 2026-10-10. All five follow-up
+issues plus the multi-lane baseline are closed or partially
+closed.
+
+### Shipped
+
+- **Lane 43 — Diamond Mare (#2704)** — PR #2712.
+  `src/lib/game-state/card-scripts/cards/diamond_mare.json` +
+  `src/lib/game-state/__tests__/diamond-mare-chosen-color.test.ts`.
+  No engine change. Exercises the Wave 4.7 lane 40
+  `affects.color: "chosen"` anthem on a creature permanent
+  instead of an artifact.
+
+- **Lane 44 — `creature_type` enter_choice engine arm (#2705a)**
+  — PR #2714. `chosenCreatureType: string | null` on
+  `CardInstance`; `enterChoiceOptionsForKind` dispatches on
+  kind (curated 10-type list); `resolveEnterChoice` stamps the
+  field; the `resolveCardIdForChoice` fallback accepts both
+  `chosenColor === null` and `chosenCreatureType === null`.
+  3 test factories updated with the new default.
+
+- **Lane 45 — chosen creature-type anthem (#2705b)** — PR
+  #2715. `affects.subtype` accepts the `"chosen"` sentinel;
+  `staticAffects` reads `source.chosenCreatureType` when
+  `subtype === "chosen"`. Sample card: **Adaptive Automaton**
+  (anthem half only — the "is the chosen type in addition to
+  its other types" half rides a separate follow-up).
+
+- **Lane 46 — `enter_choice` text-vs-script guard (#2706)** —
+  PR #2716. Data-driven guard in `drafted-scripts.test.ts`
+  that asserts every script's `enter_choice.kind` agrees with
+  its `oracle` text. Two negative fixtures exercise the
+  matcher.
+
+- **Lane 47 — Remove Test Goggles synthetic (#2707)** — PR
+  #2717. Deleted `test_goggles_enter_choice.json` and the
+  historic `enter-choice.test.ts` (10 cases); added
+  `enter-choice-engine.test.ts` with 4 fixture-driven cases
+  porting the engine-arm-specific assertions the real cards
+  don't cover (predicate truthy/falsy + ETB-pipeline check).
+
+- **Lane 48 phase 1 — chosen_name schema baseline
+  (multi-lane, #2708 phase 1)** — PR #2718. Forward-compatible
+  schema extension: `enter_choice.kind` enum gains
+  `"chosen_name"`; `CardInstance.chosenCardName: string | null`
+  defaulted to `null`. The engine arm + chosen-name static
+  block track under #2708 as further multi-lane work.
+
+### Blocked (multi-lane, still tracked)
+
+- **Sorcerous Spyglass full script (#2708 phase 2)** — engine
+  arm (`look at opponent's hand → choose_cards waitingChoice
+→ stamp chosenCardName`) and chosen-name static block
+  (`activated abilities of sources named X can't be
+activated`) both track under #2708. Phase 1 ships only the
+  schema + the `CardInstance` field so a follow-up lane can
+  extend the engine without a schema bump. Sample card and
+  AddMana `{C}` ride phase 2.
+
+- **Adaptive Automaton type-change half** — the "is the chosen
+  type in addition to its other types" half is a
+  creature-type-changing static that the engine can't model
+  today. The drafter list flags "change creature types" as a
+  multi-lane blocker (Eaten by Piranhas, Infernal Vessel).
+  Lane 45 ships the anthem half only; the type-change half
+  rides a separate follow-up.
+
+### Test count snapshot
+
+- Wave 4.6 start: 700 / 13852 (per the Wave 4.6 handoff)
+- Wave 4.7 done summary (this loop's start): 700 / 13852
+- After lane 43 (Diamond Mare): 701 / 13862
+- After lane 44 (`creature_type` engine arm): 702 / 13873
+- After lane 45 (Adaptive Automaton anthem): 703 / 13882
+- After lane 46 (text-vs-script guard): 703 / 13885
+- After lane 47 (Test Goggles cleanup): 703 / 13878
+- After lane 48 (chosen_name schema baseline): 704 / 13882
+
+Net delta from Wave 4.6 start: **+4 suites, +30 cases** in the
+Wave 4.7 follow-up loop.
+
+### Done
+
+This closes the Wave 4.7 follow-up loop. The loop ran without
+human input on every lane; AI `forge-gate` / `expert-agent` /
+`forge-selfplay` flakes hit on lanes 46, 48 and were resolved by
+`gh run rerun --failed` (per the Wave 4.7 handoff's process
+note). All five follow-up issues (#2704–#2708) are closed or
+in-progress; the only remaining work is the multi-lane #2708
+phase 2 (engine arm + chosen-name static block), which a future
+Wave can ship with its own dedicated loop.
