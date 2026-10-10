@@ -81,6 +81,7 @@ describe("ValidationService", () => {
       enteredBattlefieldTimestamp: 0,
       attachedTimestamp: null,
       chosenBasicLandType: null,
+      chosenColor: null,
       isToken: false,
       tokenData: null,
       attackedLastTurn: false,

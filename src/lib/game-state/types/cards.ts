@@ -106,6 +106,18 @@ export interface CardInstance {
   /** For lands like Multiversal Passage - the chosen basic land type this land is */
   chosenBasicLandType: string | null;
 
+  // Enter-time choice (#2594 follow-up, Wave 4.7 lane 39)
+  /**
+   * The color chosen for a permanent with a `script.enter_choice` of
+   * `kind: "color"` (e.g. Heraldic Banner's "as this enters, choose
+   * a color"). Set by `resolveEnterChoice` when the controller answers
+   * the `enter_choice` waiting choice, then read by downstream
+   * statics / AddMana that use the `chosen` sentinel (lanes 40 + 41).
+   * `null` until the choice resolves, or on permanents that don't
+   * carry an `enter_choice: { kind: "color" }` script.
+   */
+  chosenColor: "W" | "U" | "B" | "R" | "G" | null;
+
   // Token-specific
   /** Whether this is a token */
   isToken: boolean;

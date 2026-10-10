@@ -46,6 +46,10 @@ export function createCardInstance(
     enteredBattlefieldTimestamp: Date.now(),
     attachedTimestamp: null,
     chosenBasicLandType: null,
+    // Wave 4.7 lane 39: `enter_choice: { kind: "color" }` sets this
+    // via `resolveEnterChoice`; lanes 40/41 read it for the chosen-color
+    // anthem and AddMana.
+    chosenColor: null,
     isToken: options.isToken || false,
     tokenData: options.tokenData || null,
     // Boast keyword tracking (CR 702.131) - default to false, set when creature attacks

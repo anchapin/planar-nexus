@@ -21,6 +21,10 @@ import {
 } from "../keyword-actions";
 import { resolveCascade } from "../keyword-actions/cascade";
 import {
+  createEnterChoiceWaitingChoice,
+  hasEnterChoice,
+} from "../keyword-actions/enter-choice";
+import {
   resolveStackObjectEffects,
   parseSpellEffects,
   getEffectsForChosenModes,
@@ -710,6 +714,35 @@ function resolveSpellCompletion(
               "entersBattlefield",
               { enteringCardId: stackObject.sourceCardId ?? undefined },
             ).state;
+            // Wave 4.7 lane 39: "as this enters, choose a [thing]"
+            // (#2594 follow-up). The card's script declares
+            // `enter_choice: { kind: "color" }` and the engine surfaces
+            // a `enter_choice` waitingChoice to the controller here.
+            // `resolveEnterChoice` (keyword-actions/enter-choice.ts)
+            // stamps `card.chosenColor` when the choice resolves; the
+            // anthem and AddMana arms (lanes 40 + 41) read it. We
+            // surface the choice only when no other choice is already
+            // pending so we don't clobber a higher-priority prompt
+            // (e.g. legend rule).
+            const enteringId = stackObject.sourceCardId;
+            if (
+              enteringId &&
+              !currentState.waitingChoice &&
+              currentState.cards.has(enteringId) &&
+              hasEnterChoice(currentState.cards.get(enteringId)!)
+            ) {
+              const choice = createEnterChoiceWaitingChoice(
+                currentState,
+                enteringId,
+              );
+              if (choice) {
+                currentState = {
+                  ...currentState,
+                  waitingChoice: choice,
+                  lastModifiedAt: Date.now(),
+                };
+              }
+            }
           }
         }
 

@@ -11,13 +11,38 @@
  */
 import type { GameState, CardInstanceId } from "../types";
 import { checkTriggeredAbilities } from "../abilities/check";
+import {
+  createEnterChoiceWaitingChoice,
+  hasEnterChoice,
+} from "./enter-choice";
 
 /** Put every ETB trigger that cares about `enteringCardId` onto the stack. */
 export function fireEntersTriggers(
   state: GameState,
   enteringCardId: CardInstanceId,
 ): GameState {
-  return checkTriggeredAbilities(state, "entersBattlefield", {
+  let next = checkTriggeredAbilities(state, "entersBattlefield", {
     enteringCardId,
   }).state;
+  // Wave 4.7 lane 39: "as this enters, choose a [thing]" (#2594
+  // follow-up). Surface the choice after ETB triggers fire so any
+  // "when this enters" trigger doesn't see the choice yet. Like
+  // `resolve.ts` we no-op when another choice is already pending so
+  // we don't clobber a higher-priority prompt (e.g. legend rule).
+  const entering = next.cards.get(enteringCardId);
+  if (
+    entering &&
+    !next.waitingChoice &&
+    hasEnterChoice(entering)
+  ) {
+    const choice = createEnterChoiceWaitingChoice(next, enteringCardId);
+    if (choice) {
+      next = {
+        ...next,
+        waitingChoice: choice,
+        lastModifiedAt: Date.now(),
+      };
+    }
+  }
+  return next;
 }
