@@ -4520,15 +4520,32 @@ describe("scripted AddMana (#2565)", () => {
       for (const a of getCardScript(name)!.activated ?? []) {
         for (const e of a.effects ?? []) {
           if (e.op !== "AddMana") continue;
+          // #2594 follow-up, Wave 4.7 lane 41: the "chosen" sentinel
+          // (Heraldic Banner) resolves at activation time against
+          // the source's `chosenColor`. The text is "Add one mana of
+          // the chosen color." which the textual parser sees as
+          // empty — that's correct, the substitution happens in
+          // `substituteChosenColorInEffect` at activation time.
+          if (Array.isArray(e.colors) && e.colors[0] === "chosen") {
+            expect([name, parseManaFromEffect(a.text)]).toEqual([name, {}]);
+            expect([name, /the chosen color/i.test(a.text)]).toEqual([
+              name,
+              true,
+            ]);
+            continue;
+          }
           if (e.colors === "any" || e.colors.length > 1) {
             expect([name, /any (?:one )?color| or \{/i.test(a.text)]).toEqual([
               name,
               true,
             ]);
           } else {
+            // After the chosen / any / length>1 branches the
+            // remaining colors are a single concrete symbol.
+            const symbol = e.colors[0] as keyof typeof symbolKey;
             expect([name, parseManaFromEffect(a.text)]).toEqual([
               name,
-              { [symbolKey[e.colors[0]]]: e.amount },
+              { [symbolKey[symbol]]: e.amount },
             ]);
           }
         }

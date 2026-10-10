@@ -15,5 +15,21 @@
       "power": 1,
       "toughness": 1
     }
+  ],
+  "activated": [
+    {
+      "text": "{T}: Add one mana of the chosen color.",
+      "cost": {
+        "tap": true,
+        "sacrifice": false
+      },
+      "effects": [
+        {
+          "op": "AddMana",
+          "amount": 1,
+          "colors": ["chosen"]
+        }
+      ]
+    }
   ]
 }

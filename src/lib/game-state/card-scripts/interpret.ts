@@ -848,7 +848,14 @@ function applyEffect(
       // {R}" (#2565). Activated mana abilities never reach the stack
       // (CR 605.3a); with a color choice ("any", or "{R} or {G}") they
       // go through the mana ability path, which asks for the color.
-      if (effect.colors === "any" || effect.colors.length !== 1) return state;
+      // #2594 follow-up, Wave 4.7 lane 41: `"chosen"` (Heraldic
+      // Banner) is rejected here — the spell/triggered path doesn't
+      // have access to the source's `chosenColor`; the activated
+      // mana path handles the sentinel via
+      // `substituteChosenColorInEffect` in `abilities/mana.ts`.
+      if (effect.colors === "any") return state;
+      if (effect.colors.length !== 1) return state;
+      if (effect.colors[0] === "chosen") return state;
       return addMana(state, ctx.controllerId, {
         [MANA_POOL_KEY[effect.colors[0]]]: effect.amount,
       });
