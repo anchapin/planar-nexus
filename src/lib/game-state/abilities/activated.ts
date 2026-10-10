@@ -1,12 +1,13 @@
 import { isSelfTransformText } from "../keyword-actions/transform";
 import { fireTargetedTriggers } from "../keyword-actions/targeted";
 import type {
+  CardInstance,
   GameState,
   PlayerId,
   CardInstanceId,
   StackObject,
 } from "../types";
-import { Phase } from "../types";
+import { Phase, ZoneType } from "../types";
 import { isPriorityPlayer } from "../priority-guard";
 import { hasSplitSecondOnStack } from "../auto-pass-priority";
 import { isManaAbility, spendMana, addMana } from "../mana";
@@ -24,6 +25,7 @@ import { getActivatedAbilities } from "./parse";
 import { isCreature } from "../card-instance";
 import { hasSubtype } from "../spell-casting/affinity";
 import { hasKeyword } from "../evergreen-keywords";
+import { getCardScript } from "../card-scripts/registry";
 import { generateAbilityId } from "./ids";
 import { evaluateInterveningIfClause } from "./evaluate";
 import {
@@ -233,7 +235,64 @@ export function canActivateAbility(
     };
   }
 
+  // Wave 4.7 phase 2 lane 50 (#2708 phase 2b): the chosen-name
+  // block (Sorcerous Spyglass). When ANY on-battlefield source
+  // carries a static with `affects.chosen_name_block: true` AND
+  // that source has stamped `chosenCardName === card.cardData.name`,
+  // activation is denied. Mana abilities (CR 605) are exempted
+  // per the Spyglass oracle text: "Activated abilities of sources
+  // with the chosen name can't be activated *unless they're mana
+  // abilities*." The check is the inverse of `isManaAbility` for
+  // this single gate.
+  if (
+    ability &&
+    !isManaAbility(cardId, ability.effect) &&
+    chosenNameActivationIsBlocked(state, card)
+  ) {
+    return {
+      canActivate: false,
+      reason: "Activated abilities of sources with the chosen name can't be activated",
+    };
+  }
+
   return { canActivate: true };
+}
+
+/**
+ * Wave 4.7 phase 2 lane 50 (#2708 phase 2b): true if some
+ * on-battlefield source carries a chosen-name block static
+ * (`affects.chosen_name_block: true`) whose `chosenCardName`
+ * matches `card.cardData.name`. The chosen-name source must have
+ * stamped the name (i.e. `chosenCardName` is non-null) for the
+ * block to apply — Sorcerous Spyglass does nothing before the
+ * player answers the enter choice.
+ *
+ * Iterates the `state.zones` Map looking up battlefield zones by
+ * `ZoneType.BATTLEFIELD` (the canonical shape; avoids `key`
+ * string-matching which is brittle when zones live in AI
+ * simulation zones).
+ */
+function chosenNameActivationIsBlocked(
+  state: GameState,
+  card: CardInstance,
+): boolean {
+  const targetName = card.cardData.name;
+  if (!targetName) return false;
+  for (const [, zone] of state.zones) {
+    if (zone.type !== ZoneType.BATTLEFIELD) continue;
+    for (const id of zone.cardIds) {
+      const source = state.cards.get(id);
+      if (!source || source.id === card.id) continue;
+      const script = getCardScript(source.cardData.name);
+      if (!script?.statics) continue;
+      for (const stat of script.statics) {
+        if (stat.affects.chosen_name_block !== true) continue;
+        if (!source.chosenCardName) continue;
+        if (source.chosenCardName === targetName) return true;
+      }
+    }
+  }
+  return false;
 }
 
 /** A non-mana activated ability the player can activate right now. */

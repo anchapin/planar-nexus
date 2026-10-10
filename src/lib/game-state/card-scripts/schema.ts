@@ -1444,6 +1444,29 @@ export const StaticSchema = z
          * chosen color get +1/+1".
          */
         color: z.enum(["W", "U", "B", "R", "G", "chosen"]).optional(),
+        /**
+         * Wave 4.7 phase 2 lane 50 (#2708 phase 2b): the
+         * chosen-name block static. When true, the static
+         * identifies the source as a "Spyglass-like" card whose
+         * `chosenCardName` (set by `enter_choice: { kind:
+         * "chosen_name" }` in lane 49) blocks activation of
+         * non-mana activated abilities on cards named with that
+         * chosen name. The engine's gate lives in
+         * `canActivateAbility` (`abilities/activated.ts`); it
+         * scans the battlefield for any source carrying a static
+         * with `chosen_name_block: true` and checks whether the
+         * ability's source card's `name` matches the static
+         * source's `chosenCardName`. The chosen-name block is
+         * entirely a meta-static — no P/T, no keywords, no X.
+         *
+         * Used by Sorcerous Spyglass: "Activated abilities of
+         * sources with the chosen name can't be activated unless
+         * they're mana abilities." The chosen-name block only
+         * affects activated abilities (CR 602.2d) and explicitly
+         * spares mana abilities (CR 605), matching the original
+         * card's text.
+         */
+        chosen_name_block: z.literal(true).optional(),
       })
       .strict(),
     power: z.number().int().optional(),
@@ -1463,9 +1486,24 @@ export const StaticSchema = z
   .refine((s) => (s.power === undefined) === (s.toughness === undefined), {
     message: "set both power and toughness, or neither",
   })
-  .refine((s) => s.power !== undefined || s.keywords || s.X !== undefined, {
-    message: "a static needs power/toughness, keywords, or X",
-  });
+  .refine(
+    (s) =>
+      s.power !== undefined ||
+      s.keywords ||
+      s.X !== undefined ||
+      // Wave 4.7 phase 2 lane 50 (#2708 phase 2b): the
+      // chosen-name block is a meta-static — it gates
+      // ability activation, not P/T or keywords. Allow it as
+      // a stand-alone `affects.chosen_name_block: true` with
+      // no power/toughness/keywords. The refresh pass detects
+      // it via `affects.chosen_name_block` and skips the P/T
+      // and keyword grants.
+      s.affects.chosen_name_block === true,
+    {
+      message:
+        "a static needs power/toughness, keywords, X, or chosen_name_block",
+    },
+  );
 
 /**
  * A rule-changing static ability (#2614, Sunspine Lynx), CR 604.1: "Players

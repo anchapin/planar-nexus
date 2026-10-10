@@ -122,6 +122,20 @@ export function staticAffects(
   source: CardInstance,
   target: CardInstance,
 ): boolean {
+  // Wave 4.7 phase 2 lane 50 (#2708 phase 2b): the chosen-name
+  // block static is a meta-static that gates non-mana activated
+  // ability activation (Sorcerous Spyglass pattern). It doesn't
+  // grant P/T or keywords — instead it identifies the source as a
+  // "Spyglass-like" card whose `chosenCardName` is the gate key.
+  // `staticAffects` returns true iff `target.cardData.name`
+  // matches the source's `chosenCardName`, with `target` allowed
+  // to be any kind of permanent (not just creatures) — Sorcerous
+  // Spyglass's restriction is on "sources" of activated abilities,
+  // which includes lands, artifacts, and enchantments.
+  if (stat.affects.chosen_name_block === true) {
+    if (!source.chosenCardName) return false;
+    return target.cardData.name === source.chosenCardName;
+  }
   if (!isCreature(target)) return false;
   const { controller, other, self, subtype, color } = stat.affects;
   if (other && source.id === target.id) return false;
