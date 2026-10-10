@@ -1,0 +1,19 @@
+{
+  "name": "Pyromancer's Goggles",
+  "oracle": "Whenever you cast a red instant or sorcery spell, copy it. You may choose new targets for the copy.",
+  "triggers": [
+    {
+      "text": "Whenever you cast a red instant or sorcery spell, copy it. You may choose new targets for the copy.",
+      "event": "cast",
+      "caster": "you",
+      "spell": "instant_or_sorcery",
+      "cast_color": "R",
+      "effects": [
+        {
+          "op": "CopySpell",
+          "new_targets": true
+        }
+      ]
+    }
+  ]
+}
