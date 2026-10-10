@@ -88,4 +88,30 @@ describe("playSelfPlayGame", () => {
     const b = await play(4);
     expect(JSON.stringify(b)).toBe(JSON.stringify(a));
   });
+  it("counts the searching seats' attacks", async () => {
+    const game = await play(2);
+    const { prompts, offered, declared } = game.attack;
+    const recorded = game.decisions.filter((d) => d.t === "attack").length;
+    expect(prompts).toBeGreaterThanOrEqual(recorded);
+    expect(offered).toBeGreaterThanOrEqual(prompts);
+    expect(declared).toBeGreaterThanOrEqual(0);
+    expect(declared).toBeLessThanOrEqual(offered);
+  });
+
+  it("passes cScale to the search, which changes the target", async () => {
+    const soft = await playSelfPlayGame(model, {
+      seed: 2,
+      deckA: trainingDeck("aggro"),
+      deckB: trainingDeck("midrange"),
+      simulations: 8,
+      maxTurns: 6,
+      cScale: 1e-6,
+    });
+    const sharp = await play(2);
+    // Both games are identical up to the first recorded decision.
+    expect(soft.decisions[0].pi).not.toEqual(sharp.decisions[0].pi);
+    const pi = soft.decisions[0].pi as number[];
+    if (soft.decisions[0].t === "priority")
+      expect(pi.reduce((s, v) => s + v, 0)).toBeCloseTo(1, 6);
+  });
 });
