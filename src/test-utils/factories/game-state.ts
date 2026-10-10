@@ -144,6 +144,7 @@ export function createCardInstance(
     // Wave 4.7 lane 39: mirror the engine's default for the new
     // enter-choice field so factories stay type-complete.
     chosenColor: null,
+    chosenCreatureType: null,
     isToken: options.isToken || false,
     tokenData: options.isToken ? (cardData as unknown as ScryfallCard) : null,
     attackedLastTurn: false,

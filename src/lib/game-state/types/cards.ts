@@ -117,6 +117,19 @@ export interface CardInstance {
    * carry an `enter_choice: { kind: "color" }` script.
    */
   chosenColor: "W" | "U" | "B" | "R" | "G" | null;
+  /**
+   * Wave 4.7 follow-up lane 44 (#2705a): the chosen creature
+   * type for a permanent with `enter_choice: { kind: "creature_type" }`
+   * (Banner of Kinship / Adaptive Automaton, CR 604). Stamped by
+   * `resolveEnterChoice` in
+   * `keyword-actions/enter-choice.ts`. The chosen-type anthem
+   * (lane 45) reads this through the `affects.subtype: "chosen"`
+   * sentinel and substitutes the type when refreshing statics.
+   * `null` until the choice resolves, or on permanents that
+   * don't carry an `enter_choice: { kind: "creature_type" }`
+   * script.
+   */
+  chosenCreatureType: string | null;
 
   // Token-specific
   /** Whether this is a token */

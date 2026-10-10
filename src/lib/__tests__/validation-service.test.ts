@@ -82,6 +82,7 @@ describe("ValidationService", () => {
       attachedTimestamp: null,
       chosenBasicLandType: null,
       chosenColor: null,
+      chosenCreatureType: null,
       isToken: false,
       tokenData: null,
       attackedLastTurn: false,

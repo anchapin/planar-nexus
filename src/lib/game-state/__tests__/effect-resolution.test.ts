@@ -492,6 +492,7 @@ describe("Effect Resolution - Damage", () => {
         attachedTimestamp: null,
         chosenBasicLandType: null,
         chosenColor: null,
+        chosenCreatureType: null,
         isToken: false,
         tokenData: null,
         isPrototype: false,
