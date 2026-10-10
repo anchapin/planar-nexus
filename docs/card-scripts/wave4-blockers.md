@@ -32,11 +32,11 @@ identified during the Wave 4.5 loop (lanes 31/32).
     a sweeping refactor of the ETB trigger pipeline." That case
     applies here — shipping lane 37 properly would require a new
     `enterChoice` engine arm, which is multi-lane work in itself.
-- **Suggested follow-up**: open an issue for `enterChoice` engine
-  arm + chosen-color anthem + chosen-color mana. The chosen-color
-  schema/parsing pieces (#2693 + the engine's `staticAffects`
-  color substitution) are small; the multi-lane piece is the
-  ETB choice flow.
+- **Wave 4.7 follow-up**: lanes 39 (the prerequisite `enterChoice`
+  engine arm), 40 (chosen-color anthem), and 41 (chosen-color
+  AddMana) all shipped. See the "Wave 4.7 done summary" at the
+  bottom of this file. **Heraldic Banner (FDN #532) is fully
+  scripted** with all three pieces wired.
 
 ### Lane 28 from Wave 4 (Copying a permanent)
 
@@ -157,15 +157,83 @@ more as multi-lane blockers. Test count: 697 suites / 13825 cases
 ### Blocked (multi-lane)
 
 - **Lanes 37 + 38 — Heraldic Banner** (chosen-color anthem +
-  chosen-color activated `AddMana`): both need a general-purpose
+  chosen-color activated `AddMana`): both needed a general-purpose
   "as this enters, choose a [thing]" mechanism. The current engine
-  has only the shockland-specific "as this enters, pay 2 life"
-  pattern. Shipping either lane properly requires a new
-  `enterChoice` engine arm + a `waitingChoice` flow + a
-  `chosenColor` instance field — multi-lane work. See the
-  "Wave 4.6 follow-up" note in the Lane 24 entry above.
+  had only the shockland-specific "as this enters, pay 2 life"
+  pattern. **Shipped in Wave 4.7 lanes 40 + 41** (after the
+  prerequisite `enter_choice` engine arm in lane 39). See the
+  "Wave 4.7 done summary" below.
 
 ### Still tracked (not attempted in Wave 4.6)
 
 The "Out of scope" list above remains — those need dedicated
 human scoping before they become shippable lanes.
+
+## Wave 4.7 done summary
+
+The Wave 4.7 loop unblocked the Heraldic Banner multi-lane work
+(#2701 + #2702 + #2699). The general-purpose "as this enters,
+choose a [thing]" mechanism is now in place via the `enter_choice`
+schema arm, a `chosenColor` instance field, and a new
+`enter_choice` `waitingChoice` flow. v1 ships only `kind: "color"`
+(W | U | B | R | G); the engine arms for `creature_type` and
+`player` remain documented but unsupported.
+
+Test count: 700 suites / 13852 cases (13845 passed + 7 skipped) —
++27 tests over Wave 4.6.
+
+### Shipped
+
+- **Lane 39 — `enter_choice` engine arm** (#2699): the prerequisite
+  for the two Banner halves. New schema field
+  `enter_choice: { kind, text }`, new `chosenColor` instance
+  field, new `enter_choice` waitingChoice type, and a
+  `resolveEnterChoice` resolver. Sample card: `Test Goggles`
+  exercises ONLY the new arm.
+- **Lane 40 — Heraldic Banner chosen-color anthem** (#2701):
+  `StaticSchema.affects.color` enum gains a `"chosen"` sentinel;
+  `staticAffects` substitutes `source.chosenColor` at refresh
+  time. Anthem is inert until the player answers the enter
+  choice. The Heraldic Banner JSON now carries `enter_choice` +
+  the anthem half.
+- **Lane 41 — Heraldic Banner chosen-color AddMana** (#2702):
+  `AddManaSchema.colors` accepts the `"chosen"` sentinel (single
+  element only). A new `substituteChosenColorInEffect` helper
+  rewrites "the chosen color" to `{W}`-style at activation time
+  so the existing `parseManaFromEffect` reads it. The
+  script-level AddMana case (`card-scripts/interpret.ts`) gets a
+  matching guard rejecting `"chosen"` since it has no source.
+  The Heraldic Banner JSON now carries the activated
+  `{T}: Add one mana of the chosen color.` ability — the real
+  card is complete.
+
+### Skipped
+
+- **Lane 42 — cleanup pass**: the handoff listed it as "skip if
+  `npm test --silent` already covers the new paths via the
+  existing tests." After lanes 39 + 40 + 41, the existing
+  `drafted-scripts.test.ts` smoke test loops over every scripted
+  card (including the new Test Goggles and Heraldic Banner); the
+  `card-scripts.test.ts` "every AddMana script's ability text
+  agrees with its op" data-driven test was extended for the
+  `"chosen"` sentinel in lane 41. No additional data-driven
+  coverage was needed.
+
+### Blocked (multi-lane, still tracked)
+
+The "Out of scope" list above remains — those need dedicated
+human scoping before they become shippable lanes. In particular:
+
+- **Banner of Kinship / Adaptive Automaton** (chosen creature
+  type anthem) and **Diamond Mare** (chosen color anthem on a
+  creature) are now blocked only on the `creature_type` and
+  `player` engine arms. The schema accepts both, the
+  `hasEnterChoice` predicate rejects them. Adding them is
+  another two-lane pass.
+- **Sorcerous Spyglass** (choose a card name on ETB) needs an
+  entirely different `chosen_name` arm that affects the engine's
+  "cards named X" lookups. Multi-lane.
+- **Heraldic Banner cost reduction** (not a real Banner ability,
+  the drafter list entry was a conflation) — n/a.
+
+Closes #2594 follow-up lanes 39–41 of the Wave 4.7 loop.
