@@ -59,6 +59,11 @@ export interface SelfPlayGame {
   reason: string;
   turns: number;
   steps: number;
+  /**
+   * Attack prompts the searching seat(s) answered, and creatures offered and
+   * declared across them (manamind#96: is the net turning passive?).
+   */
+  attack: { prompts: number; offered: number; declared: number };
 }
 
 export interface SelfPlayOptions {
@@ -78,6 +83,12 @@ export interface SelfPlayOptions {
    * (`"gumbel"`, manamind#96). Later decisions play the noise-free pick.
    */
   pick?: "sample" | "gumbel";
+  /**
+   * `forgeSearch`'s cScale (default 1). Lower values soften the
+   * completed-Q policy target so a few noisy samples can't make it
+   * near one-hot (manamind#96).
+   */
+  cScale?: number;
   maxTurns?: number;
   /** Who plays the other seat: the net itself (default) or the Expert AI. */
   opponent?: "self" | "expert";
@@ -163,6 +174,7 @@ export async function playSelfPlayGame(
     opponent = "self",
     netSeat = 0,
     pick = "sample",
+    cScale,
   } = options;
   const session = new TrainingSession({ maxTurns });
   const seats = session.reset(seed, deckA, deckB);
@@ -173,6 +185,7 @@ export async function playSelfPlayGame(
   // Exploration counts real choices only; forced passes would use it up
   // in the first turn.
   let choices = 0;
+  const attack = { prompts: 0, offered: 0, declared: 0 };
   while (prompt.kind !== "game_over") {
     if (opponent === "expert" && seats.indexOf(prompt.playerId) !== netSeat) {
       move++;
@@ -184,6 +197,7 @@ export async function playSelfPlayGame(
       simulations,
       seed: (seed * 7919 + move) >>> 0,
       gumbel: pick === "gumbel" && exploring,
+      ...(cScale === undefined ? {} : { cScale }),
     });
     const pi = searchTarget(prompt, result);
     if (pi && result.candidates.length > 1) {
@@ -205,6 +219,11 @@ export async function playSelfPlayGame(
         }
       }
     }
+    if (prompt.kind === "attack") {
+      attack.prompts++;
+      attack.offered += prompt.options.length;
+      attack.declared += "attacks" in action ? action.attacks.length : 0;
+    }
     move++;
     prompt = session.step(action);
   }
@@ -221,5 +240,6 @@ export async function playSelfPlayGame(
     reason: res.reason,
     turns: res.turns,
     steps: res.steps,
+    attack,
   };
 }

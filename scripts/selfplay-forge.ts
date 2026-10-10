@@ -3,7 +3,7 @@
  *
  *   npx tsx scripts/selfplay-forge.ts --model forge_pointer.onnx
  *     [--games 20] [--seed 1] [--sims 16] [--explore all|N]
- *     [--pick sample|gumbel]
+ *     [--pick sample|gumbel] [--c-scale 1]
  *     [--deck-a aggro] [--deck-b midrange] [--max-turns 80]
  *     [--opponent self|expert] --out selfplay.jsonl.gz
  *
@@ -14,6 +14,8 @@
  * archetypes; see scripts/sim-decks.ts. `--pick gumbel` (manamind#96)
  * plays each exploring decision as the search's own pick under Gumbel root
  * noise instead of a draw from the search policy (the default).
+ * `--c-scale` sets the search's cScale (default 1); lower values soften the
+ * policy target (manamind#96).
  *
  * `--opponent expert` (manamind#96): the net plays the Expert AI and only
  * its own decisions are written. Its seat alternates every two games, so
@@ -50,6 +52,10 @@ async function main() {
   const pick = arg("pick", "sample");
   if (pick !== "sample" && pick !== "gumbel")
     throw new Error(`--pick must be sample or gumbel, not ${pick}`);
+  const cScaleArg = arg("c-scale", "");
+  const cScale = cScaleArg === "" ? undefined : Number(cScaleArg);
+  if (cScale !== undefined && !(Number.isFinite(cScale) && cScale > 0))
+    throw new Error(`--c-scale must be a positive number, not ${cScaleArg}`);
   const decks = [
     simDeck(arg("deck-a", "aggro")),
     simDeck(arg("deck-b", "midrange")),
@@ -69,6 +75,8 @@ async function main() {
 
   const t0 = performance.now();
   let decisions = 0;
+  let turns = 0;
+  const attack = { prompts: 0, offered: 0, declared: 0 };
   const wins = [0, 0, 0];
   for (let g = 0; g < games; g++) {
     const seed = firstSeed + g;
@@ -84,8 +92,13 @@ async function main() {
       opponent,
       netSeat,
       pick,
+      cScale,
     });
     decisions += game.decisions.length;
+    turns += game.turns;
+    attack.prompts += game.attack.prompts;
+    attack.offered += game.attack.offered;
+    attack.declared += game.attack.declared;
     wins[game.winner === null ? 2 : game.winner]++;
     write(
       JSON.stringify(
@@ -108,6 +121,10 @@ async function main() {
       seat0_wins: wins[0],
       seat1_wins: wins[1],
       draws: wins[2],
+      turns_per_game: +(turns / Math.max(games, 1)).toFixed(1),
+      attack_prompts: attack.prompts,
+      attack_rate: +(attack.declared / Math.max(attack.offered, 1)).toFixed(3),
+      ...(cScale === undefined ? {} : { c_scale: cScale }),
       seconds: +secs.toFixed(1),
       games_per_hour: +((games / secs) * 3600).toFixed(1),
     }),
