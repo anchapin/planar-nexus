@@ -2,14 +2,17 @@
  * manamind#87: gate a new ForgePointerNet checkpoint against the previous one.
  *
  *   npx tsx scripts/gate-forge.ts --candidate new.onnx --baseline old.onnx
- *     [--games 40] [--seed 1] [--sims 16] [--threshold 0.55]
+ *     [--games 40] [--seed 1] [--sims 16] [--baseline-sims N]
+ *     [--threshold 0.55]
  *     [--greedy] [--deck-a aggro] [--deck-b midrange] [--max-turns 80]
  *     [--out gate.json]
  *
  * The candidate's seat alternates every game and the decks swap every two,
  * so each seed block of four covers both seats with both decks. Deck names
  * are #2614 decks (`red`, `green`) or simulator archetypes; see
- * scripts/sim-decks.ts. Prints the
+ * scripts/sim-decks.ts. `--baseline-sims` gives the baseline its own search
+ * budget (default: --sims); 0 plays its raw policy, so the same net as
+ * candidate and baseline measures what search adds. Prints the
  * summary (score with a draw as half, Wilson 95% interval, promote) and
  * writes it with the per-game results to --out.
  */
@@ -40,6 +43,9 @@ async function main() {
   const games = Number(arg("games", "40"));
   const firstSeed = Number(arg("seed", "1"));
   const simulations = Number(arg("sims", "16"));
+  const baselineSimulations = Number(arg("baseline-sims", String(simulations)));
+  if (!Number.isInteger(baselineSimulations) || baselineSimulations < 0)
+    throw new Error("--baseline-sims must be a whole number >= 0");
   const threshold = Number(arg("threshold", "0.55"));
   const maxTurns = Number(arg("max-turns", "80"));
   const sample = !process.argv.includes("--greedy");
@@ -70,6 +76,7 @@ async function main() {
         deckB: decks[swap ? 0 : 1],
         candidateSeat: (g % 2) as 0 | 1,
         simulations,
+        baselineSimulations,
         sample,
         maxTurns,
       }),
@@ -79,6 +86,7 @@ async function main() {
     candidate: candidatePath,
     baseline: baselinePath,
     simulations,
+    baseline_simulations: baselineSimulations,
     sample,
     ...gateSummary(results, threshold),
     seconds: +((performance.now() - t0) / 1000).toFixed(1),

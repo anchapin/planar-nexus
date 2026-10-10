@@ -72,6 +72,31 @@ describe("forge gate", () => {
     expect(a.turns).toBeGreaterThan(0);
   });
 
+  it("gives the baseline its own search budget", async () => {
+    const opts = {
+      seed: 5,
+      deckA: trainingDeck("aggro"),
+      deckB: trainingDeck("midrange"),
+      candidateSeat: 0 as const,
+      simulations: 8,
+      maxTurns: 6,
+    };
+    const same = await playGateGame(model, model, opts);
+    const raw = await playGateGame(model, model, {
+      ...opts,
+      baselineSimulations: 0,
+    });
+    for (const g of [same, raw]) {
+      expect(["win", "loss", "draw"]).toContain(g.result);
+      expect(g.candidateSeat).toBe(0);
+    }
+    const again = await playGateGame(model, model, {
+      ...opts,
+      baselineSimulations: 8,
+    });
+    expect(JSON.stringify(again)).toBe(JSON.stringify(same));
+  });
+
   it("is deterministic for a seed", async () => {
     const opts = {
       seed: 5,
