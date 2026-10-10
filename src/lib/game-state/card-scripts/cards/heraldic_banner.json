@@ -1,0 +1,19 @@
+{
+  "name": "Heraldic Banner",
+  "oracle": "As Heraldic Banner enters, choose a color. Creatures you control of the chosen color get +1/+1. {T}: Add one mana of the chosen color.",
+  "enter_choice": {
+    "kind": "color",
+    "text": "As Heraldic Banner enters, choose a color."
+  },
+  "statics": [
+    {
+      "text": "Creatures you control of the chosen color get +1/+1.",
+      "affects": {
+        "controller": "you",
+        "color": "chosen"
+      },
+      "power": 1,
+      "toughness": 1
+    }
+  ]
+}

@@ -145,9 +145,23 @@ export function staticAffects(
       R: "red",
       G: "green",
     };
-    const wanted = COLOR_MAP[color];
-    const targetColors = getCardColors(target);
-    if (!targetColors.includes(wanted)) return false;
+    // #2594 follow-up, Wave 4.7 lane 40: `"chosen"` is a sentinel
+    // meaning "use the source's chosenColor instance field"
+    // (Heraldic Banner's chosen-color anthem). If the source has no
+    // chosenColor yet — the player hasn't answered the enter
+    // choice — the anthem is inert (idempotent; the card is still
+    // on the battlefield and will start buffing once the choice
+    // resolves).
+    if (color === "chosen") {
+      if (!source.chosenColor) return false;
+      const wanted = COLOR_MAP[source.chosenColor];
+      const targetColors = getCardColors(target);
+      if (!targetColors.includes(wanted)) return false;
+    } else {
+      const wanted = COLOR_MAP[color];
+      const targetColors = getCardColors(target);
+      if (!targetColors.includes(wanted)) return false;
+    }
   }
   return (
     !subtype ||
