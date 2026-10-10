@@ -79,6 +79,43 @@ export function exiledCardTypes(
   return types.size;
 }
 
+/**
+ * Compute the state-derived `X` contribution for a scaling anthem
+ * (#2594 follow-up, lane 36, Smaug, Tempest Djinn, Blanchwood Armor).
+ * Returns 0 when `X` is unset.
+ */
+function computeX(state: GameState, source: CardInstance, kind: string): number {
+  if (kind === "treasures") {
+    let n = 0;
+    for (const card of battlefieldCards(state)) {
+      if (card.controllerId !== source.controllerId) continue;
+      // Treasure tokens are typed as a "Treasure" artifact on the
+      // battlefield. The token's `cardData.type_line` is the one
+      // written by the token factory; we read it verbatim.
+      const typeLine = (card.cardData.type_line ?? "").toLowerCase();
+      if (typeLine.includes("treasure")) n++;
+    }
+    return n;
+  }
+  if (kind === "creatures") {
+    let n = 0;
+    for (const card of battlefieldCards(state)) {
+      if (card.controllerId !== source.controllerId) continue;
+      if (isCreature(card)) n++;
+    }
+    return n;
+  }
+  if (kind === "lands") {
+    let n = 0;
+    for (const card of battlefieldCards(state)) {
+      if (card.controllerId !== source.controllerId) continue;
+      if ((card.cardData.type_line ?? "").toLowerCase().includes("land")) n++;
+    }
+    return n;
+  }
+  return 0;
+}
+
 /** True when the static on `source` applies to `target` (CR 611.3a). */
 export function staticAffects(
   stat: ScriptedStatic,
@@ -86,8 +123,13 @@ export function staticAffects(
   target: CardInstance,
 ): boolean {
   if (!isCreature(target)) return false;
-  const { controller, other, subtype, color } = stat.affects;
+  const { controller, other, self, subtype, color } = stat.affects;
   if (other && source.id === target.id) return false;
+  // #2594 follow-up, lane 36: `self: true` restricts the anthem to the
+  // source only (Smaug, Tempest Djinn). Mutually exclusive with `other`
+  // in spirit, but the engine doesn't enforce that — `self: true,
+  // other: true` is contradictory; the engine just doesn't apply.
+  if (self && source.id !== target.id) return false;
   const sameController = source.controllerId === target.controllerId;
   if (controller === "you" ? !sameController : sameController) return false;
   // Color filter (#2594 lane 30): a single-color anthem like Knight of
@@ -136,8 +178,18 @@ export function refreshScriptedStatics(input: GameState): GameState {
     for (const { card, statics } of sources) {
       for (const stat of statics) {
         if (!staticAffects(stat, card, target)) continue;
-        power += stat.power ?? 0;
-        toughness += stat.toughness ?? 0;
+        if (stat.X) {
+          // #2594 follow-up, lane 36: when `X` is set, the count
+          // overrides the integer `power`/`toughness` for this
+          // static. The card's text usually reads "gets +X/+X" so
+          // both sides are set to the same count.
+          const x = computeX(state, card, stat.X);
+          power += x;
+          toughness += x;
+        } else {
+          power += stat.power ?? 0;
+          toughness += stat.toughness ?? 0;
+        }
         for (const k of stat.keywords ?? []) granted.add(k);
       }
     }
