@@ -1,8 +1,0 @@
-{
-  "name": "Test Goggles",
-  "oracle": "As Test Goggles enters, choose a color.",
-  "enter_choice": {
-    "kind": "color",
-    "text": "As Test Goggles enters, choose a color."
-  }
-}
