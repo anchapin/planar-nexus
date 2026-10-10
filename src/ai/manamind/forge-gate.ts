@@ -35,6 +35,11 @@ export interface GateGameOptions {
   baselineSimulations?: number;
   /** Sample from the search policy (default) or play its greedy pick. */
   sample?: boolean;
+  /**
+   * Overrides `sample`: `"greedy"`, `"sample"` (draw from the search
+   * policy) or `"gumbel"` (the search's pick under Gumbel root noise).
+   */
+  pick?: "greedy" | "sample" | "gumbel";
   maxTurns?: number;
 }
 
@@ -62,6 +67,7 @@ export async function playGateGame(
     sample = true,
     maxTurns,
   } = options;
+  const pick = options.pick ?? (sample ? "sample" : "greedy");
   const session = new TrainingSession({ maxTurns });
   const seats = session.reset(seed, deckA, deckB);
   const random = mulberry32(seed ^ 0x9a7e);
@@ -72,10 +78,11 @@ export async function playGateGame(
     const mine = seat === candidateSeat;
     const r = await forgeSearch(session, mine ? candidate : baseline, {
       simulations: mine ? simulations : baselineSimulations,
+      gumbel: pick === "gumbel",
       seed: (seed * 7919 + move) >>> 0,
     });
     let action = r.action;
-    if (sample && r.candidates.length > 1) {
+    if (pick === "sample" && r.candidates.length > 1) {
       let u = random();
       for (let i = 0; i < r.policy.length; i++) {
         u -= r.policy[i];

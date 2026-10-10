@@ -41,8 +41,16 @@ export interface ForgeSearchOptions {
   k?: number;
   cVisit?: number;
   cScale?: number;
-  /** Seed for the hidden-card deals. */
+  /** Seed for the hidden-card deals (and the Gumbel draws). */
   seed?: number;
+  /**
+   * Gumbel MuZero root sampling (manamind#96): add Gumbel(0, 1) noise to the
+   * root logits for the top-k pick and sequential halving, so `action` is a
+   * varied draw that still plays the search's own pick. With 0 simulations
+   * it is a draw from the prior. `policy` leaves the noise out, though it
+   * still reflects which candidates the noisy halving visited.
+   */
+  gumbel?: boolean;
 }
 
 export interface ForgeCandidate {
@@ -279,7 +287,14 @@ export async function forgeSearch(
   model: ForgePointerModel,
   options: ForgeSearchOptions,
 ): Promise<ForgeSearchResult> {
-  const { simulations, k = 16, cVisit = 50, cScale = 1, seed = 0 } = options;
+  const {
+    simulations,
+    k = 16,
+    cVisit = 50,
+    cScale = 1,
+    seed = 0,
+    gumbel = false,
+  } = options;
   const prompt = session.legalChoices();
   if (prompt.kind === "game_over") throw new Error("the game is over");
   const player = prompt.playerId;
@@ -337,6 +352,13 @@ export async function forgeSearch(
   const priors = candidates.map((c) => Math.max(c.prior, 1e-12));
   const priorSum = priors.reduce((s, p) => s + p, 0);
   const logits = priors.map((p) => Math.log(p / priorSum));
+  // A separate stream, so the deals match the noise-free search.
+  const noise = mulberry32((seed ^ 0x6b3d2a1f) >>> 0);
+  const g = logits.map(() =>
+    gumbel
+      ? -Math.log(-Math.log(Math.min(Math.max(noise(), 1e-12), 1 - 1e-12)))
+      : 0,
+  );
 
   const completedQ = (): number[] => {
     const totalVisits = visits.reduce((s, v) => s + v, 0);
@@ -357,11 +379,13 @@ export async function forgeSearch(
       Math.min(1, Math.max(0, ((v > 0 ? totals[i] / v : mixed) + 1) / 2)),
     );
   };
-  const score = (): number[] => {
+  const score = (withNoise: boolean): number[] => {
     const q = completedQ();
     const maxVisits = Math.max(0, ...visits);
     return logits.map((l, i) =>
-      illegal[i] ? -Infinity : l + (cVisit + maxVisits) * cScale * q[i],
+      illegal[i]
+        ? -Infinity
+        : l + (withNoise ? g[i] : 0) + (cVisit + maxVisits) * cScale * q[i],
     );
   };
 
@@ -369,7 +393,7 @@ export async function forgeSearch(
     const considered = Math.min(Math.max(k, 1), count);
     let remaining = logits
       .map((_, i) => i)
-      .sort((a, b) => logits[b] - logits[a])
+      .sort((a, b) => logits[b] + g[b] - (logits[a] + g[a]))
       .slice(0, considered);
     const phases =
       considered > 1 ? Math.max(1, Math.ceil(Math.log2(considered))) : 1;
@@ -387,15 +411,16 @@ export async function forgeSearch(
         }
       }
       if (remaining.length === 1) break;
-      const s = score();
+      const s = score(true);
       remaining = [...remaining]
         .sort((a, b) => s[b] - s[a])
         .slice(0, Math.max(1, Math.floor(remaining.length / 2)));
     }
 
-    const final = score();
+    const noisy = score(true);
     let best = remaining[0];
-    for (const i of remaining) if (final[i] > final[best]) best = i;
+    for (const i of remaining) if (noisy[i] > noisy[best]) best = i;
+    const final = score(false);
     if (illegal[best]) {
       // Every surviving candidate was refused: fall back to any legal one.
       const legal = final.findIndex((_, i) => !illegal[i]);

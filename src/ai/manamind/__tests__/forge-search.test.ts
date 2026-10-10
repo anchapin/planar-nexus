@@ -121,6 +121,54 @@ describe("forgeSearch", () => {
     expect(searched).toBeGreaterThan(0);
   });
 
+  it("draws varied legal moves under Gumbel root noise", async () => {
+    const session = midGame(5, 40);
+    let prompt = session.legalChoices();
+    while (prompt.kind !== "game_over") {
+      const r = await forgeSearch(session, model, { simulations: 0 });
+      if (r.candidates.length > 2) break;
+      prompt = session.step(r.action);
+    }
+    expect(prompt.kind).not.toBe("game_over");
+    const before = session.fingerprint();
+    const plain = await forgeSearch(session, model, {
+      simulations: 0,
+      seed: 1,
+    });
+    const picks = new Set<number>();
+    for (let seed = 0; seed < 40; seed++) {
+      const r = await forgeSearch(session, model, {
+        simulations: 0,
+        seed,
+        gumbel: true,
+      });
+      picks.add(r.index);
+      const again = await forgeSearch(session, model, {
+        simulations: 0,
+        seed,
+        gumbel: true,
+      });
+      expect(again.index).toBe(r.index);
+    }
+    expect(picks.size).toBeGreaterThan(1);
+    // The noise picks the move; the target leaves it out (with no
+    // simulations both are the prior).
+    const noisy = await forgeSearch(session, model, {
+      simulations: 0,
+      seed: 1,
+      gumbel: true,
+    });
+    expect(noisy.policy).toEqual(plain.policy);
+    const searched = await forgeSearch(session, model, {
+      simulations: 8,
+      seed: 1,
+      gumbel: true,
+    });
+    expect(searched.policy.reduce((s, p) => s + p, 0)).toBeCloseTo(1, 6);
+    expect(session.fingerprint()).toBe(before);
+    expect(session.step(noisy.action).kind).toBeDefined();
+  });
+
   it("is deterministic for a seed", async () => {
     const run = async () => {
       const session = midGame(9, 50);

@@ -97,6 +97,22 @@ describe("forge gate", () => {
     expect(JSON.stringify(again)).toBe(JSON.stringify(same));
   });
 
+  it("plays Gumbel picks deterministically", async () => {
+    const opts = {
+      seed: 7,
+      deckA: trainingDeck("aggro"),
+      deckB: trainingDeck("midrange"),
+      candidateSeat: 1 as const,
+      simulations: 8,
+      maxTurns: 6,
+      pick: "gumbel" as const,
+    };
+    const a = await playGateGame(model, model, opts);
+    const b = await playGateGame(model, model, opts);
+    expect(["win", "loss", "draw"]).toContain(a.result);
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
+  });
+
   it("is deterministic for a seed", async () => {
     const opts = {
       seed: 5,
