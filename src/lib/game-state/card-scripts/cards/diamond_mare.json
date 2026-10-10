@@ -1,0 +1,19 @@
+{
+  "name": "Diamond Mare",
+  "oracle": "As Diamond Mare enters, choose a color. Creatures you control of the chosen color get +1/+1.",
+  "enter_choice": {
+    "kind": "color",
+    "text": "As Diamond Mare enters, choose a color."
+  },
+  "statics": [
+    {
+      "text": "Creatures you control of the chosen color get +1/+1.",
+      "affects": {
+        "controller": "you",
+        "color": "chosen"
+      },
+      "power": 1,
+      "toughness": 1
+    }
+  ]
+}
