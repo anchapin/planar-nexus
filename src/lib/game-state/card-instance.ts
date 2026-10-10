@@ -50,6 +50,11 @@ export function createCardInstance(
     // via `resolveEnterChoice`; lanes 40/41 read it for the chosen-color
     // anthem and AddMana.
     chosenColor: null,
+    // Wave 4.7 follow-up lane 44 (#2705a):
+    // `enter_choice: { kind: "creature_type" }` sets this via
+    // `resolveEnterChoice`; lane 45 reads it for the chosen-type
+    // anthem (Banner of Kinship / Adaptive Automaton).
+    chosenCreatureType: null,
     isToken: options.isToken || false,
     tokenData: options.tokenData || null,
     // Boast keyword tracking (CR 702.131) - default to false, set when creature attacks

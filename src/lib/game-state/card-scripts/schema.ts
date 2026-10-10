@@ -1870,17 +1870,22 @@ export const CardScriptSchema = z
      * stamps the chosen value on the card instance so later
      * applications (statics, AddMana) can substitute the choice.
      *
-     * v1 supports `kind: "color"` only (W | U | B | R | G). The
-     * `creature_type` and `player` arms are documented but rejected by
-     * the schema until follow-up lanes add the engine arms (Banner of
-     * Kinship / Adaptive Automaton for `creature_type`, and "choose an
-     * opponent" for `player`).
+     * v1 supports `kind: "color"` (W | U | B | R | G; Wave 4.7 lane
+     * 39) and `kind: "creature_type"` (Wave 4.7 follow-up lane 44,
+     * #2705a; curated list of 10 types). The `player` arm is
+     * documented but not yet implemented in the engine — schema
+     * accepts it for forward compatibility, but
+     * `resolveEnterChoice` returns a friendly error if a card
+     * opts in.
      *
-     * Sample card: Heraldic Banner (FDN #532, lane 40) will use
-     * `enter_choice: { kind: "color" }` together with the chosen-color
-     * anthem (lane 40) and the chosen-color AddMana (lane 41). The
-     * lane 39 sample (`Test Goggles`) exercises ONLY the new arm with
-     * no other effects.
+     * Sample cards: Heraldic Banner (FDN #532, lanes 40 + 41)
+     * uses `enter_choice: { kind: "color" }` together with the
+     * chosen-color anthem and the chosen-color AddMana; Banner
+     * of Kinship / Adaptive Automaton (lanes 44 + 45) use
+     * `enter_choice: { kind: "creature_type" }` together with
+     * the chosen-type anthem. The bare-arm sample card `Test
+     * Goggles` exercises ONLY the engine arm with no other
+     * effects.
      */
     enter_choice: z
       .object({
