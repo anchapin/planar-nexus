@@ -7,19 +7,20 @@
  *     [--out gate.json]
  *
  * The candidate's seat alternates every game and the decks swap every two,
- * so each seed block of four covers both seats with both decks. Prints the
+ * so each seed block of four covers both seats with both decks. Deck names
+ * are #2614 decks (`red`, `green`) or simulator archetypes; see
+ * scripts/sim-decks.ts. Prints the
  * summary (score with a draw as half, Wilson 95% interval, promote) and
  * writes it with the per-game results to --out.
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import * as ortNode from "onnxruntime-node";
 import { loadCardScripts } from "@/lib/game-state";
-import type { SimDeckArchetype } from "@/ai/simulation/game-simulator";
-import { trainingDeck } from "@/ai/simulation/training-session";
 import {
   createForgePointerModel,
   type ForgeOrtLike,
 } from "@/ai/manamind/forge-pointer-model";
+import { simDeck } from "./sim-decks";
 import {
   gateSummary,
   playGateGame,
@@ -44,8 +45,8 @@ async function main() {
   const sample = !process.argv.includes("--greedy");
   const out = arg("out", "");
   const decks = [
-    trainingDeck(arg("deck-a", "aggro") as SimDeckArchetype),
-    trainingDeck(arg("deck-b", "midrange") as SimDeckArchetype),
+    simDeck(arg("deck-a", "aggro")),
+    simDeck(arg("deck-b", "midrange")),
   ];
   await loadCardScripts();
   const ort = ortNode as unknown as ForgeOrtLike;
