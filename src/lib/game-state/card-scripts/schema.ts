@@ -1404,8 +1404,27 @@ export const StaticSchema = z
          * #2594 follow-up, lane 36.
          */
         self: z.boolean().optional(),
-        /** Only creatures with this creature type, singular ("Dinosaur"). */
-        subtype: z.string().min(1).optional(),
+        /**
+         * Only creatures with this creature type, singular
+         * ("Dinosaur"). Used by single-type anthem patterns like
+         * "Goblins you control get +1/+1" (#2594 lane 30).
+         *
+         * `"chosen"` (#2594 follow-up, Wave 4.7 follow-up lane 45,
+         * #2705b) is a sentinel meaning "use the source's
+         * `chosenCreatureType` instance field". Only valid when the
+         * source has `enter_choice: { kind: "creature_type" }`
+         * (lane 44, #2705a); the engine (`staticAffects` in
+         * `keyword-actions/scripted-statics.ts`) reads
+         * `source.chosenCreatureType` and substitutes it. If
+         * `chosenCreatureType` is null (the enter choice hasn't
+         * resolved yet) the anthem doesn't apply — the scripted
+         * anthem remains inert until the player makes the enter
+         * choice. Used by Adaptive Automaton's "other creatures
+         * you control of the chosen type get +1/+1".
+         */
+        subtype: z
+          .union([z.string().min(1), z.literal("chosen")])
+          .optional(),
         /**
          * Only creatures of this color, single-letter Scryfall form
          * ("W", "U", "B", "R", "G"). Used by single-color anthem

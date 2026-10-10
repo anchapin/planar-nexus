@@ -163,11 +163,26 @@ export function staticAffects(
       if (!targetColors.includes(wanted)) return false;
     }
   }
-  return (
-    !subtype ||
-    Boolean(target.animatedUntilEndOfTurn?.allCreatureTypes) ||
-    subtypesOf(target).includes(subtype)
-  );
+  if (subtype) {
+    // Wave 4.7 follow-up lane 45 (#2705b): `"chosen"` is a
+    // sentinel meaning "use the source's chosenCreatureType
+    // instance field" (Adaptive Automaton's chosen-type anthem).
+    // The source must carry `enter_choice: { kind:
+    // "creature_type" }` (Wave 4.7 follow-up lane 44, #2705a);
+    // mirrors the lane 40 chosen-color anthem.
+    if (subtype === "chosen") {
+      if (!source.chosenCreatureType) return false;
+      return (
+        Boolean(target.animatedUntilEndOfTurn?.allCreatureTypes) ||
+        subtypesOf(target).includes(source.chosenCreatureType)
+      );
+    }
+    return (
+      Boolean(target.animatedUntilEndOfTurn?.allCreatureTypes) ||
+      subtypesOf(target).includes(subtype)
+    );
+  }
+  return true;
 }
 
 /**
