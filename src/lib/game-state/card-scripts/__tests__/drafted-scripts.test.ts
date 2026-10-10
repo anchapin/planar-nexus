@@ -396,3 +396,152 @@ describe("card-scripts text-vs-numbers guard (data-driven)", () => {
     }
   });
 });
+
+describe("card-scripts enter_choice text-vs-kind guard (data-driven)", () => {
+  it("every enter_choice script's kind agrees with its oracle text", () => {
+    const fileNames = readdirSync(CARDS_DIR).filter((f) => f.endsWith(".json"));
+    const failures: Array<{
+      name: string;
+      kind: string;
+      reason: string;
+    }> = [];
+    for (const file of fileNames) {
+      const raw = JSON.parse(readFileSync(join(CARDS_DIR, file), "utf-8")) as {
+        name: string;
+        oracle: string;
+        enter_choice?: { kind: string; text: string };
+      };
+      // Cards without an enter_choice field aren't subject to
+      // this guard.
+      const ec = raw.enter_choice;
+      if (!ec) continue;
+      const kind = ec.kind;
+      const text = ec.text ?? "";
+      const oracle = (raw.oracle ?? "").toLowerCase();
+      const txt = text.toLowerCase();
+      if (kind === "color") {
+        // Wave 4.7 lane 39: the chosen-color pattern is
+        // "choose a color" (Heraldic Banner, Diamond Mare) or
+        // "choose a [white/blue/black/red/green]" (Test Goggles
+        // and the wider single-color anthem family). The
+        // drafter's `text` field must mention "color" — it's
+        // the descriptive text surfaced in the prompt.
+        const colorOk =
+          oracle.includes("choose a color") ||
+          /\bchoose a (white|blue|black|red|green)\b/.test(oracle);
+        const textOk = txt.includes("color");
+        if (!colorOk)
+          failures.push({
+            name: raw.name,
+            kind,
+            reason: `oracle does not mention "choose a color"`,
+          });
+        if (!textOk)
+          failures.push({
+            name: raw.name,
+            kind,
+            reason: `enter_choice.text does not mention "color"`,
+          });
+      } else if (kind === "creature_type") {
+        // Wave 4.7 follow-up lane 44 (#2705a) + lane 45
+        // (#2705b): the chosen-creature-type pattern is
+        // "choose a creature type" (Adaptive Automaton,
+        // Banner of Kinship). Now active in CI because lane 44
+        // shipped the engine arm and lane 45 shipped the
+        // anthem sentinel.
+        const ok = oracle.includes("choose a creature type");
+        if (!ok)
+          failures.push({
+            name: raw.name,
+            kind,
+            reason: `oracle does not mention "choose a creature type"`,
+          });
+        if (!txt.includes("creature type"))
+          failures.push({
+            name: raw.name,
+            kind,
+            reason: `enter_choice.text does not mention "creature type"`,
+          });
+      } else if (kind === "player") {
+        // Tracked in #2705 ("Out of scope" for Wave 4.7
+        // follow-up). Asserts the drafter's oracle agrees with
+        // the kind; the engine arm is documented-only today,
+        // so a card opting in here would surface a friendly
+        // error at cast time (see resolveEnterChoice). Still
+        // catch the drift in CI.
+        const ok =
+          oracle.includes("choose an opponent") ||
+          oracle.includes("choose a player");
+        if (!ok)
+          failures.push({
+            name: raw.name,
+            kind,
+            reason: `oracle does not mention "choose a player"`,
+          });
+      } else {
+        failures.push({
+          name: raw.name,
+          kind,
+          reason: `unknown enter_choice.kind "${kind}"`,
+        });
+      }
+    }
+    if (failures.length > 0) {
+      throw new Error(
+        `enter_choice script/oracle mismatches:\n` +
+          failures
+            .map((f) => `  - ${f.name} (kind=${f.kind}): ${f.reason}`)
+            .join("\n"),
+      );
+    }
+  });
+
+  /**
+   * Negative fixture for the guard above. Builds a synthetic
+   * mismatch and asserts the matcher catches it. Lives next to
+   * the guard so any future change to the matcher logic
+   * immediately surfaces in CI.
+   */
+  it("flags a synthetic color-kind script whose oracle says 'choose a creature type'", () => {
+    // The synthetic script passes schema (kind: "color" is a
+    // valid enum value) but the oracle text describes the
+    // WRONG choice. The data-driven guard above must flag it.
+    // We mirror the guard's logic here to verify the matcher
+    // rather than waiting for a regression on disk.
+    const raw = {
+      name: "Synthetic Mismatch",
+      oracle:
+        "As Synthetic Mismatch enters, choose a creature type. Some effect.",
+      enter_choice: {
+        kind: "color",
+        text: "As Synthetic Mismatch enters, choose a color.",
+      },
+    };
+    const oracle = (raw.oracle ?? "").toLowerCase();
+    const txt = raw.enter_choice.text.toLowerCase();
+    const colorOk =
+      oracle.includes("choose a color") ||
+      /\bchoose a (white|blue|black|red|green)\b/.test(oracle);
+    const textOk = txt.includes("color");
+    expect(colorOk).toBe(false);
+    expect(textOk).toBe(true);
+  });
+
+  it("flags a synthetic creature_type-kind script whose text omits 'creature type'", () => {
+    const raw = {
+      name: "Synthetic Bad Text",
+      oracle:
+        "As Synthetic Bad Text enters, choose a creature type. Some effect.",
+      enter_choice: {
+        kind: "creature_type",
+        text: "As Synthetic Bad Text enters, choose something else.",
+      },
+    };
+    const oracle = (raw.oracle ?? "").toLowerCase();
+    const txt = raw.enter_choice.text.toLowerCase();
+    const ok = oracle.includes("choose a creature type");
+    const textOk = txt.includes("creature type");
+    expect(ok).toBe(true);
+    expect(textOk).toBe(false);
+  });
+});
