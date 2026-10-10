@@ -1,0 +1,20 @@
+{
+  "name": "Adaptive Automaton",
+  "oracle": "As Adaptive Automaton enters, choose a creature type. Adaptive Automaton is the chosen type in addition to its other types. Other creatures you control of the chosen type get +1/+1.",
+  "enter_choice": {
+    "kind": "creature_type",
+    "text": "As Adaptive Automaton enters, choose a creature type."
+  },
+  "statics": [
+    {
+      "text": "Other creatures you control of the chosen type get +1/+1.",
+      "affects": {
+        "controller": "you",
+        "other": true,
+        "subtype": "chosen"
+      },
+      "power": 1,
+      "toughness": 1
+    }
+  ]
+}
