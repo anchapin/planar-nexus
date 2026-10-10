@@ -15,6 +15,11 @@
  * has no head for them. `returns[i]` is the game result from that
  * decision's seat (+1 win, -1 loss, 0 draw or turn limit), so a game line
  * has the same `decisions` / `returns` shape as manamind's imitation data.
+ *
+ * With `opponent: "expert"` (manamind#96) only seat `netSeat` searches; the
+ * other seat plays `expertAction`, and only the net's decisions are
+ * recorded. Mixing these games into the buffer keeps self-play training
+ * tied to an outside opponent.
  */
 
 import {
@@ -23,6 +28,7 @@ import {
   type TrainingAction,
   type TrainingPrompt,
 } from "@/ai/simulation/training-session";
+import { expertAction } from "@/ai/simulation/expert-agent";
 import type { ForgeDecision } from "./forge-pointer-features";
 import type { ForgePointerModel } from "./forge-pointer-model";
 import {
@@ -67,6 +73,10 @@ export interface SelfPlayOptions {
    */
   exploreMoves?: number;
   maxTurns?: number;
+  /** Who plays the other seat: the net itself (default) or the Expert AI. */
+  opponent?: "self" | "expert";
+  /** The net's seat when `opponent` is `"expert"` (default 0). */
+  netSeat?: 0 | 1;
 }
 
 /** Fold the search policy over candidates onto the net's head for `prompt`. */
@@ -144,6 +154,8 @@ export async function playSelfPlayGame(
     simulations = 16,
     exploreMoves = Number.POSITIVE_INFINITY,
     maxTurns,
+    opponent = "self",
+    netSeat = 0,
   } = options;
   const session = new TrainingSession({ maxTurns });
   const seats = session.reset(seed, deckA, deckB);
@@ -155,6 +167,11 @@ export async function playSelfPlayGame(
   // in the first turn.
   let choices = 0;
   while (prompt.kind !== "game_over") {
+    if (opponent === "expert" && seats.indexOf(prompt.playerId) !== netSeat) {
+      move++;
+      prompt = session.step(expertAction(session, prompt));
+      continue;
+    }
     const result = await forgeSearch(session, model, {
       simulations,
       seed: (seed * 7919 + move) >>> 0,

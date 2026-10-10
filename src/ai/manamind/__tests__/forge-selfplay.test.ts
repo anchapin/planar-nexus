@@ -68,6 +68,21 @@ describe("playSelfPlayGame", () => {
       expect(game.returns.every((r) => r === 0)).toBe(true);
   });
 
+  it("records only the net's seat against the Expert", async () => {
+    const game = await playSelfPlayGame(model, {
+      seed: 3,
+      deckA: trainingDeck("aggro"),
+      deckB: trainingDeck("midrange"),
+      simulations: 8,
+      maxTurns: 6,
+      opponent: "expert",
+      netSeat: 1,
+    });
+    expect(game.decisions.length).toBeGreaterThan(0);
+    expect(game.decisions.every((d) => d.seat === 1)).toBe(true);
+    expect(game.returns).toHaveLength(game.decisions.length);
+  });
+
   it("is deterministic for a seed", async () => {
     const a = await play(4);
     const b = await play(4);
