@@ -1,0 +1,33 @@
+{
+  "name": "Sorcerous Spyglass",
+  "oracle": "As Sorcerous Spyglass enters, look at an opponent's hand, then choose any card name. Activated abilities of sources with the chosen name can't be activated unless they're mana abilities. {T}: Add {C}.",
+  "enter_choice": {
+    "kind": "chosen_name",
+    "text": "As Sorcerous Spyglass enters, look at an opponent's hand, then choose any card name."
+  },
+  "statics": [
+    {
+      "text": "Activated abilities of sources with the chosen name can't be activated unless they're mana abilities.",
+      "affects": {
+        "controller": "you",
+        "chosen_name_block": true
+      }
+    }
+  ],
+  "activated": [
+    {
+      "text": "{T}: Add {C}.",
+      "cost": {
+        "tap": true,
+        "sacrifice": false
+      },
+      "effects": [
+        {
+          "op": "AddMana",
+          "amount": 1,
+          "colors": ["C"]
+        }
+      ]
+    }
+  ]
+}
