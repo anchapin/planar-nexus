@@ -130,6 +130,17 @@ export interface CardInstance {
    * script.
    */
   chosenCreatureType: string | null;
+  /**
+   * Wave 4.7 follow-up lane 48 schema baseline (#2708 phase 1):
+   * the chosen card name for a permanent with
+   * `enter_choice: { kind: "chosen_name" }` (Sorcerous Spyglass,
+   * CR 604). Stamped by the multi-lane engine arm tracked in
+   * #2708 — that arm is not yet implemented; v1 ships the
+   * schema + the default-null field so a follow-up lane can
+   * extend the engine without a schema bump. `null` on every
+   * permanent today; the field is forward-compatible.
+   */
+  chosenCardName: string | null;
 
   // Token-specific
   /** Whether this is a token */

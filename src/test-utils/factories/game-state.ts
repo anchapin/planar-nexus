@@ -145,6 +145,7 @@ export function createCardInstance(
     // enter-choice field so factories stay type-complete.
     chosenColor: null,
     chosenCreatureType: null,
+    chosenCardName: null,
     isToken: options.isToken || false,
     tokenData: options.isToken ? (cardData as unknown as ScryfallCard) : null,
     attackedLastTurn: false,

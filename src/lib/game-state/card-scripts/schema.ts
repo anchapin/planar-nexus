@@ -1897,6 +1897,18 @@ export const CardScriptSchema = z
      * `resolveEnterChoice` returns a friendly error if a card
      * opts in.
      *
+     * `kind: "chosen_name"` (Wave 4.7 follow-up lane 48 schema
+     * baseline, #2708 phase 1) is the Sorcerous Spyglass pattern
+     * — "as this enters, look at an opponent's hand, then choose
+     * a card name". The schema accepts the enum value for
+     * forward compatibility; the full engine arm
+     * (look-at-hand, pick-a-card-name, stamp a chosen-name
+     * static) is multi-lane and tracks under #2708. Cards that
+     * opt in here today see `resolveEnterChoice` return a
+     * "not yet supported" error — same shape as the `player`
+     * arm. Phase 1 only adds the schema enum + a default-null
+     * `chosenCardName` field on `CardInstance`.
+     *
      * Sample cards: Heraldic Banner (FDN #532, lanes 40 + 41)
      * uses `enter_choice: { kind: "color" }` together with the
      * chosen-color anthem and the chosen-color AddMana; Banner
@@ -1908,7 +1920,7 @@ export const CardScriptSchema = z
      */
     enter_choice: z
       .object({
-        kind: z.enum(["color", "creature_type", "player"]),
+        kind: z.enum(["color", "creature_type", "player", "chosen_name"]),
         /**
          * Free-form text the drafter wants surfaced in the prompt and
          * the lane's chosen-value validation. For `kind: "color"`, the
