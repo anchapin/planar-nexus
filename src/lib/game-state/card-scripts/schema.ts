@@ -1825,6 +1825,40 @@ export const CardScriptSchema = z
       })
       .strict()
       .optional(),
+    /**
+     * "As this [permanent] enters, choose a [thing]" (Wave 4.7 lane 39).
+     * A general-purpose enter-time choice pattern that surfaces a
+     * `waitingChoice` of shape `{ kind: "enter_choice", cardId, ... }`
+     * to the controller as the permanent enters the battlefield. The
+     * resolver (`resolveEnterChoice`, in `keyword-actions/enters.ts`)
+     * stamps the chosen value on the card instance so later
+     * applications (statics, AddMana) can substitute the choice.
+     *
+     * v1 supports `kind: "color"` only (W | U | B | R | G). The
+     * `creature_type` and `player` arms are documented but rejected by
+     * the schema until follow-up lanes add the engine arms (Banner of
+     * Kinship / Adaptive Automaton for `creature_type`, and "choose an
+     * opponent" for `player`).
+     *
+     * Sample card: Heraldic Banner (FDN #532, lane 40) will use
+     * `enter_choice: { kind: "color" }` together with the chosen-color
+     * anthem (lane 40) and the chosen-color AddMana (lane 41). The
+     * lane 39 sample (`Test Goggles`) exercises ONLY the new arm with
+     * no other effects.
+     */
+    enter_choice: z
+      .object({
+        kind: z.enum(["color", "creature_type", "player"]),
+        /**
+         * Free-form text the drafter wants surfaced in the prompt and
+         * the lane's chosen-value validation. For `kind: "color"`, the
+         * engine normalises the choice against the canonical W/U/B/R/G
+         * enum; the field is for review/drift checks today.
+         */
+        text: z.string().min(1),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .refine(
@@ -1841,7 +1875,11 @@ export const CardScriptSchema = z
       // e.g. "Hill Gigas" is a creature with just Cycling {2}. The
       // engine exposes the cycling ability via `getActivatedAbilities`
       // from the script's `cycling` field.
-      s.cycling,
+      // Wave 4.7 lane 39: a card with only `enter_choice` is also
+      // legal — it's a placeholder for the engine arm until lanes
+      // 40/41 wire anthem/AddMana on top.
+      s.cycling ||
+      s.enter_choice,
     {
       message:
         "a card script needs spell, modes, triggers, activated, statics, rules, equipment, aura, or cycling",

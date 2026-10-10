@@ -11,6 +11,10 @@ import type {
   ChoiceOption,
 } from "../types";
 import { completeHandTargeting } from "../hand-targeting";
+import {
+  ENTER_CHOICE_TYPE,
+  resolveEnterChoice,
+} from "../keyword-actions/enter-choice";
 
 /**
  * Resolver for a "you may pay" offer (Corpse, Tribute, graveyard attack
@@ -371,6 +375,25 @@ export function resolveWaitingChoice(
     };
 
     return { success: true, state: newState };
+  }
+
+  // Wave 4.7 lane 39 (#2594 follow-up): "as this enters, choose a
+  // [thing]" — answer the enter_choice waiting choice by stamping
+  // `card.chosenColor` (v1). The resolver is the canonical entry
+  // point: callers go through `resolveEnterChoice` so the choice
+  // state, the card instance, and any other engine state stay in
+  // lockstep.
+  if (type === ENTER_CHOICE_TYPE) {
+    const value = Array.isArray(selectedValue)
+      ? selectedValue[0]
+      : selectedValue;
+    if (typeof value !== "string") {
+      return { success: false, state, error: "Expected a color letter" };
+    }
+    const r = resolveEnterChoice(state, playerId, value);
+    return r.success
+      ? { success: true, state: r.state }
+      : { success: false, state, error: r.description };
   }
 
   return {

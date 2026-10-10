@@ -29,7 +29,13 @@ export interface WaitingChoice {
     | "tribute_offer"
     | "attack_return_offer"
     | "discard_to_hand_size"
-    | "discard_cards";
+    | "discard_cards"
+    | // Wave 4.7 lane 39 (#2594 follow-up): "as this enters,
+      // choose a [thing]". Surfaced by `createEnterChoiceWaitingChoice`
+      // (keyword-actions/enter-choice.ts) on a scripted permanent with
+      // `enter_choice: { kind: "color" }`; resolved by
+      // `resolveEnterChoice`, which stamps `card.chosenColor`.
+      "enter_choice";
   /** ID of player who needs to make this choice */
   playerId: PlayerId;
   /** ID of the stack object this choice is for */
