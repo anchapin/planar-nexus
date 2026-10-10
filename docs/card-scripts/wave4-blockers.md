@@ -225,14 +225,23 @@ The "Out of scope" list above remains — those need dedicated
 human scoping before they become shippable lanes. In particular:
 
 - **Banner of Kinship / Adaptive Automaton** (chosen creature
-  type anthem) and **Diamond Mare** (chosen color anthem on a
-  creature) are now blocked only on the `creature_type` and
-  `player` engine arms. The schema accepts both, the
-  `hasEnterChoice` predicate rejects them. Adding them is
-  another two-lane pass.
-- **Sorcerous Spyglass** (choose a card name on ETB) needs an
-  entirely different `chosen_name` arm that affects the engine's
-  "cards named X" lookups. Multi-lane.
+  type anthem) — tracked as #2705. Two-lane pass (engine arm +
+  chosen-type anthem substitution), parallel to lanes 39 + 40.
+- **Diamond Mare** (chosen color anthem on a creature) — tracked
+  as #2704. **Diamond Mare is NOT blocked** by any of the Wave
+  4.7 follow-ups; the `enter_choice: { kind: "color" }` and
+  `affects.color: "chosen"` engine arms already support it on
+  a creature. The lane is a one-card JSON + one test file.
+- **Sorcerous Spyglass** (choose a card name on ETB) — tracked
+  as #2708. Needs an entirely different `chosen_name` arm that
+  affects the engine's "cards named X" lookups. Multi-lane.
+- **Data-driven `enter_choice` text-vs-script guard** — tracked
+  as #2706. Mirrors the existing text-vs-numbers guard; flags a
+  drafter who writes `kind: "color"` for a card whose oracle
+  says "choose a creature type."
+- **Remove Test Goggles synthetic card** — tracked as #2707.
+  Heraldic Banner now exercises the same `enter_choice` path,
+  so the synthetic no longer adds unique coverage. Cleanup.
 - **Heraldic Banner cost reduction** (not a real Banner ability,
   the drafter list entry was a conflation) — n/a.
 
