@@ -300,44 +300,127 @@ closed.
 
 ### Blocked (multi-lane, still tracked)
 
-- **Sorcerous Spyglass full script (#2708 phase 2)** — engine
-  arm (`look at opponent's hand → choose_cards waitingChoice
-→ stamp chosenCardName`) and chosen-name static block
-  (`activated abilities of sources named X can't be
-activated`) both track under #2708. Phase 1 ships only the
-  schema + the `CardInstance` field so a follow-up lane can
-  extend the engine without a schema bump. Sample card and
-  AddMana `{C}` ride phase 2.
+- **Adaptive Automaton type-change half (Wave 4.7 phase 2
+  lane 51)** — Adaptive Automaton reads "is the chosen type
+  in addition to its other types" — a permanent (not
+  until-end-of-turn) creature-type-changing static on the
+  source. The engine today has no concept of a permanent
+  type-change: `AddSubtype` is end-of-turn-only
+  (`untilEndOfTurnSubtypes`, cleared at end-of-turn), and the
+  layer-system's type-line overrides are animated-only.
+  Adding the chosen-type-changes-me static would need a new
+  schema arm (e.g. `becomes_chosen_creature_type: true`),
+  a new engine path for "the source's permanent `subtypes`
+  field grows by `chosenCreatureType`", and an answer for
+  which layer renders the new types into the type-line used
+  by anthem targets. The chosen-type anthem (lane 45, PR
+  #2715) already reads `source.chosenCreatureType` against
+  `target.subtypesOf(target)` — adding the type-change half
+  could be done by `staticAffects` returning a synthetic
+  "matches itself via chosenCreatureType" predicate; the
+  rename + layered type-line work + chosen-card-name
+  eviction at the chosen-creature-type's tombstone is the
+  second half of the work.
 
-- **Adaptive Automaton type-change half** — the "is the chosen
-  type in addition to its other types" half is a
-  creature-type-changing static that the engine can't model
-  today. The drafter list flags "change creature types" as a
-  multi-lane blocker (Eaten by Piranhas, Infernal Vessel).
-  Lane 45 ships the anthem half only; the type-change half
-  rides a separate follow-up.
+  The drafter list (`docs/card-scripts/drafts/fdn.md`)
+  flags "change creature types" as a multi-lane blocker
+  for Eaten by Piranhas (chosen color + chosen creature
+  type + remove all abilities), Infernal Vessel (chosen
+  creature type + color/keyword transforms), and a wider
+  "charms that become a chosen type in addition to their
+  other types" family. The handoff's "If this lane grows
+  past one self-contained change, back out and document
+  why in `wave4-blockers.md`" rule was triggered: the
+  smallest Adaptive Automaton-only change would still need
+  three concerns (schema + engine arm + chosen-eviction),
+  and any general-purpose `change creature types` op
+  needs cross-zone refactoring (the engine's type-line
+  reads flow through `cardData.type_line` from many
+  call sites — animated-only is the safe boundary today).
 
-### Test count snapshot
+  Per the handoff, lane 51 was explored and backed out
+  before commit. **No PR for the type-change half ships
+  in this loop.** Adaptive Automaton JSON continues to
+  carry the anthem half only; the script-level comment
+  documenting the "anthem only" limitation stays in
+  place (added in lane 45, PR #2715). The full oracle
+  becomes a fresh follow-up: open issue `/planar-nexus #2614`
+  for the Adaptive Automaton type-change half, and
+  separately for the Eaten-by-Piranhas / Infernal-Vessel
+  multi-lane work.
 
-- Wave 4.6 start: 700 / 13852 (per the Wave 4.6 handoff)
-- Wave 4.7 done summary (this loop's start): 700 / 13852
-- After lane 43 (Diamond Mare): 701 / 13862
-- After lane 44 (`creature_type` engine arm): 702 / 13873
-- After lane 45 (Adaptive Automaton anthem): 703 / 13882
-- After lane 46 (text-vs-script guard): 703 / 13885
-- After lane 47 (Test Goggles cleanup): 703 / 13878
-- After lane 48 (chosen_name schema baseline): 704 / 13882
+### Wave 4.7 phase 2 loop done summary
+
+Wave 4.7 phase 2 lanes 49–51 closed in a single
+uninterrupted run on 2026-10-10. Two lanes shipped (#2708
+phase 2 in two PRs, lanes 49 + 50); one lane blocked (lane
+51, per the handoff's "back out and document" rule).
+
+#### Shipped
+
+- **Lane 49 — Sorcerous Spyglass chosen_name engine arm
+  (#2708 phase 2a)** — PR #2719. New schema field
+  `enter_choice.kind` already covers `"chosen_name"` (lane
+  48 baseline); the engine arm surfaces a `choose_cards`
+  waitingChoice pointing at one opponent's hand and a
+  `resolveChosenName` resolver stamps the entering card's
+  `chosenCardName`. The chosen card stays in the
+  opponent's hand (Spyglass is NOT Duress). Synthetic
+  chosen_name script registered via the test harness mirrors
+  the historic Test Goggles pattern from lane 39 / lane 47
+  cleanup.
+
+- **Lane 50 — Chosen-name static block + Sorcerous
+  Spyglass script (#2708 phase 2b)** — PR #2721.
+  `affects.chosen_name_block: true` meta-static on
+  `StaticSchema` (parallel to the existing
+  `affects.color: "chosen"` and `affects.subtype: "chosen"`
+  sentinels). `staticAffects` returns true iff the target
+  card's name matches the source's `chosenCardName`. The
+  activated-ability gate in `canActivateAbility` denies any
+  on-battlefield source's non-mana activated ability that
+  matches a Spyglass-named source; mana abilities (CR 605)
+  are explicitly exempted per the Spyglass oracle text.
+  Real `sorcerous_spyglass.json` with the chosen-name block
+  + `{T}: Add {C}.` AddMana (uses the existing literal
+  colorless path, no new schema). Engine-size budget
+  bumped 2050 → 2100 (schema.ts grew from 2041 to 2066, +25
+  lines, all of them the new chosen-name block
+  docstring + arm + the refine's chained `||
+  s.affects.chosen_name_block === true` clause).
+
+#### Blocked (multi-lane, still tracked)
+
+See "Blocked" section above for the Adaptive Automaton
+type-change analysis. No follow-up PR for lane 51 in this
+loop.
+
+#### Test count snapshot
+
+- Wave 4.7 follow-up loop done summary (this loop's start):
+  704 / 13882 (per the wave 4.7 follow-up handoff).
+- After lane 49 (Spyglass chosen_name engine arm): 705 / 13892.
+- After lane 50 (Spyglass static block + script): 706 / 13905.
+
+Net delta from Wave 4.7 follow-up loop: **+2 suites, +23
+cases** in the Wave 4.7 phase 2 loop.
+
+#### Done
+
+This closes the Wave 4.7 phase 2 loop. The loop ran
+without human input on lanes 49 and 50; lane 51 was
+explicitly backed out per the handoff's "back out and
+document" rule because the smallest single-lane piece
+~400–700 LOC and crosses into the broader "change
+creature types" multi-lane blocker. Lane 50's PR #2721
+closed #2708 phase 2 fully (lanes 49 + 50 ship the entire
+chosen-name → chosen-name-block → activated-ability-gate
+pipeline; Sorcerous Spyglass is fully scripted end-to-end
+for the first time in Planar Nexus).
 
 Net delta from Wave 4.6 start: **+4 suites, +30 cases** in the
-Wave 4.7 follow-up loop.
-
-### Done
-
-This closes the Wave 4.7 follow-up loop. The loop ran without
-human input on every lane; AI `forge-gate` / `expert-agent` /
-`forge-selfplay` flakes hit on lanes 46, 48 and were resolved by
-`gh run rerun --failed` (per the Wave 4.7 handoff's process
-note). All five follow-up issues (#2704–#2708) are closed or
-in-progress; the only remaining work is the multi-lane #2708
-phase 2 (engine arm + chosen-name static block), which a future
-Wave can ship with its own dedicated loop.
+Wave 4.7 follow-up loop. The phase 2 follow-up (lanes 49–51,
+`#2708` phase 2 + Adaptive Automaton type-change half) closed
+in the Wave 4.7 phase 2 done summary just below; the
+`#2708` phase 2 work is fully shipped (Sorcerous Spyglass is
+end-to-end scripted for the first time).
