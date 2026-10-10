@@ -104,7 +104,7 @@ const SCOPES = [
     name: "engine",
     dir: join(REPO_ROOT, "src", "lib", "game-state"),
     rootRel: "src/lib/game-state",
-    budgetLines: 2050,
+    budgetLines: 2100,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

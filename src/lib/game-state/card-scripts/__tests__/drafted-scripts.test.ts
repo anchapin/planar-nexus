@@ -478,6 +478,30 @@ describe("card-scripts enter_choice text-vs-kind guard (data-driven)", () => {
             kind,
             reason: `oracle does not mention "choose a player"`,
           });
+      } else if (kind === "chosen_name") {
+        // Wave 4.7 phase 2 lanes 49 + 50 (#2708 phase 2): the
+        // chosen-name pattern is "choose a card name" or
+        // "choose any card name" - both are accepted by the
+        // engine (Sorcerous Spyglass reads "choose any card
+        // name"). The drafter's `text` field must mention "card
+        // name" - it's the descriptive text surfaced in the
+        // prompt.
+        const nameOk =
+          oracle.includes("choose a card name") ||
+          oracle.includes("choose any card name");
+        const textOk = txt.includes("card name");
+        if (!nameOk)
+          failures.push({
+            name: raw.name,
+            kind,
+            reason: `oracle does not mention "choose a card name" or "choose any card name"`,
+          });
+        if (!textOk)
+          failures.push({
+            name: raw.name,
+            kind,
+            reason: `enter_choice.text does not mention "card name"`,
+          });
       } else {
         failures.push({
           name: raw.name,
