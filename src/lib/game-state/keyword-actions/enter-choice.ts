@@ -83,12 +83,15 @@ function isCuratedCreatureType(v: unknown): v is CuratedCreatureType {
 
 /**
  * Return the curated choices list for a given `enter_choice.kind`.
- * Mirrors the schema's enum (color | creature_type | player) but
- * v1 only models `color` and `creature_type` — the `player` arm
- * is documented (#2705) but not implemented.
+ * Mirrors the schema's enum (color | creature_type | player |
+ * chosen_name) but v1 only models `color` and `creature_type`:
+ * - "player" is documented (#2705) but not implemented.
+ * - "chosen_name" is documented (#2708) but not implemented;
+ *   the engine arm rides a multi-lane follow-up that uses
+ *   `choose_cards` (not the value-list path here).
  */
 export function enterChoiceOptionsForKind(
-  kind: "color" | "creature_type" | "player",
+  kind: "color" | "creature_type" | "player" | "chosen_name",
 ): readonly string[] {
   switch (kind) {
     case "color":
@@ -99,6 +102,10 @@ export function enterChoiceOptionsForKind(
       // "player" arm ships later (#2705 "Out of scope"). The
       // engine surfaces no choice list today; consumers must
       // check the kind separately.
+      return [];
+    case "chosen_name":
+      // #2708 phase 2; surfaces a `choose_cards` waitingChoice
+      // separately. No value-list options today.
       return [];
   }
 }
@@ -165,7 +172,7 @@ export function createEnterChoiceWaitingChoice(
 
 function defaultPrompt(
   name: string,
-  kind: "color" | "creature_type" | "player",
+  kind: "color" | "creature_type" | "player" | "chosen_name",
 ): string {
   switch (kind) {
     case "color":
@@ -174,6 +181,8 @@ function defaultPrompt(
       return `As ${name} enters, choose a creature type.`;
     case "player":
       return `As ${name} enters, choose a player.`;
+    case "chosen_name":
+      return `As ${name} enters, choose a card name.`;
   }
 }
 

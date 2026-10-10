@@ -55,6 +55,12 @@ export function createCardInstance(
     // `resolveEnterChoice`; lane 45 reads it for the chosen-type
     // anthem (Banner of Kinship / Adaptive Automaton).
     chosenCreatureType: null,
+    // Wave 4.7 follow-up lane 48 schema baseline (#2708 phase 1):
+    // `enter_choice: { kind: "chosen_name" }` will set this via
+    // the multi-lane engine arm tracked in #2708. Ships default-
+    // null today so a follow-up lane can extend the engine
+    // without a CardInstance-shape bump.
+    chosenCardName: null,
     isToken: options.isToken || false,
     tokenData: options.tokenData || null,
     // Boast keyword tracking (CR 702.131) - default to false, set when creature attacks
