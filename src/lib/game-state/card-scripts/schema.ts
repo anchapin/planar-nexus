@@ -2055,6 +2055,19 @@ export const CardScriptSchema = z
      * arm. Phase 1 only adds the schema enum + a default-null
      * `chosenCardName` field on `CardInstance`.
      *
+     * `kind: "color_and_creature_type"` (Wave 4.8 follow-up lane
+     * 56, #2614 follow-up) is the compound arm for "as this
+     * enters, choose a color AND a creature type" (Eaten by
+     * Piranhas). The engine surfaces ONE waitingChoice whose
+     * options are the cross-product of color × creature type;
+     * the resolver writes BOTH `chosenColor` and
+     * `chosenCreatureType` from one resolver call. Same downstream
+     * substitutions as the singletons: chosen-color anthem
+     * (lane 40) reads `chosenColor`; chosen-type anthem
+     * (lane 45) reads `chosenCreatureType`; chosen-type
+     * addition (lane 52) reads `chosenCreatureType`; chosen-color
+     * addition (lane 55) reads `chosenColor`.
+     *
      * Sample cards: Heraldic Banner (FDN #532, lanes 40 + 41)
      * uses `enter_choice: { kind: "color" }` together with the
      * chosen-color anthem and the chosen-color AddMana; Banner
@@ -2062,11 +2075,20 @@ export const CardScriptSchema = z
      * `enter_choice: { kind: "creature_type" }` together with
      * the chosen-type anthem. The bare-arm sample card `Test
      * Goggles` exercises ONLY the engine arm with no other
-     * effects.
+     * effects. Eaten by Piranhas
+     * (`cards/eaten_by_piranhas.json`) exercises the
+     * `color_and_creature_type` compound arm with both halves
+     * (chosen-color anthem + chosen-type anthem).
      */
     enter_choice: z
       .object({
-        kind: z.enum(["color", "creature_type", "player", "chosen_name"]),
+        kind: z.enum([
+          "color",
+          "creature_type",
+          "player",
+          "chosen_name",
+          "color_and_creature_type",
+        ]),
         /**
          * Free-form text the drafter wants surfaced in the prompt and
          * the lane's chosen-value validation. For `kind: "color"`, the

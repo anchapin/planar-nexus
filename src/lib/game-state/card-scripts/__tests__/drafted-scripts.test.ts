@@ -502,6 +502,57 @@ describe("card-scripts enter_choice text-vs-kind guard (data-driven)", () => {
             kind,
             reason: `enter_choice.text does not mention "card name"`,
           });
+      } else if (kind === "color_and_creature_type") {
+        // Wave 4.8 follow-up lane 56 (#2614 follow-up): the
+        // dual compound kind for "choose a color AND a creature
+        // type" (Eaten by Piranhas). The drafter's oracle must
+        // mention both halves — "color" and "creature type" —
+        // and the `text` field must mirror the dual wording
+        // (used as the player prompt).
+        //
+        // The dual wording puts a conjunction between the two
+        // halves ("choose a color and a creature type" — the
+        // "choose a creature type" literal substring doesn't
+        // appear verbatim because of the "and a" between), so
+        // we accept either ordering of the two halves via a
+        // simple includes() check on each token.
+        const colorOk =
+          oracle.includes("color") &&
+          (oracle.includes("choose a color") ||
+            /\bchoose a (white|blue|black|red|green)\b/.test(oracle));
+        const typeOk =
+          oracle.includes("creature type") &&
+          (oracle.includes("choose a creature type") ||
+            // The dual-wording form: "choose a [thing1] and a creature type"
+            /\bchoose a \w+ and a creature type\b/.test(oracle) ||
+            // Or the reverse: "choose a creature type and a [thing]"
+            /\bchoose a creature type and a \w+\b/.test(oracle));
+        const textColorOk = txt.includes("color");
+        const textTypeOk = txt.includes("creature type");
+        if (!colorOk)
+          failures.push({
+            name: raw.name,
+            kind,
+            reason: `oracle does not mention "choose a color"`,
+          });
+        if (!typeOk)
+          failures.push({
+            name: raw.name,
+            kind,
+            reason: `oracle does not mention "choose a creature type"`,
+          });
+        if (!textColorOk)
+          failures.push({
+            name: raw.name,
+            kind,
+            reason: `enter_choice.text does not mention "color"`,
+          });
+        if (!textTypeOk)
+          failures.push({
+            name: raw.name,
+            kind,
+            reason: `enter_choice.text does not mention "creature type"`,
+          });
       } else {
         failures.push({
           name: raw.name,
