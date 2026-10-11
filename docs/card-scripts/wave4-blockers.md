@@ -624,3 +624,23 @@ four priority lanes (52, 53, 54, 55) are either shipped or
 marked multi-lane blockers, append this summary. All four
 shipped. Multi-lane deferrals above are tracked for the
 Wave 4.8 follow-up loop. The Wave 4.8 loop is complete.
+
+## Wave 4.8 follow-up loop deferrals (lane-by-lane)
+
+### Lane 57 (Redcap Gutter-Dweller full JSON, #2614)
+
+- **Gap**: "Goblins you control have menace as long as this
+  permanent has 3+ counters" — a counter-based trigger gate.
+- **Blocker**: the engine has no general-purpose "this
+  permanent has N+ counters" trigger gate today; the new
+  gate would be a multi-lane addition (#2614 follow-up).
+  Effective schema extension would be a `counter_gate:
+  {counter, op, n}` field on `TriggerSchema` plus an
+  engine evaluator in `trigger-system/`.
+- **Shipped**: Redcap Gutter-Dweller's chosen-color
+  `enter_choice`, chosen-color `add_color: "chosen"`
+  static (lane 55 arm), and attacks → Treasure-token
+  trigger (shipped Wave 2 lane 2544).
+- **Deferred**: the Goblin-menace-when-3+-counters trigger.
+  The JSON ships WITHOUT that trigger; the gate is a
+  follow-up lane.
