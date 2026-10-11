@@ -382,12 +382,12 @@ phase 2 in two PRs, lanes 49 + 50); one lane blocked (lane
   matches a Spyglass-named source; mana abilities (CR 605)
   are explicitly exempted per the Spyglass oracle text.
   Real `sorcerous_spyglass.json` with the chosen-name block
-  + `{T}: Add {C}.` AddMana (uses the existing literal
-  colorless path, no new schema). Engine-size budget
-  bumped 2050 → 2100 (schema.ts grew from 2041 to 2066, +25
-  lines, all of them the new chosen-name block
-  docstring + arm + the refine's chained `||
-  s.affects.chosen_name_block === true` clause).
+  - `{T}: Add {C}.` AddMana (uses the existing literal
+    colorless path, no new schema). Engine-size budget
+    bumped 2050 → 2100 (schema.ts grew from 2041 to 2066, +25
+    lines, all of them the new chosen-name block
+    docstring + arm + the refine's chained `||
+s.affects.chosen_name_block === true` clause).
 
 #### Blocked (multi-lane, still tracked)
 
@@ -436,7 +436,7 @@ hard deadline) follow in priority order.
 
 - **Lane 52 — `add_creature_type` static arm (PR #2723)**.
   New `StaticSchema.affects.add_creature_type: string |
-  "chosen"` arm + companion `addCreatureTypeToSelf: true`
+"chosen"` arm + companion `addCreatureTypeToSelf: true`
   opt-in flag (v1 self-only). New
   `CardInstance.chosenTypeAdditions?: string[]` field
   stamped by `refreshScriptedStatics`. Local `subtypesOf`
@@ -451,9 +451,9 @@ hard deadline) follow in priority order.
   both halves — the chosen-type anthem (lane 45) AND
   the chosen-type addition (lane 52). No engine change;
   no new schema field. The lane 45 "registers enter_choice
-  + chosen-type anthem on the script" test was updated
-  to read index 1 (anthem) instead of index 0 (the new
-  type-change static).
+  - chosen-type anthem on the script" test was updated
+    to read index 1 (anthem) instead of index 0 (the new
+    type-change static).
 
 ### Deferrals (still tracked)
 
@@ -474,7 +474,7 @@ the remaining Wave 4.8 lanes 55 + small headroom).
 
 - **Lane 55 — `add_color` static arm (PR forthcoming)**.
   New `StaticSchema.affects.add_color:
-  "W"|"U"|"B"|"R"|"G"|"chosen"` arm + companion
+"W"|"U"|"B"|"R"|"G"|"chosen"` arm + companion
   `addColorToSelf: true` opt-in flag (mirror of
   `addCreatureTypeToSelf` from lane 52). New
   `CardInstance.chosenColorAdditions?: ColorLetter[]`
@@ -493,6 +493,7 @@ the remaining Wave 4.8 lanes 55 + small headroom).
 
 The full Wave 4.8 priority lanes 52–55 are shipped.
 Deferred per the handoff:
+
 - Banner of Kinship fellowship-counter entrance
   (`enters_with_counters_per_match: chosen_subtype`).
 - Eaten by Piranhas full script (`multiple enter_choices`
@@ -510,3 +511,116 @@ Deferred per the handoff:
   optional trigger, casting from exile/graveyard, stun/
   finality counters, token creation with embedded static,
   copying a permanent, X-spent-on-other-spells).
+
+## Wave 4.8 loop done summary (lanes 52, 53, 54, 55)
+
+Wave 4.8 closed in a single uninterrupted run on
+2026-10-10/11. All four priority lanes shipped as
+self-contained PRs with one test-count drift each (per
+the handoff's "AI `forge-gate`/`forge-selfplay`/`expert-agent`
+is deterministic for a seed" pre-existing flake) and
+forced pushes resolved via `gh run rerun --failed` (lanes
+54, 55) or fresh `ratchet:test-count` re-writes (lane 53,
+54). The loop ran without human input; the AI flake cost
+~2 extra CI runs total across the four lanes.
+
+### Shipped (all four priority lanes)
+
+- **Lane 52 — `add_creature_type` static arm (PR #2723)**.
+  `StaticSchema.affects.add_creature_type: string |
+"chosen"` arm + companion `addCreatureTypeToSelf:
+true` opt-in flag (v1 self-only). New
+  `CardInstance.chosenTypeAdditions?: string[]` field
+  stamped by `refreshScriptedStatics`. Local `subtypesOf`
+  helper unions `chosenTypeAdditions` with the printed
+  type line so other statics (the chosen-type anthem in
+  lane 45) can see the addition on the source itself.
+  15 new tests; chosen-eviction-at-tombstone naturally
+  handled by `chosenTypeAdditions` being
+  battlefield-zone-only.
+
+- **Lane 53 — Adaptive Automaton full-oracle JSON (PR
+  #2725)**. `adaptive_automaton.json` updated to carry
+  both halves — the chosen-type anthem (lane 45) AND
+  the chosen-type addition (lane 52). No engine change;
+  no new schema field. The lane 45 "registers enter_choice
+  - chosen-type anthem on the script" test was updated
+    to read index 1 (anthem) instead of index 0 (the new
+    type-change static). 5 new tests added (nested
+    describe block).
+
+- **Lane 54 — `removes_all_abilities` aura static (PR
+  #2726)**. `AuraStaticSchema.removesAllAbilities:
+z.literal(true)` arm + allow-list extension. New
+  `CardInstance.losesAbilities?: true` field stamped by
+  `refreshAuraBonuses`. `canActivateAbility` gates the
+  card's scripted activated abilities when `losesAbilities`
+  is set (no mana-ability carve-out per the strict card
+  text interpretation). Aura's own static bonuses (P/T,
+  restrictions, keywords granted by the Aura) STAY —
+  the source's continuous effect is separate from the
+  enchanted card's native characteristics (CR 613.1b).
+  Witness Protection JSON updated with the new arm.
+  12 new tests; engine-size budget bumped 2100 → 2200.
+
+- **Lane 55 — `add_color` static arm (PR #2729)**.
+  `StaticSchema.affects.add_color: "W"|"U"|"B"|"R"|"G"|
+"chosen"` arm + companion `addColorToSelf: true`
+  opt-in flag (mirror of `addCreatureTypeToSelf`). New
+  `CardInstance.chosenColorAdditions?: ColorLetter[]`
+  field stamped by `refreshScriptedStatics`. Local
+  `getCardColors` helper unions `chosenColorAdditions`
+  with the printed colors so the chosen-color anthem
+  (lane 40, Heraldic Banner / Diamond Mare) can see the
+  addition on the source itself. Mirrors lane 52's
+  `subtypesOf` union shape but for colors.
+  15 new tests; no real card JSON update (Redcap
+  Gutter-Dweller's full JSON ships when the
+  counter-based trigger gate lands).
+
+### Net delta from Wave 4.7 phase 2 final
+
+- Test suites: 706 → 710 (+4, including +1 from a
+  concurrent manamind PR that landed during the Wave 4.8
+  loop's lane 54 work).
+- Test cases: 13907 → 13959 (+52 from Wave 4.8 lanes 52–55
+  net of the +5 cases the manamind PR added).
+- Engine-size budget: schema.ts 2066 (lane 50 baseline)
+  → 2174 (+108 lines incl. docstrings across lanes 52 +
+  54 + 55). Lane 54 bumped the budget 2100 → 2200 to
+  cover the remaining Wave 4.8 lanes; final 2174 sits
+  well under the 2200 ceiling.
+
+### Multi-lane deferrals still open (Wave 4.8 follow-up loop)
+
+These need fresh dedicated lanes per the handoff:
+
+- Eaten by Piranhas full script (`multiple enter_choices`
+  separate multi-lane — needs either a second
+  `enter_choice` per card or "enters with chosen color +
+  chosen creature type" arm).
+- Banner of Kinship fellowship-counter entrance
+  (`enters_with_counters_per_match: chosen_subtype` arm).
+- Redcap Gutter-Dweller full JSON (the
+  `chosen_color + addColorToSelf` half lands in lane 55;
+  the "create a red Treasure token" rides
+  `CreatePredefinedToken`; the "Goblins have menace when
+  3+ counters" trigger needs a counter-based trigger
+  gate).
+- Triggered-ability suppression for `removes_all_abilities`
+  (lane 54 follow-up; the trigger fire pipeline needs a
+  broader engine change to suppress scripted triggers).
+- Affinity / cost reduction (lane 57, Claws Out, etc.).
+- Additional costs (lane 58, Louisoix's Sacrifice,
+  Claws Out, etc.).
+- Lanes 60, 62, 63, 64, 65 (granting triggered abilities,
+  replacement effect for death, "you may" optional
+  trigger, casting from exile/graveyard, stun/finality
+  counters, token creation with embedded static,
+  copying a permanent, X-spent-on-other-spells).
+
+Per the handoff's "Done definition for the loop": when all
+four priority lanes (52, 53, 54, 55) are either shipped or
+marked multi-lane blockers, append this summary. All four
+shipped. Multi-lane deferrals above are tracked for the
+Wave 4.8 follow-up loop. The Wave 4.8 loop is complete.
