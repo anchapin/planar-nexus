@@ -17,6 +17,13 @@ import {
 import type { ForgePointerModel } from "./forge-pointer-model";
 import { forgeSearch } from "./forge-search";
 
+type Live = Exclude<
+  ReturnType<TrainingSession["legalChoices"]>,
+  {
+    kind: "game_over";
+  }
+>;
+
 type DeckList = ReturnType<typeof trainingDeck>;
 export type GateResult = "win" | "loss" | "draw";
 
@@ -41,6 +48,16 @@ export interface GateGameOptions {
    */
   pick?: "greedy" | "sample" | "gumbel";
   maxTurns?: number;
+  /**
+   * Called at every decision before the seat searches, with whether the
+   * candidate is to act (manamind#96 prior comparison). Must not step the
+   * session.
+   */
+  onDecision?: (
+    session: TrainingSession,
+    prompt: Live,
+    candidateToAct: boolean,
+  ) => Promise<void>;
 }
 
 export interface GateGame {
@@ -76,6 +93,7 @@ export async function playGateGame(
   while (prompt.kind !== "game_over") {
     const seat = seats.indexOf(prompt.playerId);
     const mine = seat === candidateSeat;
+    if (options.onDecision) await options.onDecision(session, prompt, mine);
     const r = await forgeSearch(session, mine ? candidate : baseline, {
       simulations: mine ? simulations : baselineSimulations,
       gumbel: pick === "gumbel",
