@@ -517,11 +517,28 @@ export function normalizeColor(color: string): string {
 }
 
 /**
- * Get the colors of a card from its cardData
- * Returns array of color strings (e.g., ['W', 'U'] or ['Red', 'Blue'])
+ * Get the colors of a card from its cardData plus any
+ * `chosenColorAdditions` stamped by
+ * `refreshScriptedStatics` (Wave 4.8 lane 55, #2614 follow-up).
+ * The printed colors live on `cardData.colors`; the additions
+ * are per-instance (battlefield-zone-only, parallel to lane
+ * 52's `chosenTypeAdditions` on `subtypesOf`).
+ *
+ * Returns array of color strings (e.g., ['W', 'U'] or ['Red', 'Blue']).
  */
 export function getCardColors(card: CardInstance): string[] {
-  return (card.cardData.colors || []).map(normalizeColor);
+  const printed = (card.cardData.colors || []).map(normalizeColor);
+  const additions = card.chosenColorAdditions ?? [];
+  if (additions.length === 0) return printed;
+  // Union the additions with the printed colors; preserve
+  // order (printed first, then any new colors added by
+  // statics that weren't already in the printed array).
+  const out: string[] = [...printed];
+  for (const a of additions) {
+    const n = normalizeColor(a);
+    if (!out.includes(n)) out.push(n);
+  }
+  return out;
 }
 
 /**
