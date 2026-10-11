@@ -160,6 +160,29 @@ export interface CardInstance {
    */
   chosenTypeAdditions?: string[];
   /**
+   * Wave 4.8 lane 55 (#2614 follow-up): the per-instance
+   * color additions granted by a
+   * `StaticSchema.affects.add_color` static on the source
+   * itself (Redcap Gutter-Dweller-style "the source
+   * becomes the chosen color in addition to its printed
+   * colors"). Parallel to lane 52's `chosenTypeAdditions`
+   * but for colors. Set by `refreshScriptedStatics` at
+   * refresh time: for every static with `add_color` and
+   * `addColorToSelf: true`, the source's
+   * `chosenColorAdditions` grows by the resolved color
+   * letter (literal string verbatim, or
+   * `source.chosenColor` for the `"chosen"` sentinel).
+   *
+   * The chosen-eviction-at-tombstone problem (the source
+   * leaves the battlefield while the addition is still
+   * active — should the temporary addition drop or
+   * persist into the graveyard? Answer: drop, since
+   * `chosenColorAdditions` is battlefield-zone-only) is
+   * naturally handled by the field being maintained by
+   * the refresh pass which only sees battlefield cards.
+   */
+  chosenColorAdditions?: ("W" | "U" | "B" | "R" | "G")[];
+  /**
    * Wave 4.7 follow-up lane 48 schema baseline (#2708 phase 1):
    * the chosen card name for a permanent with
    * `enter_choice: { kind: "chosen_name" }` (Sorcerous Spyglass,

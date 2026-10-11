@@ -471,3 +471,42 @@ follow-up loop's done summary as a future lane.
 
 Engine-size budget: lane 54 bumped 2100 → 2200 (covers
 the remaining Wave 4.8 lanes 55 + small headroom).
+
+- **Lane 55 — `add_color` static arm (PR forthcoming)**.
+  New `StaticSchema.affects.add_color:
+  "W"|"U"|"B"|"R"|"G"|"chosen"` arm + companion
+  `addColorToSelf: true` opt-in flag (mirror of
+  `addCreatureTypeToSelf` from lane 52). New
+  `CardInstance.chosenColorAdditions?: ColorLetter[]`
+  field stamped by `refreshScriptedStatics`. The local
+  `getCardColors` helper unions `chosenColorAdditions` with
+  the printed colors so the chosen-color anthem (lane 40,
+  Heraldic Banner / Diamond Mare) can see the addition on
+  the source itself. Lane 55 ships NO real card JSON update
+  (the handoff's chosen-eviction-at-tombstone handle is the
+  same shape as lane 52's, naturally handled by the
+  refresh pass maintaining the field on battlefield cards
+  only). Schema at 2174 (well under the 2200 budget bumped
+  in lane 54).
+
+### Multi-lane still tracked (Wave 4.8 follow-up)
+
+The full Wave 4.8 priority lanes 52–55 are shipped.
+Deferred per the handoff:
+- Banner of Kinship fellowship-counter entrance
+  (`enters_with_counters_per_match: chosen_subtype`).
+- Eaten by Piranhas full script (`multiple enter_choices`
+  or "enters with chosen color + chosen creature type" arm
+  separate multi-lane).
+- Redcap Gutter-Dweller full JSON (the "Goblin menace
+  when 3+ counters" trigger half is a counter-based
+  trigger gate — the chosen-color addition + Treasure
+  token halves are now unblocked).
+- Triggered-ability suppression for `removes_all_abilities`
+  (lane 54 follow-up).
+- Affinity / cost reduction (lane 57, Claws Out, etc.).
+- Lanes 56–65 (additional costs, granting triggered
+  abilities, replacement effect for death, "you may"
+  optional trigger, casting from exile/graveyard, stun/
+  finality counters, token creation with embedded static,
+  copying a permanent, X-spent-on-other-spells).

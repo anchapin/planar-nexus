@@ -1498,6 +1498,37 @@ export const StaticSchema = z
          * generalization.
          */
         addCreatureTypeToSelf: z.literal(true).optional(),
+        /**
+         * Wave 4.8 lane 55 (#2614 follow-up): a
+         * creature-color-changing static. The source adds
+         * the named color (or its `chosenColor`) to its own
+         * colors while on the battlefield (Redcap
+         * Gutter-Dweller-style, parallel to lane 52's
+         * `add_creature_type`).
+         *
+         * `"W"|"U"|"B"|"R"|"G"` — literal color for the
+         * named-color variant (a card that always adds a
+         * specific color to itself).
+         * `"chosen"` — sentinel meaning "use the source's
+         * `chosenColor` instance field" (an `enter_choice:
+         * { kind: "color" }` card that adds its own chosen
+         * color to itself in addition to its printed
+         * colors). Mirrors lane 52's chosen-sentinel
+         * pattern.
+         */
+        add_color: z
+          .enum(["W", "U", "B", "R", "G", "chosen"])
+          .optional(),
+        /**
+         * Wave 4.8 lane 55 (#2614 follow-up): companion
+         * flag for `add_color` — opt-in to the v1 self-only
+         * engine path. Mirrors `addCreatureTypeToSelf` (lane
+         * 52). Without this flag the engine does NOT grow
+         * the source's `chosenColorAdditions`. The
+         * Aura-style "enchanted creature gains a color"
+         * generalization rides a future lane.
+         */
+        addColorToSelf: z.literal(true).optional(),
       })
       .strict(),
     power: z.number().int().optional(),
@@ -1532,10 +1563,17 @@ export const StaticSchema = z
       // meta-static, allowed as a stand-alone arm with the
       // `addCreatureTypeToSelf` flag.
       (s.affects.add_creature_type !== undefined &&
-        s.affects.addCreatureTypeToSelf === true),
+        s.affects.addCreatureTypeToSelf === true) ||
+      // Wave 4.8 lane 55 (#2614 follow-up): chosen-color
+      // addition is a pure color-changer — same
+      // meta-static shape, allowed as a stand-alone arm
+      // with the `addColorToSelf` flag. Redcap
+      // Gutter-Dweller-style self-only semantics for v1.
+      (s.affects.add_color !== undefined &&
+        s.affects.addColorToSelf === true),
     {
       message:
-        "a static needs power/toughness, keywords, X, chosen_name_block, or add_creature_type (with addCreatureTypeToSelf)",
+        "a static needs power/toughness, keywords, X, chosen_name_block, add_creature_type (with addCreatureTypeToSelf), or add_color (with addColorToSelf)",
     },
   );
 

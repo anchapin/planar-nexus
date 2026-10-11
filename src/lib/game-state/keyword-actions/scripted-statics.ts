@@ -172,6 +172,28 @@ export function staticAffects(
     }
     return true;
   }
+  // Wave 4.8 lane 55 (#2614 follow-up): the chosen-color
+  // addition static. The source adds the named color (or
+  // its `chosenColor`) to its own colors while on the
+  // battlefield (Redcap Gutter-Dweller-style, parallel
+  // to lane 52's `add_creature_type`). v1 is self-only —
+  // the static returns true iff `source === target`. The
+  // Aura-style "enchanted creature gains a color"
+  // generalization rides a future lane. When the sentinel
+  // `"chosen"` is in use the source also needs a resolved
+  // `chosenColor`; otherwise the static is inert (the
+  // player hasn't answered the enter choice yet). The
+  // actual growth of `source.chosenColorAdditions` is
+  // handled by `refreshScriptedStatics` (this branch only
+  // computes applicability).
+  if (stat.affects.add_color !== undefined) {
+    if (stat.affects.addColorToSelf !== true) return false;
+    if (source.id !== target.id) return false;
+    if (stat.affects.add_color === "chosen") {
+      return source.chosenColor !== null;
+    }
+    return true;
+  }
   if (!isCreature(target)) return false;
   const { controller, other, self, subtype, color } = stat.affects;
   if (other && source.id === target.id) return false;
@@ -258,11 +280,18 @@ export function refreshScriptedStatics(input: GameState): GameState {
   // — so Adaptive Automaton's anthem path can match the
   // source against itself via the chosen creature type.
   const typeAdditions = new Map<string, string[]>();
+  // Wave 4.8 lane 55 (#2614 follow-up): per-card color
+  // additions stamped by `affects.add_color` statics. The
+  // chosen-color anthem (lane 40) reads `getCardColors(target)`
+  // which unions these into the read at the next refresh
+  // pass (mirroring lane 52's `typeAdditions`).
+  const colorAdditions = new Map<string, ("W" | "U" | "B" | "R" | "G")[]>();
   for (const target of onField) {
     let power = 0;
     let toughness = 0;
     const granted = new Set<string>();
     const additions = new Set<string>();
+    const colorAdds = new Set<"W"|"U"|"B"|"R"|"G">();
     for (const { card, statics } of sources) {
       for (const stat of statics) {
         if (!staticAffects(stat, card, target)) continue;
@@ -285,6 +314,26 @@ export function refreshScriptedStatics(input: GameState): GameState {
               ? card.chosenCreatureType
               : stat.affects.add_creature_type;
           if (addition) additions.add(addition);
+        }
+        // Wave 4.8 lane 55 (#2614 follow-up): grow the
+        // target's `chosenColorAdditions` if this static
+        // is a chosen-color addition and the source's
+        // chosen color is resolved (or the literal form is
+        // in use). Parallel to the lane 52 `add_creature_type`
+        // block above. The local `getCardColors` helper
+        // unions these into the read so the chosen-color
+        // anthem (lane 40, Heraldic Banner / Diamond Mare)
+        // can match the source against itself via the
+        // added color.
+        if (
+          stat.affects.add_color !== undefined &&
+          stat.affects.addColorToSelf === true
+        ) {
+          const addition =
+            stat.affects.add_color === "chosen"
+              ? card.chosenColor
+              : stat.affects.add_color;
+          if (addition) colorAdds.add(addition);
         }
         if (stat.X) {
           // #2594 follow-up, lane 36: when `X` is set, the count
@@ -313,6 +362,8 @@ export function refreshScriptedStatics(input: GameState): GameState {
     if (granted.size > 0) kws.set(target.id, [...granted].sort());
     if (additions.size > 0)
       typeAdditions.set(target.id, [...additions].sort());
+    if (colorAdds.size > 0)
+      colorAdditions.set(target.id, [...colorAdds].sort());
   }
 
   let cards: GameState["cards"] | null = null;
@@ -320,8 +371,10 @@ export function refreshScriptedStatics(input: GameState): GameState {
     const nextPT = pt.get(cardId);
     const nextKw = kws.get(cardId) ?? [];
     const nextAdds = typeAdditions.get(cardId);
+    const nextColors = colorAdditions.get(cardId);
     const prevKw = card.scriptStaticKeywords ?? [];
     const prevAdds = card.chosenTypeAdditions ?? [];
+    const prevColors = card.chosenColorAdditions ?? [];
     const samePT =
       (card.scriptStaticPT?.power ?? 0) === (nextPT?.power ?? 0) &&
       (card.scriptStaticPT?.toughness ?? 0) === (nextPT?.toughness ?? 0);
@@ -336,7 +389,12 @@ export function refreshScriptedStatics(input: GameState): GameState {
     const sameAdds =
       (nextAdds ? nextAdds.length : 0) === prevAdds.length &&
       (nextAdds ?? []).every((t, i) => t === prevAdds[i]);
-    if (samePT && sameKw && sameAdds) continue;
+    // Wave 4.8 lane 55 (#2614 follow-up): same shape for
+    // chosen-color additions (sorted color-letter array).
+    const sameColors =
+      (nextColors ? nextColors.length : 0) === prevColors.length &&
+      (nextColors ?? []).every((c, i) => c === prevColors[i]);
+    if (samePT && sameKw && sameAdds && sameColors) continue;
     cards ??= new Map(state.cards);
     const updated = { ...card };
     if (nextPT) updated.scriptStaticPT = nextPT;
@@ -353,6 +411,14 @@ export function refreshScriptedStatics(input: GameState): GameState {
     if (nextAdds && nextAdds.length > 0)
       updated.chosenTypeAdditions = nextAdds;
     else delete updated.chosenTypeAdditions;
+    // Wave 4.8 lane 55: clear `chosenColorAdditions` when
+    // the source has left the battlefield. Same
+    // battlefield-zone-only semantics as
+    // `chosenTypeAdditions`. The local `getCardColors`
+    // helper unions these with the printed colors.
+    if (nextColors && nextColors.length > 0)
+      updated.chosenColorAdditions = nextColors;
+    else delete updated.chosenColorAdditions;
     cards.set(cardId, updated);
   }
   return cards ? { ...state, cards } : state;
