@@ -57,6 +57,12 @@ export interface ForgeCandidate {
   action: TrainingAction;
   /** Root prior after the uniform floor; sums to 1 over the candidates. */
   prior: number;
+  /**
+   * The net's own share for this action, before the uniform floor
+   * (manamind#96): the training target builds on this, so exploration's
+   * floor never distills back into the heads.
+   */
+  raw?: number;
 }
 
 export interface ForgeSearchResult {
@@ -64,8 +70,13 @@ export interface ForgeSearchResult {
   /** Index into `candidates`. */
   index: number;
   candidates: ForgeCandidate[];
-  /** Completed-Q search policy over the candidates. */
+  /** Completed-Q search policy over the candidates (with the floor). */
   policy: number[];
+  /**
+   * Target policy over the candidates: the net's raw prior plus Q, with no
+   * exploration floor (manamind#96). Self-play folds this onto the heads.
+   */
+  target: number[];
   /** Root evaluation for the searcher, in [-1, 1]. */
   rootValue: number;
   simulations: number;
@@ -269,6 +280,7 @@ export async function forgeCandidates(
   const total = unique.reduce((s, c) => s + c.weight, 0);
   const candidates = unique.map((c) => ({
     action: c.action,
+    raw: total > 0 ? c.weight / total : 1 / n,
     prior:
       total > 0
         ? (1 - PRIOR_UNIFORM_FLOOR) * (c.weight / total) +
@@ -308,12 +320,30 @@ export async function forgeSearch(
   const count = candidates.length;
   const policyOf = (scores: number[]) => softmax(scores);
 
+  /**
+   * Target policy from the net's raw prior plus Q, no exploration floor
+   * (manamind#96). Same completed-Q as `score` uses, folded differently.
+   */
+  const targetOf = (q: number[]): number[] => {
+    const raws = candidates.map((c) => Math.max(c.raw ?? c.prior, 1e-12));
+    const rawSum = raws.reduce((s, r) => s + r, 0);
+    const bonus = (cVisit + Math.max(0, ...visits)) * cScale;
+    return policyOf(
+      raws.map((r, i) => {
+        if (illegal[i]) return -1e9;
+        const l = Math.log(r / rawSum);
+        return l === -Infinity ? -1e9 : l + bonus * q[i];
+      }),
+    );
+  };
+
   if (count === 1) {
     return {
       action: candidates[0].action,
       index: 0,
       candidates,
       policy: [1],
+      target: [1],
       rootValue,
       simulations: 0,
       evaluations,
@@ -421,6 +451,7 @@ export async function forgeSearch(
     let best = remaining[0];
     for (const i of remaining) if (noisy[i] > noisy[best]) best = i;
     const final = score(false);
+    const target = targetOf(completedQ());
     if (illegal[best]) {
       // Every surviving candidate was refused: fall back to any legal one.
       const legal = final.findIndex((_, i) => !illegal[i]);
@@ -431,6 +462,7 @@ export async function forgeSearch(
       index: best,
       candidates,
       policy: policyOf(final.map((v) => (v === -Infinity ? -1e9 : v))),
+      target,
       rootValue,
       simulations: used,
       evaluations,

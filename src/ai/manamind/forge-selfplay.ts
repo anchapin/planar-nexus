@@ -96,12 +96,17 @@ export interface SelfPlayOptions {
   netSeat?: 0 | 1;
 }
 
-/** Fold the search policy over candidates onto the net's head for `prompt`. */
+/**
+ * Fold the search's target policy over candidates onto the net's head for
+ * `prompt`. The target is the net's raw prior plus Q (no exploration floor,
+ * manamind#96); older results without one fall back to the search policy.
+ */
 export function searchTarget(
   prompt: Live,
   result: ForgeSearchResult,
 ): SearchTarget | null {
-  const { candidates, policy } = result;
+  const { candidates } = result;
+  const policy = result.target ?? result.policy;
   switch (prompt.kind) {
     case "priority": {
       const column: number[] = [];
