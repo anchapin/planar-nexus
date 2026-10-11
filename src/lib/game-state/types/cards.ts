@@ -131,6 +131,35 @@ export interface CardInstance {
    */
   chosenCreatureType: string | null;
   /**
+   * Wave 4.8 lane 52 (#2614 follow-up): the per-instance
+   * subtype additions granted by a
+   * `StaticSchema.affects.add_creature_type` static on the
+   * source itself (Adaptive Automaton's "is the chosen type in
+   * addition to its other types" half). Set by
+   * `refreshScriptedStatics` at refresh time: for every static
+   * with `add_creature_type` and `addCreatureTypeToSelf: true`,
+   * the source's `chosenTypeAdditions` grows by the resolved
+   * type string (literal string verbatim, or
+   * `source.chosenCreatureType` for the `"chosen"` sentinel).
+   * The local `subtypesOf` helper in
+   * `keyword-actions/scripted-statics.ts` unions these into
+   * the read so other statics (the chosen-type anthem in lane
+   * 45) can see the addition at the next refresh pass.
+   *
+   * The chosen-eviction-at-tombstone problem (the source
+   * leaves the battlefield while the addition is still
+   * active — should the temporary addition drop or persist
+   * into the graveyard? Answer: drop, since `subtypes` is
+   * irrelevant in non-battlefield zones) is naturally handled
+   * by `chosenTypeAdditions` being a battlefield-zone-only
+   * field — the engine writes it on a battlefield card and
+   * reads it via the local helper which only fires for cards
+   * currently on the battlefield. The field is left unset on
+   * permanents without an `add_creature_type` static; default
+   * empty array `[]` is acceptable.
+   */
+  chosenTypeAdditions?: string[];
+  /**
    * Wave 4.7 follow-up lane 48 schema baseline (#2708 phase 1):
    * the chosen card name for a permanent with
    * `enter_choice: { kind: "chosen_name" }` (Sorcerous Spyglass,

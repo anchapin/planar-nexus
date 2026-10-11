@@ -1467,6 +1467,37 @@ export const StaticSchema = z
          * card's text.
          */
         chosen_name_block: z.literal(true).optional(),
+        /**
+         * Wave 4.8 lane 52 (#2614 follow-up): a creature-type
+         * changing static. The source adds the named creature
+         * type (or its `chosenCreatureType` for the sentinel)
+         * to its own subtypes — Adaptive Automaton's "is the
+         * chosen type in addition to its other types" half.
+         * `"chosen"` reads `source.chosenCreatureType`;
+         * literal strings (Eaten by Piranhas / Infernal Vessel
+         * family) use a verbatim creature type. v1 is
+         * self-only (companion `addCreatureTypeToSelf` flag
+         * below); the Aura-style generalization rides lane 54.
+         * Engine path: `staticAffects` +
+         * `refreshScriptedStatics` in
+         * `keyword-actions/scripted-statics.ts`. The chosen
+         * type evicts naturally on zone change (the source
+         * leaves the battlefield; `chosenTypeAdditions` is
+         * stamped by `refreshScriptedStatics` only for cards
+         * currently on the battlefield).
+         */
+        add_creature_type: z
+          .union([z.string().min(1), z.literal("chosen")])
+          .optional(),
+        /**
+         * Wave 4.8 lane 52 (#2614 follow-up): companion flag
+         * for `add_creature_type` — opt-in to the v1 self-only
+         * engine path. Without this flag the engine does NOT
+         * grow `source.subtypes`. Lane 54 picks up the
+         * Aura-style "enchanted creature is the chosen type"
+         * generalization.
+         */
+        addCreatureTypeToSelf: z.literal(true).optional(),
       })
       .strict(),
     power: z.number().int().optional(),
@@ -1492,16 +1523,19 @@ export const StaticSchema = z
       s.keywords ||
       s.X !== undefined ||
       // Wave 4.7 phase 2 lane 50 (#2708 phase 2b): the
-      // chosen-name block is a meta-static — it gates
-      // ability activation, not P/T or keywords. Allow it as
-      // a stand-alone `affects.chosen_name_block: true` with
-      // no power/toughness/keywords. The refresh pass detects
-      // it via `affects.chosen_name_block` and skips the P/T
-      // and keyword grants.
-      s.affects.chosen_name_block === true,
+      // chosen-name block is a meta-static — allow it as a
+      // stand-alone arm. See lane 50's `chosen_name_block`
+      // docstring.
+      s.affects.chosen_name_block === true ||
+      // Wave 4.8 lane 52 (#2614 follow-up): chosen-type
+      // addition is a pure type-changer — also a
+      // meta-static, allowed as a stand-alone arm with the
+      // `addCreatureTypeToSelf` flag.
+      (s.affects.add_creature_type !== undefined &&
+        s.affects.addCreatureTypeToSelf === true),
     {
       message:
-        "a static needs power/toughness, keywords, X, or chosen_name_block",
+        "a static needs power/toughness, keywords, X, chosen_name_block, or add_creature_type (with addCreatureTypeToSelf)",
     },
   );
 
