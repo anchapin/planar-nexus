@@ -7,6 +7,14 @@
   },
   "statics": [
     {
+      "text": "Adaptive Automaton is the chosen type in addition to its other types.",
+      "affects": {
+        "controller": "you",
+        "add_creature_type": "chosen",
+        "addCreatureTypeToSelf": true
+      }
+    },
+    {
       "text": "Other creatures you control of the chosen type get +1/+1.",
       "affects": {
         "controller": "you",
