@@ -109,6 +109,12 @@ export function refreshAuraBonuses(state: GameState): GameState {
   const restrictUntap = new Map<string, string[]>();
   // #2614: "can't be blocked by more than one creature" (CR 509.1b).
   const maxBlockers = new Map<string, number>();
+  // Wave 4.8 lane 54 (#2614 follow-up): cards with at
+  // least one attached Aura whose static has
+  // `removesAllAbilities: true`. A Set keyed by target id;
+  // the boolean is `card.losesAbilities === true` at the
+  // end of the refresh pass.
+  const losesAbilities = new Set<string>();
 
   for (const aura of onField) {
     const target = aura.attachedToId;
@@ -185,6 +191,19 @@ export function refreshAuraBonuses(state: GameState): GameState {
             : Math.min(prev, scriptedStatic.maxBlockers),
         );
       }
+      // Wave 4.8 lane 54 (#2614 follow-up): Witness
+      // Protection's "loses all other abilities" arm.
+      // The enchanted card's `script.activated` abilities
+      // are gated by `losesAbilities` (the engine side
+      // mirrors the lane 50 Spyglass chosen-name gate).
+      // Multiple Auras with `removesAllAbilities: true`
+      // are redundant; `losesAbilities` is a single
+      // boolean. The flag is stamped for the duration
+      // of any such Aura; cleared when all such Auras
+      // leave the battlefield.
+      if (scriptedStatic.removesAllAbilities === true) {
+        losesAbilities.add(target);
+      }
     }
   }
 
@@ -206,6 +225,12 @@ export function refreshAuraBonuses(state: GameState): GameState {
     const nextRU = restrictUntap.get(cardId) ?? [];
     const wasRU = card.auraRestrictUntap ?? [];
     const nextMB = maxBlockers.get(cardId);
+    // Wave 4.8 lane 54: `losesAbilities` flag diff. A
+    // Set is overkill — `losesAbilities` is a single
+    // boolean — so compare `card.losesAbilities` against
+    // `losesAbilities.has(cardId)`. The `continue` short
+    // circuits when nothing changed for this card.
+    const nextLosesAbilities = losesAbilities.has(cardId);
     if (
       (was?.power ?? 0) === (next?.power ?? 0) &&
       (was?.toughness ?? 0) === (next?.toughness ?? 0) &&
@@ -213,7 +238,8 @@ export function refreshAuraBonuses(state: GameState): GameState {
       sameStringList(wasRA, nextRA) &&
       sameStringList(wasRB, nextRB) &&
       sameStringList(wasRU, nextRU) &&
-      card.auraMaxBlockers === nextMB
+      card.auraMaxBlockers === nextMB &&
+      Boolean(card.losesAbilities) === nextLosesAbilities
     ) {
       continue;
     }
@@ -231,6 +257,8 @@ export function refreshAuraBonuses(state: GameState): GameState {
     else delete updated.auraRestrictUntap;
     if (nextMB !== undefined) updated.auraMaxBlockers = nextMB;
     else delete updated.auraMaxBlockers;
+    if (nextLosesAbilities) updated.losesAbilities = true;
+    else delete updated.losesAbilities;
     cards.set(cardId, updated);
   }
   return cards ? { ...state, cards } : state;

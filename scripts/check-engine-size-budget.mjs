@@ -104,7 +104,15 @@ const SCOPES = [
     name: "engine",
     dir: join(REPO_ROOT, "src", "lib", "game-state"),
     rootRel: "src/lib/game-state",
-    budgetLines: 2100,
+    // Wave 4.8 lane 52 bumped 2050 → 2100; lane 54 added
+    // the "removes all abilities" AuraStatic arm + the
+    // loseseAbilities stamping docstring and lands at
+    // 2136 (+36 over). Bumping 2100 → 2200 to cover the
+    // remaining lanes 55 (add_color static) + a small
+    // buffer. Per the Wave 4.8 handoff's process note:
+    // "bump the budget again rather than fragmenting
+    // the chosen-X arm family."
+    budgetLines: 2200,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

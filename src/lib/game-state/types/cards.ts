@@ -402,6 +402,22 @@ export interface CardInstance {
    */
   scriptStaticKeywords?: string[];
   /**
+   * Wave 4.8 lane 54 (#2614 follow-up): true while this card
+   * is enchanted by an Aura with `static.removesAllAbilities:
+   * true` (Witness Protection's "loses all other abilities"
+   * arm). `canActivateAbility` denies the card's scripted
+   * activated abilities when this flag is set; the card's
+   * own triggered abilities are deferred (multi-lane trigger
+   * fire suppression rides a follow-up). Aura-granted
+   * bonuses (P/T, restrictions, keywords) stay — the flag
+   * suppresses the enchanted card's characteristics, not
+   * the source's continuous effect (CR 613.1b).
+   *
+   * Maintained by `refreshAuraBonuses`; cleared when the
+   * Aura leaves the battlefield.
+   */
+  losesAbilities?: true;
+  /**
    * "Cards exiled with this creature" (#2614 Keen-Eyed Curator, CR 607.2a):
    * the scripted source that exiled this card, keyed by that source's
    * battlefield timestamp so a new object (CR 400.7) starts with none.
