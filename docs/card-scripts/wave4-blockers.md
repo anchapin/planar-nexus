@@ -424,3 +424,50 @@ Wave 4.7 follow-up loop. The phase 2 follow-up (lanes 49–51,
 in the Wave 4.7 phase 2 done summary just below; the
 `#2708` phase 2 work is fully shipped (Sorcerous Spyglass is
 end-to-end scripted for the first time).
+
+## Wave 4.8 in-progress summary (lanes 52, 53)
+
+Wave 4.8 lanes 52 + 53 closed in a single uninterrupted run
+on 2026-10-10/11. Lane 54 (this lane) closed immediately
+after. Lanes 55–56 (or as many as ship before the loop's
+hard deadline) follow in priority order.
+
+### Shipped
+
+- **Lane 52 — `add_creature_type` static arm (PR #2723)**.
+  New `StaticSchema.affects.add_creature_type: string |
+  "chosen"` arm + companion `addCreatureTypeToSelf: true`
+  opt-in flag (v1 self-only). New
+  `CardInstance.chosenTypeAdditions?: string[]` field
+  stamped by `refreshScriptedStatics`. Local `subtypesOf`
+  helper unions `chosenTypeAdditions` with the printed
+  type line so other statics (the lane 45 chosen-type
+  anthem) can see the addition on the source itself.
+  Engine-size budget bumped 2050 → 2100 in lane 50
+  and lands exactly at the ceiling after lane 52.
+
+- **Lane 53 — Adaptive Automaton full-oracle JSON (PR
+  #2725)**. `adaptive_automaton.json` updated to carry
+  both halves — the chosen-type anthem (lane 45) AND
+  the chosen-type addition (lane 52). No engine change;
+  no new schema field. The lane 45 "registers enter_choice
+  + chosen-type anthem on the script" test was updated
+  to read index 1 (anthem) instead of index 0 (the new
+  type-change static).
+
+### Deferrals (still tracked)
+
+The triggered-ability suppression piece of
+`removesAllAbilities` (lane 54, Witness Protection) is a
+follow-up: when the enchanted card's `script.triggers`
+list includes a triggered ability, the engine should
+suppress the trigger from firing while the enchanted
+card carries `losesAbilities: true`. Lane 54's v1 gate
+covers the activated-ability path (the `canActivateAbility`
+deny, which is the testable, in-scope path). Trigger
+fire suppression requires a broader engine change to
+the trigger pipeline — documented in the Wave 4.8
+follow-up loop's done summary as a future lane.
+
+Engine-size budget: lane 54 bumped 2100 → 2200 (covers
+the remaining Wave 4.8 lanes 55 + small headroom).

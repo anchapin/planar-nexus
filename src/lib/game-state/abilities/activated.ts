@@ -255,6 +255,26 @@ export function canActivateAbility(
     };
   }
 
+  // Wave 4.8 lane 54 (#2614 follow-up): the "loses all other
+  // abilities" gate (Witness Protection). When the source card
+  // carries `losesAbilities: true` (stamped by
+  // `refreshAuraBonuses` for any Aura with
+  // `static.removesAllAbilities: true`), all activated abilities
+  // — including mana abilities — are denied. The card text
+  // "loses all other abilities" does NOT carve out a
+  // mana-ability exemption the way Spyglass's "can't be
+  // activated unless they're mana abilities" does, so this
+  // gate has no `isManaAbility` carve-out. The check runs
+  // AFTER the chosen-name block so a Spyglass gate fires first
+  // (the Spyglass-style "chosen name" reason is more
+  // informative when both apply).
+  if (ability && card.losesAbilities === true) {
+    return {
+      canActivate: false,
+      reason: "Enchanted creature loses all other abilities",
+    };
+  }
+
   return { canActivate: true };
 }
 

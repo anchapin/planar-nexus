@@ -1612,6 +1612,34 @@ export const AuraStaticSchema = z
      * `auraMaxBlockers` on the enchanted card.
      */
     maxBlockers: z.literal(1).optional(),
+    /**
+     * Wave 4.8 lane 54 (#2614 follow-up): the enchanted
+     * creature loses all its OTHER abilities. Witness
+     * Protection: "Enchanted creature gets -1/-1 and can't
+     * attack. *(It loses all other abilities.)*" — the
+     * reminder text confirms the actual mechanic. The
+     * engine stamps `losesAbilities: true` on the enchanted
+     * card via `refreshAuraBonuses`; `canActivateAbility`
+     * then denies the card's scripted activated abilities
+     * (parallel to the lane 50 chosen-name gate on Spyglass).
+     *
+     * The gate only suppresses the card's OWN scripted
+     * abilities (the card's `script.activated` /
+     * `script.triggers`). The Aura's own static bonuses
+     * (P/T, restrictions, keywords granted by the Aura
+     * itself) stay — Witness Protection keeps granting
+     * `-1/-1` and `can't attack` even though the enchanted
+     * creature's own abilities are gone. (CR 613.1b: "Effects
+     * from static abilities that set base characteristics
+     * are applied first" — the Aura's continuous effect is
+     * separate from the enchanted card's native
+     * characteristics.)
+     *
+     * Triggered-ability gating is a follow-up multi-lane —
+     * the trigger fire path requires a broader engine change
+     * (deferred, see `wave4-blockers.md`).
+     */
+    removesAllAbilities: z.literal(true).optional(),
   })
   .strict()
   .refine((s) => (s.power === undefined) === (s.toughness === undefined), {
@@ -1624,10 +1652,18 @@ export const AuraStaticSchema = z
       s.restrictAttack ||
       s.restrictBlock ||
       s.restrictUntap ||
-      s.maxBlockers !== undefined,
+      s.maxBlockers !== undefined ||
+      // Wave 4.8 lane 54 (#2614 follow-up): Witness
+      // Protection's "loses all other abilities" arm
+      // rides the Aura-shape path — it has no P/T and
+      // no keywords; it's a pure ability-stripper. Allow
+      // `removesAllAbilities: true` as a stand-alone arm
+      // when the same Aura also has P/T or keywords
+      // (Witness Protection: power: -1 + removes all).
+      s.removesAllAbilities === true,
     {
       message:
-        "an aura static needs power/toughness, keywords, or a restriction",
+        "an aura static needs power/toughness, keywords, a restriction, maxBlockers, or removesAllAbilities",
     },
   );
 
