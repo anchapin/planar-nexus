@@ -24,6 +24,7 @@ import {
   type ForgePointerModel,
 } from "../forge-pointer-model";
 import { forgeSearch } from "../forge-search";
+import { searchTarget } from "../forge-selfplay";
 import { mulberry32 } from "@/ai/simulation/game-simulator";
 import {
   randomAction,
@@ -185,5 +186,67 @@ describe("forgeSearch", () => {
       return out;
     };
     expect(await run()).toEqual(await run());
+  });
+});
+
+describe("search target (manamind#96)", () => {
+  /** A seeded session and prompt whose priority has 2+ candidates. */
+  function priorityGame() {
+    const steps = [6, 14, 22, 30];
+    let priority = 0;
+    for (let seed = 1; seed <= 40; seed++) {
+      for (const n of steps) {
+        const session = midGame(seed, n);
+        const prompt = session.legalChoices();
+        if (prompt.kind === "game_over") continue;
+        if (prompt.kind !== "priority") continue;
+        priority++;
+        // Need a castable action too, so there are 2+ candidates.
+        if (!prompt.options.some((o) => o.kind !== "pass")) continue;
+        return { session, prompt };
+      }
+    }
+    throw new Error(
+      `no castable priority prompt in 160 deals (${priority} pass-only)`,
+    );
+  }
+
+  it("folds the raw prior at c-scale 0, with no uniform floor", async () => {
+    const { session } = priorityGame();
+    const r = await forgeSearch(session, model, {
+      simulations: 8,
+      cScale: 0,
+      seed: 7_000_001,
+    });
+    expect(r.candidates.length).toBeGreaterThan(1);
+    const rawSum = r.candidates.reduce((s, c) => s + (c.raw ?? c.prior), 0);
+    const want = r.candidates.map((c) => (c.raw ?? c.prior) / rawSum);
+    expect(maxDiff(r.target, want)).toBeLessThan(1e-6);
+    expect(r.target.reduce((s, v) => s + v, 0)).toBeCloseTo(1, 5);
+    // The floored search policy is a different distribution.
+    expect(maxDiff(r.target, r.policy)).toBeGreaterThan(1e-4);
+  });
+
+  it("searchTarget folds target over the floored search policy", async () => {
+    const { session, prompt } = priorityGame();
+    const r = await forgeSearch(session, model, {
+      simulations: 8,
+      cScale: 0,
+      seed: 7_000_001,
+    });
+    const oneHot = r.candidates.map((_, i) => (i === 0 ? 1 : 0));
+    const withTarget = searchTarget(prompt, { ...r, target: oneHot });
+    const fallback = searchTarget(prompt, {
+      ...r,
+      target: undefined as unknown as number[],
+    });
+    expect(withTarget).toEqual(
+      searchTarget(prompt, {
+        ...r,
+        policy: oneHot,
+        target: undefined as unknown as number[],
+      }),
+    );
+    expect(withTarget).not.toEqual(fallback);
   });
 });
