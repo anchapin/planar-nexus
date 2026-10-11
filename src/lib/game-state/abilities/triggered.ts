@@ -309,6 +309,31 @@ export function detectTriggeredAbilities(
           ) ?? true;
       }
 
+      // Wave 4.8 follow-up lane 58 (#2614 follow-up): the
+      // triggered-ability gate parallel to `canActivateAbility`'s
+      // lane 54 activated-ability gate. When the source card carries
+      // `losesAbilities: true` (stamped by `refreshAuraBonuses` for
+      // any Aura with `static.removesAllAbilities: true` — Witness
+      // Protection-style "Enchanted creature loses all other
+      // abilities"), skip firing its scripted triggers entirely.
+      // Mirrors the CR 603.2 / 602.2d rule that "loses all other
+      // abilities" removes both activated and triggered abilities
+      // from the enchanted permanent. Mana-ability carve-out is
+      // not applicable to triggered abilities (mana abilities are
+      // activated; CR 605).
+      //
+      // The check runs AFTER the whileCondition gate so a
+      // `losesAbilities` permanent that ALSO has an active
+      // while-condition trigger doesn't burn cycles on the
+      // condition evaluator; the gate runs as a one-time filter.
+      // The check is a no-op when `card.losesAbilities` is
+      // undefined (the v1 default; lane 54's
+      // `refreshAuraBonuses` stamps the flag on the enchanted
+      // target only).
+      if (shouldTrigger && card.losesAbilities === true) {
+        shouldTrigger = false;
+      }
+
       if (shouldTrigger && ability.interveningIf) {
         shouldTrigger = evaluateInterveningIfClause(
           ability.interveningIf,
