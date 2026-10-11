@@ -66,6 +66,7 @@ import { refreshScriptedStatics, staticAffects } from "../keyword-actions/script
 import { getCardColors } from "../evergreen-keywords";
 import { Phase } from "../types";
 import type {
+  CardInstance,
   CardInstanceId,
   GameState,
   PlayerId,
