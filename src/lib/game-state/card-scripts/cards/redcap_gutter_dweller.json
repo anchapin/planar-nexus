@@ -1,0 +1,32 @@
+{
+  "name": "Redcap Gutter-Dweller",
+  "oracle": "As Redcap Gutter-Dweller enters, choose a color. Redcap Gutter-Dweller is the chosen color in addition to its other colors. Whenever Redcap Gutter-Dweller attacks, create a red Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\") Goblins you control have menace as long as Redcap Gutter-Dweller has three or more counters on it.",
+  "enter_choice": {
+    "kind": "color",
+    "text": "As Redcap Gutter-Dweller enters, choose a color."
+  },
+  "statics": [
+    {
+      "text": "Redcap Gutter-Dweller is the chosen color in addition to its other colors.",
+      "affects": {
+        "controller": "you",
+        "add_color": "chosen",
+        "addColorToSelf": true
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "text": "Whenever Redcap Gutter-Dweller attacks, create a red Treasure token.",
+      "event": "attacks",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "CreatePredefinedToken",
+          "token": "treasure",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}
