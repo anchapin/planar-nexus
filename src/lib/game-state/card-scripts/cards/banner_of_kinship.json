@@ -1,0 +1,23 @@
+{
+  "name": "Banner of Kinship",
+  "oracle": "As Banner of Kinship enters, choose a creature type. Banner of Kinship enters with X counters on it, where X is the number of creatures you control of the chosen type. Creatures you control of the chosen type get +1/+1.",
+  "enter_choice": {
+    "kind": "creature_type",
+    "text": "As Banner of Kinship enters, choose a creature type."
+  },
+  "enters_with_counters_per_match": {
+    "subtype": "chosen",
+    "counter": "+1/+1"
+  },
+  "statics": [
+    {
+      "text": "Creatures you control of the chosen type get +1/+1.",
+      "affects": {
+        "controller": "you",
+        "subtype": "chosen"
+      },
+      "power": 1,
+      "toughness": 1
+    }
+  ]
+}

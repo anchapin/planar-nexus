@@ -644,3 +644,51 @@ Wave 4.8 follow-up loop. The Wave 4.8 loop is complete.
 - **Deferred**: the Goblin-menace-when-3+-counters trigger.
   The JSON ships WITHOUT that trigger; the gate is a
   follow-up lane.
+
+## Wave 4.8 follow-up loop done summary (lanes 56–59)
+
+All four priority lanes shipped:
+
+- **Lane 56 — `enter_choice.kind: "color_and_creature_type"`
+  dual compound arm (PR #2730)**. Schema enum extension +
+  `resolveEnterChoice` dispatch + Eaten by Piranhas JSON
+  + 11-case dedicated test.
+- **Lane 57 — Redcap Gutter-Dweller full JSON (PR #2731)**.
+  Chosen-color `enter_choice` + `add_color: "chosen"`
+  static (lane 55 arm) + attacks Treasure-token trigger.
+  Goblin-menace-when-3+-counters deferred (#2614).
+- **Lane 58 — `losesAbilities` triggered-ability gate (PR
+  #2732)**. `detectTriggeredAbilities` skips firing scripted
+  triggers on a card whose `losesAbilities` is true.
+  Mirrors CR 603.2 / 602.2d's "loses all other abilities"
+  removal of triggered abilities. 6-case dedicated test.
+- **Lane 59 — `enters_with_counters_per_match` arm (this
+  lane, #2614)**. New schema field on `CardScriptSchema`;
+  `resolveEnterChoice` reads the field after stamping
+  `chosenCreatureType` and stamps N `+1/+1` counters on the
+  source where N is the count of chosen-subtype creatures
+  the entering card's controller controls. Banner of Kinship
+  JSON ships the chosen-subtype anthem (lane 45) +
+  counter-stamping dual. 9-case dedicated test.
+
+### Net delta from Wave 4.8 follow-up loop
+
+- Test suites: 710 → 714 (+4 — one per shipped lane).
+- Test cases: 13959 → 13992 (+33: lane 56 +12, lane 57 +4,
+  lane 58 +6, lane 59 +9; net of a 2-case net loss from
+  the lane 56 drafted-scripts oracle guard extension).
+- Engine-size budget: schema.ts 2174 (lane 55 baseline) →
+  2237 (+63 lines incl. docstrings across lanes 56, 57
+  schema field, 59 schema field). Under the 2300 ceiling
+  bumped in lane 56.
+- Multi-lane follow-ups still open (Banner of Kinship's
+  real "protection from" effect, Redcap Gutter-Dweller's
+  Goblin-menace-when-3+-counters, "you may" optional
+  trigger, replacement effect for death, casting from
+  exile/graveyard, additional costs, granting triggered
+  abilities, copying a permanent, X-spent-on-other-spells,
+  stun/finality counters, embedded statics on tokens,
+  affinity/cost reduction). All tracked under #2614 or
+  adjacent multi-lane plans.
+
+Wave 4.8 follow-up loop is complete.

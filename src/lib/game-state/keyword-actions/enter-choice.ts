@@ -637,6 +637,57 @@ export function resolveEnterChoice(
       description: `enter_choice kind "${kind}" is not yet supported`,
     };
   }
+  // Wave 4.8 follow-up lane 59 (#2614 follow-up): the
+  // per-card `enters_with_counters_per_match` opt-in
+  // (Banner of Kinship) stamps N counters on the source
+  // itself at ETB. The card must also carry
+  // `enter_choice: { kind: "creature_type" }` (or the
+  // dual `color_and_creature_type` from lane 56) so
+  // `card.chosenCreatureType` is set by the time this
+  // step runs. We compute N by counting matching creatures
+  // the entering card's controller controls on the
+  // battlefield right now (Banner of Kinship's wording:
+  // "enters with X counters on it, where X is the number
+  // of creatures you control of the chosen type").
+  //
+  // The stamp is `instanceCounters`: a per-instance
+  // counter ledger (not the P/T counters zone) that the
+  // counter engine reads. Each +1/+1 counter the engine
+  // has today is a `+1/+1` typed entry; future lanes
+  // (lane 69: stun / finality) will generalize this.
+  //
+  // The check runs AFTER the kind dispatch so a card with
+  // the field but a malformed/unknown `kind` falls
+  // through to the `unsupported` error rather than
+  // silently stamping counters. The check is a no-op when
+  // `script.enters_with_counters_per_match` is undefined
+  // (the v1 default).
+  if (script && script.enters_with_counters_per_match) {
+    const cfg = script.enters_with_counters_per_match;
+    // Read the chosen creature type from the JUST-stamped
+    // card (not the pre-stamp `card` binding), since the
+    // chosen subtype is set in the kind dispatch above.
+    const stamped = updatedCards.get(cardId) ?? card;
+    const targetSubtype =
+      cfg.subtype === "chosen"
+        ? stamped.chosenCreatureType
+        : cfg.subtype;
+    if (targetSubtype) {
+      const n = countCreaturesYouControlOfSubtype(
+        state,
+        card.controllerId,
+        targetSubtype,
+      );
+      if (n > 0) {
+        const withCounters = applyCountersToCard(
+          stamped,
+          cfg.counter,
+          n,
+        );
+        updatedCards.set(cardId, withCounters);
+      }
+    }
+  }
   return {
     success: true,
     state: {
@@ -646,6 +697,77 @@ export function resolveEnterChoice(
       lastModifiedAt: Date.now(),
     },
     description: `Chose ${chosenValue} for ${card.cardData.name}`,
+  };
+}
+
+/**
+ * Count creatures `controller` controls on the battlefield
+ * whose subtypes include `subtype` (Wave 4.8 follow-up
+ * lane 59, #2614 follow-up, Banner of Kinship's "X is the
+ * number of creatures you control of the chosen type").
+ *
+ * The deciding input is the post-`resolveEnterChoice`
+ * `card.chosenCreatureType` (or the literal-string
+ * `cfg.subtype` when not the chosen sentinel). Each
+ * matching creature counts once. The entering card
+ * itself is excluded — Banner of Kinship's oracle
+ * resolves BEFORE this stamp (the chosen-subtype count
+ * is read at the moment of resolution), and the
+ * entering card itself is not on the battlefield yet
+ * at that point.
+ */
+function countCreaturesYouControlOfSubtype(
+  state: GameState,
+  controller: PlayerId,
+  subtype: string,
+): number {
+  const battlefieldKey = `${controller}-battlefield`;
+  let n = 0;
+  for (const card of state.cards.values()) {
+    if (card.controllerId !== controller) continue;
+    if (card.currentZoneKey !== battlefieldKey) continue;
+    const tl = (card.cardData.type_line ?? "").toLowerCase();
+    if (!tl.includes("creature")) continue;
+    // Parse the printed subtypes (the part after the em-dash).
+    const after = (card.cardData.type_line ?? "")
+      .split(/\s+[\u2014-]\s+/)
+      .slice(1)
+      .join(" — ");
+    const printed = (after || "").split(/\s+/).filter(Boolean);
+    // Union with `chosenTypeAdditions` (lane 52 arm) so
+    // the count includes chosen-type additions on the
+    // card itself (Adaptive Automaton-style).
+    const additions = card.chosenTypeAdditions ?? [];
+    const all = [
+      ...printed,
+      ...additions.filter((t) => !printed.includes(t)),
+    ];
+    if (all.includes(subtype)) n += 1;
+  }
+  return n;
+}
+
+/**
+ * Add `amount` counters of `counter` type to `card`'s
+ * per-instance counter ledger (Wave 4.8 follow-up lane 59,
+ * #2614 follow-up, Banner of Kinship). The ledger is a
+ * `Map<string, number>` keyed by counter type. v1 supports
+ * the `+1/+1` counter type; future lanes (lane 69 stun /
+ * finality) generalize this.
+ */
+function applyCountersToCard(
+  card: CardInstance,
+  counter: string,
+  amount: number,
+): CardInstance {
+  const existing = card.instanceCounters ?? {};
+  const prev = existing[counter] ?? 0;
+  return {
+    ...card,
+    instanceCounters: {
+      ...existing,
+      [counter]: prev + amount,
+    },
   };
 }
 

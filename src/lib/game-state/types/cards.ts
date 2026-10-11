@@ -183,6 +183,19 @@ export interface CardInstance {
    */
   chosenColorAdditions?: ("W" | "U" | "B" | "R" | "G")[];
   /**
+   * Wave 4.8 follow-up lane 59 (#2614 follow-up): per-instance
+   * counter ledger keyed by counter type. Banner of Kinship
+   * "enters with X counters on it" stamps N `+1/+1` counters
+   * on the source at ETB; future lanes (lane 69 stun / finality
+   * counters) generalize this to multiple counter types.
+   * Set by `resolveEnterChoice` for `kind: "creature_type"`
+   * (or the dual `color_and_creature_type` from lane 56) when
+   * the script carries `enters_with_counters_per_match`. The
+   * field is left unset on permanents without that opt-in;
+   * default `{}` is acceptable.
+   */
+  instanceCounters?: Record<string, number>;
+  /**
    * Wave 4.7 follow-up lane 48 schema baseline (#2708 phase 1):
    * the chosen card name for a permanent with
    * `enter_choice: { kind: "chosen_name" }` (Sorcerous Spyglass,
