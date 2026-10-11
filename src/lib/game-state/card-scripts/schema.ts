@@ -1880,6 +1880,47 @@ export const CardScriptSchema = z
       .strict()
       .optional(),
     /**
+     * Wave 4.8 follow-up lane 59 (#2614 follow-up): "enters
+     * with N counters, one for each creature you control of
+     * chosen subtype X" (Banner of Kinship). The card
+     * carries an `enter_choice: { kind: "creature_type" }`
+     * (Wave 4.7 follow-up lane 44, #2705a) so the player
+     * picks a creature type on ETB; this field tells the
+     * engine to stamp N counters of `counter` type on the
+     * source itself at ETB, where N is the count of
+     * chosen-subtype creatures the entering card's
+     * controller controls AT THE MOMENT the choice
+     * resolves (Banner of Kinship's "enters with X
+     * counters on it, where X is the number of creatures
+     * you control of the chosen type").
+     *
+     * `subtype: "chosen"` reads `card.chosenCreatureType`
+     * (set by `resolveEnterChoice` for `kind:
+     * "creature_type"`). `subtype: "<string>"` would be
+     * a literal creature type — Banner of Kinship uses
+     * the chosen sentinel. `counter` is the counter type
+     * (Banner of Kinship uses `"+1/+1"`; +1/+1 is the
+     * only counter type the engine models today).
+     *
+     * The field is paired with `enter_choice` — a card
+     * that opts into the counter-stamping arm MUST also
+     * have `enter_choice: { kind: "creature_type" }` so
+     * `card.chosenCreatureType` is set at ETB. The
+     * engine stamps the counters in
+     * `resolveEnterChoice` (post-stamp, before the
+     * waiting choice clears). The field is the small-
+     * scope per-card opt-in (mirrors lane 52's
+     * `addCreatureTypeToSelf` + lane 55's
+     * `addColorToSelf` flags).
+     */
+    enters_with_counters_per_match: z
+      .object({
+        subtype: z.union([z.string().min(1), z.literal("chosen")]),
+        counter: z.string().min(1),
+      })
+      .strict()
+      .optional(),
+    /**
      * Flashback (CR 702.143) — an alternative cost: "you may cast this card
      * from your graveyard for its flashback cost. If you do, exile it instead
      * of putting it anywhere else any time it would leave the stack." Only
