@@ -6624,13 +6624,19 @@ describe("scripted cycling (#2566)", () => {
     cycling: { cost: "{2}", variant: "typecycling", type: "Wizard" },
   };
 
-  beforeAll(() =>
-    registerCardScripts([
-      ...RAW_CARD_SCRIPTS,
-      hillGigasScript,
-      wizardCyclerScript,
-    ]),
-  );
+  // The full registry this describe runs against. The register/restore
+  // tests below replace the registry mid-describe, so their `finally`
+  // blocks must restore THIS set, not the raw index: under jest
+  // --randomize their restore can run before the fixture tests above,
+  // which otherwise lose hillGigas/wizardCycler and fall back to
+  // oracle-text parsing (0 abilities).
+  const withCyclingScripts = [
+    ...RAW_CARD_SCRIPTS,
+    hillGigasScript,
+    wizardCyclerScript,
+  ];
+
+  beforeAll(() => registerCardScripts(withCyclingScripts));
   afterAll(() => registerCardScripts(RAW_CARD_SCRIPTS));
 
   it("getActivatedAbilities synthesizes a Cycling {cost} ability", () => {
@@ -6693,7 +6699,7 @@ describe("scripted cycling (#2566)", () => {
       const effects = abilities.map((a) => a.effect).sort();
       expect(effects).toEqual(["Cycling {2}.", "Draw a card."]);
     } finally {
-      registerCardScripts(RAW_CARD_SCRIPTS);
+      registerCardScripts(withCyclingScripts);
     }
   });
 
@@ -6760,7 +6766,7 @@ describe("scripted cycling (#2566)", () => {
       // hand may contain other cards, but the cycler isn't in it).
       expect(postHand).not.toContain(cardId);
     } finally {
-      registerCardScripts(RAW_CARD_SCRIPTS);
+      registerCardScripts(withCyclingScripts);
     }
   });
 });
@@ -7082,7 +7088,13 @@ describe("scripted end-step and life-gain triggers (#2594 follow-up)", () => {
         event: "lifeGain",
         subject: "self",
         effects: [
-          { op: "PutCounters", counter: "+1/+1", amount: 1, target: "self", use_source_power: false },
+          {
+            op: "PutCounters",
+            counter: "+1/+1",
+            amount: 1,
+            target: "self",
+            use_source_power: false,
+          },
         ],
       },
     ],
@@ -9167,7 +9179,9 @@ describe("Scrawling Crawler: each player draws a card in upkeep (#2594 lane 25)"
     );
 
   beforeEach(() => {
-    state = startGame(createInitialGameState(["Player1", "Player2"], 20, false));
+    state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
     [p1, p2] = Array.from(state.players.keys());
     state = put(state, p1, "crawler", {
       id: "mock-Scrawling Crawler",
@@ -9264,9 +9278,7 @@ describe("Crypt Feaster: threshold intervening-if on attacks trigger (#2594 lane
     );
     const [p1] = Array.from(state.players.keys());
     const cluase = "there are seven or more cards in your graveyard";
-    expect(
-      evaluateInterveningIfClause(cluase, state, p1),
-    ).toBe(false);
+    expect(evaluateInterveningIfClause(cluase, state, p1)).toBe(false);
   });
 
   it("attack trigger is suppressed when the graveyard has 6 cards", () => {
@@ -9308,11 +9320,12 @@ describe("Crypt Feaster: threshold intervening-if on attacks trigger (#2594 lane
   });
 });
 
-describe("Raise the Past: count:\"all\" graveyard sweep (#2594 lane 27)", () => {
-  it("validates count:\"all\" in ReturnFromZone schema", () => {
+describe('Raise the Past: count:"all" graveyard sweep (#2594 lane 27)', () => {
+  it('validates count:"all" in ReturnFromZone schema', () => {
     const parsed = CardScriptSchema.safeParse({
       name: "Raise the Past",
-      oracle: "Return all creature cards with mana value 2 or less from your graveyard to the battlefield.",
+      oracle:
+        "Return all creature cards with mana value 2 or less from your graveyard to the battlefield.",
       spell: [
         {
           op: "ReturnFromZone",
@@ -9326,7 +9339,7 @@ describe("Raise the Past: count:\"all\" graveyard sweep (#2594 lane 27)", () => 
     expect(parsed.success).toBe(true);
   });
 
-  it("count:\"all\" is not a targeted effect (script-guards gate)", () => {
+  it('count:"all" is not a targeted effect (script-guards gate)', () => {
     const parsed = CardScriptSchema.parse({
       name: "Raise the Past",
       oracle: "x",
@@ -9363,17 +9376,36 @@ describe("Raise the Past: count:\"all\" graveyard sweep (#2594 lane 27)", () => 
     expect(isTargetedEffect(effect)).toBe(true);
   });
 
-  it("count:\"all\" returns every matching creature on resolution", () => {
+  it('count:"all" returns every matching creature on resolution', () => {
     let state = startGame(
       createInitialGameState(["Player1", "Player2"], 20, false),
     );
     const [p1] = Array.from(state.players.keys());
     // Put 3 creatures in p1's graveyard (all MV ≤ 2): a Grizzly Bears,
     // a Skyhunter Skirmisher, and an Elvish Warrior (all MV 2).
-    state = put(state, p1, "g1", card("Grizzly Bears", "Creature — Bear", [2, 2]), "graveyard");
-    state = put(state, p1, "g2", card("Skyhunter Skirmisher", "Creature — Cat", [2, 2]), "graveyard");
-    state = put(state, p1, "g3", card("Elvish Warrior", "Creature — Elf", [2, 2]), "graveyard");
-    const beforeBattlefield = state.zones.get(`${p1}-battlefield`)?.cardIds.length ?? 0;
+    state = put(
+      state,
+      p1,
+      "g1",
+      card("Grizzly Bears", "Creature — Bear", [2, 2]),
+      "graveyard",
+    );
+    state = put(
+      state,
+      p1,
+      "g2",
+      card("Skyhunter Skirmisher", "Creature — Cat", [2, 2]),
+      "graveyard",
+    );
+    state = put(
+      state,
+      p1,
+      "g3",
+      card("Elvish Warrior", "Creature — Elf", [2, 2]),
+      "graveyard",
+    );
+    const beforeBattlefield =
+      state.zones.get(`${p1}-battlefield`)?.cardIds.length ?? 0;
     const beforeYard = state.zones.get(`${p1}-graveyard`)?.cardIds.length ?? 0;
 
     const after = resolveScriptedEffects(
@@ -9394,8 +9426,12 @@ describe("Raise the Past: count:\"all\" graveyard sweep (#2594 lane 27)", () => 
       } as unknown as StackObject,
     );
 
-    expect(after.zones.get(`${p1}-battlefield`)?.cardIds.length).toBe(beforeBattlefield + 3);
-    expect(after.zones.get(`${p1}-graveyard`)?.cardIds.length).toBe(beforeYard - 3);
+    expect(after.zones.get(`${p1}-battlefield`)?.cardIds.length).toBe(
+      beforeBattlefield + 3,
+    );
+    expect(after.zones.get(`${p1}-graveyard`)?.cardIds.length).toBe(
+      beforeYard - 3,
+    );
   });
 });
 
@@ -9429,9 +9465,9 @@ describe("Cackling Prowler: morbid intervening-if on phaseEnds trigger (#2594 la
   });
 
   it("forwards intervening_if to ParsedTriggeredAbility", () => {
-    const abilities = getScriptedTriggeredAbilities(
-      { name: "Cackling Prowler" } as unknown as ScryfallCard,
-    );
+    const abilities = getScriptedTriggeredAbilities({
+      name: "Cackling Prowler",
+    } as unknown as ScryfallCard);
     expect(abilities).toBeDefined();
     expect(abilities![0].interveningIf).toBe("a creature died this turn");
   });
@@ -9546,9 +9582,9 @@ describe("Skyship Buccaneer: raid intervening-if on phaseEnds trigger (#2594 lan
   });
 
   it("forwards intervening_if to ParsedTriggeredAbility", () => {
-    const abilities = getScriptedTriggeredAbilities(
-      { name: "Skyship Buccaneer" } as unknown as ScryfallCard,
-    );
+    const abilities = getScriptedTriggeredAbilities({
+      name: "Skyship Buccaneer",
+    } as unknown as ScryfallCard);
     expect(abilities).toBeDefined();
     expect(abilities![0].interveningIf).toBe("you attacked this turn");
   });
@@ -9786,12 +9822,7 @@ describe("Knight of Grace: literal color anthem (#2594 lane 30)", () => {
       s,
       p1,
       "esper",
-      coloredCard(
-        "Esper",
-        "Creature — Human Wizard",
-        [1, 1],
-        ["W", "U", "B"],
-      ),
+      coloredCard("Esper", "Creature — Human Wizard", [1, 1], ["W", "U", "B"]),
     );
     s = refreshScriptedStatics(s);
     expect(pt(s, "esper")).toEqual([2, 2]);
