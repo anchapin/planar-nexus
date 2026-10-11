@@ -111,8 +111,19 @@ const SCOPES = [
     // remaining lanes 55 (add_color static) + a small
     // buffer. Per the Wave 4.8 handoff's process note:
     // "bump the budget again rather than fragmenting
-    // the chosen-X arm family."
-    budgetLines: 2200,
+    // the chosen-X arm family".
+    //
+    // Wave 4.8 follow-up lane 56 (#2614 follow-up) extends
+    // the enter_choice schema enum with
+    // `color_and_creature_type` (compound dual-choice arm
+    // for Eaten by Piranhas). schema.ts landed at 2196.
+    // Bumping 2200 → 2300 to give lanes 57
+    // (Redcap Gutter-Dweller literal-form / counter-based
+    // trigger gate follow-up), 58 (triggered-ability
+    // suppression for removes_all_abilities), and 59
+    // (Banner of Kinship counters-per-subtype arm) room
+    // to land without fragmenting the chosen-X family.
+    budgetLines: 2300,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

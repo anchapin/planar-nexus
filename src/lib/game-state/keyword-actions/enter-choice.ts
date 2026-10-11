@@ -91,7 +91,12 @@ function isCuratedCreatureType(v: unknown): v is CuratedCreatureType {
  *   `choose_cards` (not the value-list path here).
  */
 export function enterChoiceOptionsForKind(
-  kind: "color" | "creature_type" | "player" | "chosen_name",
+  kind:
+    | "color"
+    | "creature_type"
+    | "player"
+    | "chosen_name"
+    | "color_and_creature_type",
 ): readonly string[] {
   switch (kind) {
     case "color":
@@ -107,7 +112,48 @@ export function enterChoiceOptionsForKind(
       // #2708 phase 2; surfaces a `choose_cards` waitingChoice
       // separately. No value-list options today.
       return [];
+    case "color_and_creature_type": {
+      // Wave 4.8 follow-up lane 56 (#2614 follow-up). The
+      // cross-product of color × creature type — each option
+      // value is encoded as `"<color>|<type>"` so a single
+      // resolver call writes BOTH `chosenColor` and
+      // `chosenCreatureType` from one user pick. The label is
+      // human-readable (`"White — Soldier"`).
+      const options: string[] = [];
+      for (const c of COLOR_LETTERS) {
+        for (const t of CURATED_CREATURE_TYPES) {
+          options.push(`${c}|${t}`);
+        }
+      }
+      return options;
+    }
   }
+}
+
+/** Decoded shape of a `"<color>|<type>"` option for the dual kind. */
+export interface DualColorCreatureTypeChoice {
+  color: ColorLetter;
+  creatureType: CuratedCreatureType;
+}
+
+/**
+ * Decode a `"<color>|<type>"` option value produced by the
+ * `color_and_creature_type` waitingChoice (Wave 4.8 follow-up
+ * lane 56, #2614 follow-up). Returns null when the value
+ * doesn't match the encoded shape or fails the curated
+ * creature-type / color-letter validation. The resolver uses
+ * this to write both `chosenColor` and `chosenCreatureType`
+ * from one resolver call.
+ */
+export function decodeDualColorCreatureTypeChoice(
+  value: string,
+): DualColorCreatureTypeChoice | null {
+  const parts = value.split("|");
+  if (parts.length !== 2) return null;
+  const [c, t] = parts;
+  if (!isColorLetter(c)) return null;
+  if (!isCuratedCreatureType(t)) return null;
+  return { color: c, creatureType: t };
 }
 
 /**
@@ -123,6 +169,16 @@ export function enterChoiceOptionsForKind(
  *  - `"chosen_name"` (Wave 4.7 phase 2 lane 49, #2708 phase 2a):
  *    Sorcerous Spyglass pattern — surfaces a `choose_cards`
  *    waitingChoice pointing at an opponent's hand.
+ *  - `"color_and_creature_type"` (Wave 4.8 follow-up lane 56,
+ *    #2614 follow-up): compound kind — "as this enters,
+ *    choose a color AND a creature type" (Eaten by Piranhas).
+ *    Surfaces ONE value-list waitingChoice with the
+ *    cross-product of color × creature type (each option
+ *    value is `"<color>|<type>"`); the resolver writes BOTH
+ *    `chosenColor` and `chosenCreatureType` from one call so
+ *    downstream unions (chosen-color anthem lane 40,
+ *    chosen-type anthem lane 45, chosen-type addition lane
+ *    52, chosen-color addition lane 55) pick up both halves.
  *
  * The `"player"` arm is documented-only and would crash if a card's
  * script ever opted in.
@@ -135,7 +191,8 @@ export function hasEnterChoice(card: CardInstance): boolean {
   return (
     ec.kind === "color" ||
     ec.kind === "creature_type" ||
-    ec.kind === "chosen_name"
+    ec.kind === "chosen_name" ||
+    ec.kind === "color_and_creature_type"
   );
 }
 
@@ -150,6 +207,12 @@ export function hasEnterChoice(card: CardInstance): boolean {
  *    the opponent's hand (Wave 4.7 phase 2 lane 49, #2708 phase
  *    2a). The chosen card stays in the opponent's hand; resolution
  *    stamps `card.chosenCardName`.
+ *  - `"color_and_creature_type"` → `ENTER_CHOICE_TYPE`
+ *    (Wave 4.8 follow-up lane 56, #2614 follow-up): ONE value-list
+ *    waitingChoice with the cross-product of color × creature
+ *    type (each option value is `"<color>|<type>"`, label is
+ *    `"<color> — <type>"`). The resolver writes BOTH
+ *    `chosenColor` and `chosenCreatureType` from one call.
  *
  * `playerId` is always the entering card's controller — for
  * chosen_name, this is the controller who picks a card name from
@@ -175,11 +238,28 @@ export function createEnterChoiceWaitingChoice(
     return createChosenNameWaitingChoice(state, cardId);
   }
   const options = enterChoiceOptionsForKind(kind);
-  const choices: ChoiceOption[] = options.map((opt) => ({
-    label: opt,
-    value: opt,
-    isValid: true,
-  }));
+  // Wave 4.8 follow-up lane 56: the dual
+  // `color_and_creature_type` kind labels each option as
+  // `"<color> — <type>"` (human-readable form) while keeping
+  // the encoded `"<color>|<type>"` value so the resolver can
+  // split it deterministically. Other kinds render their value
+  // as-is.
+  const choices: ChoiceOption[] =
+    kind === "color_and_creature_type"
+      ? options.map((opt) => {
+          const decoded = decodeDualColorCreatureTypeChoice(opt);
+          // `enterChoiceOptionsForKind` always emits well-formed
+          // `"<color>|<type>"` strings so the decode is safe.
+          const label = decoded
+            ? `${decoded.color} — ${decoded.creatureType}`
+            : opt;
+          return { label, value: opt, isValid: true };
+        })
+      : options.map((opt) => ({
+          label: opt,
+          value: opt,
+          isValid: true,
+        }));
   const name = card.cardData.name || "this permanent";
   // Prompt phrasing follows the script text verbatim when present;
   // fall back to a kind-appropriate sentence for synthetic tests.
@@ -199,7 +279,12 @@ export function createEnterChoiceWaitingChoice(
 
 function defaultPrompt(
   name: string,
-  kind: "color" | "creature_type" | "player" | "chosen_name",
+  kind:
+    | "color"
+    | "creature_type"
+    | "player"
+    | "chosen_name"
+    | "color_and_creature_type",
 ): string {
   switch (kind) {
     case "color":
@@ -210,6 +295,8 @@ function defaultPrompt(
       return `As ${name} enters, choose a player.`;
     case "chosen_name":
       return `As ${name} enters, choose a card name.`;
+    case "color_and_creature_type":
+      return `As ${name} enters, choose a color and a creature type.`;
   }
 }
 
@@ -436,6 +523,13 @@ export interface EnterChoiceResolution {
  *   with one of the curated types. Downstream statics (lane 45)
  *   substitute the choice via the `chosen` sentinel on
  *   `affects.subtype`.
+ * - `"color_and_creature_type"` (Wave 4.8 follow-up lane 56,
+ *   #2614 follow-up) → splits `chosenValue` into `<color>` +
+ *   `<type>` (encoded as `"<color>|<type>"` by
+ *   {@link enterChoiceOptionsForKind}) and stamps BOTH
+ *   `card.chosenColor` AND `card.chosenCreatureType` from one
+ *   resolver call so downstream unions (lane 40, 45, 52, 55)
+ *   pick up both halves.
  */
 export function resolveEnterChoice(
   state: GameState,
@@ -506,6 +600,28 @@ export function resolveEnterChoice(
       };
     }
     updatedCards.set(cardId, { ...card, chosenCreatureType: chosenValue });
+  } else if (kind === "color_and_creature_type") {
+    // Wave 4.8 follow-up lane 56 (#2614 follow-up): compound
+    // kind writes BOTH chosenColor and chosenCreatureType from
+    // one resolver call. The option value is encoded as
+    // `"<color>|<type>"`; we decode it and validate both halves
+    // before stamping the card. A malformed value (e.g.
+    // `"invalid"` or `"W|Unknown"`) is treated the same as an
+    // invalid color / type pick.
+    const decoded = decodeDualColorCreatureTypeChoice(chosenValue);
+    if (!decoded) {
+      return {
+        success: false,
+        state,
+        description:
+          "Invalid dual enter choice value (expected <W|U|B|R|G>|<curated creature type>)",
+      };
+    }
+    updatedCards.set(cardId, {
+      ...card,
+      chosenColor: decoded.color,
+      chosenCreatureType: decoded.creatureType,
+    });
   } else {
     // "player" is documented-only (#2705); "chosen_name"
     // (Wave 4.7 phase 2 lane 49, #2708 phase 2a) uses a separate
@@ -557,7 +673,14 @@ function resolveCardIdForChoice(
     const choicePending =
       (kind === "color" && card.chosenColor === null) ||
       (kind === "creature_type" && card.chosenCreatureType === null) ||
-      (kind === "chosen_name" && card.chosenCardName === null);
+      (kind === "chosen_name" && card.chosenCardName === null) ||
+      // Wave 4.8 follow-up lane 56 (#2614 follow-up): the dual
+      // compound kind stamps both fields from one call. The
+      // card is "pending" until either field is set (the
+      // resolver writes both at once, so either being null is
+      // equivalent to the choice not having resolved).
+      (kind === "color_and_creature_type" &&
+        (card.chosenColor === null || card.chosenCreatureType === null));
     if (choicePending) return card.id;
   }
   return null;
