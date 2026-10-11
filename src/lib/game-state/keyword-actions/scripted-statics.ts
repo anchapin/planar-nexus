@@ -31,7 +31,21 @@ function isCreature(card: CardInstance): boolean {
 
 function subtypesOf(card: CardInstance): string[] {
   const after = (card.cardData.type_line ?? "").split(/\s+[\u2014-]\s+/)[1];
-  return (after ?? "").split(/\s+/).filter(Boolean);
+  const printed = (after ?? "").split(/\s+/).filter(Boolean);
+  // Wave 4.8 lane 52 (#2614 follow-up): union the
+  // printed subtypes with the per-instance
+  // `chosenTypeAdditions` stamped by
+  // `refreshScriptedStatics`. This lets the chosen-type anthem
+  // (lane 45) — which calls `subtypesOf(target)` — see the
+  // chosen-type addition on the source itself, so the
+  // Adaptive Automaton anthem path (the source matches
+  // itself via `affects.subtype: "chosen"`) reads back the
+  // chosenCreatureType that was just added. The deduplication
+  // is order-preserving via Set's insertion order so
+  // printed subtypes (the printed type line) come first.
+  const additions = card.chosenTypeAdditions ?? [];
+  if (additions.length === 0) return printed;
+  return [...printed, ...additions.filter((t) => !printed.includes(t))];
 }
 
 const CARD_TYPES = [
@@ -136,6 +150,28 @@ export function staticAffects(
     if (!source.chosenCardName) return false;
     return target.cardData.name === source.chosenCardName;
   }
+  // Wave 4.8 lane 52 (#2614 follow-up): the chosen-type addition
+  // static. The source adds the named creature type (or its
+  // `chosenCreatureType`) to its own subtypes while on the
+  // battlefield (Adaptive Automaton's "is the chosen type in
+  // addition to its other types" half). v1 is self-only — the
+  // static returns true iff `source === target` (the source
+  // adds to itself). The Aura-style "enchanted creature is the
+  // chosen type" generalization rides lane 54. When the
+  // sentinel `"chosen"` is in use the source also needs a
+  // resolved `chosenCreatureType`; otherwise the static is
+  // inert (the player hasn't answered the enter choice yet).
+  // The actual growth of `source.chosenTypeAdditions` is
+  // handled by `refreshScriptedStatics` (this branch only
+  // computes applicability).
+  if (stat.affects.add_creature_type !== undefined) {
+    if (stat.affects.addCreatureTypeToSelf !== true) return false;
+    if (source.id !== target.id) return false;
+    if (stat.affects.add_creature_type === "chosen") {
+      return source.chosenCreatureType !== null;
+    }
+    return true;
+  }
   if (!isCreature(target)) return false;
   const { controller, other, self, subtype, color } = stat.affects;
   if (other && source.id === target.id) return false;
@@ -200,8 +236,9 @@ export function staticAffects(
 }
 
 /**
- * Recompute `scriptStaticPT` and `scriptStaticKeywords` for every card.
- * Returns the same state object when nothing changed.
+ * Recompute `scriptStaticPT`, `scriptStaticKeywords`, and
+ * `chosenTypeAdditions` for every card. Returns the same state
+ * object when nothing changed.
  */
 export function refreshScriptedStatics(input: GameState): GameState {
   const state = restoreAnimatedOffBattlefield(returnEarthbentLands(input));
@@ -214,13 +251,41 @@ export function refreshScriptedStatics(input: GameState): GameState {
 
   const pt = new Map<string, { power: number; toughness: number }>();
   const kws = new Map<string, string[]>();
+  // Wave 4.8 lane 52 (#2614 follow-up): per-card subtype
+  // additions stamped by `affects.add_creature_type` statics.
+  // The chosen-type anthem (lane 45) reads `subtypesOf(target)`
+  // which unions these into the read at the next refresh pass
+  // — so Adaptive Automaton's anthem path can match the
+  // source against itself via the chosen creature type.
+  const typeAdditions = new Map<string, string[]>();
   for (const target of onField) {
     let power = 0;
     let toughness = 0;
     const granted = new Set<string>();
+    const additions = new Set<string>();
     for (const { card, statics } of sources) {
       for (const stat of statics) {
         if (!staticAffects(stat, card, target)) continue;
+        // Wave 4.8 lane 52 (#2614 follow-up): grow the
+        // target's `chosenTypeAdditions` if this static
+        // is a chosen-type addition and the source's
+        // chosen creature type is resolved. The addition
+        // is a separate write from P/T and keywords
+        // because it is a type-line overlay, not a P/T
+        // or keyword grant — it is read by
+        // `subtypesOf(target)` so other statics (the
+        // chosen-type anthem in lane 45) can match
+        // against the addition at the next pass.
+        if (
+          stat.affects.add_creature_type !== undefined &&
+          stat.affects.addCreatureTypeToSelf === true
+        ) {
+          const addition =
+            stat.affects.add_creature_type === "chosen"
+              ? card.chosenCreatureType
+              : stat.affects.add_creature_type;
+          if (addition) additions.add(addition);
+        }
         if (stat.X) {
           // #2594 follow-up, lane 36: when `X` is set, the count
           // overrides the integer `power`/`toughness` for this
@@ -246,26 +311,48 @@ export function refreshScriptedStatics(input: GameState): GameState {
     }
     if (power || toughness) pt.set(target.id, { power, toughness });
     if (granted.size > 0) kws.set(target.id, [...granted].sort());
+    if (additions.size > 0)
+      typeAdditions.set(target.id, [...additions].sort());
   }
 
   let cards: GameState["cards"] | null = null;
   for (const [cardId, card] of state.cards) {
     const nextPT = pt.get(cardId);
     const nextKw = kws.get(cardId) ?? [];
+    const nextAdds = typeAdditions.get(cardId);
     const prevKw = card.scriptStaticKeywords ?? [];
+    const prevAdds = card.chosenTypeAdditions ?? [];
     const samePT =
       (card.scriptStaticPT?.power ?? 0) === (nextPT?.power ?? 0) &&
       (card.scriptStaticPT?.toughness ?? 0) === (nextPT?.toughness ?? 0);
     const sameKw =
       prevKw.length === nextKw.length &&
       prevKw.every((k, i) => k === nextKw[i]);
-    if (samePT && sameKw) continue;
+    // Wave 4.8 lane 52 (#2614 follow-up): chosen-type
+    // additions are part of the change-detection diff so
+    // the refresh pass re-stamps the card only when the
+    // additions actually changed. Compare sorted arrays
+    // element-by-element.
+    const sameAdds =
+      (nextAdds ? nextAdds.length : 0) === prevAdds.length &&
+      (nextAdds ?? []).every((t, i) => t === prevAdds[i]);
+    if (samePT && sameKw && sameAdds) continue;
     cards ??= new Map(state.cards);
     const updated = { ...card };
     if (nextPT) updated.scriptStaticPT = nextPT;
     else delete updated.scriptStaticPT;
     if (nextKw.length > 0) updated.scriptStaticKeywords = nextKw;
     else delete updated.scriptStaticKeywords;
+    // Wave 4.8 lane 52: clear `chosenTypeAdditions` when the
+    // source has left the battlefield (no static currently
+    // grants the addition — the source card is no longer
+    // in `sources`). The local `subtypesOf` helper unions
+    // these with the printed type line; absent means the
+    // addition drops, which matches the natural
+    // "battlefield-zone-only" semantics.
+    if (nextAdds && nextAdds.length > 0)
+      updated.chosenTypeAdditions = nextAdds;
+    else delete updated.chosenTypeAdditions;
     cards.set(cardId, updated);
   }
   return cards ? { ...state, cards } : state;
