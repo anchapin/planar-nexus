@@ -1,27 +1,39 @@
 /**
- * Adaptive Automaton — chosen creature-type anthem (Wave 4.7
- * follow-up lane 45, #2705b, #2594 follow-up).
+ * Adaptive Automaton — full oracle (Wave 4.8 lane 53, #2594
+ * follow-up, #2614 plan work).
  *
- * Partial script: Adaptive Automaton's full oracle is
+ * Adaptive Automaton's full oracle:
  *
  *   As Adaptive Automaton enters, choose a creature type.
  *   Adaptive Automaton is the chosen type in addition to its
  *   other types.
  *   Other creatures you control of the chosen type get +1/+1.
  *
- * This lane ships the anthem half (the first and third
- * sentences). The "is the chosen type in addition to its other
- * types" half is a creature-type-changing static that the
- * engine can't model today (the drafter list flags
- * "change creature types" — Eaten by Piranhas,
- * Infernal Vessel — as a multi-lane blocker; #2614). A
- * follow-up lane will add the type-change static.
+ * Lane 45 (Wave 4.7 follow-up, PR #2715) shipped the anthem
+ * half — "other creatures you control of the chosen type get
+ * +1/+1" — via `affects.subtype: "chosen"`. Lane 52 (Wave 4.8,
+ * PR #2723) shipped the engine arm for the type-change half
+ * via `affects.add_creature_type: "chosen"` +
+ * `addCreatureTypeToSelf: true`. This lane (lane 53) drops
+ * the "anthem only" limitation comment and ships the full
+ * oracle JSON, with the type-change static alongside the
+ * anthem.
  *
- * Mirrors the Wave 4.7 lane 40 (Heraldic Banner) split, which
- * shipped the chosen-color anthem without the chosen-color
- * AddMana (that rode lane 41). For Adaptive Automaton the
- * anthem rides lane 45 (#2705b) and the type-change static
- * would ride a future lane.
+ * End-to-end coverage this lane adds to the existing lane 45
+ * tests: with the chosen type resolved, Adaptive Automaton's
+ * own `subtypesOf` includes the chosen type (the type-change
+ * half kicked in), so the anthem's `subtype === "chosen"`
+ * substitution matches the source against itself at the next
+ * refresh pass — but the anthem uses `other: true` so the
+ * source is NOT buffed by its own anthem (the type-change
+ * half is visible to OTHER statics, not a self-buff).
+ *
+ * The chosen-eviction-at-tombstone problem is covered by the
+ * lane 52 engine test
+ * (`add-creature-type-static.test.ts#clears chosenTypeAdditions
+ * when the source leaves the battlefield`); the integration
+ * here just verifies the two halves work together through the
+ * real Adaptive Automaton JSON.
  */
 import { describe, it, expect, beforeEach } from "@jest/globals";
 import { castSpell, resolveTopOfStack } from "../spell-casting";
@@ -185,7 +197,9 @@ describe("Adaptive Automaton — chosen creature-type anthem (Wave 4.7 follow-up
       kind: "creature_type",
       text: "As Adaptive Automaton enters, choose a creature type.",
     });
-    const stat = script!.statics?.[0];
+    // Wave 4.8 lane 53 added the type-change static at
+    // index 0; the anthem half (lane 45) moved to index 1.
+    const stat = script!.statics?.[1];
     expect(stat).toBeDefined();
     expect((stat as { affects?: { subtype?: string } }).affects?.subtype).toBe(
       "chosen",
@@ -296,5 +310,107 @@ describe("Adaptive Automaton — chosen creature-type anthem (Wave 4.7 follow-up
     expect(r.success).toBe(true);
     const refreshed = refreshScriptedStatics(r.state);
     expect(pt(refreshed, soldierId)).toEqual({ power: 1, toughness: 1 });
+  });
+
+  describe("Wave 4.8 lane 53 — full-oracle JSON", () => {
+    // Lane 53 drops the "anthem only" limitation comment
+    // (added in lane 45) and ships the real
+    // `adaptive_automaton.json` with both halves: the
+    // chosen-type anthem (`affects.subtype: "chosen"`) AND
+    // the chosen-type addition (`affects.add_creature_type:
+    // "chosen"` + `addCreatureTypeToSelf: true`). The
+    // anthem-half behaviour was already covered by lane 45
+    // (the eight tests above); the additions below verify
+    // the type-change half works through the real JSON.
+
+    it("registers BOTH the type-change static AND the anthem on the script", () => {
+      const script = getCardScript("Adaptive Automaton");
+      expect(script).toBeDefined();
+      expect(script!.statics).toHaveLength(2);
+      // Index 0 is the type-change static (no P/T — a
+      // meta-static per lane 52's allow-list). The order
+      // matches the oracle text: "is the chosen type in
+      // addition to its other types" comes before "other
+      // creatures ... get +1/+1".
+      const typeChange = script!.statics![0];
+      expect(typeChange.affects?.add_creature_type).toBe("chosen");
+      expect(typeChange.affects?.addCreatureTypeToSelf).toBe(true);
+      // Index 1 is the anthem (lane 45).
+      const anthem = script!.statics![1];
+      expect(anthem.affects?.subtype).toBe("chosen");
+      expect(anthem.affects?.other).toBe(true);
+      expect(anthem.power).toBe(1);
+      expect(anthem.toughness).toBe(1);
+    });
+
+    it("after the enter choice resolves, Adaptive Automaton's chosenTypeAdditions includes the chosen type", () => {
+      const automatonId = put(state, alice, "battlefield", adaptiveAutomaton);
+      const withChoice = withEnterChoice(state, automatonId, alice);
+      const r = resolveEnterChoice(withChoice, alice, "Soldier");
+      expect(r.success).toBe(true);
+      const after = refreshScriptedStatics(r.state);
+      const updated = after.cards.get(automatonId)!;
+      // The real JSON's type-change static (index 0) now
+      // drives `chosenTypeAdditions` on the source itself.
+      expect(updated.chosenTypeAdditions).toEqual(["Soldier"]);
+    });
+
+    it("the type-change half does NOT grant P/T or keywords to Adaptive Automaton itself", () => {
+      // The full-oracle JSON's anthem is `other: true` so
+      // it never self-buffs. The type-change static
+      // carries no P/T or keywords. After resolving
+      // Soldier and refreshing, the Automaton's
+      // scriptStaticPT and scriptStaticKeywords are both
+      // empty.
+      const automatonId = put(state, alice, "battlefield", adaptiveAutomaton);
+      const withChoice = withEnterChoice(state, automatonId, alice);
+      const r = resolveEnterChoice(withChoice, alice, "Soldier");
+      const after = refreshScriptedStatics(r.state);
+      const updated = after.cards.get(automatonId)!;
+      expect(pt(after, automatonId)).toBeUndefined();
+      expect(updated.scriptStaticKeywords ?? []).toEqual([]);
+    });
+
+    it("a Soldier you control still gets the anthem +1/+1 (lane 45 regression check)", () => {
+      // Lane 53 must not regress the lane 45 anthem path.
+      const automatonId = put(state, alice, "battlefield", adaptiveAutomaton);
+      const soldierId = put(state, alice, "battlefield", soldier);
+      const withChoice = withEnterChoice(state, automatonId, alice);
+      const r = resolveEnterChoice(withChoice, alice, "Soldier");
+      const after = refreshScriptedStatics(r.state);
+      expect(pt(after, soldierId)).toEqual({ power: 1, toughness: 1 });
+    });
+
+    it("with two Adaptive Automatons choosing DIFFERENT types, each anthem is independent", () => {
+      // The first chooses Soldier — buffs your Soldier.
+      // The second chooses Wizard — does NOT buff your
+      // Soldier (still the Soldier's only anthem source
+      // is the first Automaton). The second's Wizard
+      // anthem doesn't buff your Soldier either.
+      const a1Id = put(state, alice, "battlefield", adaptiveAutomaton);
+      const a2Id = put(state, alice, "battlefield", adaptiveAutomaton);
+      const soldierId = put(state, alice, "battlefield", soldier);
+      const wizardId = put(state, alice, "battlefield", wizard);
+      // Resolve a1 → Soldier.
+      let s = resolveEnterChoice(
+        { ...state, waitingChoice: enterChoiceFor(a1Id, alice) },
+        alice,
+        "Soldier",
+      ).state;
+      // Resolve a2 → Wizard.
+      s = resolveEnterChoice(
+        { ...s, waitingChoice: enterChoiceFor(a2Id, alice) },
+        alice,
+        "Wizard",
+      ).state;
+      const after = refreshScriptedStatics(s);
+      expect(after.cards.get(a1Id)?.chosenTypeAdditions).toEqual(["Soldier"]);
+      expect(after.cards.get(a2Id)?.chosenTypeAdditions).toEqual(["Wizard"]);
+      // Soldier gets +1/+1 from a1 (anthem half, +1 source),
+      // nothing from a2 (which targets Wizard).
+      expect(pt(after, soldierId)).toEqual({ power: 1, toughness: 1 });
+      // Wizard gets +1/+1 from a2 only.
+      expect(pt(after, wizardId)).toEqual({ power: 1, toughness: 1 });
+    });
   });
 });
