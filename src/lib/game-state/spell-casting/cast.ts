@@ -85,16 +85,52 @@ export function canCastSpell(
     return { canCast: false, reason: "Player does not have priority" };
   }
 
-  // Verify the card is in player's hand
-  const handZone = state.zones.get(`${playerId}-hand`);
-  if (!handZone || !handZone.cardIds.includes(cardId)) {
-    return { canCast: false, reason: "Card not in hand" };
-  }
-
-  // Get the card
+  // Get the card first so the castable_from check can
+  // also confirm the source zone.
   const card = state.cards.get(cardId);
   if (!card) {
     return { canCast: false, reason: "Card not found" };
+  }
+
+  // Wave 4.8 follow-up 4 lane 68 (#2614 follow-up): if the
+  // card's script declares `castable_from`, accept the cast
+  // when the card is in one of the named zones (instead of
+  // requiring the hand). The v0 substrate is the per-keyword
+  // `flashback` / `harmonize` fields; lane 68 generalizes the
+  // zone as a script-level array. The cast still pays the
+  // printed mana cost (the v1 minimum; the v0 `flashback.cost`
+  // field still works alongside for cards that declare both).
+  const cardScript = getCardScript(card.cardData.name);
+  const castableFrom = cardScript?.castable_from?.[0];
+  if (castableFrom) {
+    const sourceZoneKey =
+      castableFrom === "graveyard"
+        ? `${playerId}-graveyard`
+        : castableFrom === "exile"
+          ? `${playerId}-exile`
+          : castableFrom === "command"
+            ? `${playerId}-command`
+            : null;
+    if (sourceZoneKey) {
+      const sourceZone = state.zones.get(sourceZoneKey);
+      if (sourceZone?.cardIds.includes(cardId)) {
+        // The card IS in the named zone; the cast is legal
+        // from this source. Fall through to the timing
+        // checks below (instant / flash / sorcery-speed).
+        // (We skip the hand check on this path.)
+      } else {
+        return {
+          canCast: false,
+          reason: `Card must be in ${castableFrom} to cast via castable_from`,
+        };
+      }
+    }
+  } else {
+    // Default path: card must be in the player's hand.
+    const handZone = state.zones.get(`${playerId}-hand`);
+    if (!handZone || !handZone.cardIds.includes(cardId)) {
+      return { canCast: false, reason: "Card not in hand" };
+    }
   }
 
   // Check phase/timing restrictions
@@ -324,6 +360,11 @@ export function castSpell(
     const handZone = state.zones.get(`${playerId}-hand`);
     const graveZone = state.zones.get(`${playerId}-graveyard`);
     const exileZone = state.zones.get(`${playerId}-exile`);
+    // Wave 4.8 follow-up 4 lane 68 (#2614 follow-up): the
+    // generalized `castable_from` arm. The cardScript is
+    // looked up here so the source-zone check can confirm
+    // the card is in the named zone.
+    const cardScriptForSource = getCardScript(card.cardData.name);
 
     if (handZone && handZone.cardIds.includes(cardId)) {
       sourceZone = `${playerId}-hand`;
@@ -365,6 +406,35 @@ export function castSpell(
       // CR 702.185a: a card exiled by warp may be cast from exile on a later
       // turn (for its normal cost).
       sourceZone = `${playerId}-exile`;
+    } else if (
+      // Wave 4.8 follow-up 4 lane 68 (#2614 follow-up): the
+      // generalized `castable_from` arm. When the card's script
+      // declares `castable_from: ["graveyard" | "exile" | "command"]`
+      // and the card is in the named zone, accept the cast from
+      // that zone. The end-zone redirect at resolve time is
+      // handled by the `castableFromZone` field on the
+      // StackObject.
+      cardScriptForSource?.castable_from?.[0]
+    ) {
+      const zone = cardScriptForSource.castable_from[0];
+      const zoneKey =
+        zone === "graveyard"
+          ? `${playerId}-graveyard`
+          : zone === "exile"
+            ? `${playerId}-exile`
+            : zone === "command"
+              ? `${playerId}-command`
+              : null;
+      const z = zoneKey ? state.zones.get(zoneKey) : null;
+      if (z && z.cardIds.includes(cardId)) {
+        sourceZone = zoneKey;
+      } else {
+        return {
+          success: false,
+          state,
+          error: `Card is not in ${zone}.`,
+        };
+      }
     } else if (!handZone || !handZone.cardIds.includes(cardId)) {
       return { success: false, state, error: "Card not in hand." };
     }
@@ -442,6 +512,36 @@ export function castSpell(
 
     // Track alternative costs used
     const alternativeCostsUsed: string[] = [];
+    /**
+     * Wave 4.8 follow-up 4 lane 68 (#2614 follow-up): the
+     * source zone for a card cast via the generalized
+     * `castable_from` schema arm (flashback-style, foretell-style,
+     * or commander-style). When the card was cast from a
+     * non-hand zone (and the script declares `castable_from`),
+     * stamp the source zone on the stack object and push
+     * `"castable_from"` to `alternativeCostsUsed` so the
+     * resolve-time path can route the card to the right end
+     * zone (exile for `castable_from: ["graveyard"]` and
+     * `castable_from: ["exile"]` instants/sorceries; commander
+     * return-to-command is a follow-up lane).
+     */
+    let castableFromZone: "exile" | "graveyard" | "command" | undefined;
+    if (cardScriptForSource?.castable_from?.[0]) {
+      const zone = cardScriptForSource.castable_from[0];
+      const zoneKey =
+        zone === "graveyard"
+          ? `${playerId}-graveyard`
+          : zone === "exile"
+            ? `${playerId}-exile`
+            : zone === "command"
+              ? `${playerId}-command`
+              : null;
+      const sourceZone = zoneKey ? state.zones.get(zoneKey) : null;
+      if (sourceZone?.cardIds.includes(cardId)) {
+        castableFromZone = zone;
+        alternativeCostsUsed.push("castable_from");
+      }
+    }
     /** Harmonize: the creature tapped to reduce the cost, tapped on cast. */
     let harmonizeTapId: CardInstanceId | undefined;
 
@@ -1423,8 +1523,7 @@ export function castSpell(
     // modifiers, "you lose X life" effects, and life-gated
     // card draws.
     const additionalPayLife =
-      getCardScript(card.cardData.name)?.additionalCosts?.pay_life?.amount ??
-      0;
+      getCardScript(card.cardData.name)?.additionalCosts?.pay_life?.amount ?? 0;
     if (additionalPayLife > 0) {
       const playerAfter = currentState.players.get(playerId);
       if (!playerAfter || playerAfter.life < additionalPayLife) {
@@ -1463,8 +1562,8 @@ export function castSpell(
     // determinism. Out of scope: per-subtype sacrifice ("Sacrifice
     // a Goblin") — a follow-up lane would extend `target` with
     // a `subtype` string.
-    const additionalSacrifice =
-      getCardScript(card.cardData.name)?.additionalCosts?.sacrifice;
+    const additionalSacrifice = getCardScript(card.cardData.name)
+      ?.additionalCosts?.sacrifice;
     if (additionalSacrifice) {
       const battlefieldZoneAdd = currentState.zones.get(
         `${playerId}-battlefield`,
@@ -1505,9 +1604,7 @@ export function castSpell(
         };
       }
       const updatedZonesAdd = new Map(currentState.zones);
-      let battlefieldAfter = updatedZonesAdd.get(
-        `${playerId}-battlefield`,
-      )!;
+      let battlefieldAfter = updatedZonesAdd.get(`${playerId}-battlefield`)!;
       const graveyardKey = `${playerId}-graveyard`;
       let graveyardAfter = updatedZonesAdd.get(graveyardKey);
       if (!graveyardAfter) {
@@ -1569,6 +1666,12 @@ export function castSpell(
       isCountered: false,
       timestamp: Date.now(),
       alternativeCostsUsed,
+      // Wave 4.8 follow-up 4 lane 68 (#2614 follow-up): the
+      // source zone for a card cast via `castable_from`. Read
+      // at resolve time to route the card to the right end
+      // zone (exile for graveyard/exile, command for commander
+      // — a follow-up lane).
+      castableFromZone,
       // `wasKicked` preserves the caller's intent: when the legacy `isKicked`
       // boolean is the only signal (no explicit `timesKicked`) we stamp it
       // directly so callers see their declaration retained even on cards where

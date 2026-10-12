@@ -170,7 +170,18 @@ const SCOPES = [
     // the chosen-X / additional-costs / affinity / grants
     // family (the historical precedent from the lane 64
     // affinity bump and the lane 65 grants bump).
-    budgetLines: 2500,
+    //
+    // Wave 4.8 follow-up 4 lane 68 (#2614 follow-up) adds
+    // the `castable_from: ["exile" | "graveyard" | "command"]`
+    // arm on `CardScriptSchema` (generalized cast-from-zone;
+    // the v0 substrate is the per-keyword `flashback` and
+    // `harmonize` fields). schema.ts landed at 2519
+    // (+19 over 2500). Bumping 2500 → 2550 to give the
+    // cast-from-zone family room to land without
+    // fragmenting the chosen-X / additional-costs /
+    // affinity / grants / counter-ledger / cast-from-zone
+    // family (the historical precedent continues).
+    budgetLines: 2550,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),
