@@ -2463,6 +2463,60 @@ export const CardScriptSchema = z
           })
           .strict()
           .optional(),
+        /**
+         * Wave 4.8 follow-up 6 lane 72 (#2614 follow-up): the
+         * "pay the generic portion of this spell's cost by tapping a
+         * creature you control" pattern (Llawan, War Tax — the
+         * "spend this mana only on creature spells" / "creature
+         * spells cost {1} more to cast" / "tap an untapped creature
+         * you control rather than pay that cost" family). Records
+         * a creature-only payment restriction on the cast: the
+         * player may pay the spell's `generic` mana by tapping
+         * `generic` untapped creatures they control (one creature
+         * per generic). v1 minimum is a single tap-for-generic
+         * reduction; multi-color creature pools ("only blue
+         * creatures may pay"), per-creature-type pools ("only
+         * Goblins may pay"), and opponent-only creature pools
+         * ("your opponents' creatures may pay") are separate
+         * follow-up lanes.
+         *
+         * Auto-apply semantics (parallel to lane 69's
+         * `mana_restriction`): if the player CAN pay the printed
+         * cost, the engine does NOT apply the creature payment
+         * (the printed cost is the cheaper path). If the player
+         * CANNOT pay the printed cost, but CAN tap `generic`
+         * untapped creatures they control, the engine applies
+         * the creature payment: tap the creatures, reduce
+         * `totalGeneric` by `generic`. The cast fails ("Not
+         * enough energy (mana) available.") if the player
+         * cannot pay the cost under either path AND cannot tap
+         * enough creatures.
+         *
+         * Sample card: a synthetic instant with
+         * `creature_payment: { creature_only: true, generic: 1 }`
+         * and a printed cost of `{1}{B}` (the player may pay
+         * `{1}{B}` normally, OR tap an untapped creature they
+         * control to pay the generic 1 — the v1 minimum).
+         */
+        creature_payment: z
+          .object({
+            /**
+             * v1 minimum: `true` (the cost may be paid only by
+             * tapping creatures the controller controls). A
+             * `false` value is meaningless; the field exists
+             * for forward compatibility (a follow-up lane could
+             * add a multi-shape variant).
+             */
+            creature_only: z.literal(true),
+            /**
+             * Number of generic mana the player may pay by
+             * tapping creatures. v1 minimum: 1 (matches a
+             * single generic pip).
+             */
+            generic: z.number().int().min(1).max(99),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),

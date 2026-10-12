@@ -211,7 +211,21 @@ const SCOPES = [
     // affinity / grants / counter-ledger / cast-from-zone
     // / mana-restriction / copy-permanent family (the
     // historical precedent continues).
-    budgetLines: 2650,
+    //
+    // Wave 4.8 follow-up 6 lane 72 (#2614 follow-up) adds
+    // the `additionalCosts.creature_payment: { creature_only:
+    // true, generic: number }` arm on `CardScriptSchema` (the
+    // "tap a creature you control to pay the generic" family:
+    // Llawan, War Tax, the "spend this mana only on creature
+    // spells" pattern; v1 single tap-for-generic reduction
+    // with a `creature_only: true` literal). schema.ts
+    // landed at 2698 (+48 over 2650). Bumping 2650 → 2700
+    // to give the creature-payment family room to land
+    // without fragmenting the chosen-X / additional-costs /
+    // affinity / grants / counter-ledger / cast-from-zone /
+    // mana-restriction / copy-permanent / creature-payment
+    // family (the historical precedent continues).
+    budgetLines: 2700,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

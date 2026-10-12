@@ -5,6 +5,7 @@ import type {
   Player,
   CardInstanceId,
 } from "./types";
+import { ZoneType } from "./types";
 import { getGameMode } from "./format-rules";
 import { affinityReduction } from "./spell-casting/affinity";
 import { canPlayLandsFromGraveyard, extraLandPlays } from "./mana/land-rules";
@@ -15,6 +16,7 @@ import {
 import { canCastAtInstantSpeed } from "./keyword-actions/flash";
 import { hasSplitSecondOnStack } from "./auto-pass-priority";
 import { getCardScript } from "./card-scripts/registry";
+import { isCreature } from "./card-instance";
 
 /**
  * Validation result structure
@@ -602,11 +604,59 @@ export class ValidationService {
         affinityReduction(state, player.id, card.cardData.name),
     );
     if (availableForGeneric < genericNeeded) {
-      return {
-        isValid: false,
-        reason: "Not enough mana",
-        message: "Not enough mana to cast this spell.",
-      };
+      // Wave 4.8 follow-up 6 lane 72 (#2614 follow-up): the
+      // `additionalCosts.creature_payment` arm — "Pay the
+      // generic portion of this spell's cost by tapping a
+      // creature you control" (Llawan / War Tax). If the
+      // printed cost isn't payable but the player CAN tap
+      // `generic` untapped creatures they control, the
+      // cast is valid; the actual tap + deduction happens
+      // in `castSpell` (cast.ts); here we just open the
+      // gate. The cast fails if the player cannot pay the
+      // cost under either path AND cannot tap enough
+      // creatures.
+      const creaturePaymentScript = getCardScript(
+        card.cardData.name,
+      )?.additionalCosts?.creature_payment;
+      const underCreaturePayment = (() => {
+        if (!creaturePaymentScript) return false;
+        const cpGeneric = creaturePaymentScript.generic;
+        const adjustedGeneric = Math.max(0, genericNeeded - cpGeneric);
+        // Count untapped creatures the player controls on
+        // the battlefield.
+        let untappedCreatures = 0;
+        for (const [, cardInst] of state.cards) {
+          if (cardInst.controllerId !== player.id) continue;
+          if (cardInst.isTapped) continue;
+          const czKey = cardInst.currentZoneKey;
+          const cz = czKey ? state.zones.get(czKey) : undefined;
+          if (
+            !cz ||
+            cz.type !== ZoneType.BATTLEFIELD ||
+            !cz.cardIds.includes(cardInst.id)
+          ) {
+            continue;
+          }
+          if (!isCreature(cardInst)) continue;
+          untappedCreatures++;
+        }
+        // The creature payment reduces the generic by
+        // `cpGeneric` (one creature per generic), so the
+        // adjusted generic must be payable under the
+        // availableForGeneric pool AND the player must
+        // have at least `cpGeneric` untapped creatures.
+        return (
+          availableForGeneric >= adjustedGeneric &&
+          untappedCreatures >= cpGeneric
+        );
+      })();
+      if (!underCreaturePayment) {
+        return {
+          isValid: false,
+          reason: "Not enough mana",
+          message: "Not enough mana to cast this spell.",
+        };
+      }
     }
 
     return { isValid: true };
