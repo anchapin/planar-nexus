@@ -236,6 +236,53 @@ export const CreateTokenSchema = z
   });
 
 /**
+ * Wave 4.8 follow-up 5 lane 70 (#2614 follow-up): "create a
+ * permanent that copies the characteristics of [a target
+ * permanent on the battlefield]" (Clone, Phantasmal Image,
+ * Vesuvan Doppelganger). The new permanent inherits the
+ * target's `cardData` (name, mana cost, type line, P/T,
+ * keywords, oracle text, colors) — i.e. "all
+ * characteristics copied" semantics (CR 707.2). The new
+ * permanent enters the battlefield under the spell's
+ * controller; the target is unchanged. The v1 minimum
+ * supports a single target of any kind (`target: "permanent"`)
+ * — the spell's controller chooses any permanent on the
+ * battlefield as the copy source.
+ *
+ * Out of scope (each a follow-up lane): "may become a copy
+ * until end of turn" (Sakashima-style / manifested /
+ * disposition-of-copy), "may copy a spell on the stack"
+ * (Splice), "may copy a card in a graveyard" (reanimation),
+ * "copied characteristics except for [X]" (Phyrexian
+ * Metamorph's "Phyrexian in addition to its other types"
+ * rider), and "named-copy" / "choose-creature-type-copy"
+ * filters.
+ */
+export const CopyPermanentSchema = z
+  .object({
+    op: z.literal("CopyPermanent"),
+    /**
+     * v1: `target: "permanent"` — any permanent on the
+     * battlefield. The schema's `controller` arm mirrors the
+     * lane 17 `cost.sacrifice_permanents.type` enum and the
+     * lane 63 `additionalCosts.sacrifice.target` enum.
+     * "creature" / "artifact" / "enchantment" / "land" are
+     * follow-up lanes (each adds a narrower filter).
+     */
+    target: z.enum([
+      "permanent",
+      "creature",
+      "artifact",
+      "enchantment",
+      "land",
+    ]),
+    /** Restrict to the controller's own permanents. */
+    controller: z.enum(["you", "opponent", "any"]).optional(),
+    if_kicked: ifKicked,
+  })
+  .strict();
+
+/**
  * A Treasure, Food or Clue token (CR 111.10, #2544). "Investigate" is one
  * Clue. The token's ability is its rules text.
  */
@@ -1077,6 +1124,7 @@ export const EffectSchema = z.discriminatedUnion("op", [
   LoseLifeSchema,
   CreateTokenSchema,
   CreatePredefinedTokenSchema,
+  CopyPermanentSchema,
   DestroySchema,
   ExileSchema,
   TapSchema,

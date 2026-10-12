@@ -195,7 +195,23 @@ const SCOPES = [
     // affinity / grants / counter-ledger / cast-from-zone
     // / mana-restriction family (the historical precedent
     // continues).
-    budgetLines: 2575,
+    //
+    // Wave 4.8 follow-up 5 lane 70 (#2614 follow-up) adds
+    // the `CopyPermanentSchema` (`op: "CopyPermanent"`,
+    // `target: "permanent" | "creature" | "artifact" |
+    // "enchantment" | "land"`, optional `controller`) on
+    // `EffectSchema` (the Clone, Phantasmal Image, Vesuvan
+    // Doppelganger "create a permanent that copies the
+    // characteristics of a target permanent" family; v1
+    // single-target, "all characteristics copied"
+    // semantics). schema.ts landed at 2611 (+36 over
+    // 2575). Bumping 2575 → 2650 to give the
+    // copy-permanent family room to land without
+    // fragmenting the chosen-X / additional-costs /
+    // affinity / grants / counter-ledger / cast-from-zone
+    // / mana-restriction / copy-permanent family (the
+    // historical precedent continues).
+    budgetLines: 2650,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

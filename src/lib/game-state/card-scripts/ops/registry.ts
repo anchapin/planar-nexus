@@ -26,6 +26,7 @@ import { CopySpellReference } from "./copy-spell";
 import { CounterReference } from "./counter";
 import { CreatePredefinedTokenReference } from "./create-predefined-token";
 import { CreateTokenReference } from "./create-token";
+import { CopyPermanentReference } from "./copy-permanent";
 import { DealDamageReference } from "./deal-damage";
 import { DestroyReference } from "./destroy";
 import { DiscardReference } from "./discard";
@@ -62,6 +63,7 @@ export const OP_REFERENCES: readonly CardOpReference[] = [
   LoseLifeReference,
   CreateTokenReference,
   CreatePredefinedTokenReference,
+  CopyPermanentReference,
   DestroyReference,
   ExileReference,
   TapReference,
