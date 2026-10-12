@@ -1500,3 +1500,74 @@ At the close of the Wave 4.8 follow-up 6 loop:
   lane 73 baseline; the resolution kept the higher
   value (14109) and the post-merge ratchet rewrote
   both files to 14113 (post-lane-74).
+
+## Wave 4.8 follow-up 7 loop done summary (lane 75)
+
+Lane 75 ("until end of turn" copy) shipped in the Wave 4.8
+follow-up 7 loop (PR #2757, #2614 follow-up — see
+`docs/card-scripts/wave4.8-followup7-handoff.md` for the
+handoff). Lane 61 (replacement effect for death) remains
+parked pending the foundational replacement-effect layer
+(per the Wave 4.8 follow-up 2 handoff's process note) and
+was NOT attempted in this loop — it requires its own
+multi-lane plan, not a follow-up lane.
+
+### Shipped
+
+- **Lane 75 — "Until end of turn" copy**
+  (Sakashima-style / manifested, disposition-of-copy)
+  (PR #2757, #2614 follow-up). The v1 minimum adds a
+  `become_copy: { target: CardInstanceId, until:
+"end_of_turn" }` arm on `StaticSchema` (parallel to
+  lane 71's `protectionFrom`). The engine stamps the
+  target's printed characteristics (name, type_line,
+  power, toughness, colors, keywords) onto the source's
+  `cardData` via the existing `animatedUntilEndOfTurn`
+  infrastructure (the
+  `clearUntilEndOfTurnPT` /
+  `restoreAnimatedOffBattlefield` rollback paths handle
+  the EOT cleanup automatically). The overlay is
+  self-correcting: if the named target leaves the
+  battlefield, the source restores its printed
+  `cardData` from `animatedUntilEndOfTurn`. The new
+  `CardInstance.copyOfTargetId?: string` ledger
+  records which target the source is currently copying.
+  v1 is self-only (`source === target` for the static
+  to apply, parallel to lane 52's `add_creature_type`
+  self-only semantics). 9-case dedicated test
+  (`lane75-until-eot-copy.test.ts`) covers schema
+  rejection (empty target, non-end_of_turn duration),
+  schema acceptance, characteristic overlay (Grizzly
+  Bears copy), keyword copy (Serra Angel flying /
+  vigilance), missing-target no-op, target-leaves-
+  battlefield rollback, EOT cleanup rollback, and
+  self-only semantics (no copy onto other permanents).
+  Engine-size budget bumped 2750 → 2800 (schema.ts
+  landed at 2790, +40 over 2750).
+
+### Net delta from Wave 4.8 follow-up 6 loop
+
+- Test suites: 729 → 730 (+1 for lane 75).
+- Test cases: 14118 → 14127 (+9 for lane 75).
+- Engine-size budget: schema.ts 2733 (lane 76
+  baseline) → 2790 (+57 across lane 75 incl. the
+  docstring block for the new arm). Under the 2800
+  ceiling bumped in lane 75.
+
+### Multi-lane follow-ups still open (tracked under #2614)
+
+The handoff explicitly enumerated these as out-of-scope
+for lane 75 (each is a separate multi-lane piece):
+chosen-target copies (Cackling Counterpart), named-card
+copies ("becomes a copy of [card name]"), copy-with-
+exception copies (Phyrexian Metamorph-style "in addition
+to its other types"), nested copies (a target that
+itself has a `become_copy` static — needs cycle
+detection), and Aura-shaped copies ("enchanted creature
+is a copy of [target] until end of turn" — a per-target
+instead of self-only shape).
+
+Wave 4.8 follow-up 7 loop is complete. Lane 61 (replacement
+effect for death) is parked; it requires its own
+multi-lane plan with a foundational replacement-effect
+layer (#2614 plan).
