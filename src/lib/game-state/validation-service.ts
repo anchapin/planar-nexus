@@ -14,6 +14,7 @@ import {
 } from "./evergreen-keywords";
 import { canCastAtInstantSpeed } from "./keyword-actions/flash";
 import { hasSplitSecondOnStack } from "./auto-pass-priority";
+import { getCardScript } from "./card-scripts/registry";
 
 /**
  * Validation result structure
@@ -337,6 +338,21 @@ export class ValidationService {
         inExile && card.foretold === true && card.isFaceDown === true;
       const graveZone = state.zones.get(`${action.playerId}-graveyard`);
       const inGrave = graveZone?.cardIds.includes(cardId) ?? false;
+      const commandZone = state.zones.get(`${action.playerId}-command`);
+      const inCommand = commandZone?.cardIds.includes(cardId) ?? false;
+      // Wave 4.8 follow-up 4 lane 68 (#2614 follow-up): the
+      // generalized `castable_from` schema arm. When the card's
+      // script declares `castable_from: ["graveyard" | "exile" |
+      // "command"]` and the card is in the named zone, accept
+      // the cast from that zone. The cast still pays the
+      // printed mana cost; the resolve-time redirect is handled
+      // via the `castableFromZone` field on the StackObject.
+      const cardScript = getCardScript(card.cardData.name);
+      const castableFrom = cardScript?.castable_from?.[0];
+      const castableFromMatch =
+        (castableFrom === "graveyard" && inGrave) ||
+        (castableFrom === "exile" && inExile) ||
+        (castableFrom === "command" && inCommand);
       if (
         !(altType === "foretell" && isForetold) &&
         !(altType === "escape" && inGrave) &&
@@ -347,7 +363,8 @@ export class ValidationService {
           inExile &&
           card.warpExiledTurn !== undefined &&
           state.turn.turnNumber > card.warpExiledTurn
-        )
+        ) &&
+        !castableFromMatch
       ) {
         return {
           isValid: false,

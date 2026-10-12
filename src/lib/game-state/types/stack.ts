@@ -65,6 +65,22 @@ export interface StackObject {
    */
   activated?: boolean;
   alternativeCostsUsed?: string[];
+  /**
+   * Wave 4.8 follow-up 4 lane 68 (#2614 follow-up): the source
+   * zone for a card cast via the `castable_from` schema arm
+   * (e.g. "graveyard" for flashback-style cards, "exile" for
+   * foretell-style cards, "command" for commander-style cards).
+   * Set on the StackObject at cast time when the card was cast
+   * from a non-hand zone via the generalized `castable_from`
+   * arm; read at resolve time to decide the post-resolution end
+   * zone (the v1 routes `castable_from: ["graveyard"]` and
+   * `castable_from: ["exile"]` instants/sorceries to exile;
+   * `castable_from: ["command"]` permanents return to command
+   * zone — a follow-up lane). Undefined for hand-cast spells
+   * and for the legacy v0 `flashback` / `harmonize` paths
+   * (those use `alternativeCostsUsed` directly).
+   */
+  castableFromZone?: "exile" | "graveyard" | "command";
   /** Whether kicker was paid (CR 702.85). Backward-compat shim; prefer
    *  `timesKicked` for new code. `true` iff `timesKicked > 0`. */
   wasKicked?: boolean;

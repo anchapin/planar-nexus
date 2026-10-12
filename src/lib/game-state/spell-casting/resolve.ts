@@ -555,8 +555,26 @@ function resolveSpellCompletion(
           (stackObject.alternativeCostsUsed?.includes("flashback") ||
             stackObject.alternativeCostsUsed?.includes("harmonize")) ??
           false;
+        // Wave 4.8 follow-up 4 lane 68 (#2614 follow-up): the
+        // generalized `castable_from` arm exiles the card after
+        // resolution when the source is the graveyard (parallel
+        // to flashback) or exile (parallel to foretell —
+        // returning to exile is the natural end zone for a
+        // foretold card resolving). The v1 inference:
+        // `castable_from: ["graveyard"]` and
+        // `castable_from: ["exile"]` both route to exile on
+        // resolution. `castable_from: ["command"]` (commander)
+        // is handled below for permanents; instants/sorceries
+        // cast from the command zone are an edge case the v1
+        // routes to graveyard (a follow-up lane can extend
+        // this to command).
+        const wasCastableFromGraveyardOrExile =
+          (stackObject.alternativeCostsUsed?.includes("castable_from") ??
+            false) &&
+          (stackObject.castableFromZone === "graveyard" ||
+            stackObject.castableFromZone === "exile");
         destinationZone =
-          wasEscaped || wasFlashback
+          wasEscaped || wasFlashback || wasCastableFromGraveyardOrExile
             ? `${card.controllerId}-exile`
             : `${card.controllerId}-graveyard`;
       } else {

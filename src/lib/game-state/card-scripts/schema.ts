@@ -2097,6 +2097,49 @@ export const CardScriptSchema = z
       .strict()
       .optional(),
     /**
+     * Wave 4.8 follow-up 4 lane 68 (#2614 follow-up): generalize
+     * the "cast from a non-hand zone" pattern (Evoke, Flashback,
+     * Jump-Start, Undergrowth, Escape, As Foretold, Yawgmoth's
+     * Vile Offer). The v0 substrate is the per-keyword `flashback`
+     * and `harmonize` fields; lane 68 unifies the castable-from
+     * zone as a script-level `castable_from: ["exile" | "graveyard"
+     * | "command"]` array.
+     *
+     * v1 supports a SINGLE entry in the array (multi-zone
+     * casting is a follow-up lane). The engine reads the
+     * field at cast time (`canCastSpell` extends to accept the
+     * card from any named zone) and at resolve time (the
+     * post-resolution end zone is inferred from the source:
+     * `castable_from: ["graveyard"]` → exile, `castable_from:
+     * ["exile"]` → exile, `castable_from: ["command"]` →
+     * command). The end zone is implicit for v1; a future
+     * lane can extend the field with an explicit
+     * `end_zone` arm.
+     *
+     * v1 ships the standard printed mana cost (no
+     * `cost` arm; the v0 `flashback.cost` field still works
+     * alongside — the engine uses the flashback cost when
+     * both are set, mirroring how the lane 22 / 23 / 24
+     * additional-costs arms compose with the printed mana
+     * cost). The cast-time legality check just confirms the
+     * card is in one of the named zones; the resolve-time
+     * redirect routes the card to the right end zone.
+     *
+     * Sample card: a synthetic 1/1 creature that can be cast
+     * from exile via `castable_from: ["exile"]` (foretell-
+     * style). The engine accepts the cast when the card is in
+     * exile and routes it back to exile on resolution (foretell
+     * keeps the card in exile after resolution). A flashback-
+     * style sample (`castable_from: ["graveyard"]`) would
+     * accept the cast when the card is in the graveyard and
+     * route it to exile on resolution.
+     */
+    castable_from: z
+      .array(z.enum(["exile", "graveyard", "command"]))
+      .min(1)
+      .max(1)
+      .optional(),
+    /**
      * Harmonize (CR 702.180) — "You may cast this card from your graveyard
      * for its harmonize cost. You may tap a creature you control to reduce
      * that cost by {X}, where X is its power. Then exile this spell."
