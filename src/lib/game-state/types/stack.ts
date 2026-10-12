@@ -133,6 +133,27 @@ export interface StackObject {
    */
   cantBeCountered?: boolean;
   /**
+   * Wave 4.8 follow-up 5 lane 69 (#2614 follow-up): the mana-
+   * restriction arm that the cast applied. Set on a spell's
+   * StackObject when its script declared
+   * `additionalCosts.mana_restriction` AND the engine applied the
+   * restriction at cast time (the player couldn't pay the
+   * printed cost normally, OR chose to pay the alternative path).
+   * Reads at resolve time so the spell's effect can know whether
+   * it was cast via the restriction path. Undefined when the
+   * card was cast via the printed cost (the player had enough
+   * mana to pay the printed cost and the engine's auto-apply
+   * did not fire). Mirrors `additionalCosts.mana_restriction`'s
+   * v1 shape exactly: a single color and a single generic
+   * reduction.
+   */
+  manaRestriction?: {
+    /** Restriction colors (v1: a single entry). */
+    colors: ("W" | "U" | "B" | "R" | "G")[];
+    /** Amount of generic mana paid using the named color(s). */
+    generic: number;
+  };
+  /**
    * Storm (CR 702.41).
    *
    * Set on a spell's StackObject when its Oracle text contains "Storm". Storm
