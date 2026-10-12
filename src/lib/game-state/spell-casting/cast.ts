@@ -1408,6 +1408,149 @@ export function castSpell(
       }
     }
 
+    // Wave 4.8 follow-up 3 lane 63 (#2614 follow-up): the
+    // `additionalCosts.pay_life` arm. The engine deducts
+    // `additionalCosts.pay_life.amount` from the caster's life
+    // total at cast time, after mana is verified and spent. The
+    // pre-mana validity check is the standard `validationService`
+    // action-validation pass above; the post-mana deduction here
+    // runs only when the cast is actually committed. A cast that
+    // attempts to pay life below the caster's remaining life
+    // returns "Not enough life" (parallel to the lane 21
+    // `cost.pay_life` activation path; CR 118.4, "If a player
+    // pays life, they lose that much life"). The sample card is
+    // Painful Truths (KLD #102). Out of scope: per-instance life
+    // modifiers, "you lose X life" effects, and life-gated
+    // card draws.
+    const additionalPayLife =
+      getCardScript(card.cardData.name)?.additionalCosts?.pay_life?.amount ??
+      0;
+    if (additionalPayLife > 0) {
+      const playerAfter = currentState.players.get(playerId);
+      if (!playerAfter || playerAfter.life < additionalPayLife) {
+        return {
+          success: false,
+          state: originalState,
+          error: "Not enough life",
+        };
+      }
+      const updatedPlayersPayLife = new Map(currentState.players);
+      updatedPlayersPayLife.set(playerId, {
+        ...playerAfter,
+        life: playerAfter.life - additionalPayLife,
+      });
+      currentState = {
+        ...currentState,
+        players: updatedPlayersPayLife,
+        lastModifiedAt: Date.now(),
+      };
+    }
+
+    // Wave 4.8 follow-up 3 lane 63 (#2614 follow-up): the
+    // `additionalCosts.sacrifice` arm. The engine picks
+    // `amount` matching permanents the controller controls and
+    // moves them to their owner's graveyard as part of paying
+    // the additional cost. `target` mirrors the lane 17
+    // `cost.sacrifice_permanents.type` enum: "self" (the spell
+    // source itself — only valid when the spell is itself a
+    // permanent being cast), "creature", "artifact",
+    // "enchantment", "permanent" (any permanent). The cast
+    // fails if the controller has fewer than `amount` matching
+    // permanents on the battlefield. The order of selection is
+    // the controller's choice per CR 602.2c; v1 uses the
+    // same "untapped first" heuristic as
+    // `abilities/activated.ts#sacrificeCandidates` to keep
+    // determinism. Out of scope: per-subtype sacrifice ("Sacrifice
+    // a Goblin") — a follow-up lane would extend `target` with
+    // a `subtype` string.
+    const additionalSacrifice =
+      getCardScript(card.cardData.name)?.additionalCosts?.sacrifice;
+    if (additionalSacrifice) {
+      const battlefieldZoneAdd = currentState.zones.get(
+        `${playerId}-battlefield`,
+      );
+      if (!battlefieldZoneAdd) {
+        return {
+          success: false,
+          state: originalState,
+          error: "Battlefield not found",
+        };
+      }
+      const candidates: CardInstanceId[] = [];
+      const wantSelf = additionalSacrifice.target === "self";
+      for (const id of battlefieldZoneAdd.cardIds) {
+        const c = currentState.cards.get(id);
+        if (!c || c.controllerId !== playerId) continue;
+        if (wantSelf) {
+          if (id === cardId) candidates.push(id);
+          continue;
+        }
+        const line = c.cardData.type_line ?? "";
+        const lower = line.toLowerCase();
+        const matches =
+          additionalSacrifice.target === "permanent" ||
+          (additionalSacrifice.target === "creature" &&
+            lower.startsWith("creature")) ||
+          (additionalSacrifice.target === "artifact" &&
+            lower.startsWith("artifact")) ||
+          (additionalSacrifice.target === "enchantment" &&
+            lower.startsWith("enchantment"));
+        if (matches) candidates.push(id);
+      }
+      if (candidates.length < additionalSacrifice.amount) {
+        return {
+          success: false,
+          state: originalState,
+          error: "Not enough permanents to sacrifice",
+        };
+      }
+      const updatedZonesAdd = new Map(currentState.zones);
+      let battlefieldAfter = updatedZonesAdd.get(
+        `${playerId}-battlefield`,
+      )!;
+      const graveyardKey = `${playerId}-graveyard`;
+      let graveyardAfter = updatedZonesAdd.get(graveyardKey);
+      if (!graveyardAfter) {
+        return {
+          success: false,
+          state: originalState,
+          error: "Graveyard not found",
+        };
+      }
+      const updatedCardsAdd = new Map(currentState.cards);
+      // Untapped-first determinism (CR 602.2c, controller's choice;
+      // the heuristic matches `sacrificeCandidates`).
+      candidates.sort(
+        (a, b) =>
+          Number(!!updatedCardsAdd.get(b)?.isTapped) -
+          Number(!!updatedCardsAdd.get(a)?.isTapped),
+      );
+      for (const id of candidates.slice(0, additionalSacrifice.amount)) {
+        const moved = moveCardBetweenZones(
+          battlefieldAfter,
+          graveyardAfter,
+          id,
+        );
+        battlefieldAfter = moved.from;
+        graveyardAfter = moved.to;
+        const dc = updatedCardsAdd.get(id);
+        if (dc) {
+          updatedCardsAdd.set(id, {
+            ...dc,
+            currentZoneKey: graveyardKey,
+          });
+        }
+      }
+      updatedZonesAdd.set(`${playerId}-battlefield`, battlefieldAfter);
+      updatedZonesAdd.set(graveyardKey, graveyardAfter);
+      currentState = {
+        ...currentState,
+        zones: updatedZonesAdd,
+        cards: updatedCardsAdd,
+        lastModifiedAt: Date.now(),
+      };
+    }
+
     // Create stack object with alternative cost info
     const stackObject: StackObject = {
       id: generateStackObjectId(),

@@ -123,7 +123,18 @@ const SCOPES = [
     // suppression for removes_all_abilities), and 59
     // (Banner of Kinship counters-per-subtype arm) room
     // to land without fragmenting the chosen-X family.
-    budgetLines: 2300,
+    //
+    // Wave 4.8 follow-up 3 lane 63 (#2614 follow-up) adds
+    // `pay_life` and `sacrifice` arms to the existing
+    // `additionalCosts` slot ("Pay N life, draw 3 cards" on
+    // Painful Truths, "Sacrifice a [thing] as an additional
+    // cost" for instants / sorceries). schema.ts landed at
+    // 2317 (+17 over 2300). Bumping 2300 → 2350 to give lane
+    // 64 (affinity / cost reduction) and lane 65 (granting
+    // triggered abilities to other cards) room to land
+    // without fragmenting the chosen-X / additional-costs
+    // family.
+    budgetLines: 2350,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),
