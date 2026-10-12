@@ -1777,3 +1777,96 @@ in `refreshScriptedStatics`). Lane 61 (replacement
 effect for death) still requires a foundational
 replacement-effect layer that the engine doesn't yet
 have.
+
+## Wave 4.8 follow-up 8 lane 75c (PR [#2760](https://github.com/anchapin/planar-nexus/pull/2760)) — Copy with exception
+
+Lane 75c ships the copy-with-exception arm of the
+until-EOT-copy family. Lanes 75d/75e + lane 61 remain
+parked for the next follow-up loop(s).
+
+### Lane 75c — Copy with exception (PR #2760)
+
+- **Gap**: "is a copy of [chosen permanent] except
+  it's a [subtype] in addition to its other types"
+  (Phyrexian Metamorph and the broader
+  copy-with-exception subfamily). The exception
+  appends a subtype to the source's overlaid
+  `cardData.type_line`.
+- **Schema**: an optional
+  `exceptions: { add_subtype?: string[] }` arm on BOTH
+  the lane 75 (`target`) and lane 75b (`named_card`)
+  variants of `StaticSchema.become_copy`. v1 supports
+  a single `add_subtype` arm (an arbitrary list of
+  subtypes); the schema's `.strict()` reject unknown
+  arms and empty lists.
+- **Engine**: a new
+  `copyExceptionsBySourceId: Map<sourceId, { addSubtype:
+string[] }>` is collected alongside the existing
+  `copyOfTargetBySourceId` ledger in
+  `refreshScriptedStatics`. The write phase applies the
+  exception AFTER the lane 75 / 75b overlay writes the
+  target's printed `cardData` (so the type_line is built
+  from the target's subtypes, then augmented with the
+  listed exceptions). The new
+  `rebuildTypeLineWithAddedSubtypes` helper splits the
+  type_line on the first em-dash (matching
+  `subtypesOf`'s split convention), dedupes against
+  printed subtypes (case-sensitive exact match), and
+  re-joins. The EOT cleanup step in
+  `pt-until-end-of-turn.ts` (`clearUntilEndOfTurnPT`)
+  restores the printed `cardData.type_line` (without
+  the appended subtypes), so the "until end of turn"
+  semantics are honoured for free.
+- **Sample cards**: synthetic static registered via
+  the test harness (the
+  `lane75c-copy-with-exception.test.ts` test
+  exercises Phyrexian Metamorph ("it's a copy of
+  [Grizzly Bears] except it's also a Phyrexian in
+  addition to its other types") and the
+  named-card variant ("as long as this is in play,
+  it's a copy of [card name] until end of turn. It's
+  also a Phyrexian..."). Real-world cards that
+  should now be scriptable in this pattern:
+  Phyrexian Metamorph, the broader "copy with an
+  addition-to-existing-types" family.
+- **Dedicated test**: 9-case
+  `lane75c-copy-with-exception.test.ts` covers
+  schema rejection (empty `add_subtype` list, empty
+  `add_subtype` entry, unknown exception arm),
+  schema acceptance, named-card-overlay exception
+  merge, chosen-target-overlay exception merge,
+  dedupe-vs-printed-subtype (Crusher of Phyrexia
+  vs "Phyrexian" — the printed "Phyrexian" subtype
+  isn't duplicated), multi-subtype append order,
+  EOT cleanup rollback (the appended subtypes are
+  dropped along with the rest of the overlay at
+  EOT).
+- **Engine-size budget**: schema.ts grew +63 lines
+  to 2986, leaving headroom under the 3000 ceiling
+  bumped in lane 75b. No new bump needed for lane
+  75c.
+
+### Net delta from Wave 4.8 follow-up 8 (lane 75b loop)
+
+- Test suites: 732 → 733 (+1 for lane 75c).
+- Test cases: 14145 → 14154 (+9 for lane 75c).
+- Engine-size budget: schema.ts 2923 (lane 75b
+  baseline) → 2986 (+63 across lane 75c incl. the
+  docstring block for the new arm). Under the 3000
+  ceiling bumped in lane 75b — no further bump
+  needed.
+
+### Multi-lane follow-ups still open (tracked under #2614)
+
+Lanes 75d/75e + lane 61 remain parked. Lane 75d
+(Aura-shaped copy — "enchanted creature is a copy
+of [target] until end of turn") is the next
+smallest; the schema change extends `become_copy`
+into `AuraStaticSchema`. Lane 75e (nested-copy cycle
+guard) is the riskiest — recommended to defer to a
+separate multi-lane plan (the cycle-detection
+snapshot at the top of the refresh pass touches
+the order of writes in `refreshScriptedStatics`).
+Lane 61 (replacement effect for death) still
+requires a foundational replacement-effect layer
+that the engine doesn't yet have.
