@@ -43,6 +43,7 @@ export {
 export { REMOVAL_TARGETS, matchesRemovalFilter } from "./target-filters";
 export type { RemovalFilter, RemovalTarget } from "./target-filters";
 export {
+  createYouMayPromptWaitingChoice,
   getScriptedAbility,
   getScriptedAbilityEffects,
   resolveScriptedAbility,

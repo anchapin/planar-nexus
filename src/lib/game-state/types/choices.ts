@@ -35,7 +35,15 @@ export interface WaitingChoice {
       // (keyword-actions/enter-choice.ts) on a scripted permanent with
       // `enter_choice: { kind: "color" }`; resolved by
       // `resolveEnterChoice`, which stamps `card.chosenColor`.
-      "enter_choice";
+      "enter_choice"
+    | // Wave 4.8 follow-up 2 lane 60 (#2614 follow-up): a
+      // scripted trigger with `you_may: true` (CR 117.3a "you may").
+      // Surfaced by `card-scripts/interpret.ts#resolveScriptedAbility`
+      // when the trigger is about to apply its effects; resolved by
+      // the `you_may_prompt` branch in spell-casting/choices.ts, which
+      // stamps `stackObject.you_may_resolved` and returns the
+      // controller to the trigger resolution path.
+      "you_may_prompt";
   /** ID of player who needs to make this choice */
   playerId: PlayerId;
   /** ID of the stack object this choice is for */

@@ -1236,11 +1236,35 @@ export const TriggerSchema = z
      * (CR 603.3c, 700.2a); `text` is then the line up to the dash.
      */
     modes: ModesSchema.optional(),
+    /**
+     * Wave 4.8 follow-up 2 lane 60 (#2614 follow-up): a "you may"
+     * (CR 117.3a "you may") that gates the whole ability's effects
+     * behind a yes/no confirmation prompt offered to the controller
+     * at resolution time. Covers "you may pay 2 life; if you do, draw
+     * a card" / "you may gain 1 life" / Skyship Buccaneer's later-
+     * payment pattern. The engine surfaces a `waitingChoice` of type
+     * `you_may_prompt` (registry in spell-casting/choices.ts), the
+     * player picks yes / no, and `stackObject.you_may_resolved` is
+     * stamped `true` / `false` to control whether the effects loop
+     * applies. Modal `modes` and `you_may` are mutually exclusive:
+     * a single trigger is either "you may do X" OR a "choose one"
+     * modal, not both — the schema refuses the combination. Out of
+     * scope for lane 60: dynamic cost reductions combined with the
+     * "you may" payment (lane 65 work).
+     */
+    you_may: z.boolean().optional(),
   })
   .strict()
   .refine((t) => (t.effects === undefined) !== (t.modes === undefined), {
     message: "a trigger has effects or modes, exactly one",
   })
+  .refine(
+    (t) => !(t.you_may === true && t.modes !== undefined),
+    {
+      message:
+        "you_may and modes are mutually exclusive on a trigger (lane 60, #2614)",
+    },
+  )
   .refine((t) => (t.event === "chapter") === (t.chapter !== undefined), {
     message: "chapter is required on, and only for, chapter triggers",
   })
