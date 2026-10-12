@@ -61,6 +61,13 @@ export function hasKeyword(card: CardInstance, keyword: string): boolean {
   if (card.equipmentKeywords?.includes(keyword.toLowerCase())) return true;
   // Granted by a scripted static ability (issue #2496).
   if (card.scriptStaticKeywords?.includes(keyword.toLowerCase())) return true;
+  // Wave 4.8 follow-up 4 lane 66 (#2614 follow-up): per-instance
+  // keywords stamped on a token at creation time by a
+  // `CreateToken.embedded_static.keywords` arm (Adaptive Automaton,
+  // Avenger of Zendikar, Hornet Queen, Cloudblazer). Read
+  // alongside the other granted-keyword ledgers (Aura,
+  // Equipment, scripted static, until-end-of-turn).
+  if (card.embeddedStaticKeywords?.includes(keyword.toLowerCase())) return true;
   // Granted "until end of turn" by a resolved spell or ability
   // (e.g. Divine Resilience's lifelink, #2564). Cleared at end of turn
   // by `clearUntilEndOfTurnKeywords`.

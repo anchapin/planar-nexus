@@ -126,9 +126,7 @@ export const DrawSchema = z
   .object({
     op: z.literal("Draw"),
     amount: xAmount,
-    who: z
-      .enum(["you", "target_player", "each_player"])
-      .default("you"),
+    who: z.enum(["you", "target_player", "each_player"]).default("you"),
     if_kicked: ifKicked,
   })
   .strict();
@@ -205,6 +203,31 @@ export const CreateTokenSchema = z
     /** An artifact creature token, e.g. a Thopter or Robot (#2496). */
     artifact: z.boolean().optional(),
     keywords: z.array(z.enum(TOKEN_KEYWORDS)).min(1).optional(),
+    /**
+     * Wave 4.8 follow-up 4 lane 66 (#2614 follow-up): "embedded
+     * static" stamped on the created token at creation time
+     * (Adaptive Automaton, Avenger of Zendikar, Hornet Queen,
+     * Cloudblazer — the "creature token has keyword / gets
+     * +X/+X" family). The engine folds `power` and `toughness`
+     * additively into the token's base P/T (so a 1/1 with
+     * `power: 1, toughness: 1` becomes a 2/2), and stamps
+     * `keywords` on the token's per-instance
+     * `embeddedStaticKeywords` field. `hasKeyword` reads the
+     * field as an additional source of keywords alongside
+     * `cardData.keywords`. v1 supports P/T + keywords;
+     * restrictions (`restrictAttack`, `restrictBlock`,
+     * `maxBlockers`) are a follow-up lane. Parallel to the
+     * lane 65 `grantedTriggers` pattern (per-instance +
+     * battlefield-zone-only).
+     */
+    embedded_static: z
+      .object({
+        power: z.number().int().optional(),
+        toughness: z.number().int().optional(),
+        keywords: z.array(z.enum(TOKEN_KEYWORDS)).min(1).optional(),
+      })
+      .strict()
+      .optional(),
     if_kicked: ifKicked,
   })
   .strict()
@@ -458,12 +481,10 @@ export const CounterSchema = z
     if_kicked: ifKicked,
   })
   .strict()
-  .refine(
-    (c) => c.target !== "ability" || c.colors === undefined,
-    {
-      message: "Counter.colors is only valid when target is 'spell' (#2594 follow-up, lane 22).",
-    },
-  );
+  .refine((c) => c.target !== "ability" || c.colors === undefined, {
+    message:
+      "Counter.colors is only valid when target is 'spell' (#2594 follow-up, lane 22).",
+  });
 
 /**
  * Attach an Equipment (or other permanent) to a creature. The source of the
@@ -680,8 +701,7 @@ export const PutCountersSchema = z
   })
   .refine(
     (e) =>
-      !e.use_source_power ||
-      (e.counter === "+1/+1" && e.target === "self"),
+      !e.use_source_power || (e.counter === "+1/+1" && e.target === "self"),
     {
       message:
         "use_source_power needs counter '+1/+1' and target 'self' (#2594 follow-up, lane 23)",
@@ -693,8 +713,7 @@ export const PutCountersSchema = z
       (typeof e.amount === "number" && e.amount >= 1) ||
       e.amount === "X",
     {
-      message:
-        "amount is required (>=1 or 'X') unless use_source_power is set",
+      message: "amount is required (>=1 or 'X') unless use_source_power is set",
     },
   );
 
@@ -952,13 +971,10 @@ export const AddManaSchema = z
         z.array(z.enum([...MANA_SYMBOLS, "chosen"])).min(1),
         z.literal("any"),
       ])
-      .refine(
-        (c) => c === "any" || !c.includes("chosen") || c.length === 1,
-        {
-          message:
-            "AddMana.colors may only be the single 'chosen' sentinel (not mixed with literal colors or 'any')",
-        },
-      ),
+      .refine((c) => c === "any" || !c.includes("chosen") || c.length === 1, {
+        message:
+          "AddMana.colors may only be the single 'chosen' sentinel (not mixed with literal colors or 'any')",
+      }),
     if_kicked: ifKicked,
   })
   .strict();
@@ -1283,13 +1299,10 @@ export const TriggerSchema = z
   .refine((t) => (t.effects === undefined) !== (t.modes === undefined), {
     message: "a trigger has effects or modes, exactly one",
   })
-  .refine(
-    (t) => !(t.you_may === true && t.modes !== undefined),
-    {
-      message:
-        "you_may and modes are mutually exclusive on a trigger (lane 60, #2614)",
-    },
-  )
+  .refine((t) => !(t.you_may === true && t.modes !== undefined), {
+    message:
+      "you_may and modes are mutually exclusive on a trigger (lane 60, #2614)",
+  })
   .refine((t) => (t.event === "chapter") === (t.chapter !== undefined), {
     message: "chapter is required on, and only for, chapter triggers",
   })
@@ -1309,7 +1322,10 @@ export const TriggerSchema = z
         t.spell === undefined &&
         t.targets === undefined &&
         t.cast_color === undefined),
-    { message: "caster, spell, targets and cast_color are only for cast triggers" },
+    {
+      message:
+        "caster, spell, targets and cast_color are only for cast triggers",
+    },
   )
   .refine(
     (t) =>
@@ -1368,17 +1384,20 @@ export const ActivatedSchema = z
             count: z.number().int().min(1).max(9),
             subtype: z.string().min(1).optional(),
             type: z
-              .enum(["Creature", "Artifact", "Enchantment", "Land", "Planeswalker"])
+              .enum([
+                "Creature",
+                "Artifact",
+                "Enchantment",
+                "Land",
+                "Planeswalker",
+              ])
               .optional(),
           })
           .strict()
-          .refine(
-            (s) =>
-              Boolean(s.subtype) !== Boolean(s.type),
-            {
-              message: "sacrifice_permanents needs exactly one of subtype or type",
-            },
-          )
+          .refine((s) => Boolean(s.subtype) !== Boolean(s.type), {
+            message:
+              "sacrifice_permanents needs exactly one of subtype or type",
+          })
           .optional(),
         /**
          * #2594 follow-up: "Exile this artifact" as a cost (Phoenix Down,
@@ -1471,9 +1490,7 @@ export const StaticSchema = z
          * choice. Used by Adaptive Automaton's "other creatures
          * you control of the chosen type get +1/+1".
          */
-        subtype: z
-          .union([z.string().min(1), z.literal("chosen")])
-          .optional(),
+        subtype: z.union([z.string().min(1), z.literal("chosen")]).optional(),
         /**
          * Only creatures of this color, single-letter Scryfall form
          * ("W", "U", "B", "R", "G"). Used by single-color anthem
@@ -1565,9 +1582,7 @@ export const StaticSchema = z
          * colors). Mirrors lane 52's chosen-sentinel
          * pattern.
          */
-        add_color: z
-          .enum(["W", "U", "B", "R", "G", "chosen"])
-          .optional(),
+        add_color: z.enum(["W", "U", "B", "R", "G", "chosen"]).optional(),
         /**
          * Wave 4.8 lane 55 (#2614 follow-up): companion
          * flag for `add_color` — opt-in to the v1 self-only
@@ -1618,8 +1633,7 @@ export const StaticSchema = z
       // meta-static shape, allowed as a stand-alone arm
       // with the `addColorToSelf` flag. Redcap
       // Gutter-Dweller-style self-only semantics for v1.
-      (s.affects.add_color !== undefined &&
-        s.affects.addColorToSelf === true),
+      (s.affects.add_color !== undefined && s.affects.addColorToSelf === true),
     {
       message:
         "a static needs power/toughness, keywords, X, chosen_name_block, add_creature_type (with addCreatureTypeToSelf), or add_color (with addColorToSelf)",

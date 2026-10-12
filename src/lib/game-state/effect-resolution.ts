@@ -225,14 +225,55 @@ export function resolveTokenCreationEffect(
     colors?: string[];
     oracle_text?: string;
     keywords?: string[];
+    /**
+     * Wave 4.8 follow-up 4 lane 66 (#2614 follow-up): per-instance
+     * keywords stamped on each created token (the "embedded
+     * static" arm). Filled in by the `CreateToken` schema arm
+     * (`effect.embedded_static.keywords`) at the script
+     * interpreter. Default `undefined` keeps the existing call
+     * sites byte-compatible.
+     */
+    embeddedStaticKeywords?: string[];
   },
   count: number,
   controllerId?: PlayerId,
+  /**
+   * Wave 4.8 follow-up 4 lane 66 (#2614 follow-up): the
+   * P/T contribution from the embedded static. Folded
+   * additively into the base `power` / `toughness` (so a 1/1
+   * token with `powerBonus: 1` becomes a 2/1). The corresponding
+   * keywords arm lives on `tokenData.embeddedStaticKeywords`.
+   * Optional so existing call sites stay byte-compatible.
+   */
+  embeddedPowerBonus?: number,
+  embeddedToughnessBonus?: number,
 ): EffectResolutionResult {
   const controller = controllerId || state.turn.activePlayerId;
   const ownerId = sourceId
     ? state.cards.get(sourceId)?.ownerId || controller
     : controller;
+
+  // Wave 4.8 follow-up 4 lane 66 (#2614 follow-up): fold the
+  // embedded static P/T bonus into the base power / toughness so
+  // `getPowerValue` / `getToughnessValue` pick it up via the
+  // existing `cardData.power` / `cardData.toughness` path
+  // (parallel to the lane 65 `grantedTriggers` pattern that adds
+  // a per-instance ledger rather than mutating `cardData`).
+  // For tokens the P/T is immutable on the printed card (a
+  // "1/1 Saproling" is always a 1/1 on the printed side), so
+  // mutating the token's own `cardData.power` / `toughness` is
+  // safe — no other card on the battlefield carries the same
+  // `cardData` reference. The keywords, by contrast, MUST live
+  // on a per-instance ledger because token keywords are
+  // sometimes read in aggregate (e.g. a global anthem
+  // "Saprolings you control have trample" might check
+  // `hasKeyword(saproling, "trample")`).
+  const basePower = tokenData.power ? parseInt(tokenData.power, 10) : 0;
+  const baseToughness = tokenData.toughness
+    ? parseInt(tokenData.toughness, 10)
+    : 0;
+  const foldedPower = basePower + (embeddedPowerBonus ?? 0);
+  const foldedToughness = baseToughness + (embeddedToughnessBonus ?? 0);
 
   // Create a ScryfallCard-like token data structure
   const tokenCardData = {
@@ -247,8 +288,8 @@ export function resolveTokenCreationEffect(
     legalities: { standard: "legal", commander: "legal" },
     card_faces: undefined,
     layout: "token",
-    power: tokenData.power,
-    toughness: tokenData.toughness,
+    power: String(foldedPower),
+    toughness: String(foldedToughness),
     oracle_text: tokenData.oracle_text || "",
   };
 
@@ -258,6 +299,7 @@ export function resolveTokenCreationEffect(
     controller,
     ownerId,
     count,
+    tokenData.embeddedStaticKeywords,
   );
 
   return {
