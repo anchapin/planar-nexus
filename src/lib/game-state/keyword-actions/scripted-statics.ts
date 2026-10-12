@@ -874,10 +874,28 @@ export function refreshScriptedStatics(input: GameState): GameState {
         copyChain.leafCardDataBySourceId.get(cardId);
       if (nextCopyTarget.kind === "id") {
         const target = state.cards.get(nextCopyTarget.targetId);
-        const targetOnField = target
-          ? target.currentZoneKey?.endsWith("-battlefield")
+        // Wave 4.8 follow-up 10 lane 78 (#2614 follow-up):
+        // the target's "in a tracked zone" check. v1 used
+        // `currentZoneKey?.endsWith("-battlefield")` which
+        // dropped the overlay when the target was in any
+        // non-battlefield zone (graveyard, exile, hand,
+        // library, command). Lane 78 removes the
+        // battlefield-only constraint — the overlay is
+        // applied for any target whose zone is in
+        // `state.zones` (a "tracked zone"). Cross-zones
+        // copy is battlefield-zone-only for the SOURCE
+        // (the source must be on the battlefield for the
+        // static to apply — the static walk iterates
+        // `onField`), but the target can be in any zone
+        // the engine tracks (CR 707.2 "copy a card that's
+        // not in play"). An untracked zone (a key not in
+        // `state.zones`, e.g. a non-existent zone) drops
+        // the overlay.
+        const targetInTrackedZone = target
+          ? target.currentZoneKey !== null &&
+            state.zones.has(target.currentZoneKey)
           : false;
-        if (target && targetOnField) {
+        if (target && targetInTrackedZone) {
           // Use the snapshot's leaf `cardData` when
           // available (lane 75e: nested-copy chain
           // resolved in one pass); fall back to the
@@ -1086,10 +1104,16 @@ export function refreshScriptedStatics(input: GameState): GameState {
         const target = card.copyOfTargetId
           ? state.cards.get(card.copyOfTargetId)
           : undefined;
-        const targetOnField = target
-          ? target.currentZoneKey?.endsWith("-battlefield")
+        // Wave 4.8 follow-up 10 lane 78 (#2614 follow-up):
+        // the target's "in a tracked zone" check (parallel
+        // to the lane 78 change in the static-overlay
+        // write phase). The overlay applies for any
+        // target whose zone is in `state.zones`.
+        const targetInTrackedZone = target
+          ? target.currentZoneKey !== null &&
+            state.zones.has(target.currentZoneKey)
           : false;
-        if (target && targetOnField) {
+        if (target && targetInTrackedZone) {
           const printed = card.animatedUntilEndOfTurn.cardData;
           updated.cardData = {
             ...printed,
