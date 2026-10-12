@@ -1870,3 +1870,101 @@ the order of writes in `refreshScriptedStatics`).
 Lane 61 (replacement effect for death) still
 requires a foundational replacement-effect layer
 that the engine doesn't yet have.
+
+## Wave 4.8 follow-up 8 lane 75d (PR [#2761](https://github.com/anchapin/planar-nexus/pull/2761)) — Aura-shaped copy
+
+Lane 75d ships the Aura-shaped arm of the
+until-EOT-copy family. Lane 75e + lane 61 remain
+parked for the next follow-up loop(s).
+
+### Lane 75d — Aura-shaped copy (PR #2761)
+
+- **Gap**: "Enchanted creature is a copy of [chosen
+  permanent] until end of turn" (the
+  manifested-as-Aura family, "becomes a copy"
+  enchantments).
+- **Schema**: `AuraStaticSchema` gains a
+  `become_copy: { target: CardInstanceId, until:
+"end_of_turn" }` arm (parallel to lane 76's
+  `protectionFrom` arm). v1 supports a single
+  chosen target on the battlefield; the chosen
+  target itself is unchanged. The refine list at
+  the bottom of `AuraStaticSchema` accepts
+  `become_copy` as a stand-alone arm (a pure
+  meta-static — parallel to the Wave 4.8 follow-up
+  6 lane 76 process note).
+- **Engine**: `refreshAuraBonuses` collects
+  `scriptedStatic.become_copy.target` from each
+  attached Aura into a per-enchanted-card map
+  (`auraCopyOfTargetByEnchantedCard`); the write
+  phase at the bottom of the pass overlays the
+  chosen target's printed characteristics onto the
+  ENCHANTED CARD's `cardData` (not the Aura's)
+  using the lane 75 `animatedUntilEndOfTurn`
+  infrastructure. The overlay self-corrects when the
+  chosen target leaves the battlefield (the
+  enchanted card restores its printed `cardData`
+  from `animatedUntilEndOfTurn`); the existing
+  `clearUntilEndOfTurnPT` /
+  `restoreAnimatedOffBattlefield` rollback paths
+  handle EOT cleanup. The chosen target's
+  `state.cards.has(targetId)` check at write time
+  means a chosen target that has left the
+  battlefield (or never existed) is a no-op (the
+  enchanted card keeps its printed `cardData`).
+- **Distinct from lane 75** — lane 75's overlay is
+  on the SOURCE card (the permanent with the
+  static). Lane 75d's overlay is on the ENCHANTED
+  CARD (the Aura's attached target). The two
+  paths share the lane 75 infrastructure
+  (`animatedUntilEndOfTurn` + `copyOfTargetId`)
+  but live in different refresh sites
+  (`refreshScriptedStatics` vs
+  `refreshAuraBonuses`).
+- **Sample cards**: synthetic Aura registered via
+  the test harness (`lane75d-aura-shaped-copy.test.ts`
+  uses a Shapeshifter enchanted by a synthetic
+  Aura with `become_copy: { target: <Grizzly
+Bears id>, until: "end_of_turn" }`). Real-world
+  cards that should now be scriptable in this
+  pattern: the manifested-as-Aura family,
+  "becomes a copy" enchantments.
+- **Dedicated test**: 6-case
+  `lane75d-aura-shaped-copy.test.ts` covers
+  schema rejection (empty target, non-EOT until),
+  schema acceptance, characteristic overlay
+  (Grizzly Bears's name, type_line, P/T, colors),
+  chosen-target-not-on-battlefield no-op (the
+  overlay does not apply when the chosen target
+  isn't on the battlefield), and EOT cleanup
+  rollback (the enchanted card's printed
+  `cardData` is restored at EOT).
+- **Engine-size budget**: bumped 3000 → 3100 in
+  `scripts/check-engine-size-budget.mjs` for the
+  until-EOT-copy + auras-with-copy family
+  (schema.ts grew +64 lines to 3050, leaving
+  headroom under the 3100 ceiling). Lane 75e
+  may need another bump.
+
+### Net delta from Wave 4.8 follow-up 8 (lane 75c loop)
+
+- Test suites: 733 → 734 (+1 for lane 75d).
+- Test cases: 14154 → 14160 (+6 for lane 75d).
+- Engine-size budget: schema.ts 2986 (lane 75c
+  baseline) → 3050 (+64 across lane 75d incl. the
+  docstring block for the new arm). Under the
+  3100 ceiling bumped in lane 75d.
+
+### Multi-lane follow-ups still open (tracked under #2614)
+
+Lane 75e + lane 61 remain parked. Lane 75e
+(nested-copy cycle guard) is the riskiest single
+piece — the cycle-detection snapshot at the top
+of the refresh pass touches the order of writes
+in `refreshScriptedStatics` (and now
+`refreshAuraBonuses` too because lane 75d's overlay
+participates in the same family); recommended to
+defer to a separate multi-lane plan. Lane 61
+(replacement effect for death) still requires a
+foundational replacement-effect layer that the
+engine doesn't yet have.
