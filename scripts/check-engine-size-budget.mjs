@@ -134,7 +134,17 @@ const SCOPES = [
     // triggered abilities to other cards) room to land
     // without fragmenting the chosen-X / additional-costs
     // family.
-    budgetLines: 2350,
+    //
+    // Wave 4.8 follow-up 3 lane 64 (#2614 follow-up) extends
+    // the existing `affinity` field with a `color` arm (CR
+    // 702.41; "affinity for [color]" alongside the existing
+    // subtype arm) and adds `reduction_per_match` to both
+    // arms. schema.ts landed at 2362 (+12 over 2350). Bumping
+    // 2350 → 2400 to give lane 65 (granting triggered
+    // abilities to other cards) room to land without
+    // fragmenting the chosen-X / additional-costs / affinity
+    // family.
+    budgetLines: 2400,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

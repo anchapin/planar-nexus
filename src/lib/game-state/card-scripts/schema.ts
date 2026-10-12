@@ -1997,15 +1997,60 @@ export const CardScriptSchema = z
      * Instants and sorceries only, like flashback.
      */
     /**
-     * Affinity for <subtype> (CR 702.41, #2614 Sapling Nursery) — "This
-     * spell costs {1} less to cast for each <subtype> you control." Only
-     * generic mana is reduced.
+     * Affinity for <subtype> / <color> (CR 702.41; #2614 Sapling
+     * Nursery; Wave 4.8 follow-up 3 lane 64 — Dragonlord's Servant,
+     * Claws Out, Archmage of Runes, Mocking Sprite, Bolt Bend, Arcane
+     * Epiphany). The spell's printed generic mana cost is reduced
+     * by `reduction_per_match` for each matching card the controller
+     * controls at cast time. v1 supports:
+     *
+     *  - `subtype: "<subtype>"` — the lane 22 / Sapling Nursery
+     *    shape. Counts cards whose type line lists `<subtype>`.
+     *    Default `reduction_per_match` is 1 (CR 702.41a: "This
+     *    spell costs {1} less to cast for each..."); an explicit
+     *    `reduction_per_match` overrides it for non-default
+     *    affinity cards.
+     *
+     *  - `color: "W"|"U"|"B"|"R"|"G"|"any"` — the lane 64
+     *    color-based shape. Counts cards the controller controls
+     *    whose colors include `color` (`"any"` matches any
+     *    non-colorless card). Default `reduction_per_match` is 1.
+     *    Multi-color affinity discounts (e.g. "Affinity for
+     *    artifacts and creatures") are a follow-up lane.
+     *
+     * The reduction is applied at cast time, after alternative
+     * costs but before the can-cast legality check. Only generic
+     * mana is reduced (CR 702.41a, 601.2f); the cost can't drop
+     * below {0} (the rest of the cost is colored, and the affinity
+     * discount can drive the total to 0 — Claws Out
+     * (`{3}{R}{R}` with affinity for artifacts prints `{R}`
+     * reduced typically). Going below `0` is illegal per CR 601.2f.
      */
     affinity: z
-      .object({
-        subtype: z.string().min(1),
-      })
-      .strict()
+      .union([
+        z
+          .object({
+            subtype: z.string().min(1),
+            /**
+             * Per-match reduction. Default `1` matches CR 702.41a
+             * ("This spell costs {1} less to cast for each ...").
+             * An explicit value covers non-default affinity cards
+             * in the same family.
+             */
+            reduction_per_match: z.number().int().min(1).max(99).default(1),
+          })
+          .strict(),
+        z
+          .object({
+            color: z.enum(["W", "U", "B", "R", "G", "any"]),
+            /**
+             * Per-match reduction. Default `1`; explicit values
+             * cover non-default affinity cards in the same family.
+             */
+            reduction_per_match: z.number().int().min(1).max(99).default(1),
+          })
+          .strict(),
+      ])
       .optional(),
     /**
      * Land-play statics while this permanent is on the battlefield (#2614
