@@ -334,6 +334,36 @@ export function detectTriggeredAbilities(
         shouldTrigger = false;
       }
 
+      // Wave 4.8 follow-up 2 lane 62 (#2614 follow-up): counter
+      // gate parallel to the `losesAbilities` gate above. When
+      // the script's trigger carries `counter_gate: { counter,
+      // op, n }`, the engine only fires the trigger if the source
+      // permanent's `card.instanceCounters[counter]` matches the
+      // gate's comparator (CR 603.2 "while" gate variant — NOT
+      // an intervening-if CR 603.4). Default count is `0` when
+      // `card.instanceCounters` is undefined (matches the lane
+      // 59 v1 default; field is `Record<string, number>`).
+      //
+      // The check runs AFTER both the `whileCondition` and
+      // `losesAbilities` gates; the gate is a one-time filter and
+      // doesn't burn cycles on the regex evaluator when the
+      // higher-priority gates have already disqualified the
+      // trigger. The check is a no-op when `ability.counterGate`
+      // is undefined (v1 default for all triggers without the
+      // field).
+      //
+      // The sample cards are Redcap Gutter-Dweller's deferred
+      // "Goblins you control have menace when this has 3+
+      // +1/+1 counters" half (lane 57 JSON shape, lane 62 wires
+      // the engine gate it implicitly carried).
+      if (shouldTrigger && ability.counterGate) {
+        const gate = ability.counterGate;
+        const count = card.instanceCounters?.[gate.counter] ?? 0;
+        const passes =
+          gate.op === "gte" ? count >= gate.n : count === gate.n;
+        if (!passes) shouldTrigger = false;
+      }
+
       if (shouldTrigger && ability.interveningIf) {
         shouldTrigger = evaluateInterveningIfClause(
           ability.interveningIf,

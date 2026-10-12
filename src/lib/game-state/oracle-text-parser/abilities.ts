@@ -272,6 +272,17 @@ export interface ParsedTriggeredAbility {
    * not again on resolution, unlike an intervening "if" (CR 603.4).
    */
   whileCondition?: string;
+  /**
+   * Wave 4.8 follow-up 2 lane 62 (#2614 follow-up): a counter-gate
+   * pass-through from the script's `trigger.counter_gate` field.
+   * Mirrors the structure of `whileCondition` (CR 603.2 "while"
+   * gate) but reads `card.instanceCounters` — the per-instance
+   * counter ledger stamped by `resolveEnterChoice` for the
+   * `enters_with_counters_per_match` arm (lane 59). The engine's
+   * `detectTriggeredAbilities` consults this gate alongside
+   * `whileCondition` and `losesAbilities` (lane 58).
+   */
+  counterGate?: { counter: string; op: "gte" | "eq"; n: number };
 }
 
 /**
