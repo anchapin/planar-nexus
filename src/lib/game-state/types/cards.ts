@@ -585,6 +585,22 @@ export interface CardInstance {
      * before).
      */
     setBySpellEffect?: boolean;
+    /**
+     * Wave 4.8 follow-up 9 lane 75e (#2614 follow-up): when
+     * true, the `animatedUntilEndOfTurn` overlay was set by
+     * an Aura with a `become_copy` arm (`AuraStaticSchema.
+     * become_copy`, lane 75d) rather than a `StaticSchema.
+     * become_copy` static. The `refreshScriptedStatics`
+     * drop branch preserves these overlays across passes so
+     * a static refresh between Aura refreshes doesn't tear
+     * down the Aura-driven copy. The Aura refresh is the
+     * canonical drop site (`refreshAuraBonuses`); the EOT
+     * cleanup step (`clearUntilEndOfTurnPT`) also drops the
+     * overlay. Stamped by `refreshAuraBonuses` at write
+     * time; lane 75's static-driven overlay never sets
+     * this flag.
+     */
+    setByAura?: boolean;
   };
   /**
    * Keywords granted to this card's spell while it resolves (#2483): set

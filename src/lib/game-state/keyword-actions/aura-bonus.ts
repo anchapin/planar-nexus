@@ -14,6 +14,7 @@
  */
 import type { CardInstance, CardInstanceId, GameState, PlayerId } from "../types";
 import { getCardScript } from "../card-scripts/registry";
+import { buildAuraCopyChainSnapshot } from "./copy-chain";
 
 export interface AuraPT {
   power: number;
@@ -99,6 +100,20 @@ function battlefieldCards(state: GameState): CardInstance[] {
 export function refreshAuraBonuses(state: GameState): GameState {
   const onField = battlefieldCards(state);
   const onFieldIds = new Set(onField.map((c) => c.id));
+  // Wave 4.8 follow-up 9 lane 75e (#2614 follow-up):
+  // build a snapshot of every enchanted card's
+  // "effective copy target" (the leaf of the chosen
+  // target's copy chain) BEFORE the overlay write
+  // phase runs. An Aura with a `become_copy` arm
+  // whose chosen target has its own `become_copy`
+  // static overlays the LEAF's printed `cardData`
+  // in a single pass; a cyclic chain is broken by
+  // dropping the overlay on every cycle member.
+  // The cycle guard consults the printed `cardData`
+  // of each card it walks, so the snapshot is
+  // independent of any in-flight overlay from a
+  // prior pass.
+  const auraCopyChain = buildAuraCopyChainSnapshot(state);
   const bonus = new Map<string, { power: number; toughness: number }>();
   const keywords = new Map<string, string[]>();
   const restrictAttack = new Map<string, string[]>();
@@ -520,6 +535,31 @@ export function refreshAuraBonuses(state: GameState): GameState {
     // static path — this refresh is the canonical
     // drop site.
     if (nextAuraCopyOfTargetId !== undefined) {
+      // Wave 4.8 follow-up 9 lane 75e (#2614 follow-up):
+      // cycle guard — drop the overlay for any enchanted
+      // card whose chosen target's copy chain forms a
+      // cycle. The cycle member is treated as if it
+      // had no `become_copy` arm: the enchanted card's
+      // printed `cardData` is restored and the copy
+      // ledger is cleared. The snapshot's `cycleIds`
+      // set covers every id in any cycle, so a
+      // `cycleIds.has(cardId)` check catches cycles
+      // whose leaves are intermediate targets the
+      // enchanted card is not directly attached to.
+      if (auraCopyChain.cycleIds.has(cardId)) {
+        if (updated.animatedUntilEndOfTurn) {
+          updated.cardData = updated.animatedUntilEndOfTurn.cardData;
+          delete updated.animatedUntilEndOfTurn;
+          delete updated.copyOfTargetId;
+        } else {
+          // No prior overlay — the Aura-driven overlay
+          // is suppressed for this pass. The copy
+          // ledger is cleared.
+          delete updated.copyOfTargetId;
+        }
+        cards.set(cardId, updated);
+        continue;
+      }
       const chosenTarget = state.cards.get(nextAuraCopyOfTargetId);
       const chosenTargetOnField =
         chosenTarget &&
@@ -527,10 +567,35 @@ export function refreshAuraBonuses(state: GameState): GameState {
       if (chosenTarget && chosenTargetOnField) {
         const printed =
           updated.animatedUntilEndOfTurn?.cardData ?? updated.cardData;
-        updated.animatedUntilEndOfTurn = { cardData: printed };
+        // Wave 4.8 follow-up 9 lane 75e (#2614 follow-up):
+        // mark the overlay as Aura-driven so
+        // `refreshScriptedStatics` doesn't drop it on a
+        // subsequent refresh between Aura refreshes. The
+        // `setByAura` marker is parallel to lane 75a's
+        // `setBySpellEffect` marker — both are
+        // preserved across static refreshes; only the
+        // Aura refresh (or EOT cleanup) drops them.
+        updated.animatedUntilEndOfTurn = {
+          cardData: printed,
+          setByAura: true,
+        };
+        // Wave 4.8 follow-up 9 lane 75e (#2614 follow-up):
+        // consult the snapshot's leaf `cardData` when
+        // available (a nested-copy chain — the chosen
+        // target has its own `become_copy` static — is
+        // resolved in one pass: the enchanted card
+        // overlays the leaf's printed characteristics);
+        // fall back to the immediate chosen target's
+        // printed `cardData` when the chain has no
+        // further extension (the chosen target IS the
+        // leaf, or the chain terminated because the
+        // leaf has no `become_copy` arm).
+        const leafFromSnapshot =
+          auraCopyChain.leafCardDataByEnchantedCard.get(cardId);
         const targetPrinted =
-          chosenTarget.animatedUntilEndOfTurn?.cardData ??
-          chosenTarget.cardData;
+          leafFromSnapshot ??
+          (chosenTarget.animatedUntilEndOfTurn?.cardData ??
+            chosenTarget.cardData);
         updated.cardData = {
           ...printed,
           name: targetPrinted.name,
