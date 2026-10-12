@@ -1,0 +1,17 @@
+{
+  "name": "Dragonlord's Servant",
+  "oracle": "Dragonlord's Servant costs {1} less to cast for each Dragon you control.\n{1}, {T}: Add one mana of any color.",
+  "affinity": {
+    "subtype": "Dragon",
+    "reduction_per_match": 1
+  },
+  "activated": [
+    {
+      "text": "Add one mana of any color.",
+      "cost": { "mana": "{1}", "tap": true },
+      "effects": [
+        { "op": "AddMana", "amount": 1, "colors": "any" }
+      ]
+    }
+  ]
+}

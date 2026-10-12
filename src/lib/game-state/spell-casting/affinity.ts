@@ -64,14 +64,25 @@ export function affinityReduction(
   const battlefield = state.zones.get(`${playerId}-battlefield`);
   if (!battlefield) return 0;
   let count = 0;
+  const reductionPerMatch = affinity.reduction_per_match ?? 1;
   for (const id of battlefield.cardIds) {
     const card = state.cards.get(id);
-    if (
-      card &&
-      card.controllerId === playerId &&
-      hasSubtype(card, affinity.subtype)
-    ) {
-      count++;
+    if (!card || card.controllerId !== playerId) continue;
+    if ("subtype" in affinity) {
+      if (hasSubtype(card, affinity.subtype)) count += reductionPerMatch;
+      continue;
+    }
+    if ("color" in affinity) {
+      // CR 702.41: affinity for <color> counts cards of that
+      // color the caster controls. "any" matches any non-colorless
+      // card (the per-Color rule, CR 105.2 / 202.2).
+      const cardColors = card.cardData.colors ?? [];
+      if (cardColors.length === 0) continue;
+      if (affinity.color === "any") {
+        count += reductionPerMatch;
+      } else if (cardColors.includes(affinity.color)) {
+        count += reductionPerMatch;
+      }
     }
   }
   return count;
