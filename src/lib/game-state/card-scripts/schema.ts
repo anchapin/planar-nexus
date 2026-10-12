@@ -2338,6 +2338,50 @@ export const CardScriptSchema = z
           })
           .strict()
           .optional(),
+        /**
+         * #2614 follow-up (Wave 4.8 follow-up 5 lane 69): "Pay the
+         * generic portion of this spell's cost using only [color(s)]"
+         * (the mana-restriction family — Force of Will, Cabal
+         * Therapy, the Storm-Crow specter pattern). Records an
+         * X-restriction on the cast: the player may pay the
+         * spell's generic mana cost using only the named color(s),
+         * and the cost is reduced by the named `generic` amount
+         * (the v1 minimum is a single-color restriction with a
+         * single generic reduction). The cast-time legality
+         * check rejects the cast if the player can't pay the cost
+         * with the restricted colors. The deduction happens at
+         * cast time via the color-restricted mana payment path;
+         * the per-instance `manaRestriction` field on the
+         * StackObject carries the same shape so resolve-time
+         * effects can reference it.
+         *
+         * Sample card: a synthetic instant with
+         * `mana_restriction: { colors: ["U"], generic: 1 }` and a
+         * printed cost of `{U}{U}` (the player may pay `{U}{U}`
+         * normally, OR pay the generic 1 in blue and the second
+         * U in any color — the v1 minimum). Out of scope (each a
+         * follow-up lane): multi-color restrictions
+         * (`colors: ["U", "B"]`), per-spell color substitutions,
+         * hybrid mana costs, Phyrexian mana costs.
+         */
+        mana_restriction: z
+          .object({
+            /**
+             * Restriction colors. v1 enforces exactly one entry;
+             * multi-color restrictions are a follow-up lane.
+             */
+            colors: z
+              .array(z.enum(["W", "U", "B", "R", "G"]))
+              .length(1),
+            /**
+             * Amount of generic mana the player may pay using only
+             * the named color(s). v1 minimum: 1 (matches a single
+             * generic pip).
+             */
+            generic: z.number().int().min(1).max(99),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),

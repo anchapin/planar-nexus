@@ -10,6 +10,7 @@ import type {
   CardInstanceId,
   StackObject,
   Target,
+  ManaPool,
 } from "../types";
 import { Phase, ZoneType } from "../types";
 import { moveCardBetweenZones } from "../zones";
@@ -1346,6 +1347,113 @@ export function castSpell(
       totalGeneric = Math.max(0, totalGeneric - affinitySaving);
     }
 
+    // Wave 4.8 follow-up 5 lane 69 (#2614 follow-up): the
+    // `additionalCosts.mana_restriction` arm — "Pay the generic
+    // portion of this spell's cost using only [color(s)]" (the
+    // mana-restriction family: Force of Will, Cabal Therapy,
+    // the Storm-Crow specter pattern). The v1 minimum supports
+    // a single-color restriction with a single generic
+    // substitution (`mana_restriction: { colors: ["U"], generic: 1 }`
+    // on a `{U}{U}` instant: the player may pay `{U}{U}`
+    // normally, OR pay `{U}{1}` where the `{1}` is paid as
+    // blue — the v1 minimum).
+    //
+    // Auto-apply semantics (parallel to affinity): if the
+    // player CAN pay the printed cost, the engine does NOT
+    // apply the restriction (the printed cost is the cheaper
+    // path). If the player CANNOT pay the printed cost, but
+    // CAN pay the cost under the restriction, the engine
+    // applies the restriction: convert `mrGeneric` colored
+    // pips of the named color into generic pips. The cast
+    // fails ("Not enough energy (mana) available.") if the
+    // player cannot pay the cost under either path.
+    //
+    // The "generic must be paid as the named color"
+    // constraint: the v1 minimum reads the player's pool
+    // and requires the named-color pips to be sufficient
+    // for both the explicit named-color pip count AND the
+    // shifted generic. Multi-color restrictions, per-spell
+    // color substitutions, hybrid mana costs, and
+    // Phyrexian mana costs are separate follow-up lanes
+    // (the schema enforces `colors.length === 1` for v1).
+    let manaRestrictionApplied:
+      | { colors: ("W" | "U" | "B" | "R" | "G")[]; generic: number }
+      | undefined;
+    const manaRestrictionScript = getCardScript(
+      card.cardData.name,
+    )?.additionalCosts?.mana_restriction;
+    if (manaRestrictionScript) {
+      const mrGeneric = manaRestrictionScript.generic;
+      const mrColor = manaRestrictionScript.colors[0];
+      const poolAtCan = state.players.get(playerId)?.manaPool;
+      const canPayPrinted =
+        !!poolAtCan &&
+        poolAtCan.white >= totalWhite &&
+        poolAtCan.blue >= totalBlue &&
+        poolAtCan.black >= totalBlack &&
+        poolAtCan.red >= totalRed &&
+        poolAtCan.green >= totalGreen &&
+        poolAtCan.generic +
+          poolAtCan.white +
+          poolAtCan.blue +
+          poolAtCan.black +
+          poolAtCan.red +
+          poolAtCan.green +
+          poolAtCan.colorless >=
+          totalWhite +
+            totalBlue +
+            totalBlack +
+            totalRed +
+            totalGreen +
+            totalGeneric;
+      if (!canPayPrinted) {
+        // Apply the restriction: convert `mrGeneric` colored
+        // pips of the named color into generic pips. The
+        // named-color total decreases by `mrGeneric`; the
+        // generic total increases by `mrGeneric`. The
+        // standard spendMana cascade handles the "must be
+        // paid as the named color" part via the colored-to-
+        // generic cascade (which prefers the named color
+        // when paying generic IF the named color pool still
+        // has mana for the explicit pip — v1 minimum just
+        // uses the existing cascade).
+        const colorKey: keyof ManaPool = (
+          {
+            W: "white",
+            U: "blue",
+            B: "black",
+            R: "red",
+            G: "green",
+          } as const
+        )[mrColor];
+        switch (colorKey) {
+          case "white":
+            totalWhite = Math.max(0, totalWhite - mrGeneric);
+            break;
+          case "blue":
+            totalBlue = Math.max(0, totalBlue - mrGeneric);
+            break;
+          case "black":
+            totalBlack = Math.max(0, totalBlack - mrGeneric);
+            break;
+          case "red":
+            totalRed = Math.max(0, totalRed - mrGeneric);
+            break;
+          case "green":
+            totalGreen = Math.max(0, totalGreen - mrGeneric);
+            break;
+          default:
+            break;
+        }
+        totalGeneric += mrGeneric;
+        manaRestrictionApplied = {
+          colors: [mrColor],
+          generic: mrGeneric,
+        };
+        alternativeCostsUsed.push("mana_restriction");
+      }
+    }
+
     // Check if player has enough mana to cast the spell
     const player = state.players.get(playerId);
     if (!player) {
@@ -1672,6 +1780,16 @@ export function castSpell(
       // zone (exile for graveyard/exile, command for commander
       // — a follow-up lane).
       castableFromZone,
+      // Wave 4.8 follow-up 5 lane 69 (#2614 follow-up): the
+      // mana-restriction arm applied at cast time (if any).
+      // Set when the script declared
+      // `additionalCosts.mana_restriction` and the engine
+      // applied the restriction because the player couldn't
+      // pay the printed cost. Reads at resolve time so the
+      // spell's effect can know whether the restriction was
+      // used. Undefined when the player paid the printed
+      // cost normally.
+      manaRestriction: manaRestrictionApplied,
       // `wasKicked` preserves the caller's intent: when the legacy `isKicked`
       // boolean is the only signal (no explicit `timesKicked`) we stamp it
       // directly so callers see their declaration retained even on cards where

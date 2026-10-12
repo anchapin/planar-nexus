@@ -516,11 +516,71 @@ export class ValidationService {
       pool.red < coloredCost.red ||
       pool.green < coloredCost.green
     ) {
-      return {
-        isValid: false,
-        reason: "Not enough colored mana",
-        message: "Not enough colored mana to cast this spell.",
-      };
+      // Wave 4.8 follow-up 5 lane 69 (#2614 follow-up): the
+      // `additionalCosts.mana_restriction` arm — "Pay the
+      // generic portion of this spell's cost using only
+      // [color(s)]". If the printed cost isn't payable, the
+      // engine may apply the restriction to convert
+      // `generic` colored pips of the named color into
+      // generic pips. The cast is valid if the player can
+      // pay EITHER the printed cost OR the adjusted cost.
+      // The actual adjustment + deduction happens in
+      // `castSpell` (cast.ts); here we just open the gate.
+      const manaRestrictionScript = getCardScript(
+        card.cardData.name,
+      )?.additionalCosts?.mana_restriction;
+      const underRestriction = (() => {
+        if (!manaRestrictionScript) return false;
+        const mrGeneric = manaRestrictionScript.generic;
+        const mrColor = manaRestrictionScript.colors[0];
+        const colorKey = (
+          {
+            W: "white",
+            U: "blue",
+            B: "black",
+            R: "red",
+            G: "green",
+          } as const
+        )[mrColor];
+        const poolColoredForColor = pool[colorKey];
+        // Adjusted coloredCost: shift `mrGeneric` colored
+        // pips of the named color into generic. Requires
+        // the player to have at least `coloredCost[colorKey]
+        // - mrGeneric` colored pips of the named color AND
+        // `coloredCost.generic + mrGeneric` generic (paid
+        // from pool.generic + remaining named-color pool +
+        // any other colored pool via cascade).
+        const adjustedColored = Math.max(
+          0,
+          coloredCost[colorKey] - mrGeneric,
+        );
+        const adjustedGeneric = coloredCost.generic + mrGeneric;
+        const adjustedExplicit = poolColoredForColor >= adjustedColored;
+        // Generic pool + remaining named-color pool must
+        // cover the shifted generic (which must be paid as
+        // the named color). The v1 minimum reads the pool
+        // directly: the player needs at least
+        // `adjustedGeneric` named-color mana total (the
+        // explicit named-color pip count is already covered
+        // by `adjustedExplicit`; the shifted generic adds
+        // another `mrGeneric` named-color requirement).
+        const namedColorTotalAvailable = poolColoredForColor;
+        const adjustedNeeds = adjustedGeneric;
+        const genericAvailable =
+          pool.generic +
+          Math.max(0, namedColorTotalAvailable - adjustedColored);
+        return (
+          adjustedExplicit &&
+          genericAvailable >= adjustedNeeds
+        );
+      })();
+      if (!underRestriction) {
+        return {
+          isValid: false,
+          reason: "Not enough colored mana",
+          message: "Not enough colored mana to cast this spell.",
+        };
+      }
     }
 
     // Calculate total mana available for generic cost

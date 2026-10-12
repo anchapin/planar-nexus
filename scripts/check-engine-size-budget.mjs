@@ -181,7 +181,21 @@ const SCOPES = [
     // fragmenting the chosen-X / additional-costs /
     // affinity / grants / counter-ledger / cast-from-zone
     // family (the historical precedent continues).
-    budgetLines: 2550,
+    //
+    // Wave 4.8 follow-up 5 lane 69 (#2614 follow-up) adds
+    // the `additionalCosts.mana_restriction: { colors: ["W" |
+    // "U" | "B" | "R" | "G"], generic: number }` arm on
+    // `CardScriptSchema` (the mana-restriction family: Force
+    // of Will, Cabal Therapy, the Storm-Crow specter
+    // pattern; v1 single-color restriction with a single
+    // generic reduction). schema.ts landed at 2563
+    // (+13 over 2550). Bumping 2550 → 2575 to give the
+    // mana-restriction family room to land without
+    // fragmenting the chosen-X / additional-costs /
+    // affinity / grants / counter-ledger / cast-from-zone
+    // / mana-restriction family (the historical precedent
+    // continues).
+    budgetLines: 2575,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),
