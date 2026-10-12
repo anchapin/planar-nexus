@@ -1796,11 +1796,69 @@ export const StaticSchema = z
      * of turn" — a per-target instead of self-only shape).
      */
     become_copy: z
-      .object({
-        target: z.string().min(1),
-        until: z.literal("end_of_turn"),
-      })
-      .strict()
+      .union([
+        z
+          .object({
+            /**
+             * v1: the `CardInstanceId` of the chosen
+             * permanent on the battlefield to copy.
+             * Lane 75 — Wave 4.8 follow-up 7
+             * (#2614 follow-up). The named target
+             * must be on the battlefield for the
+             * overlay to take effect (the refresh
+             * pass checks `state.cards.has(targetId)`).
+             */
+            target: z.string().min(1),
+            until: z.literal("end_of_turn"),
+          })
+          .strict(),
+        z
+          .object({
+            /**
+             * Wave 4.8 follow-up 8 lane 75b
+             * (#2614 follow-up): "as long as this
+             * is in play, it's a copy of [named
+             * card] until end of turn" (Memnarch,
+             * Clone Shell, the "named-card-copy"
+             * subfamily of the until-EOT-copy
+             * family). The named card's printed
+             * `cardData` is looked up via the
+             * `cardDataByName` registry helper
+             * (parallel to how the engine reads
+             * scripted statics from
+             * `getCardScript`); missing-name is a
+             * no-op (the source keeps its printed
+             * `cardData`). The overlay + cleanup
+             * path reuses the lane 75
+             * `animatedUntilEndOfTurn`
+             * infrastructure. The named card is
+             * NOT required to be on the
+             * battlefield (unlike `target` —
+             * Memnarch names a card that's not in
+             * play; the source takes on the named
+             * card's printed characteristics for
+             * the duration of the turn).
+             *
+             * Out of scope (each a follow-up
+             * lane): multi-named copies ("becomes
+             * a copy of [card name] or [other card
+             * name]"), named-card copies with
+             * exceptions ("becomes a copy of [card
+             * name] except for [X]" — that's lane
+             * 75c), and nested named copies (a
+             * named-card copy of a card that
+             * itself has a `become_copy` static —
+             * that's lane 75e).
+             */
+            named_card: z
+              .object({
+                name: z.string().min(1),
+              })
+              .strict(),
+            until: z.literal("end_of_turn"),
+          })
+          .strict(),
+      ])
       .optional(),
   })
   .strict()
