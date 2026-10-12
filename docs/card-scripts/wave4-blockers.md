@@ -1571,3 +1571,93 @@ Wave 4.8 follow-up 7 loop is complete. Lane 61 (replacement
 effect for death) is parked; it requires its own
 multi-lane plan with a foundational replacement-effect
 layer (#2614 plan).
+
+## Wave 4.8 follow-up 8 loop done summary
+
+The Wave 4.8 follow-up 8 loop shipped **lane 75a** (PR
+[#2758](https://github.com/anchapin/planar-nexus/pull/2758))
+— the chosen-target copy until EOT spell-effect shape
+(Cackling Counterpart). Lanes 75b/75c/75d/75e + lane 61
+remain parked for the next follow-up loop(s).
+
+### Lane 75a — Chosen-target copy (PR #2758)
+
+- **Gap**: "create a token that's a copy of [a chosen
+  permanent] until end of turn" (Cackling Counterpart).
+- **Schema**: new `CopyUntilEndOfTurn: { chosen_permanent:
+CardInstanceId, until: "end_of_turn" }` arm on
+  `EffectSchema` (parallel to lane 70's `CopyPermanent`
+  op). v1 single chosen target on the battlefield; the
+  chosen target itself is unchanged.
+- **Engine**: new `case "CopyUntilEndOfTurn"` arm in
+  `applyEffect` (card-scripts/interpret.ts) that
+  validates the chosen target is on the battlefield,
+  creates a new `CardInstance` with the chosen
+  target's printed characteristics (name, type_line,
+  power, toughness, colors, color_identity, keywords —
+  CR 707.2 "all characteristics copied"), and adds it
+  to the controller's battlefield with
+  `animatedUntilEndOfTurn.setBySpellEffect: true` and
+  `copyOfTargetId: chosenId` so the existing lane 75
+  rollback paths restore the printed characteristics
+  at EOT or when the new permanent / chosen target
+  leaves the battlefield.
+- **Refresh-survival fix**: the per-card
+  `animatedUntilEndOfTurn.setBySpellEffect?: boolean`
+  marker on `CardInstance` distinguishes the
+  spell-effect-set overlay from lane 75's
+  static-driven overlay. `refreshScriptedStatics`
+  preserves spell-effect-set overlays across refreshes
+  (the EOT cleanup step drops them via
+  `clearUntilEndOfTurnPT`); the static-driven drop
+  branch retains its prior behavior. Without this
+  marker, every `refreshScriptedStatics` call between
+  cast and EOT would tear down lane 75a's overlay.
+- **Per-op reference module**:
+  `card-scripts/ops/copy-until-eot.ts` + registry
+  entry (parallel to the lane 70 / 71 / 75 / 76
+  pattern; the LLM-drafted scripts pipeline test
+  enforces parity).
+- **Sample card**: synthetic spell registered via the
+  test harness (lane 75a's test file uses a
+  Shapeshifter named "Test Until-EOT Chosen-Target
+  Copy (lane 75a)" registered as a script). Real-
+  world cards that should now be scriptable in this
+  pattern: Cackling Counterpart, Quasiduplicate,
+  Soulblade Specter (the "cast for chosen target"
+  side of the copy family).
+- **Dedicated test**: 8-case
+  `lane75a-until-eot-chosen-target-copy.test.ts`
+  covers schema rejection (empty `chosen_permanent`,
+  non-`end_of_turn` `until`), schema acceptance,
+  characteristic overlay (Grizzly Bears copy),
+  keyword copy (Serra Angel flying / vigilance),
+  target-leaves-battlefield fizzle (chosen target
+  isn't on the battlefield at cast time → spell
+  fizzles, no token created), EOT cleanup rollback
+  (the new permanent's printed `cardData` is
+  restored via `clearUntilEndOfTurnPT`), and refresh-
+  pass consistency (the overlay survives a
+  `refreshScriptedStatics` call).
+- **Engine-size budget**: bumped 2800 → 2900 in
+  `scripts/check-engine-size-budget.mjs` for the
+  until-EOT-copy family (schema.ts grew +65 lines
+  to 2865, leaving headroom for lanes 75b–75e).
+
+### Net delta from Wave 4.8 follow-up 7 loop
+
+- Test suites: 730 → 731 (+1 for lane 75a).
+- Test cases: 14127 → 14135 (+8 for lane 75a).
+- Engine-size budget: schema.ts 2790 (lane 75 baseline)
+  → 2865 (+75 across lane 75a incl. the docstring
+  block for the new op). Under the 2900 ceiling bumped
+  in lane 75a.
+
+### Multi-lane follow-ups still open (tracked under #2614)
+
+Lanes 75b/75c/75d/75e + lane 61 remain parked. Each
+is the next round's work — the until-EOT-copy family
+covers the bulk of the remaining #2614 drafter-list
+work, and lane 61 (replacement effect for death)
+requires a foundational replacement-effect layer that
+the engine doesn't yet have.
