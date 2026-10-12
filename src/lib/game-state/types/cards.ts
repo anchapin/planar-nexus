@@ -242,6 +242,25 @@ export interface CardInstance {
   isToken: boolean;
   /** For tokens, a copy of the token's defining characteristics */
   tokenData: ScryfallCard | null;
+  /**
+   * Wave 4.8 follow-up 4 lane 66 (#2614 follow-up): per-instance
+   * keywords stamped on a token at creation time by a
+   * `CreateToken.embedded_static.keywords` arm. Read by
+   * `hasKeyword` as an additional source of keywords alongside
+   * `cardData.keywords`. The field is per-instance +
+   * battlefield-zone-only, set when the token enters the
+   * battlefield and read whenever a static / spell / combat
+   * check asks `hasKeyword(token, k)`. The corresponding P/T
+   * of the embedded static is folded into `cardData.power` /
+   * `cardData.toughness` at creation time (so `getPowerValue` /
+   * `getToughnessValue` pick it up automatically — no separate
+   * P/T ledger is needed). Parallel to the lane 65
+   * `grantedTriggers` pattern (per-instance, dropped when the
+   * source leaves the battlefield; for a token the "source" is
+   * the creator, but tokens are ceaseless so we don't have a
+   * "leaves" path — the field lives for the token's lifetime).
+   */
+  embeddedStaticKeywords?: string[];
 
   // Blitz-specific (CR 702.150)
   /**

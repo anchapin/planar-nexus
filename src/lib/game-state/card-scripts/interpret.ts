@@ -889,6 +889,18 @@ function applyEffect(
       const colors =
         effect.colors ??
         (effect.color && effect.color !== "colorless" ? [effect.color] : []);
+      // Wave 4.8 follow-up 4 lane 66 (#2614 follow-up): the
+      // embedded static arm of `CreateTokenSchema`. The keywords
+      // (when present) are routed into the token's per-instance
+      // `embeddedStaticKeywords` ledger (read by `hasKeyword` as
+      // an additional source alongside `cardData.keywords`); the
+      // P/T bonus is folded into the base P/T at token creation
+      // time inside `resolveTokenCreationEffect`. The
+      // token-creator's effect pays the cost at resolution; the
+      // P/T + keywords are baked into the new `CardInstance`.
+      const embeddedKeywords = effect.embedded_static?.keywords?.map(
+        (k) => k.charAt(0).toUpperCase() + k.slice(1),
+      );
       const r = resolveTokenCreationEffect(
         state,
         sourceId,
@@ -900,9 +912,12 @@ function applyEffect(
           colors,
           keywords,
           oracle_text: keywords.join(", "),
+          embeddedStaticKeywords: embeddedKeywords,
         },
         effect.count,
         ctx.controllerId,
+        effect.embedded_static?.power,
+        effect.embedded_static?.toughness,
       );
       return r.success ? r.state : state;
     }
@@ -1087,8 +1102,7 @@ function applyEffect(
         // graveyard and exiles them. The targeted card (if any) is
         // the first choice; remaining slots are filled from the
         // graveyard's current contents in order.
-        const count =
-          effect.count && effect.count > 1 ? effect.count : 0;
+        const count = effect.count && effect.count > 1 ? effect.count : 0;
         if (count > 0) {
           let ownerId: PlayerId;
           if (targetId) {
@@ -1099,10 +1113,7 @@ function applyEffect(
             if (!gy || !gy.cardIds.includes(targetId)) {
               return state;
             }
-            if (
-              effect.graveyard === "you" &&
-              ownerId !== ctx.controllerId
-            ) {
+            if (effect.graveyard === "you" && ownerId !== ctx.controllerId) {
               return state;
             }
           } else {
@@ -1218,11 +1229,21 @@ function applyEffect(
           const card = next.cards.get(id);
           if (!card) continue;
           if (effect.filter?.creature === true && !isCreature(card)) continue;
-          if (effect.filter?.mv_le !== undefined &&
-              (card.cardData.cmc ?? 0) > effect.filter.mv_le) continue;
-          const prepared = card.controllerId !== ctx.controllerId
-            ? { ...next, cards: new Map(next.cards).set(id, { ...card, controllerId: ctx.controllerId }) }
-            : next;
+          if (
+            effect.filter?.mv_le !== undefined &&
+            (card.cardData.cmc ?? 0) > effect.filter.mv_le
+          )
+            continue;
+          const prepared =
+            card.controllerId !== ctx.controllerId
+              ? {
+                  ...next,
+                  cards: new Map(next.cards).set(id, {
+                    ...card,
+                    controllerId: ctx.controllerId,
+                  }),
+                }
+              : next;
           const r = moveCardToZone(prepared, id, "battlefield");
           if (r.success) next = r.state;
         }
@@ -1431,10 +1452,7 @@ function applyEffect(
           : 0
         : (effect.amount ?? 0);
       const cards = new Map(state.cards);
-      cards.set(
-        cardId,
-        addCounters(card, effect.counter, resolvedAmount),
-      );
+      cards.set(cardId, addCounters(card, effect.counter, resolvedAmount));
       return { ...state, cards };
     }
     case "Surveil": {
