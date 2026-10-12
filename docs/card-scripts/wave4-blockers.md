@@ -1079,3 +1079,187 @@ At the close of the Wave 4.8 follow-up 4 loop:
   static) are NOT in this loop's scope — pick those
   up in a future Wave 4.8 follow-up 5 (or
   equivalent) handoff.
+
+## Wave 4.8 follow-up 5 loop done summary
+
+Lanes 69, 70, and 71 all shipped in the Wave 4.8
+follow-up 5 loop (PRs #2749, #2750, #2751 — see
+`docs/card-scripts/wave4.8-followup5-handoff.md` for
+the handoff and this file for the prior loop's done
+summary).
+
+### Shipped
+
+- **Lane 69 — X-spent-on-other-spells (mana
+  restriction family)** (PR #2749, #2614 follow-up).
+  Force of Will, Cabal Therapy, the Storm-Crow
+  specter pattern. The v1 minimum adds a
+  `mana_restriction: { colors: ["W" | "U" | "B" | "R"
+  | "G"][length 1], generic: number }` arm on
+  `additionalCosts` (parallel to lane 63's `pay_life`
+  / `sacrifice`). The engine auto-applies the
+  restriction when the printed cost isn't payable but
+  the adjusted cost is (parallel to affinity's
+  auto-reduction). The cast path stamps
+  `manaRestriction` on the `StackObject`. The
+  validation service opens the gate when the player
+  can pay either path. The bump to the engine-size
+  budget (2550 → 2575) was in the same commit (per
+  the handoff's process note).
+
+- **Lane 70 — Copying a permanent (Clone,
+  Phantasmal Image, Vesuvan Doppelganger)** (PR
+  #2750, #2614 follow-up). The v1 minimum adds a
+  new `CopyPermanent` op on `EffectSchema` (parallel
+  to `CreateToken`) that creates a new permanent
+  whose `cardData` is shallow-copied from a target
+  on the battlefield (CR 707.2 "all characteristics
+  copied" semantics). The new permanent enters the
+  battlefield under the spell's controller; the
+  target is unchanged. v1 supports
+  `target: "permanent" | "creature" | "artifact" |
+  "enchantment" | "land"` and
+  `controller?: "you" | "opponent" | "any"`. The
+  engine auto-picks the first matching permanent
+  (APNAP-ordered) when no explicit target is chosen
+  — the simplest v1 minimum. The per-op reference
+  module (`ops/copy-permanent.ts` + `ops/registry.ts`)
+  keeps the LLM-drafted scripts pipeline in sync.
+  The bump to the engine-size budget (2575 → 2650)
+  was in the same commit.
+
+- **Lane 71 — Protection-from static** (PR #2751,
+  #2614 follow-up). Light of Day, Crimson Acolyte,
+  the "creatures you control have protection from
+  [color/quality]" family. The v1 minimum adds a
+  `protectionFrom: string[]` arm on `StaticSchema`.
+  The engine stamps the values on each affected
+  permanent's per-instance `protectionFrom: string[]`
+  field (parallel to the lane 65 `grantedTriggers` /
+  lane 52 `chosenTypeAdditions` pattern); the
+  existing `hasProtectionFrom` /
+  `canBeTargetedBy` / `canBeBlocked` checks in
+  `evergreen-keywords.ts` consult the field. A
+  creature with `protectionFrom: ["red"]` cannot
+  be the target of a red spell (CR 702.16a),
+  cannot be blocked by a red creature (CR
+  702.16d), and cannot be dealt damage by a red
+  source (CR 702.16c). Battlefield-zone-only
+  semantics (cleared when the source leaves the
+  battlefield). Engine-size budget unchanged
+  (schema landed at 2644, under the 2650 bumped in
+  lane 70).
+
+### Blocked (multi-lane, tracked under #2614)
+
+- **Lane 61 — Replacement effect for death** (Whip of
+  Erebos, False Dawn). Foundational replacement-effect
+  layer; tracked separately per the Wave 4.8
+  follow-up 2 handoff's process note. Not attempted
+  in this loop.
+- **Lane 72 — X-spent-on-creature-spells** (the
+  "spend this mana only on creature spells" pattern,
+  e.g. Llawan). Multi-lane; not attempted in this
+  loop.
+- **Lane 73 — Copying a spell on the stack** (Splice,
+  copy-with-new-targets). Multi-lane; not attempted
+  in this loop.
+- **Lane 74 — Multi-quality protection**
+  (`protectionFrom: ["red", "blue"]`). Multi-lane;
+  not attempted in this loop.
+- **Lane 75 — "Until end of turn" copy**
+  (Sakashima-style / manifested). Multi-lane; not
+  attempted in this loop.
+- **Lane 76 — Aura-shaped protection-from static**
+  (`AuraStaticSchema.protectionFrom`). Multi-lane;
+  not attempted in this loop.
+
+### Test count snapshot
+
+At the close of the Wave 4.8 follow-up 5 loop:
+
+- **Test suites:** 725 (was 722 at the start of the
+  loop; +3 for lanes 69 / 70 / 71 — 1 each)
+- **Test cases:** 14094 (was 14079 at the start of
+  the loop; +15 across the three lanes — 7 for
+  lane 69, 4 for lane 70, 4 for lane 71)
+- **Engine-size budget:** 2650 / 2650 lines for
+  `schema.ts` (was 2550 at the start of the loop;
+  +94 across the three lanes — +13 for lane 69,
+  +48 for lane 70, +33 for lane 71). Bumped 2550 →
+  2575 (lane 69) → 2650 (lane 70), tracking the
+  chosen-X / additional-costs / affinity / grants /
+  counter-ledger / cast-from-zone /
+  mana-restriction / copy-permanent family on the
+  same trajectory.
+
+### Process notes carried from the Wave 4.8 follow-up 5 loop
+
+- **Lane 69 (mana restriction)** was the most
+  invasive of the three lanes — the cast path runs
+  through three layers (`canCastSpell`,
+  `validationService.validateManaCost`,
+  `castSpell` affordability + deduction) and the
+  StackObject type gained a new optional
+  `manaRestriction` field. The validation-service
+  pre-check was the second surface that needed
+  updating — exactly the lane 68 process note
+  about "extending a multi-layer cast path requires
+  updating both surfaces." The bug-debug journey:
+  the lane 69 test initially called
+  `createCardInstance` with positional arguments
+  swapped (object as options, options as cardData),
+  which silently dropped `mana_cost` and made the
+  cost-validation check pass with 0 total mana to
+  spend — a great object lesson in why the lane 68
+  process note about cross-checking imports / arg
+  shapes matters. Caught it on the second local
+  run; typecheck + lint + budget + ratchet all
+  passed clean on the same commit.
+
+- **Lane 70 (copy permanent)** is a new op on
+  `EffectSchema`. The `case "CopyPermanent":` branch
+  in `interpret.ts#applyEffect` auto-picks the
+  first matching permanent (APNAP-ordered) when no
+  explicit target is chosen. The per-op reference
+  module (`ops/copy-permanent.ts` + registry entry)
+  is required to keep the LLM-drafted scripts
+  pipeline in sync — the `covers every op the schema
+  accepts` test enforces parity. The bump to the
+  engine-size budget (2575 → 2650) was in the same
+  commit.
+
+- **Lane 71 (protection-from static)** is a
+  per-instance ledger stamped by
+  `refreshScriptedStatics` (parallel to lane 52
+  `chosenTypeAdditions` / lane 55
+  `chosenColorAdditions` / lane 65
+  `grantedTriggers`). The change-detection diff
+  compares sorted arrays element-by-element so the
+  refresh pass only re-stamps when the protection
+  actually changed. The `hasProtectionFrom` helper
+  in `evergreen-keywords.ts` consults the field
+  alongside the strict parsed-keyword check and the
+  regex fallback — a creature with
+  `protectionFrom: ["red"]` picks up the protection
+  immediately. Engine-size budget unchanged.
+
+- The AI `forge-gate` / `forge-selfplay` /
+  `expert-agent` "is deterministic for a seed" test
+  is a known order-dependent flake on main. The
+  Wave 4.8 follow-up 5 loop hit this flake ONCE on
+  lane 71's full-suite run; the second run passed
+  clean. The `gh run rerun --failed` fallback was
+  not needed (the local re-run cleared it). Budget
+  for 1-2 extra CI runs per lane to absorb the
+  flake.
+
+- Lane continue rule for the next session: lane 61
+  (replacement effect for death) remains parked
+  pending the foundational replacement-effect layer;
+  lanes 72-76 (X-spent-on-creature-spells, copying
+  a spell on the stack, multi-quality protection,
+  until-end-of-turn copy, Aura-shaped
+  protection-from) are NOT in scope — pick those up
+  in a future Wave 4.8 follow-up 6 (or equivalent)
+  handoff.
