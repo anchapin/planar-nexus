@@ -2083,11 +2083,11 @@ export const CardScriptSchema = z
       .strict()
       .optional(),
     /**
-     * Generic additional-cost slot (#2564). Today the only arm that has its
-     * own schema is `offspring` (CR 702.169; flagged for a follow-up lane).
-     * `kicker` is also accessible as `additionalCosts.kicker` for forward
-     * compatibility with the spec, but the engine's `castSpell` reads
-     * `script.kicker` directly so callers can set either field.
+     * Generic additional-cost slot (#2564). Arms: `kicker` (CR 702.32;
+     * single- and multi-kicker), `offspring` (CR 702.169), and the
+     * Wave 4.8 follow-up 3 lane 63 `pay_life` and `sacrifice` arms
+     * (CR 118.4 + CR 602, "Pay N life" / "Sacrifice a [thing]" for
+     * instants / sorceries such as Painful Truths).
      */
     additionalCosts: z
       .object({
@@ -2110,6 +2110,37 @@ export const CardScriptSchema = z
                 keywords: z.array(z.enum(TOKEN_KEYWORDS)).optional(),
               })
               .strict(),
+          })
+          .strict()
+          .optional(),
+        /**
+         * #2614 follow-up (Wave 4.8 follow-up 3 lane 63): "Pay N life"
+         * as an additional cost (CR 118.4). Deducts `amount` at cast
+         * time; "Not enough life" if life < `amount`. Sample: Painful
+         * Truths.
+         */
+        pay_life: z
+          .object({
+            amount: z.number().int().min(1).max(99),
+          })
+          .strict()
+          .optional(),
+        /**
+         * #2614 follow-up (Wave 4.8 follow-up 3 lane 63):
+         * "Sacrifice a [thing] as an additional cost" (CR 602).
+         * `target` matches the lane 17 `cost.sacrifice_permanents.type`
+         * enum; per-subtype sacrifice is a follow-up.
+         */
+        sacrifice: z
+          .object({
+            amount: z.number().int().min(1).max(9),
+            target: z.enum([
+              "self",
+              "creature",
+              "artifact",
+              "enchantment",
+              "permanent",
+            ]),
           })
           .strict()
           .optional(),
