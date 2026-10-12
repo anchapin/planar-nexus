@@ -2030,6 +2030,52 @@ export const CardScriptSchema = z
       .strict()
       .optional(),
     /**
+     * Wave 4.8 follow-up 4 lane 67 (#2614 follow-up): generalize
+     * the existing `instanceCounters` ledger (lane 59) to support
+     * arbitrary named counter types at ETB. The script declares
+     * a list of `{ counter, count }` pairs and the engine stamps
+     * each pair on the entering card's `instanceCounters` ledger
+     * (and, for backward compatibility with the existing
+     * `untapOrRemoveStun` / `getEffectivePower` paths that read
+     * `card.counters`, also mirrors the counter onto the legacy
+     * `card.counters` list). The v1 enum of supported counter
+     * types: `"+1/+1"`, `"-1/-1"`, `"stun"` (CR 122.1d), and
+     * `"finality"` (CR 122.1d). Other counter types
+     * (`"charge"`, `"time"`, `"lore"`, etc.) are follow-up lanes.
+     *
+     * v1 supports a single `enters_with_counters: [{ counter, count }]`
+     * field on the script (parallel to the lane 59
+     * `enters_with_counters_per_match` pattern but without the
+     * per-match N computation — the script declares the count
+     * directly). The per-turn stun-removal (the active decrement
+     * of a stun counter during the untap step) and the
+     * finality-skipping effect (blocking graveyard recursion) are
+     * follow-up lanes; v1 stamps the counter on both ledgers
+     * (`instanceCounters` and `card.counters`) so the existing
+     * untap-skip path picks up the stun counter immediately
+     * (legacy `SearchLibrary.stun` substrate uses `card.counters`
+     * — the new path mirrors to it for the same reason).
+     *
+     * Sample card: a synthetic 1/1 creature that enters with one
+     * stun counter via `enters_with_counters: [{ counter: "stun",
+     * count: 1 }]`. The engine stamps both ledgers; the next
+     * untap step sees the stun counter and decrements it
+     * (the legacy `untapOrRemoveStun` behavior; the actual
+     * per-turn removal logic already exists, no new untap wiring
+     * needed for v1).
+     */
+    enters_with_counters: z
+      .array(
+        z
+          .object({
+            counter: z.enum(["+1/+1", "-1/-1", "stun", "finality"]),
+            count: z.number().int().min(1),
+          })
+          .strict(),
+      )
+      .min(1)
+      .optional(),
+    /**
      * Flashback (CR 702.143) — an alternative cost: "you may cast this card
      * from your graveyard for its flashback cost. If you do, exile it instead
      * of putting it anywhere else any time it would leave the stack." Only
@@ -2344,11 +2390,19 @@ export const CardScriptSchema = z
       // Wave 4.7 lane 39: a card with only `enter_choice` is also
       // legal — it's a placeholder for the engine arm until lanes
       // 40/41 wire anthem/AddMana on top.
+      // Wave 4.8 follow-up 4 lane 67 (#2614 follow-up): a card
+      // with only `enters_with_counters` is also legal — it's
+      // a placeholder for the generalized stun / finality
+      // counter stamping (the v0 substrate is the
+      // `SearchLibrary.stun` arm which writes to `card.counters`;
+      // the v1 schema arm declares the counter at ETB and the
+      // engine stamps both `instanceCounters` and `card.counters`).
       s.cycling ||
-      s.enter_choice,
+      s.enter_choice ||
+      s.enters_with_counters,
     {
       message:
-        "a card script needs spell, modes, triggers, activated, statics, rules, equipment, aura, or cycling",
+        "a card script needs spell, modes, triggers, activated, statics, rules, equipment, aura, cycling, enter_choice, or enters_with_counters",
     },
   )
   .refine(

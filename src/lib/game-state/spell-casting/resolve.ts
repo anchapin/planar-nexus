@@ -18,6 +18,7 @@ import {
   exileCard,
   createTokenCard,
   applyEntersWithCounters,
+  applyScriptEntersWithCounters,
 } from "../keyword-actions";
 import { resolveCascade } from "../keyword-actions/cascade";
 import {
@@ -690,6 +691,20 @@ function resolveSpellCompletion(
                 colorsSpent: stackObject.colorsSpent,
                 xValue: stackObject.variableValues?.get("X") ?? null,
               },
+            );
+            // Wave 4.8 follow-up 4 lane 67 (#2614 follow-up):
+            // also stamp the script's `enters_with_counters`
+            // declaration (the generalized stun / finality /
+            // +1/+1 / -1/-1 counter arm; the v0 substrate above
+            // is the +1/+1-specific oracle-text parser). The
+            // script's `enters_with_counters` runs alongside
+            // the oracle-text `enters with N +1/+1 counters`
+            // path so a card with both arms stacks (Banner of
+            // Kinship's chosen-counter arm + a fixed +1/+1
+            // "enters with" clause would sum).
+            currentState = applyScriptEntersWithCounters(
+              currentState,
+              stackObject.sourceCardId,
             );
           }
           // CR 702.140e: a mutating creature spell that merges with its
