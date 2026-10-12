@@ -597,6 +597,21 @@ export function getProtectionQualities(card: CardInstance): string[] {
  * strict variant first) only when the strict check returns false.
  */
 export function hasProtectionFrom(card: CardInstance, color: string): boolean {
+  // Wave 4.8 follow-up 5 lane 71 (#2614 follow-up): the
+  // per-instance `protectionFrom` ledger stamped by
+  // `refreshScriptedStatics` from a
+  // `StaticSchema.protectionFrom` arm (e.g. a
+  // "Creatures you control have protection from red"
+  // anthem). Consulted alongside the strict parsed-
+  // keyword check (canonical contract) and the regex
+  // fallback so cards that grant protection via the
+  // script path pick up the protection immediately.
+  const perInstance = card.protectionFrom ?? [];
+  if (perInstance.length > 0) {
+    const normalizedColor = normalizeColor(color);
+    if (perInstance.some((q) => q.toLowerCase() === normalizedColor))
+      return true;
+  }
   if (hasProtectionFromColorStrict(card, color)) {
     return true;
   }
