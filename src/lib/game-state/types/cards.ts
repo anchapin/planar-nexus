@@ -204,6 +204,28 @@ export interface CardInstance {
    */
   protectionFrom?: string[];
   /**
+   * Wave 4.8 follow-up 7 lane 75 (#2614 follow-up): the
+   * `CardInstanceId` of the permanent whose printed
+   * characteristics this card is currently copying for
+   * the duration of a `StaticSchema.become_copy` static
+   * ("As long as this is in play, it's a copy of [a chosen
+   * permanent] until end of turn" — Sakashima-style /
+   * manifested). Stamped by `refreshScriptedStatics` when
+   * the source carries a `become_copy` arm and the named
+   * target is on the battlefield; the source's `cardData`
+   * is swapped for the target's (name, type_line, power,
+   * toughness, colors, keywords) and the original is kept
+   * under `animatedUntilEndOfTurn.cardData` so the existing
+   * `clearUntilEndOfTurnPT` /
+   * `restoreAnimatedOffBattlefield` rollback path restores
+   * the printed characteristics at end of turn / when the
+   * source or target leaves the battlefield. The field is
+   * per-instance + battlefield-zone-only. Set to `null` /
+   * cleared when the named target leaves the battlefield
+   * (the refresh pass self-corrects).
+   */
+  copyOfTargetId?: string;
+  /**
    * Wave 4.8 follow-up lane 59 (#2614 follow-up): per-instance
    * counter ledger keyed by counter type. Banner of Kinship
    * "enters with X counters on it" stamps N `+1/+1` counters

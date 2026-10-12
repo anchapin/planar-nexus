@@ -194,6 +194,26 @@ export function staticAffects(
     }
     return true;
   }
+  // Wave 4.8 follow-up 7 lane 75 (#2614 follow-up):
+  // "as long as this is in play, it's a copy of [a chosen
+  // permanent] until end of turn" (Sakashima-style /
+  // manifested). The static is self-only — the source
+  // copies itself onto itself, swapping its own printed
+  // characteristics for the named target's. The actual
+  // swap is performed by `refreshScriptedStatics` at the
+  // bottom of the refresh pass; this branch only computes
+  // applicability. The target must be on the battlefield
+  // for the swap to take effect (the refresh pass checks
+  // `state.cards.has(targetId)`); if the target has left,
+  // the source restores its printed `cardData` from
+  // `animatedUntilEndOfTurn`. v1 supports a single target
+  // (the `target: CardInstanceId` is required); chosen-
+  // target / named-card / nested-copy / copy-with-exception
+  // variants are follow-up lanes (see `wave4-blockers.md`).
+  if (stat.become_copy !== undefined) {
+    if (source.id !== target.id) return false;
+    return true;
+  }
   if (!isCreature(target)) return false;
   const { controller, other, self, subtype, color } = stat.affects;
   if (other && source.id === target.id) return false;
@@ -292,6 +312,23 @@ export function refreshScriptedStatics(input: GameState): GameState {
   // in `evergreen-keywords.ts` consults the field via the
   // existing `canBeTargetedBy` / `canBeBlocked` checks.
   const protFromById = new Map<string, string[]>();
+  // Wave 4.8 follow-up 7 lane 75 (#2614 follow-up): the
+  // per-card copy-of-target ledger stamped by statics with
+  // a `become_copy` arm. For each source with a
+  // `become_copy` static, we record the named
+  // `CardInstanceId`; the write phase at the bottom of the
+  // refresh pass overlays the target's `cardData` (name,
+  // type_line, power, toughness, colors, keywords) onto the
+  // source's `cardData` and snapshots the source's printed
+  // `cardData` under `animatedUntilEndOfTurn` so the
+  // existing `clearUntilEndOfTurnPT` /
+  // `restoreAnimatedOffBattlefield` rollback path restores
+  // the printed characteristics at end of turn / when the
+  // source leaves the battlefield. The overlay self-
+  // corrects when the named target leaves the battlefield
+  // (the refresh pass sees no copy from the target and
+  // restores from `animatedUntilEndOfTurn`).
+  const copyOfTargetBySourceId = new Map<string, string>();
   for (const target of onField) {
     let power = 0;
     let toughness = 0;
@@ -362,6 +399,25 @@ export function refreshScriptedStatics(input: GameState): GameState {
         // stamp once.
         if (stat.protectionFrom) {
           for (const q of stat.protectionFrom) protFrom.add(q);
+        }
+        // Wave 4.8 follow-up 7 lane 75 (#2614 follow-up):
+        // record the `become_copy.target` for the source
+        // itself (self-only, parallel to lane 52's
+        // `add_creature_type` self-only semantics). The
+        // last write wins when multiple statics on the
+        // same source carry `become_copy` arms — a card
+        // is unlikely to carry more than one such static
+        // in v1, but the deterministic-overwrite is the
+        // safe default. The write phase at the bottom of
+        // the refresh pass reads this map and overlays
+        // the target's characteristics onto the source's
+        // `cardData` via the existing
+        // `animatedUntilEndOfTurn` infra. The named
+        // target must be on the battlefield for the
+        // overlay to take effect (the refresh pass checks
+        // `state.cards.has(targetId)` at write time).
+        if (stat.become_copy !== undefined) {
+          copyOfTargetBySourceId.set(card.id, stat.become_copy.target);
         }
         if (stat.X) {
           // #2594 follow-up, lane 36: when `X` is set, the count
@@ -435,12 +491,24 @@ export function refreshScriptedStatics(input: GameState): GameState {
     const sameProtFrom =
       (nextProtFrom ? nextProtFrom.length : 0) === prevProtFrom.length &&
       (nextProtFrom ?? []).every((q, i) => q === prevProtFrom[i]);
+    // Wave 4.8 follow-up 7 lane 75 (#2614 follow-up): the
+    // per-instance `copyOfTargetId` is part of the change-
+    // detection diff so the refresh pass re-stamps the card
+    // only when the copy target actually changed. Compare
+    // the previous `copyOfTargetId` (or undefined) against
+    // the next `copyOfTargetBySourceId` (or undefined). A
+    // change in either direction (target acquired, target
+    // dropped) triggers the re-stamp.
+    const nextCopyOfTargetId = copyOfTargetBySourceId.get(cardId);
+    const prevCopyOfTargetId = card.copyOfTargetId;
+    const sameCopyOfTarget = nextCopyOfTargetId === prevCopyOfTargetId;
     if (
       samePT &&
       sameKw &&
       sameAdds &&
       sameColors &&
-      sameProtFrom
+      sameProtFrom &&
+      sameCopyOfTarget
     )
       continue;
     cards ??= new Map(state.cards);
@@ -477,6 +545,90 @@ export function refreshScriptedStatics(input: GameState): GameState {
     if (nextProtFrom && nextProtFrom.length > 0)
       updated.protectionFrom = nextProtFrom;
     else delete updated.protectionFrom;
+    // Wave 4.8 follow-up 7 lane 75 (#2614 follow-up):
+    // overlay the source's `cardData` with the named
+    // target's printed characteristics when the source
+    // carries a `become_copy` static. The refresh pass
+    // self-corrects when the target leaves the
+    // battlefield (the source restores its printed
+    // `cardData` from `animatedUntilEndOfTurn`). The
+    // EOT cleanup step in `pt-until-end-of-turn.ts`
+    // (`clearUntilEndOfTurnPT`) also undoes the overlay
+    // when the turn ends, restoring the source's printed
+    // characteristics via the existing
+    // `animatedUntilEndOfTurn` rollback path — so the
+    // "until end of turn" semantics are honoured for free.
+    // The cycle guard (a target that itself has a
+    // `become_copy` static) is a follow-up lane — v1
+    // assumes the target's printed `cardData` is the
+    // source-of-truth for the overlay; nested copies
+    // would require a snapshot of the source order at
+    // the top of the refresh pass and are not in scope.
+    const nextCopyTargetId = copyOfTargetBySourceId.get(cardId);
+    if (nextCopyTargetId !== undefined) {
+      const target = state.cards.get(nextCopyTargetId);
+      const targetOnField = target
+        ? target.currentZoneKey?.endsWith("-battlefield")
+        : false;
+      if (target && targetOnField) {
+        // Snapshot the source's printed `cardData`
+        // (the one stored in `animatedUntilEndOfTurn`
+        // if a copy was already in effect, else the
+        // current `cardData`). The pattern mirrors
+        // `animateUntilEndOfTurn` so the
+        // `restoreAnimatedOffBattlefield` /
+        // `clearUntilEndOfTurnPT` rollback paths
+        // restore the printed characteristics without
+        // any additional wiring.
+        const printed =
+          card.animatedUntilEndOfTurn?.cardData ?? card.cardData;
+        updated.animatedUntilEndOfTurn = {
+          cardData: printed,
+        };
+        // Overlay the target's printed characteristics
+        // onto the source's `cardData`. v1 copies
+        // name, type_line, power, toughness, colors,
+        // and keywords — "all characteristics copied"
+        // (CR 707.2). mana_cost, cmc, oracle_text,
+        // and other metadata are deliberately NOT
+        // copied — they're the spell's defining
+        // characteristics, not the on-battlefield
+        // copy semantics.
+        const targetPrinted =
+          target.animatedUntilEndOfTurn?.cardData ?? target.cardData;
+        updated.cardData = {
+          ...printed,
+          name: targetPrinted.name,
+          type_line: targetPrinted.type_line,
+          power: targetPrinted.power,
+          toughness: targetPrinted.toughness,
+          colors: targetPrinted.colors,
+          color_identity: targetPrinted.color_identity,
+          keywords: targetPrinted.keywords,
+        };
+        updated.copyOfTargetId = nextCopyTargetId;
+      } else {
+        // Target has left the battlefield. Restore the
+        // source's printed `cardData` and clear the
+        // copy ledger.
+        if (card.animatedUntilEndOfTurn) {
+          updated.cardData = card.animatedUntilEndOfTurn.cardData;
+          delete updated.animatedUntilEndOfTurn;
+        }
+        delete updated.copyOfTargetId;
+      }
+    } else if (card.copyOfTargetId !== undefined || card.animatedUntilEndOfTurn) {
+      // The source no longer carries a `become_copy`
+      // static (the script changed or the source left
+      // its `become_copy`-bearing state). Drop the
+      // overlay: restore the printed `cardData` from
+      // `animatedUntilEndOfTurn` and clear the ledger.
+      if (card.animatedUntilEndOfTurn) {
+        updated.cardData = card.animatedUntilEndOfTurn.cardData;
+        delete updated.animatedUntilEndOfTurn;
+      }
+      delete updated.copyOfTargetId;
+    }
     cards.set(cardId, updated);
   }
   return cards ? { ...state, cards } : state;
