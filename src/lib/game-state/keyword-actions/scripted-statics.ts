@@ -26,6 +26,69 @@ function battlefieldCards(state: GameState): CardInstance[] {
   return out;
 }
 
+/**
+ * Wave 4.8 follow-up 8 lane 75c (#2614 follow-up):
+ * rebuild a card's `type_line` to add a list of
+ * subtypes on top of the printed subtype list. Used
+ * by the copy-with-exception overlay to materialize
+ * Phyrexian Metamorph's "it's a [named card] in
+ * addition to its other types" pattern: the lane 75
+ * / 75b overlay stamps the target's printed
+ * `type_line`, then the exception appends the
+ * listed subtypes (e.g. `"Creature — Shapeshifter"`
+ * + `["Phyrexian"]` → `"Creature — Shapeshifter
+ * Phyrexian"`).
+ *
+ * The function expects `Scryfall`-shaped `type_line`
+ * strings: `<type portion> \u2014 <subtype portion>`
+ * (the `\u2014` is the em-dash separator). The
+ * function splits on the FIRST em-dash (matching
+ * `subtypesOf`'s split), trims surrounding
+ * whitespace, dedupes (case-sensitive, exact) against
+ * the printed subtype list, and re-joins.
+ *
+ * Edge cases:
+ * - Empty / missing `type_line` → the function
+ *   returns an em-dash-separated `<types> —
+ *   <subtypes>` string with empty `<types>` (a
+ *   guard so we don't write `undefined` back).
+ * - No em-dash in the input → treated as a
+ *   type-only line; the subtypes follow a synthetic
+ *   em-dash.
+ * - All listed subtypes already on the type line →
+ *   the function returns the input unchanged
+ *   (idempotent — a no-op overlay is also a valid
+ *   overlay).
+ */
+function rebuildTypeLineWithAddedSubtypes(
+  typeLine: string | undefined,
+  addedSubtypes: readonly string[],
+): string {
+  if (addedSubtypes.length === 0) return typeLine ?? "";
+  const input = typeLine ?? "";
+  // Split on the FIRST em-dash (U+2014), matching
+  // `subtypesOf`'s split.
+  const dashIdx = input.indexOf("\u2014");
+  const typesPortion =
+    dashIdx >= 0 ? input.slice(0, dashIdx).trim() : input.trim();
+  let subtypesPortion = "";
+  if (dashIdx >= 0) {
+    subtypesPortion = input
+      .slice(dashIdx + 1)
+      .trim();
+  }
+  const printedSubtypes = subtypesPortion
+    .split(/\s+/)
+    .filter(Boolean);
+  // Dedupe added subtypes against printed
+  // (case-sensitive exact). Order-preserving.
+  const merged = [
+    ...printedSubtypes,
+    ...addedSubtypes.filter((t) => !printedSubtypes.includes(t)),
+  ];
+  return `${typesPortion} \u2014 ${merged.join(" ")}`.trim();
+}
+
 function isCreature(card: CardInstance): boolean {
   return /\bCreature\b/.test(card.cardData.type_line ?? "");
 }
@@ -347,6 +410,23 @@ export function refreshScriptedStatics(input: GameState): GameState {
     | { kind: "id"; targetId: string }
     | { kind: "name"; name: string }
   >();
+  // Wave 4.8 follow-up 8 lane 75c (#2614 follow-up):
+  // per-card copy-with-exception ledger. Each source
+  // with a `become_copy: { exceptions: { add_subtype
+  // } }` static gets an entry here; the write phase
+  // rebuilds the source's overlaid `cardData.type_line`
+  // to include the added subtypes after the lane 75 /
+  // 75b overlay runs (parallel to lane 52's
+  // `subtypesOf` helper unioning the printed subtypes
+  // with `chosenTypeAdditions`). The "last write wins"
+  // semantics carry over from lane 75 (a source is
+  // unlikely to carry more than one such static). The
+  // EOT cleanup step in `pt-until-end-of-turn.ts`
+  // (`clearUntilEndOfTurnPT`) restores the printed
+  // `cardData.type_line` (and the printed subtypes),
+  // so the "until end of turn" semantics are honoured
+  // for free.
+  const copyExceptionsBySourceId = new Map<string, { addSubtype: string[] }>();
   for (const target of onField) {
     let power = 0;
     let toughness = 0;
@@ -451,6 +531,21 @@ export function refreshScriptedStatics(input: GameState): GameState {
             copyOfTargetBySourceId.set(card.id, {
               kind: "name",
               name: stat.become_copy.named_card.name,
+            });
+          }
+          // Wave 4.8 follow-up 8 lane 75c (#2614
+          // follow-up): collect the copy-with-exception
+          // arm (`exceptions.add_subtype`). v1 only
+          // supports a single `add_subtype` list; the
+          // write phase merges the listed subtypes onto
+          // the source's overlaid `cardData.type_line`.
+          // Both the lane 75 (chosen-target) and
+          // lane 75b (named-card) arms support
+          // `exceptions`.
+          const ex = stat.become_copy.exceptions;
+          if (ex && ex.add_subtype && ex.add_subtype.length > 0) {
+            copyExceptionsBySourceId.set(card.id, {
+              addSubtype: ex.add_subtype,
             });
           }
         }
@@ -673,6 +768,35 @@ export function refreshScriptedStatics(input: GameState): GameState {
           color_identity: targetPrintedCardData.color_identity,
           keywords: targetPrintedCardData.keywords,
         };
+        // Wave 4.8 follow-up 8 lane 75c (#2614
+        // follow-up): copy-with-exception merge.
+        // After the lane 75 / 75b overlay writes
+        // the target's printed characteristics,
+        // apply the lane 75c exception by
+        // rebuilding the overlaid `type_line`
+        // to include any added subtypes. Phyrexian
+        // Metamorph's "It's also a Phyrexian in
+        // addition to its other types" is the
+        // canonical example: the overlay sets
+        // `type_line: "Creature — Shapeshifter"`
+        // (the chosen creature's printed type
+        // line), and the exception appends
+        // "Phyrexian" to the subtype list,
+        // producing `type_line: "Creature —
+        // Shapeshifter Phyrexian"`. v1 supports a
+        // single `add_subtype` list; multi-shape
+        // exceptions (`add_color`, `add_power`,
+        // `add_type`) are follow-up lanes.
+        const exceptions = copyExceptionsBySourceId.get(cardId);
+        if (exceptions && exceptions.addSubtype.length > 0) {
+          updated.cardData = {
+            ...updated.cardData,
+            type_line: rebuildTypeLineWithAddedSubtypes(
+              updated.cardData.type_line,
+              exceptions.addSubtype,
+            ),
+          };
+        }
         updated.copyOfTargetId = nextTargetLedger;
       } else if (card.animatedUntilEndOfTurn) {
         // Target has left the battlefield / named

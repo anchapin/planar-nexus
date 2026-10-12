@@ -1810,6 +1810,50 @@ export const StaticSchema = z
              */
             target: z.string().min(1),
             until: z.literal("end_of_turn"),
+            /**
+             * Wave 4.8 follow-up 8 lane 75c
+             * (#2614 follow-up): copy with
+             * exception. Phyrexian Metamorph's
+             * "It's a copy of [chosen permanent]
+             * except it's a [named card] in
+             * addition to its other types"
+             * pattern. v1 supports a single
+             * `add_subtype` arm — the engine
+             * merges the subtype list onto the
+             * source's overlaid `cardData.type_line`
+             * after the lane 75 / 75b overlay
+             * runs (rebuilding the type_line
+             * as `<types> — <printed + added
+             * subtypes>`). The lane 75
+             * `animatedUntilEndOfTurn` rollback
+             * restores the printed `cardData`
+             * (and thus the printed type_line)
+             * at end of turn / when the source
+             * leaves the battlefield.
+             *
+             * Out of scope (each a follow-up
+             * lane): `add_color` exceptions
+             * ("it's red in addition to its
+             * other colors"), `add_power` /
+             * `add_toughness` exceptions ("it
+             * has base power and toughness N
+             * in addition to its other
+             * characteristics"), `add_type`
+             * exceptions ("it's an artifact in
+             * addition to its other types"),
+             * and multi-exception copies
+             * ("is a copy except for [X] and
+             * also [Y]").
+             */
+            exceptions: z
+              .object({
+                add_subtype: z
+                  .array(z.string().min(1))
+                  .min(1)
+                  .optional(),
+              })
+              .strict()
+              .optional(),
           })
           .strict(),
         z
@@ -1856,6 +1900,25 @@ export const StaticSchema = z
               })
               .strict(),
             until: z.literal("end_of_turn"),
+            /**
+             * Wave 4.8 follow-up 8 lane 75c
+             * (#2614 follow-up): copy-with-exception
+             * on the named-card variant. Same
+             * `add_subtype` semantics as the
+             * lane 75 arm — the exception is applied
+             * after the named-card overlay runs.
+             * A synthetic named-card-with-exception
+             * is the smallest v1 sample card.
+             */
+            exceptions: z
+              .object({
+                add_subtype: z
+                  .array(z.string().min(1))
+                  .min(1)
+                  .optional(),
+              })
+              .strict()
+              .optional(),
           })
           .strict(),
       ])

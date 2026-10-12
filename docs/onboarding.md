@@ -40,8 +40,8 @@ Source of truth: `npx jest --listTests | wc -l` for the suite count, and `npm te
 
 <!-- TEST_COUNT:START -->
 
-**Test suites:** 732
-**Test cases:** 14145 (14138 passed + 7 skipped)
+**Test suites:** 733
+**Test cases:** 14154 (14147 passed + 7 skipped)
 **Snapshots:** 3
 <!-- TEST_COUNT:END -->
 
