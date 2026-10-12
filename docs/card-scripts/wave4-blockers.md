@@ -1968,3 +1968,36 @@ defer to a separate multi-lane plan. Lane 61
 (replacement effect for death) still requires a
 foundational replacement-effect layer that the
 engine doesn't yet have.
+
+## Wave 4.8 follow-up 9 — lane 75e (nested-copy cycle guard) loop done summary
+
+This loop shipped **lane 75e** (nested-copy cycle guard) as PR #2762. Lane 61 (replacement effect for death) remains parked — it requires a foundational replacement-effect layer that the engine doesn't yet have and is a separate multi-lane plan per the follow-up 8 handoff.
+
+### Lane 75e — Nested-copy cycle guard
+
+- **Gap closed**: a source whose `StaticSchema.become_copy` (lane 75 / 75b / 75c) or `AuraStaticSchema.become_copy` (lane 75d) points at a target that itself has a `become_copy` arm would loop or produce inconsistent results in v1. The lane 75 v1 explicitly assumed the named target's printed `cardData` was the source-of-truth for the overlay; nested copies (a target that itself has a `become_copy` static) would loop or produce inconsistent results. The cycle guard resolves every card's "effective copy target" (the leaf of its copy chain) at the top of the refresh pass — BEFORE any overlay writes — and exposes the leaf's printed `cardData` as the source-of-truth for the overlay. A cyclic chain (a card whose copy chain includes itself) is broken by treating each member as if it had no `become_copy` arm.
+- **Schema (no change)**: 3050 lines, unchanged from the lane 75d baseline. The lane 75e engine change is purely engine-side; the new file is in `keyword-actions/`, not `card-scripts/`, so the engine-size budget is not affected.
+- **Engine**:
+  - `src/lib/game-state/keyword-actions/copy-chain.ts` (NEW): the chain resolver + cycle detector. `buildStaticCopyChainSnapshot` for the static path; `buildAuraCopyChainSnapshot` for the Aura path. Each helper walks every card's `become_copy` chain to its leaf at the top of the refresh pass and flags cycles.
+  - `src/lib/game-state/keyword-actions/scripted-statics.ts`: build the snapshot at the top of `refreshScriptedStatics`; the write phase consults the snapshot's `leafCardDataBySourceId` map and `cycleIds` set. A `setByAura` marker on `animatedUntilEndOfTurn` exempts the enchanted card from the static refresh's drop branch (the Aura refresh is the canonical site for the enchanted card's overlay).
+  - `src/lib/game-state/keyword-actions/aura-bonus.ts`: build the snapshot at the top of `refreshAuraBonuses`; the write phase consults the snapshot's `leafCardDataByEnchantedCard` map and `cycleIds` set. The `setByAura` marker is stamped on `animatedUntilEndOfTurn` for every Aura-driven overlay.
+  - `src/lib/game-state/types/cards.ts`: add the `setByAura?: boolean` marker on `animatedUntilEndOfTurn` (parallel to lane 75a's `setBySpellEffect`).
+- **Sample cards**: synthetic statics registered via the test harness (the lane 49/52/55/59/60/62/63/64/65/66/67/68/69/70/71/72/73/74/75/75a/75b/75c/75d pattern). The test exercises the refresh path via `refreshScriptedStatics` and `refreshAuraBonuses` and inspects the source's overlaid `cardData` + `animatedUntilEndOfTurn` (printed backup) + `copyOfTargetId` ledger.
+- **Dedicated test**: 7-case `lane75e-nested-copy-cycle-guard.test.ts` covers 2-card chain (regression baseline), 3-card chain resolves to the leaf in one pass, 2-card cycle (A → B → A) is broken, 3-card cycle (A → B → C → A) is broken, named-card target (lane 75b) chain termination, cross-site static → aura overlay chain, and Aura cycle is broken.
+- **Process note**: the `setByAura` marker fixes a pre-existing latent bug — `refreshScriptedStatics` was dropping Aura overlays on the enchanted card because it couldn't distinguish them from static-driven overlays. The marker is set by `refreshAuraBonuses` and read by `refreshScriptedStatics`. The Aura refresh is the canonical drop site; the EOT cleanup (`clearUntilEndOfTurnPT`) drops the overlay at end-of-turn.
+- **Engine-size budget**: schema.ts is 3050 lines, unchanged from the lane 75d baseline. The new `copy-chain.ts` is in `keyword-actions/`, not `card-scripts/`, so the engine-size budget is not affected. No bump needed.
+
+### Net delta from Wave 4.8 follow-up 9 (lane 75e loop)
+
+- Test suites: 734 → 735 (+1 for lane 75e).
+- Test cases: 14160 → 14167 (+7 for lane 75e; 14160 passed + 7 skipped).
+- Engine-size budget: schema.ts 3050 (lane 75d baseline) → 3050 (unchanged). Lane 75e is engine-only; the new file is in `keyword-actions/`, not `card-scripts/`, so the schema budget is unaffected. The `keyword-actions/` module's own size is captured by the module-size budget (still well under the 3310 ceiling for AI / 3050 ceiling for engine).
+
+### Multi-lane follow-ups still open (tracked under #2614)
+
+- **Lane 61 — Replacement effect for death (Whip of Erebos, False Dawn)**. Foundational replacement-effect layer; the engine has no general replacement-effect layer, so lane 61 is parked per the Wave 4.8 follow-up 2 handoff's process note. The handoff's process rule: the aggressive loop picks lanes one at a time, but lane 61 is parked because it requires a foundational layer that's a separate multi-lane plan. Open it as a separate multi-lane plan, NOT as the next lane in this loop. This is documented in the Wave 4.8 follow-up 9 handoff.
+- **Out-of-scope from lane 75e** (each a follow-up lane):
+  - Multi-card copy chains (more than 3 cards).
+  - Cycles in `refreshAuraBonuses`'s `become_copy` arm beyond the enchanted-card ↔ Aura round trip.
+  - Cross-zones copy chains (a `become_copy` static that points at a card in a graveyard — CR 707.2 "copy a card that's not in play").
+  - "Copy a card that has a `become_copy` static and other layers" (e.g. a copy target with `protectionFrom` or `removesAllAbilities`).
