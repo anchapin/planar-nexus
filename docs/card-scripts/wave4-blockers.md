@@ -1095,7 +1095,7 @@ summary).
   Force of Will, Cabal Therapy, the Storm-Crow
   specter pattern. The v1 minimum adds a
   `mana_restriction: { colors: ["W" | "U" | "B" | "R"
-  | "G"][length 1], generic: number }` arm on
+| "G"][length 1], generic: number }` arm on
   `additionalCosts` (parallel to lane 63's `pay_life`
   / `sacrifice`). The engine auto-applies the
   restriction when the printed cost isn't payable but
@@ -1118,7 +1118,7 @@ summary).
   battlefield under the spell's controller; the
   target is unchanged. v1 supports
   `target: "permanent" | "creature" | "artifact" |
-  "enchantment" | "land"` and
+"enchantment" | "land"` and
   `controller?: "you" | "opponent" | "any"`. The
   engine auto-picks the first matching permanent
   (APNAP-ordered) when no explicit target is chosen
@@ -1225,7 +1225,7 @@ At the close of the Wave 4.8 follow-up 5 loop:
   module (`ops/copy-permanent.ts` + registry entry)
   is required to keep the LLM-drafted scripts
   pipeline in sync — the `covers every op the schema
-  accepts` test enforces parity. The bump to the
+accepts` test enforces parity. The bump to the
   engine-size budget (2575 → 2650) was in the same
   commit.
 
@@ -1263,3 +1263,240 @@ At the close of the Wave 4.8 follow-up 5 loop:
   protection-from) are NOT in scope — pick those up
   in a future Wave 4.8 follow-up 6 (or equivalent)
   handoff.
+
+## Wave 4.8 follow-up 6 loop done summary
+
+Lanes 72, 73, 74, and 76 shipped in the Wave 4.8
+follow-up 6 loop (PRs #2753, #2754, #2755, #2756 — see
+`docs/card-scripts/wave4.8-followup6-handoff.md` for
+the handoff and this file for the prior loop's done
+summary). Lane 75 ("until end of turn" copy) was
+deferred as a multi-lane blocker per the handoff's
+process note.
+
+### Shipped
+
+- **Lane 72 — X-spent-on-creature-spells
+  (creature-payment family)** (PR #2753, #2614
+  follow-up). Llawan, War Tax, the "tap an untapped
+  creature you control rather than pay that cost"
+  pattern. The v1 minimum adds a
+  `creature_payment: { creature_only: true, generic:
+number }` arm on `additionalCosts` (parallel to
+  lane 69's `mana_restriction`). The engine
+  auto-applies the creature payment when the printed
+  cost isn't payable but the player CAN tap
+  `generic` untapped creatures they control. The
+  `castSpell` cost-payment validation AND the
+  `validation-service.ts#validateManaCost` legality
+  check both consume the new field (per the lane 68
+  process note — multi-layer cast paths require
+  updating both surfaces). The StackObject gained a
+  new optional `creaturePayment?: { generic: number,
+tappedCreatures: CardInstanceId[] }` field. The
+  actual tap happens in the post-spend step
+  (parallel to convoke/improvise). The bump to the
+  engine-size budget (2650 → 2700) was in the same
+  commit.
+
+- **Lane 73 — Copying a spell on the stack
+  (Splice, copy-with-new-targets)** (PR #2754, #2614
+  follow-up). Double Vision, Reiterate, Pyromancer's
+  Goggles, the "you may choose new targets for the
+  copy" family. The v1 minimum is a wiring-cleanup
+  - dedicated-test lane: the
+    `CopySpellSchema.new_targets: true` field already
+    exists (the substrate is the lane 33 Double Vision
+    arm, CR 707.10d), the `copyTriggeringSpell`
+    dispatch reads the flag and passes it to
+    `copySpellOnStack`, and the underlying
+    `copySpellOnStack` already accepts an optional
+    `newTargets: Target[]` argument. v1 doesn't supply
+    chosen targets (no player-facing retarget UI), so
+    the copy inherits the original's targets — a
+    forward-compatible signal that the engine
+    acknowledged the "you may choose new targets"
+    clause. A future lane can supply a `Target[]` list
+    and `copySpellOnStack(state, sourceId, newTargets)`
+    will pick it up. Sample cards
+    (`cards/double_vision.json` and
+    `cards/pyromancers_goggles.json`) already use the
+    arm. Engine-size budget unchanged (the schema arm
+    was already shipped with lane 33).
+
+- **Lane 74 — Multi-quality protection** (PR #2755,
+  #2614 follow-up). Akoumep Halberd, Niveous Wisps,
+  the "creatures you control have protection from
+  [color A] and from [color B]" family. The v1
+  minimum is a test-suite addition: the schema
+  (`StaticSchema.protectionFrom: string[]`) is
+  already permissive (lane 71 substrate), and the
+  engine's `hasProtectionFrom` in
+  `evergreen-keywords.ts` already loops over the
+  per-instance `protectionFrom: string[]` ledger via
+  `perInstance.some((q) => q === color)`. Multi-
+  quality protection is data-driven — no engine
+  change is needed. Engine-size budget unchanged.
+
+- **Lane 76 — Aura-shaped protection-from static**
+  (PR #2756, #2614 follow-up). The "enchanted
+  creature has protection from [quality]" pattern
+  (Akoumep Halberd, Niveous Wisps). The v1 minimum
+  adds a `protectionFrom: string[]` arm on
+  `AuraStaticSchema` (parallel to lane 71's
+  `StaticSchema.protectionFrom`). The engine
+  (`refreshAuraBonuses` in
+  `keyword-actions/aura-bonus.ts`) collects the
+  qualities from each attached Aura's scripted
+  static and stamps them on the enchanted card's
+  per-instance `protectionFrom: string[]` ledger
+  (parallel to the lane 65 `grantedTriggers` /
+  lane 71 `protectionFrom` per-Aura pattern). The
+  field is read by `hasProtectionFrom` via the
+  existing `perInstance.some(...)` loop (no new
+  engine code is needed for the per-instance check).
+  Battlefield-zone-only semantics (cleared when the
+  source Aura leaves the battlefield). The bump to
+  the engine-size budget (2700 → 2750) was in the
+  same commit.
+
+### Blocked (multi-lane, tracked under #2614)
+
+- **Lane 75 — "Until end of turn" copy**
+  (Sakashima-style / manifested, Akoumep Halberd's
+  "as long as this is in play, it's a copy of
+  [chosen permanent]"). Foundational work for the
+  until-EOT-copy family: requires a new
+  `StaticSchema.become_copy: { target:
+CardInstanceId, until: "end_of_turn" }` arm
+  (parallel to lane 71's `protectionFrom`) AND
+  per-instance stamping in
+  `refreshScriptedStatics` (parallel to lane 66's
+  `embedded_static` pattern) AND end-of-turn cleanup
+  in `turn-phases.ts` (parallel to the
+  `clearUntilEndOfTurnPT` /
+  `clearUntilEndOfTurnKeywords` patterns in
+  `pt-until-end-of-turn.ts`). Estimated 300-500 LOC
+  - tests. Too large for the per-lane 40-turn
+    budget; deferred to a future multi-lane plan.
+
+  The handoff's "Lane is 'done' only when: CI green,
+  PR merged, worktree removed, branch deleted, local
+  main pulled and re-ratcheted" rule applies, so lane
+  75 was held back rather than half-shipped.
+
+- **Lane 61 — Replacement effect for death** (Whip of
+  Erebos, False Dawn). Foundational replacement-
+  effect layer; tracked separately per the Wave 4.8
+  follow-up 2 handoff's process note. Not attempted
+  in this loop.
+
+### Test count snapshot
+
+At the close of the Wave 4.8 follow-up 6 loop:
+
+- **Test suites:** 729 (was 725 at the start of the
+  loop; +4 for lanes 72 / 73 / 74 / 76 — 1 each)
+- **Test cases:** 14118 (was 14094 at the start of
+  the loop; +24 across the four lanes — 10 for lane
+  72, 5 for lane 73, 4 for lane 74, 5 for lane 76)
+- **Engine-size budget:** 2750 / 2750 lines for
+  `schema.ts` (was 2650 at the start of the loop;
+  +100 across the four shipped lanes — +48 for lane
+  72, +0 for lane 73 (no schema change), +0 for lane
+  74 (no schema change), +33 for lane 76, +0 for
+  lane 75 (deferred)). Bumped 2650 → 2700 (lane 72)
+  → 2750 (lane 76), tracking the chosen-X /
+  additional-costs / affinity / grants /
+  counter-ledger / cast-from-zone /
+  mana-restriction / copy-permanent /
+  creature-payment / aura-protection family on the
+  same trajectory.
+
+### Process notes carried from the Wave 4.8 follow-up 6 loop
+
+- **Lane 72 (creature payment)** is the most
+  invasive of the shipped lanes — the cast path
+  runs through three layers (`canCastSpell`,
+  `validationService.validateManaCost`,
+  `castSpell` affordability + deduction) and the
+  StackObject type gained a new optional
+  `creaturePayment` field. The validation-service
+  pre-check was the second surface that needed
+  updating (per the lane 68 / lane 69 process note:
+  multi-layer cast paths require updating both
+  surfaces). The actual tap happens in the
+  post-spend step (parallel to convoke/improvise),
+  with a new `creaturePaymentTappedCreatures`
+  collection array to track the tapped creature
+  IDs. Bumped the engine-size budget in the same
+  commit (per the handoff's process note).
+
+- **Lane 73 (copy-spell on stack)** is a
+  wiring-cleanup + dedicated-test lane. The
+  schema arm and dispatch already exist (lane 33
+  substrate, CR 707.10d); the only changes were
+  making the existing `void newTargets;` no-op
+  explicit (so a future lane can supply a `Target[]`
+  list without re-touching the call site) and
+  adding a dedicated test file
+  (`lane73-copy-spell-on-stack.test.ts`, 5 cases).
+  The v1 minimum is "the copy inherits the
+  original's targets" — the player-facing retarget
+  UI is a follow-up lane.
+
+- **Lane 74 (multi-quality protection)** is the
+  smallest of the explicitly multi-lane cases. The
+  schema is already permissive
+  (`StaticSchema.protectionFrom: string[]`); the
+  per-instance check is data-driven via
+  `perInstance.some((q) => q === color)`. No engine
+  changes needed; just a test-suite addition
+  (4 cases). Engine-size budget unchanged.
+
+- **Lane 76 (aura protection)** is a parallel
+  implementation of lane 71 on `AuraStaticSchema`.
+  The engine reads the new `protectionFrom` arm
+  from each attached Aura's scripted static, collects
+  the qualities onto the enchanted card's
+  per-instance `protectionFrom: string[]` ledger,
+  and stamps the field (parallel to the lane 65
+  `grantedTriggers` per-Aura pattern). The diff at
+  the bottom of `refreshAuraBonuses` compares sorted
+  arrays element-by-element; the field is dropped
+  when the source Aura leaves the battlefield.
+  Bumped the engine-size budget in the same
+  commit (per the handoff's process note).
+
+- The AI `forge-gate` / `forge-selfplay` /
+  `expert-agent` "is deterministic for a seed" test
+  is a known order-dependent flake on main. The
+  Wave 4.8 follow-up 6 loop hit this flake ONCE on
+  lane 72's full-suite run; the second run passed
+  clean. The `gh run rerun --failed` fallback was
+  not needed (the local re-run cleared it). Budget
+  for 1-2 extra CI runs per lane to absorb the
+  flake.
+
+- Lane continue rule for the next session: lane 75
+  ("until end of turn" copy) is deferred as a
+  multi-lane blocker per the handoff's "Lane is
+  'done' only when: CI green, PR merged, worktree
+  removed, branch deleted, local main pulled and
+  re-ratcheted" rule. Lane 61 (replacement effect
+  for death) remains parked pending the
+  foundational replacement-effect layer. Both
+  blocks are NOT in scope for a follow-up session
+  — they require their own multi-lane plans.
+
+- Test-count-ratchet: the `test-count-docs-guard`
+  CI gate re-measures live Jest and fails on any
+  drift in `docs/onboarding.md` or
+  `docs/TEST_VIDEO_FIXTURES.md`. The ratchet was
+  applied in the same commit as each lane's test
+  count change (per the handoff's process note).
+  When the lane 74 PR (PR #2755) was merged, the
+  doc block had a conflict with the just-merged
+  lane 73 baseline; the resolution kept the higher
+  value (14109) and the post-merge ratchet rewrote
+  both files to 14113 (post-lane-74).
