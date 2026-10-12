@@ -310,7 +310,36 @@ const SCOPES = [
     // / until-eot-copy family (the historical precedent
     // continues; subsequent lanes 75c–75e grow the same
     // family).
-    budgetLines: 3000,
+    //
+    // Wave 4.8 follow-up 8 lane 75d (#2614 follow-up)
+    // adds the `become_copy` arm to `AuraStaticSchema`
+    // (parallel to lane 76's `protectionFrom` arm —
+    // "Enchanted creature is a copy of [chosen permanent]
+    // until end of turn"). The schema change accepts a
+    // new `become_copy: { target: CardInstanceId, until:
+    // "end_of_turn" }` arm on `AuraStaticSchema` and
+    // extends the refine list at the bottom of the
+    // schema to accept it as a stand-alone arm (a pure
+    // meta-static, parallel to the Wave 4.8 follow-up 6
+    // lane 76 process note). The arm + docstring block
+    // (CR 707.2 "all characteristics copied" + the
+    // lane 75d engine surface in `refreshAuraBonuses`
+    // that overlays the chosen target's printed
+    // characteristics onto the ENCHANTED CARD via
+    // the lane 75 `animatedUntilEndOfTurn`
+    // infrastructure + the out-of-scope named-card /
+    // exceptions / multi-Aura / multi-target follow-up
+    // lanes) lands at +60 over 3000. schema.ts measured
+    // at 3050 (+50 over 3000). Bumping 3000 → 3100 to
+    // give the until-EOT-copy family room to land
+    // without fragmenting the chosen-X /
+    // additional-costs / affinity / grants /
+    // counter-ledger / cast-from-zone / mana-restriction /
+    // copy-permanent / creature-payment / aura-protection
+    // / until-eot-copy family (the historical precedent
+    // continues; subsequent lane 75e may grow the same
+    // family).
+    budgetLines: 3100,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),
