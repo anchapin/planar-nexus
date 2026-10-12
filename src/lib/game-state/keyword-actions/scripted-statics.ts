@@ -13,6 +13,7 @@ import type { ScryfallCard } from "../types/card-data";
 import { restoreAnimatedOffBattlefield } from "../pt-until-end-of-turn";
 import { returnEarthbentLands } from "./earthbend";
 import { getCardColors } from "../evergreen-keywords";
+import { buildStaticCopyChainSnapshot } from "./copy-chain";
 
 function battlefieldCards(state: GameState): CardInstance[] {
   const out: CardInstance[] = [];
@@ -348,6 +349,20 @@ export function staticAffects(
  */
 export function refreshScriptedStatics(input: GameState): GameState {
   const state = restoreAnimatedOffBattlefield(returnEarthbentLands(input));
+  // Wave 4.8 follow-up 9 lane 75e (#2614 follow-up):
+  // build a snapshot of every card's "effective copy
+  // target" (the leaf of its copy chain) BEFORE the
+  // overlay write phase runs. A source whose
+  // `become_copy` points at a target whose own
+  // `become_copy` points at a third card overlays the
+  // third card's printed `cardData` in a single pass;
+  // a cyclic chain is broken by treating each member
+  // of the cycle as if it had no `become_copy` arm.
+  // The cycle guard consults the printed `cardData`
+  // of each card it walks, so the snapshot is
+  // independent of any in-flight overlay from a
+  // prior pass.
+  const copyChain = buildStaticCopyChainSnapshot(state);
   const onField = battlefieldCards(state);
   const sources: { card: CardInstance; statics: ScriptedStatic[] }[] = [];
   for (const card of onField) {
@@ -629,9 +644,28 @@ export function refreshScriptedStatics(input: GameState): GameState {
     // the next `copyOfTargetBySourceId` (or undefined). A
     // change in either direction (target acquired, target
     // dropped) triggers the re-stamp.
+    //
+    // Wave 4.8 follow-up 9 lane 75e (#2614 follow-up):
+    // the `setByAura` marker exempts the card from the
+    // diff's "drop stale overlay" branch. The Aura
+    // overlay is the canonical site for the
+    // enchanted card's overlay; the static refresh
+    // between Aura refreshes must not tear it down.
+    // The marker is set by `refreshAuraBonuses` (lane
+    // 75d); the static refresh reads it and skips the
+    // drop branch.
     const nextCopyOfTargetId = copyOfTargetBySourceId.get(cardId);
     const prevCopyOfTargetId = card.copyOfTargetId;
     const sameCopyOfTarget = nextCopyOfTargetId === prevCopyOfTargetId;
+    // When the card has a `setByAura` overlay AND no
+    // static-driven `become_copy` arm, the diff is
+    // considered a no-op: the Aura refresh will
+    // re-stamp the overlay on its next pass. The
+    // `cardData` and `animatedUntilEndOfTurn` are
+    // preserved as-is.
+    const auraOverlayActive =
+      card.animatedUntilEndOfTurn?.setByAura === true &&
+      nextCopyOfTargetId === undefined;
     if (
       samePT &&
       sameKw &&
@@ -639,8 +673,31 @@ export function refreshScriptedStatics(input: GameState): GameState {
       sameColors &&
       sameProtFrom &&
       sameCopyOfTarget
-    )
+    ) {
+      // Wave 4.8 follow-up 9 lane 75e (#2614 follow-up):
+      // if the card has an Aura-driven overlay and no
+      // static-driven `become_copy` arm, skip the
+      // re-stamp entirely. The Aura refresh is the
+      // canonical site; the static refresh between
+      // Aura refreshes must not tear down the
+      // overlay. The marker is set by
+      // `refreshAuraBonuses`; the EOT cleanup
+      // (`clearUntilEndOfTurnPT`) drops the overlay
+      // when the turn ends.
+      if (auraOverlayActive) continue;
       continue;
+    }
+    // Wave 4.8 follow-up 9 lane 75e (#2614 follow-up):
+    // skip cards with an active Aura-driven overlay
+    // and no static-driven `become_copy` arm. The
+    // Aura refresh is the canonical site for the
+    // enchanted card's overlay; the static refresh
+    // should not touch the overlay's `cardData`,
+    // `animatedUntilEndOfTurn`, or `copyOfTargetId`.
+    // The static refresh will re-stamp any non-overlay
+    // diff (P/T, keywords) on the next pass, but the
+    // Aura overlay is preserved.
+    if (auraOverlayActive) continue;
     cards ??= new Map(state.cards);
     const updated = { ...card };
     if (nextPT) updated.scriptStaticPT = nextPT;
@@ -688,14 +745,45 @@ export function refreshScriptedStatics(input: GameState): GameState {
     // characteristics via the existing
     // `animatedUntilEndOfTurn` rollback path — so the
     // "until end of turn" semantics are honoured for free.
-    // The cycle guard (a target that itself has a
-    // `become_copy` static) is a follow-up lane — v1
-    // assumes the target's printed `cardData` is the
-    // source-of-truth for the overlay; nested copies
-    // would require a snapshot of the source order at
-    // the top of the refresh pass and are not in scope.
+    //
+    // Wave 4.8 follow-up 9 lane 75e (#2614 follow-up):
+    // the cycle guard. A source whose `become_copy`
+    // points at a target whose own `become_copy` points
+    // at a third card overlays the LEAF's printed
+    // `cardData` in a single pass; a cyclic chain is
+    // broken by dropping the overlay on every cycle
+    // member. The snapshot was built at the top of the
+    // refresh pass — before any overlay writes — and
+    // consulted here. The snapshot's `leafCardData` is
+    // the value the overlay write phase copies onto the
+    // source's `cardData`; reading the snapshot (rather
+    // than the in-flight `target.cardData`) is what
+    // makes the chain resolve consistently across
+    // refreshes.
     const nextCopyTarget = copyOfTargetBySourceId.get(cardId);
     if (nextCopyTarget !== undefined) {
+      // Wave 4.8 follow-up 9 lane 75e (#2614 follow-up):
+      // cycle guard — drop the overlay for any source
+      // whose copy chain forms a cycle. The cycle
+      // member is treated as if it had no `become_copy`
+      // arm: the source's printed `cardData` is restored
+      // and the copy ledger is cleared.
+      if (copyChain.cycleIds.has(cardId)) {
+        if (card.animatedUntilEndOfTurn) {
+          updated.cardData = card.animatedUntilEndOfTurn.cardData;
+          delete updated.animatedUntilEndOfTurn;
+          delete updated.copyOfTargetId;
+        } else {
+          // No prior overlay — the static-driven
+          // overlay is suppressed for this pass. The
+          // copy ledger is cleared.
+          delete updated.copyOfTargetId;
+        }
+        // Skip the rest of the write phase for this
+        // card; the cycle case is fully handled here.
+        cards.set(cardId, updated);
+        continue;
+      }
       // Wave 4.8 follow-up 8 lane 75b (#2614 follow-up):
       // the per-source copy-of-target ledger is a tagged
       // union. For `kind: "id"` (lane 75), the named
@@ -706,17 +794,64 @@ export function refreshScriptedStatics(input: GameState): GameState {
       // `cardDataByName` registry (a missing named card
       // is a no-op — the source keeps its printed
       // `cardData`).
+      //
+      // Wave 4.8 follow-up 9 lane 75e (#2614 follow-up):
+      // when the snapshot has a leaf entry for this
+      // source, the overlay consults the LEAF's printed
+      // `cardData` rather than the immediate target's
+      // in-flight `cardData`. A nested copy chain (the
+      // immediate target has its own `become_copy` arm)
+      // is resolved in one pass: the source overlays the
+      // leaf's printed characteristics. Without the
+      // snapshot, the source would copy the in-flight
+      // overlay on the intermediate target — which is
+      // whatever the intermediate target's overlay is
+      // currently showing, not the printed value.
       let targetPrintedCardData: ScryfallCard | undefined;
       let nextTargetLedger: string | undefined;
+      const leafFromSnapshot = copyChain.leafBySourceId.get(cardId);
+      const leafCardDataFromSnapshot =
+        copyChain.leafCardDataBySourceId.get(cardId);
       if (nextCopyTarget.kind === "id") {
         const target = state.cards.get(nextCopyTarget.targetId);
         const targetOnField = target
           ? target.currentZoneKey?.endsWith("-battlefield")
           : false;
         if (target && targetOnField) {
+          // Use the snapshot's leaf `cardData` when
+          // available (lane 75e: nested-copy chain
+          // resolved in one pass); fall back to the
+          // immediate target's printed `cardData` when
+          // the chain has no further extension (the
+          // immediate target IS the leaf, or the chain
+          // terminated because the leaf has no
+          // `become_copy` arm).
           targetPrintedCardData =
-            target.animatedUntilEndOfTurn?.cardData ?? target.cardData;
+            leafCardDataFromSnapshot ??
+            (target.animatedUntilEndOfTurn?.cardData ?? target.cardData);
+          // The ledger stays as the IMMEDIATE target's
+          // id (the source's `become_copy` references
+          // the immediate target, not the leaf — the
+          // change-detection diff compares the ledger
+          // against the per-pass `copyOfTargetBySourceId`
+          // value to detect script changes; the leaf is
+          // a snapshot-only construct).
           nextTargetLedger = nextCopyTarget.targetId;
+          // Mark the source as having an in-flight
+          // overlay so the next refresh pass's snapshot
+          // resolution continues to walk the chain
+          // until the leaf — the snapshot helper
+          // consults `card.copyOfTargetId` to follow
+          // the chain. The leaf entry is the value the
+          // overlay write phase copies onto the source.
+          if (leafFromSnapshot && leafFromSnapshot !== nextTargetLedger) {
+            // The chain has a leaf; the source's
+            // `copyOfTargetId` is the immediate target
+            // (matches `nextTargetLedger`). The next
+            // refresh pass's snapshot will walk the
+            // chain from the source's ledger through
+            // the immediate target to the leaf.
+          }
         }
       } else {
         // Wave 4.8 follow-up 8 lane 75b — named-card
@@ -820,10 +955,11 @@ export function refreshScriptedStatics(input: GameState): GameState {
       // `animatedUntilEndOfTurn` and clear the ledger.
       if (
         card.animatedUntilEndOfTurn &&
-        !card.animatedUntilEndOfTurn.setBySpellEffect
+        !card.animatedUntilEndOfTurn.setBySpellEffect &&
+        !card.animatedUntilEndOfTurn.setByAura
       ) {
         // Static-driven overlay (no `setBySpellEffect`
-        // marker): drop on refresh.
+        // or `setByAura` marker): drop on refresh.
         updated.cardData = card.animatedUntilEndOfTurn.cardData;
         delete updated.animatedUntilEndOfTurn;
         delete updated.copyOfTargetId;
