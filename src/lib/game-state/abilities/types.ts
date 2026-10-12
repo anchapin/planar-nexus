@@ -97,6 +97,23 @@ export interface TriggeredAbilityInstance {
   sourceCardTimestamp: number;
   context?: TriggerContext;
   interveningIf?: string;
+  /**
+   * Wave 4.8 follow-up 3 lane 65 (#2614 follow-up): the
+   * granted-trigger bag for a triggered ability whose
+   * source is an attached Aura's `static.grants.triggers`
+   * (CR 603.2 grant semantics). The trigger fires when
+   * the ENCHANTED CARD (the dying card) matches the
+   * event, and the resolver routes the effect's
+   * `who: "you"` to the enchanted card's controller
+   * (parallel to a normal self-dies trigger on the
+   * enchanted card). The `grantedSourceControllerId` is
+   * the Aura's controller at refresh time — used for
+   * "grants to a specific player" style effects that
+   * point at the Aura's controller. Undefined on
+   * ordinary scripted triggers.
+   */
+  grantedEffects?: Array<{ op: string; [k: string]: unknown }>;
+  grantedSourceControllerId?: PlayerId;
 }
 
 export interface LoyaltyAbility {

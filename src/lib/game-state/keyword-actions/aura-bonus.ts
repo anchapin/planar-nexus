@@ -12,7 +12,7 @@
  * `auraRestrictAttack` / `auraRestrictBlock` come from both sources
  * simultaneously.
  */
-import type { CardInstance, GameState } from "../types";
+import type { CardInstance, CardInstanceId, GameState, PlayerId } from "../types";
 import { getCardScript } from "../card-scripts/registry";
 
 export interface AuraPT {
@@ -115,6 +115,25 @@ export function refreshAuraBonuses(state: GameState): GameState {
   // the boolean is `card.losesAbilities === true` at the
   // end of the refresh pass.
   const losesAbilities = new Set<string>();
+  // Wave 4.8 follow-up 3 lane 65 (#2614 follow-up): the
+  // per-target list of granted triggers stamped onto each
+  // enchanted card. Keyed by target id. Each entry is the
+  // union of `static.grants.triggers` from every attached
+  // Aura that has a `grants.triggers` arm (v1 supports one
+  // per Aura; multiple Auras append). The list is cleared
+  // when no Aura with the `grants` arm is attached (the
+  // diff at the bottom of this function compares the
+  // current and next lists and stamps the diff on the
+  // card's `grantedTriggers` field).
+  const grantedTriggersByTarget = new Map<
+    string,
+    Array<{
+      event: "dies";
+      effects: Array<{ op: string; [k: string]: unknown }>;
+      from: CardInstanceId;
+      sourceControllerId: PlayerId;
+    }>
+  >();
 
   for (const aura of onField) {
     const target = aura.attachedToId;
@@ -204,6 +223,43 @@ export function refreshAuraBonuses(state: GameState): GameState {
       if (scriptedStatic.removesAllAbilities === true) {
         losesAbilities.add(target);
       }
+      // Wave 4.8 follow-up 3 lane 65 (#2614 follow-up):
+      // a granted-trigger Aura copies its `grants.triggers`
+      // onto the enchanted card. The per-target list is
+      // built up across every attached Aura (multiple
+      // Auras with `grants` arms append; the
+      // `refreshAuraBonuses` diff path writes the union
+      // onto `card.grantedTriggers` and clears it when no
+      // Aura with the `grants` arm is attached). The
+      // trigger fires from the enchanted card (the
+      // subject is the dying creature, not the Aura);
+      // the effect's `who: "you"` resolves to the
+      // enchanted card's controller (CR 603.2 / 603.10a),
+      // NOT the Aura's original controller — the source
+      // field on the granted trigger is for diagnostics.
+      if (
+        scriptedStatic.grants?.triggers &&
+        scriptedStatic.grants.triggers.length > 0
+      ) {
+        const list = grantedTriggersByTarget.get(target) ?? [];
+        for (const t of scriptedStatic.grants.triggers) {
+          list.push({
+            event: t.event,
+            // The effect op is unknown to TS here, but the
+            // trigger fire path applies the effects via
+            // the same interpreter that processes scripted
+            // triggers; the list shape matches
+            // `ScriptedTrigger.effects`.
+            effects: t.effects as Array<{
+              op: string;
+              [k: string]: unknown;
+            }>,
+            from: aura.id,
+            sourceControllerId: aura.controllerId,
+          });
+        }
+        grantedTriggersByTarget.set(target, list);
+      }
     }
   }
 
@@ -231,6 +287,30 @@ export function refreshAuraBonuses(state: GameState): GameState {
     // `losesAbilities.has(cardId)`. The `continue` short
     // circuits when nothing changed for this card.
     const nextLosesAbilities = losesAbilities.has(cardId);
+    // Wave 4.8 follow-up 3 lane 65 (#2614 follow-up):
+    // `grantedTriggers` list diff. Compare the per-target
+    // granted list (built up across every attached Aura
+    // with `grants.triggers`) against the card's current
+    // `grantedTriggers` field. The lists are compared
+    // structurally (event + effects + from) — when the
+    // lists differ, the next list is stamped; when no
+    // Aura has the `grants` arm, the field is cleared
+    // (the lane 52 chosen-eviction-at-tombstone pattern:
+    // the field is battlefield-zone-only, dropped when
+    // the source leaves the battlefield).
+    const nextGrantedTriggers = grantedTriggersByTarget.get(cardId) ?? [];
+    const wasGrantedTriggers = card.grantedTriggers ?? [];
+    const sameGrantedTriggers =
+      nextGrantedTriggers.length === wasGrantedTriggers.length &&
+      nextGrantedTriggers.every(
+        (g, i) =>
+          wasGrantedTriggers[i] &&
+          wasGrantedTriggers[i].event === g.event &&
+          wasGrantedTriggers[i].from === g.from &&
+          wasGrantedTriggers[i].sourceControllerId === g.sourceControllerId &&
+          JSON.stringify(wasGrantedTriggers[i].effects) ===
+            JSON.stringify(g.effects),
+      );
     if (
       (was?.power ?? 0) === (next?.power ?? 0) &&
       (was?.toughness ?? 0) === (next?.toughness ?? 0) &&
@@ -239,7 +319,8 @@ export function refreshAuraBonuses(state: GameState): GameState {
       sameStringList(wasRB, nextRB) &&
       sameStringList(wasRU, nextRU) &&
       card.auraMaxBlockers === nextMB &&
-      Boolean(card.losesAbilities) === nextLosesAbilities
+      Boolean(card.losesAbilities) === nextLosesAbilities &&
+      sameGrantedTriggers
     ) {
       continue;
     }
@@ -259,6 +340,17 @@ export function refreshAuraBonuses(state: GameState): GameState {
     else delete updated.auraMaxBlockers;
     if (nextLosesAbilities) updated.losesAbilities = true;
     else delete updated.losesAbilities;
+    // Wave 4.8 follow-up 3 lane 65: write the
+    // granted-triggers list when at least one Aura is
+    // attached; clear the field when no Aura is attached
+    // (the field is per-instance + battlefield-zone-only,
+    // dropped when the source leaves the battlefield —
+    // parallel to the lane 52 add_creature_type pattern).
+    if (nextGrantedTriggers.length > 0) {
+      updated.grantedTriggers = nextGrantedTriggers;
+    } else {
+      delete updated.grantedTriggers;
+    }
     cards.set(cardId, updated);
   }
   return cards ? { ...state, cards } : state;

@@ -206,6 +206,36 @@ export interface CardInstance {
    * permanent today; the field is forward-compatible.
    */
   chosenCardName: string | null;
+  /**
+   * Wave 4.8 follow-up 3 lane 65 (#2614 follow-up): the
+   * per-instance list of triggered abilities an attached
+   * Aura's `static.grants.triggers` has stamped onto this
+   * card. Stamped by `refreshAuraBonuses` when an Aura with
+   * `static.grants.triggers` is attached to this card; cleared
+   * when the Aura leaves the battlefield. The trigger fire
+   * path (`detectTriggeredAbilities`) reads the list and fires
+   * each granted trigger alongside the card's own scripted
+   * triggers. v1 supports a single `event: "dies"` arm per
+   * granted trigger (parallel to the lane 49 v1 baseline).
+   * The field is per-instance + battlefield-zone-only, dropped
+   * when the source leaves the battlefield.
+   */
+  grantedTriggers?: {
+    event: "dies";
+    effects: Array<{ op: string; [k: string]: unknown }>;
+    from: CardInstanceId;
+    /**
+     * The Aura's controller at the time the trigger was
+     * stamped. Used to route the trigger's effects
+     * (`who: "you"` on the effect reads from this id, not
+     * the dying card's controller). Captured at refresh time
+     * so a controller change of the Aura before the trigger
+     * fires still routes to the Aura's original controller —
+     * matches the CR 603.2 trigger condition semantics
+     * (the trigger is part of the source, not the target).
+     */
+    sourceControllerId: PlayerId;
+  }[];
 
   // Token-specific
   /** Whether this is a token */
