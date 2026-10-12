@@ -153,7 +153,24 @@ const SCOPES = [
     // headroom for any final follow-up edits without
     // fragmenting the chosen-X / additional-costs /
     // affinity / grants family.
-    budgetLines: 2450,
+    //
+    // Wave 4.8 follow-up 4 lane 66 (#2614 follow-up) adds
+    // the `embedded_static` arm on `CreateTokenSchema`
+    // (token-time static bonuses — keywords + P/T). schema.ts
+    // landed at 2422 (+14 over 2408). No bump needed.
+    //
+    // Wave 4.8 follow-up 4 lane 67 (#2614 follow-up) adds
+    // the `enters_with_counters: [{ counter, count }]` arm on
+    // `CardScriptSchema` (generalized stun / finality / +1/+1 /
+    // -1/-1 counter stamping; the v0 substrate is the lane 59
+    // `enters_with_counters_per_match` and the legacy
+    // `SearchLibrary.stun` field). schema.ts landed at 2476
+    // (+26 over 2450). Bumping 2450 → 2500 to give the
+    // counter-ledger family room to land without fragmenting
+    // the chosen-X / additional-costs / affinity / grants
+    // family (the historical precedent from the lane 64
+    // affinity bump and the lane 65 grants bump).
+    budgetLines: 2500,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),
