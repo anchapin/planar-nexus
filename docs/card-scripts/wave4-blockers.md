@@ -635,7 +635,7 @@ Wave 4.8 follow-up loop. The Wave 4.8 loop is complete.
   permanent has N+ counters" trigger gate today; the new
   gate would be a multi-lane addition (#2614 follow-up).
   Effective schema extension would be a `counter_gate:
-  {counter, op, n}` field on `TriggerSchema` plus an
+{counter, op, n}` field on `TriggerSchema` plus an
   engine evaluator in `trigger-system/`.
 - **Shipped**: Redcap Gutter-Dweller's chosen-color
   `enter_choice`, chosen-color `add_color: "chosen"`
@@ -652,7 +652,7 @@ All four priority lanes shipped:
 - **Lane 56 — `enter_choice.kind: "color_and_creature_type"`
   dual compound arm (PR #2730)**. Schema enum extension +
   `resolveEnterChoice` dispatch + Eaten by Piranhas JSON
-  + 11-case dedicated test.
+  - 11-case dedicated test.
 - **Lane 57 — Redcap Gutter-Dweller full JSON (PR #2731)**.
   Chosen-color `enter_choice` + `add_color: "chosen"`
   static (lane 55 arm) + attacks Treasure-token trigger.
@@ -692,3 +692,106 @@ All four priority lanes shipped:
   adjacent multi-lane plans.
 
 Wave 4.8 follow-up loop is complete.
+
+## Wave 4.8 follow-up 2 loop done summary (lanes 60, 62)
+
+Two lanes shipped in the Wave 4.8 follow-up 2 loop. Both targeted
+the "you may / counter-gate trigger" half of the drafter-list
+#2614 plan work the Wave 4.8 follow-up handoff explicitly
+deferred until the Adaptive Automaton / chosen-X work landed.
+
+### Lanes shipped
+
+- **Lane 60 — "you may" optional trigger gate (#2736, PR #2614)**.
+  Schema: `TriggerSchema.you_may: z.boolean().optional()` —
+  trigger-level "you may" (CR 117.3a) gate that defers the
+  entire effects array behind a yes/no confirmation prompt
+  offered to the controller at resolution time. Mutually
+  exclusive with `modes` (the schema rejects the combo).
+  Engine: `resolveScriptedAbility` consults a new
+  `stackObject.you_may_resolved?: boolean`; when undefined it
+  surfaces a new `you_may_prompt` `waitingChoice` (factory
+  `createYouMayPromptWaitingChoice`), when `false` it skips
+  the effects entirely, when `true` it runs them.
+  `resolveWaitingChoice` arms the new prompt type, stamping
+  the controller's yes/no answer onto the flag and clearing
+  the choice. 9-case dedicated test.
+
+- **Lane 62 — Counter-based trigger gate (#2737, PR #2614)**.
+  Schema: `TriggerSchema.counter_gate: { counter: string,
+op: "gte"|"eq", n: int >= 0 }` — a CR 603.2 "while"-gate
+  parallel to `whileCondition` and `losesAbilities`. Wires
+  the engine arm Redcap Gutter-Dweller's deferred
+  "Goblins you control have menace when 3+ +1/+1 counters"
+  half carried in the lane 57 (#2731) JSON. Engine:
+  `detectTriggeredAbilities` consults the new gate after
+  `losesAbilities` and before `interveningIf`; reads
+  `card.instanceCounters[gate.counter]` from the lane 59
+  per-instance counter ledger; the `op` comparator picks
+  between threshold (`gte`) and exact (`eq`). 10-case
+  dedicated test.
+
+### Net delta from Wave 4.8 follow-up 2 loop
+
+- Test suites: 714 → 716 (+2 — one per shipped lane).
+- Test cases: 13992 → 14011 (+19: lane 60 +9, lane 62 +10).
+- Engine-size budget: schema.ts 2237 (lane 59 measurement) →
+  2286 (+49 lines incl. docstrings across lanes 60
+  trigger-level flag + gate, 62 counter_gate field). Under
+  the 2300 ceiling bumped in lane 56.
+- Both lanes ship doc-ratchets in the same commit as the
+  test changes (lane 62 used the `--live` fallback that
+  the Wave 4.8 handoff documents as the safe path when the
+  AI `forge-gate` flake hits `npm test --silent` mid-
+  ratchet).
+- Both PRs landed with full CI (41 SUCCESS / 5 SKIPPED,
+  0 FAILED): Type Check, Lint, Test, Mutation (8 modules),
+  Security Audit (npm + Rust), Tauri Updater, Turn
+  Credentials, Test Count Docs Guard, Engine Size Budget,
+  Workflow Lint. Lane 60 saw the `forge-gate` flake on
+  one local run before the push; CI was clean.
+
+### Still open (multi-lane, tracked under #2614 or adjacent plans)
+
+The lanes that ride Wave 4.8 follow-up 2 and were NOT
+attempted in this session:
+
+- **Lane 61 — Replacement effect for death** (Whip of Erebos,
+  False Dawn). Handoff explicitly notes the engine has no
+  general replacement-effect layer; this is foundational
+  work, ~200-400 LOC + tests. Per the Wave 4.8 follow-up
+  handoff's process rule ("if a lane reveals a second
+  pattern, split it into a follow-up lane"), this lane is
+  bigger than the standard lane envelope and should be
+  picked up only when a replacement-effect layer lands
+  upstream.
+- **Lane 63 — Additional costs** (Louisoix's Sacrifice,
+  Drana's Sacrifice, Painful Truths). `additionalCosts`
+  array on `ActivatedSchema` / `SpellEffectSchema` for
+  sacrifice / pay_life costs. ~100-200 LOC + tests.
+- **Lane 64 — Affinity / cost reduction** (Claws Out,
+  Dragonlord's Servant, Archmage of Runes, Mocking
+  Sprite, Bolt Bend, Arcane Epiphany). `cost_reduction`
+  schema arm + parser that subtracts the affinity sum
+  from the printed cost at activation time.
+  ~100-200 LOC + tests.
+- **Lane 65 — Granting triggered abilities to other cards**
+  (Fake Your Own Death, Undying Malice, Lifelink granting
+  via static). Static arm that adds `script.triggers` to
+  the target. Multi-lane — touches the trigger fire
+  pipeline directly. ~200-400 LOC + tests.
+- **Lanes 66–71** — Token creation with embedded static,
+  stun/finality counters, casting from exile/graveyard,
+  X-spent-on-other-spells, copying a permanent,
+  protection-from static.
+
+Wave 4.8 follow-up 2 loop is complete (modulo lanes 63, 64,
+and 65 that the handoff flagged as immediate follow-ups).
+
+### Lane continue rule for the next session
+
+If continuing this loop, start at **Lane 63** (additional
+costs, smallest scope left) per the handoff's priority order.
+Lane 61 stays blocked on the foundational replacement-
+effect layer — pick that up only as a separate
+multi-lane plan, not as the next lane in this loop.
