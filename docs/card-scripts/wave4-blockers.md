@@ -795,3 +795,129 @@ costs, smallest scope left) per the handoff's priority order.
 Lane 61 stays blocked on the foundational replacement-
 effect layer — pick that up only as a separate
 multi-lane plan, not as the next lane in this loop.
+
+## Wave 4.8 follow-up 3 done summary
+
+Shipped lanes 63, 64, and 65 from the Wave 4.8 follow-up 2
+handoff. All three landed as one-lane-per-PR, all CI
+green, all merged on main. Per the Wave 4.8 follow-up 2
+done summary's "Lane continue rule" the next session
+should start at lane 66 (token creation with embedded
+static) — but that's a multi-lane piece too.
+
+### Lane 63 — Additional costs (PR #2738)
+
+`additionalCosts.pay_life: { amount }` and
+`additionalCosts.sacrifice: { amount, target }` arms on the
+existing `CardScriptSchema.additionalCosts` slot. The engine
+deducts these at cast time, after mana is verified and
+spent, in `spell-casting/cast.ts`. Sample card: Painful
+Truths ("Pay 1 life, draw 3 cards."). Test count delta:
+716 → 717 suites, 14011 → 14019 cases.
+
+### Lane 64 — Affinity / cost reduction (PR #2743)
+
+Discriminated union on the existing `CardScriptSchema.affinity`
+field:
+
+- `{ subtype, reduction_per_match? }` — the lane 22 /
+  Sapling Nursery shape, with `reduction_per_match` added
+  (default 1).
+- `{ color, reduction_per_match? }` — the new color arm
+  (W | U | B | R | G | any).
+
+The engine's `affinityReduction` in
+`spell-casting/affinity.ts` handles both arms. Sample card:
+Dragonlord's Servant (subtype arm with explicit
+`reduction_per_match: 1`). Test count delta: 717 → 718
+suites, 14019 → 14033 cases.
+
+### Lane 65 — Granting triggered abilities to other cards (PR #2744)
+
+A new `static.grants.triggers: [{ event: "dies", effects:
+[...] }]` arm on `AuraStaticSchema`. The engine stamps the
+granted list on the enchanted card via `refreshAuraBonuses`
+(parallels the lane 52 `add_creature_type` pattern:
+per-instance + battlefield-zone-only, dropped when the
+source leaves the battlefield). The trigger fire path
+(`detectTriggeredAbilities`) iterates the granted list and
+fires each granted trigger alongside the card's own scripted
+triggers. v1 supports a single `event: "dies"` arm; the
+sample card is a synthetic Aura registered via the test
+harness. Test count delta: 718 → 719 suites, 14033 → 14041
+cases.
+
+### Test count snapshot
+
+- **Suites:** 716 → 717 → 718 → 719
+- **Cases:** 14011 → 14019 → 14033 → 14041
+- **All passing** (14034 passed + 7 skipped at the end of
+  the loop, no flakes, no skipped suites)
+
+### Process notes carried forward to the next loop
+
+- `git commit` without the `GIT_AUTHOR_NAME` /
+  `GIT_AUTHOR_EMAIL` env vars picks up the husky global
+  git config and the commit shows up under the wrong
+  author. Wave 4.8 follow-up 3 used the env vars
+  consistently on every commit + amend; no misattributed
+  commits in this loop.
+- The `git rm --cached COMMIT_MSG.txt && git commit
+--amend --no-edit && rm COMMIT_MSG.txt` flow is required
+  to keep the commit message file out of the commit. The
+  same flow is required for `PR_BODY.txt` (Wave 4.8
+  follow-up 3 wrote the file AFTER the commit so it
+  didn't need to be removed; this is the cleaner pattern
+  and is the recommended one going forward).
+- The husky pre-commit hook's `tsc --noEmit` can pass
+  locally while CI's `tsc --noEmit` flags a missing
+  import. Wave 4.8 follow-up 3 hit this once in lane 64
+  with three unused `@ts-expect-error` directives in the
+  test file (the test pattern for synthetic scripts uses
+  inline object literals, which TypeScript doesn't
+  normally accept in a strict `CardScript[]` array). The
+  fix was to cast `synthetic as never` instead of using
+  `@ts-expect-error`; the directives were unnecessary
+  because the test harness doesn't actually need to
+  suppress the error.
+- The `npm run ratchet:test-count` script is reliable; the
+  Wave 4.8 follow-up 3 loop did not hit the AI flake
+  mid-ratchet (the lane 62 workaround from the previous
+  loop was not needed). All three ratchets in this loop
+  ran clean on the first try.
+- `tsc --noEmit` is fast (~5s in this repo); run it
+  before pushing to avoid the husky pre-commit hook
+  blocking the commit on a local typecheck pass while CI
+  fails on a missing import.
+- The `check-engine-size-budget.mjs` script is fast
+  (~50ms); run it in the same commit as any `schema.ts`
+  change so the budget doesn't drift. Wave 4.8 follow-up
+  3 bumped the budget 2300 → 2350 → 2400 → 2450 across
+  the three lanes. The chosen-X / additional-costs /
+  affinity / grants family is intentionally kept cohesive;
+  the next lane that needs a bump should follow the same
+  precedent.
+
+### Still open (multi-lane, tracked under #2614 or adjacent plans)
+
+The lanes that ride Wave 4.8 follow-up 3 and were NOT
+attempted in this session:
+
+- **Lane 61 — Replacement effect for death** (Whip of
+  Erebos, False Dawn). Foundational replacement-effect
+  layer; tracked separately per the Wave 4.8 follow-up 2
+  handoff's process note.
+- **Lanes 66–71** — Token creation with embedded static,
+  stun/finality counters, casting from exile/graveyard,
+  X-spent-on-other-spells, copying a permanent,
+  protection-from static. All multi-lane; pick up in a
+  future Wave 4.8 follow-up 4 (or equivalent) handoff.
+
+### Lane continue rule for the next session
+
+If continuing this loop, start at **Lane 66** (token
+creation with embedded static) per the Wave 4.8 follow-up
+3 handoff's priority order. Lane 61 stays blocked on the
+foundational replacement-effect layer — pick that up only
+as a separate multi-lane plan, not as the next lane in
+this loop.
