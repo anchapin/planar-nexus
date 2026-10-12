@@ -2144,6 +2144,58 @@ export const AuraStaticSchema = z
      * red creature + a red spell to verify the protection
      * is honored at cast time and combat time.
      */
+    /**
+     * Wave 4.8 follow-up 8 lane 75d (#2614 follow-up):
+     * "Enchanted creature is a copy of [chosen permanent]
+     * until end of turn" — the Aura-shaped
+     * until-EOT-copy variant (parallel to lane 75's
+     * `StaticSchema.become_copy` lane, but here it's a
+     * per-enchanted-card overlay rather than a self-
+     * overlay on the Aura itself). The engine writes
+     * the overlay onto the ENCHANTED CARD via
+     * `refreshAuraBonuses` (parallel to the lane 76
+     * `protectionFrom` Arm and the lane 65
+     * `grants.triggers` Arm) using the same
+     * lane 75 `animatedUntilEndOfUntil` infrastructure
+     * for EOT rollback.
+     *
+     * v1 supports the lane 75 `target: CardInstanceId`
+     * arm only — the chosen permanent must be on the
+     * battlefield at refresh time (the engine validates
+     * `state.cards.has(targetId)`). The named-card
+     * arm (lane 75b), the copy-with-exception arm
+     * (lane 75c), and multi-Aura / multi-target
+     * variants are follow-up lanes. The overlay is
+     * dropped at end of turn via the existing
+     * `clearUntilEndOfTurnPT` /
+     * `restoreAnimatedOffBattlefield` rollback paths.
+     *
+     * Sample card: a synthetic Aura registered via
+     * the test harness ("Enchanted creature is a copy
+     * of [chosen creature] until end of turn.") with
+     * a 2/2 Grizzly Bears on the battlefield to
+     * verify the copy characteristics are honored
+     * (overlay on the enchanted card's `cardData`).
+     */
+    become_copy: z
+      .union([
+        z
+          .object({
+            /**
+             * The chosen permanent on the
+             * battlefield to copy (CR 707.2
+             * "all characteristics copied"
+             * semantics, until end of turn).
+             * Validated at refresh time via
+             * `state.cards.has(targetId)` +
+             * zone endsWith `"-battlefield"`.
+             */
+            target: z.string().min(1),
+            until: z.literal("end_of_turn"),
+          })
+          .strict(),
+      ])
+      .optional(),
     protectionFrom: z.array(z.string().min(1)).optional(),
   })
   .strict()
@@ -2176,10 +2228,22 @@ export const AuraStaticSchema = z
       // keywords; it's a pure protection-granter
       // ("Enchanted creature has protection from red").
       // Allow `protectionFrom` as a stand-alone arm.
-      (s.protectionFrom?.length ?? 0) > 0,
+      (s.protectionFrom?.length ?? 0) > 0 ||
+      // Wave 4.8 follow-up 8 lane 75d (#2614 follow-up):
+      // an Aura-shaped "enchanted creature is a copy of
+      // [chosen permanent] until end of turn" static has
+      // no P/T and no keywords; it's a pure copy
+      // overlay on the enchanted card. Allow
+      // `become_copy` as a stand-alone arm (parallel to
+      // the lane 75 `become_copy` on `StaticSchema`).
+      // The engine writes the overlay onto the
+      // enchanted card's `cardData` via
+      // `refreshAuraBonuses` using the lane 75
+      // `animatedUntilEndOfUntil` infrastructure.
+      s.become_copy !== undefined,
     {
       message:
-        "an aura static needs power/toughness, keywords, a restriction, maxBlockers, removesAllAbilities, grants, or protectionFrom",
+        "an aura static needs power/toughness, keywords, a restriction, maxBlockers, removesAllAbilities, grants, protectionFrom, or become_copy",
     },
   );
 

@@ -149,6 +149,26 @@ export function refreshAuraBonuses(state: GameState): GameState {
       sourceControllerId: PlayerId;
     }>
   >();
+  // Wave 4.8 follow-up 8 lane 75d (#2614 follow-up): the
+  // per-enchanted-card copy-target ledger for Auras with
+  // a `become_copy` arm. The Aura's static carries
+  // `become_copy: { target: CardInstanceId, until:
+  // "end_of_turn" }`; the engine writes the chosen
+  // target's printed characteristics onto the
+  // ENCHANTED CARD's `cardData` via the lane 75
+  // `animatedUntilEndOfTurn` infrastructure. Keyed by
+  // the ENCHANTED card id (NOT the Aura id — the lane 75
+  // `copyOfTargetBySourceId` keys by the source, but
+  // here the source IS the Aura and the overlay is
+  // applied to the enchanted card; the enchanted card's
+  // id is the right key for the per-enchanted-card
+  // overlay collection map). v1 single chosen target on
+  // the battlefield; the chosen target's `state.cards`
+  // lookup is validated at write-phase time.
+  const auraCopyOfTargetByEnchantedCard = new Map<
+    string,
+    { kind: "id"; targetId: string; fromAura: CardInstanceId }
+  >();
 
   for (const aura of onField) {
     const target = aura.attachedToId;
@@ -301,6 +321,38 @@ export function refreshAuraBonuses(state: GameState): GameState {
         }
         auraProtFromByTarget.set(target, list);
       }
+      // Wave 4.8 follow-up 8 lane 75d (#2614 follow-up):
+      // an Aura with a `become_copy: { target,
+      // until: "end_of_turn" }` arm writes the chosen
+      // target's printed characteristics onto the
+      // ENCHANTED CARD's `cardData` via the lane 75
+      // `animatedUntilEndOfTurn` infrastructure. v1
+      // single chosen target on the battlefield; the
+      // target MUST be on the battlefield at write-phase
+      // time (the engine validates `state.cards.has`)
+      // — otherwise the overlay is dropped and the
+      // enchanted card's printed `cardData` is restored.
+      // The "last write wins" semantics apply: when
+      // multiple Auras carry a `become_copy` arm onto
+      // the same enchanted card, the last Aura in the
+      // iteration order wins (matches lane 65's
+      // `grantedTriggers` collect-order semantics; a
+      // card is unlikely to carry more than one such
+      // Aura in v1, but the deterministic-overwrite is
+      // the safe default).
+      if (scriptedStatic.become_copy !== undefined) {
+        if ("target" in scriptedStatic.become_copy) {
+          auraCopyOfTargetByEnchantedCard.set(target, {
+            kind: "id",
+            targetId: scriptedStatic.become_copy.target,
+            fromAura: aura.id,
+          });
+        }
+        // The lane 75d v1 minimum only supports the
+        // `target: CardInstanceId` arm (no named-card
+        // / exceptions / multi-target on Auras). The
+        // other arms are follow-up lanes.
+      }
     }
   }
 
@@ -367,6 +419,22 @@ export function refreshAuraBonuses(state: GameState): GameState {
     const sameProtFrom =
       nextProtFrom.length === wasProtFrom.length &&
       nextProtFrom.every((q, i) => q === wasProtFrom[i]);
+    // Wave 4.8 follow-up 8 lane 75d (#2614 follow-up):
+    // the per-enchanted-card copy-target ledger for
+    // Auras with a `become_copy` arm. The next-value
+    // is the chosen target's id (when an Aura with a
+    // matching `become_copy` is attached to this
+    // enchanted card). The was-value is the
+    // enchanted card's existing `copyOfTargetId`
+    // ledger (set by an earlier refresh); the diff
+    // decides whether to apply, drop, or hold the
+    // overlay. When the next-value is undefined (no
+    // Aura with `become_copy` is attached to this
+    // card), the diff drops any in-flight overlay.
+    const nextAuraCopyOfTargetId =
+      auraCopyOfTargetByEnchantedCard.get(cardId)?.targetId;
+    const sameAuraCopyOfTarget =
+      nextAuraCopyOfTargetId === card.copyOfTargetId;
     if (
       (was?.power ?? 0) === (next?.power ?? 0) &&
       (was?.toughness ?? 0) === (next?.toughness ?? 0) &&
@@ -377,7 +445,8 @@ export function refreshAuraBonuses(state: GameState): GameState {
       card.auraMaxBlockers === nextMB &&
       Boolean(card.losesAbilities) === nextLosesAbilities &&
       sameGrantedTriggers &&
-      sameProtFrom
+      sameProtFrom &&
+      sameAuraCopyOfTarget
     ) {
       continue;
     }
@@ -419,6 +488,76 @@ export function refreshAuraBonuses(state: GameState): GameState {
       updated.protectionFrom = nextProtFrom;
     } else {
       delete updated.protectionFrom;
+    }
+    // Wave 4.8 follow-up 8 lane 75d (#2614 follow-up):
+    // write the copy-target overlay when at least one
+    // Aura with a `become_copy` arm is attached to
+    // this enchanted card (the `refreshScriptedStatics`
+    // path on the Aura's own `cardData` is NOT used
+    // here; the overlay is applied to the ENCHANTED
+    // CARD via the same lane 75
+    // `animatedUntilEndOfTurn` infrastructure). The
+    // overlay:
+    // - Snapshots the enchanted card's printed
+    //   `cardData` under `animatedUntilEndOfTurn`.
+    // - Overlays the chosen target's printed
+    //   characteristics (name, type_line, P/T,
+    //   colors, color_identity, keywords — CR 707.2
+    //   "all characteristics copied") onto the
+    //   enchanted card's live `cardData`.
+    // - Stamps `copyOfTargetId` with the chosen
+    //   target's `CardInstanceId` (a stable ledger
+    //   tag for the change-detection diff).
+    //
+    // The overlay is dropped when no Aura with the
+    // `become_copy` arm is attached: the enchanted
+    // card's printed `cardData` is restored from
+    // `animatedUntilEndOfTurn` and the ledger is
+    // cleared. The lane 75 / 75b / 75c
+    // `refreshScriptedStatics` diff's "drop" branch
+    // is NOT used here because lane 75d's overlay is
+    // owned by the Aura attachment, not by the lane 75
+    // static path — this refresh is the canonical
+    // drop site.
+    if (nextAuraCopyOfTargetId !== undefined) {
+      const chosenTarget = state.cards.get(nextAuraCopyOfTargetId);
+      const chosenTargetOnField =
+        chosenTarget &&
+        chosenTarget.currentZoneKey?.endsWith("-battlefield");
+      if (chosenTarget && chosenTargetOnField) {
+        const printed =
+          updated.animatedUntilEndOfTurn?.cardData ?? updated.cardData;
+        updated.animatedUntilEndOfTurn = { cardData: printed };
+        const targetPrinted =
+          chosenTarget.animatedUntilEndOfTurn?.cardData ??
+          chosenTarget.cardData;
+        updated.cardData = {
+          ...printed,
+          name: targetPrinted.name,
+          type_line: targetPrinted.type_line,
+          power: targetPrinted.power,
+          toughness: targetPrinted.toughness,
+          colors: targetPrinted.colors,
+          color_identity: targetPrinted.color_identity,
+          keywords: targetPrinted.keywords,
+        };
+        updated.copyOfTargetId = nextAuraCopyOfTargetId;
+      } else if (updated.animatedUntilEndOfTurn) {
+        // Chosen target has left the battlefield — restore
+        // the enchanted card's printed `cardData`.
+        updated.cardData = updated.animatedUntilEndOfTurn.cardData;
+        delete updated.animatedUntilEndOfTurn;
+        delete updated.copyOfTargetId;
+      }
+    } else if (updated.animatedUntilEndOfTurn) {
+      // No Aura with `become_copy` is attached to this
+      // enchanted card; drop any in-flight overlay (the
+      // source Aura left the battlefield, or the Aura
+      // changed to a static without the `become_copy`
+      // arm).
+      updated.cardData = updated.animatedUntilEndOfTurn.cardData;
+      delete updated.animatedUntilEndOfTurn;
+      delete updated.copyOfTargetId;
     }
     cards.set(cardId, updated);
   }
