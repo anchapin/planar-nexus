@@ -283,6 +283,80 @@ export const CopyPermanentSchema = z
   .strict();
 
 /**
+ * Wave 4.8 follow-up 8 lane 75a (#2614 follow-up):
+ * "create a token that's a copy of [a chosen permanent] until
+ * end of turn" (Cackling Counterpart, Ravenous
+ * Chupacabra-style-to-copy). The new op creates a new
+ * `CardInstance` whose printed `cardData` is the chosen
+ * permanent's cardData (name, type_line, power, toughness,
+ * colors, color_identity, keywords) — "all characteristics
+ * copied" semantics (CR 707.2) — and stamps the new card's
+ * `animatedUntilEndOfTurn` + `copyOfTargetId` ledger so the
+ * existing lane 75 rollback paths (`clearUntilEndOfTurnPT` /
+ * `restoreAnimatedOffBattlefield`) restore the printed
+ * characteristics when the turn ends or the chosen target /
+ * the new permanent leaves the battlefield.
+ *
+ * v1 single chosen target, "until end of turn" duration.
+ * The chosen target must be on the battlefield at
+ * resolution time (the engine validates
+ * `state.cards.has(chosen_permanent)` at cast time and
+ * checks `currentZoneKey.endsWith("-battlefield")`). The
+ * chosen target itself is unchanged.
+ *
+ * Distinct from lane 70's `CopyPermanent` op (no EOT
+ * rollback, creates a permanent copy that stays as a copy
+ * forever) and lane 75's `StaticSchema.become_copy` (a
+ * static on an existing permanent that copies itself onto
+ * itself — the underlying permanent pre-exists the copy).
+ * Lane 75a is the spell-effect shape: cast → token created
+ * → copies a chosen permanent → rolls back at EOT.
+ *
+ * Out of scope (each a follow-up lane): multi-target copies
+ * (a copy that picks the strongest of two chosen targets
+ * at resolution time), narrow `controller` filter
+ * ("you" / "opponent" / "any"), narrower `target` filters
+ * ("creature" / "artifact" / "enchantment" / "land"),
+ * permanent copies (no EOT duration), named-card copies
+ * ("becomes a copy of [card name]" — lane 75b),
+ * copy-with-exception copies (Phyrexian Metamorph — lane
+ * 75c), nested copies (a target that itself has a
+ * `become_copy` static — lane 75e), and Aura-shaped copies
+ * (per-target — lane 75d).
+ *
+ * Sample card: a synthetic spell registered via the test
+ * harness with `copyUntilEndOfTurn: { chosen_permanent:
+ * <Grizzly Bears id>, until: "end_of_turn" }`. The spell
+ * casts and creates a new token on the battlefield whose
+ * characteristics are the chosen target's; the EOT rollback
+ * restores the printed cardData.
+ */
+export const CopyUntilEndOfTurnSchema = z
+  .object({
+    op: z.literal("CopyUntilEndOfTurn"),
+    /**
+     * v1: the `CardInstanceId` of the chosen permanent on
+     * the battlefield to copy. Resolved at cast time (the
+     * engine validates the target is still on the
+     * battlefield); if the target has left the
+     * battlefield by the time the spell resolves, the
+     * spell fizzles and no token is created.
+     */
+    chosen_permanent: z.string().min(1),
+    /** v1: the only duration is `"end_of_turn"`. */
+    until: z.literal("end_of_turn"),
+    /**
+     * Mirror the lane 70 `CopyPermanent` shape: an optional
+     * kicker gate (#2564, lane 35). The cast-time kicker-
+     * gate logic in `applyEffectsToTargets` reads
+     * `effect.if_kicked` to gate each effect. The schema
+     * inherits the standard `ifKicked` union.
+     */
+    if_kicked: ifKicked,
+  })
+  .strict();
+
+/**
  * A Treasure, Food or Clue token (CR 111.10, #2544). "Investigate" is one
  * Clue. The token's ability is its rules text.
  */
@@ -1152,6 +1226,7 @@ export const EffectSchema = z.discriminatedUnion("op", [
   AddSubtypeSchema,
   RevealTopToHandSchema,
   ReturnTransformedSchema,
+  CopyUntilEndOfTurnSchema,
 ]);
 
 /** True when no non-Discard effect follows a Discard (#2536). */

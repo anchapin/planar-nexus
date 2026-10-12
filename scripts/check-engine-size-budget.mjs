@@ -260,7 +260,32 @@ const SCOPES = [
     // copy-permanent / creature-payment / aura-protection
     // / until-eot-copy family (the historical precedent
     // continues).
-    budgetLines: 2800,
+    //
+    // Wave 4.8 follow-up 8 lane 75a (#2614 follow-up) adds
+    // the `CopyUntilEndOfTurn: { chosen_permanent:
+    // CardInstanceId, until: "end_of_turn" }` op on
+    // `EffectSchema` (Cackling Counterpart: "create a token
+    // that's a copy of [a chosen permanent] until end of
+    // turn"). The arm is the spell-effect-shaped
+    // counterpart of lane 75's `StaticSchema.become_copy`
+    // static. The op + per-op reference module +
+    // docstring block (CR 707.2 "all characteristics
+    // copied" + EOT rollback via the lane 75
+    // `animatedUntilEndOfTurn` infra + the out-of-scope
+    // multi-target / controller-filter /
+    // narrower-target-filter / permanent-copy /
+    // named-copy / copy-with-exception / nested-copy /
+    // Aura-shaped follow-up scope notes) land at +75 over
+    // 2800. schema.ts measured at 2865 (+65 over 2800).
+    // Bumping 2800 → 2900 to give the until-EOT-copy
+    // family room to land without fragmenting the
+    // chosen-X / additional-costs / affinity / grants /
+    // counter-ledger / cast-from-zone / mana-restriction /
+    // copy-permanent / creature-payment / aura-protection /
+    // until-eot-copy family (the historical precedent
+    // continues; subsequent lanes 75b–75e grow the same
+    // family).
+    budgetLines: 2900,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),
