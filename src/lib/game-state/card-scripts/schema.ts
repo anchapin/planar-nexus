@@ -1679,6 +1679,54 @@ export const StaticSchema = z
      * time and combat time.
      */
     protectionFrom: z.array(z.string().min(1)).optional(),
+    /**
+     * Wave 4.8 follow-up 7 lane 75 (#2614 follow-up):
+     * "as long as this is in play, it's a copy of [a chosen
+     * permanent] until end of turn" (Sakashima-style /
+     * manifested / disposition-of-copy). v1 single-target,
+     * "all characteristics copied" semantics with a
+     * turn-key duration. The engine stamps the target's
+     * characteristics (name, type_line, power, toughness,
+     * colors, keywords) onto the source's `cardData` via the
+     * existing `animatedUntilEndOfTurn` infrastructure
+     * (parallel to lane 66's `embedded_static` token
+     * stamping + the
+     * `clearUntilEndOfTurnPT` /
+     * `restoreAnimatedOffBattlefield` rollback path).
+     * `target: CardInstanceId` names the permanent whose
+     * characteristics are copied; `until: "end_of_turn"`
+     * sets the duration. The `staticAffects` check returns
+     * true iff the source IS the target (self-only — the
+     * source copies itself onto itself, swapping its own
+     * printed characteristics for the named target's).
+     *
+     * Sample card: a synthetic static registered via the
+     * test harness with `become_copy: { target: <Grizzly
+     * Bears id>, until: "end_of_turn" }`. The source
+     * permanently takes on the Grizzly Bears's name, type
+     * line, P/T, colors, and keywords for the duration of
+     * the turn; the rollback path restores the source's
+     * printed cardData at the end of the turn (or when the
+     * source / target leaves the battlefield).
+     *
+     * Out of scope (each a follow-up lane): chosen-target
+     * copies (Cackling Counterpart — a `chosen_permanent`
+     * field the engine resolves at resolution time),
+     * named-card copies ("Becomes a copy of [card name]"),
+     * copy-with-exception copies (Phyrexian Metamorph-style
+     * "this creature is a [named card] in addition to its
+     * other types"), nested copies (a target that itself
+     * has a `become_copy` static), and Aura-shaped copies
+     * ("enchanted creature is a copy of [target] until end
+     * of turn" — a per-target instead of self-only shape).
+     */
+    become_copy: z
+      .object({
+        target: z.string().min(1),
+        until: z.literal("end_of_turn"),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .refine((s) => (s.power === undefined) === (s.toughness === undefined), {
@@ -1714,10 +1762,19 @@ export const StaticSchema = z
       // keyword list (canonical contract — see
       // `keyword-actions/protection.ts`). No P/T or keyword
       // changes; the static only writes the new field.
-      (s.protectionFrom?.length ?? 0) > 0,
+      (s.protectionFrom?.length ?? 0) > 0 ||
+      // Wave 4.8 follow-up 7 lane 75 (#2614 follow-up):
+      // until-EOT copy static is a meta-static — allow it
+      // as a stand-alone arm. The source swaps its own
+      // printed characteristics for the target's at refresh
+      // time via the `animatedUntilEndOfTurn` infra; the
+      // EOT cleanup rolls them back. No P/T or keyword
+      // changes of its own; the static only triggers the
+      // copy swap.
+      s.become_copy !== undefined,
     {
       message:
-        "a static needs power/toughness, keywords, X, chosen_name_block, add_creature_type (with addCreatureTypeToSelf), add_color (with addColorToSelf), or protectionFrom",
+        "a static needs power/toughness, keywords, X, chosen_name_block, add_creature_type (with addCreatureTypeToSelf), add_color (with addColorToSelf), protectionFrom, or become_copy",
     },
   );
 

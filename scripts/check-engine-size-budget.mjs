@@ -238,7 +238,29 @@ const SCOPES = [
     // mana-restriction / copy-permanent / creature-payment /
     // aura-protection family (the historical precedent
     // continues).
-    budgetLines: 2750,
+    //
+    // Wave 4.8 follow-up 7 lane 75 (#2614 follow-up) adds
+    // the `StaticSchema.become_copy: { target:
+    // CardInstanceId, until: "end_of_turn" }` arm
+    // (Sakashima-style / manifested / disposition-of-copy;
+    // "as long as this is in play, it's a copy of [a chosen
+    // permanent] until end of turn"). v1 single-target,
+    // "all characteristics copied" semantics with a
+    // turn-key duration. The arm carries a sizable
+    // docstring block (CR 707.2 "all characteristics
+    // copied" semantics, the chosen-target / named-copy
+    // / copy-with-exception / nested-copy / Aura-shaped
+    // follow-up scope notes) so the schema field lands
+    // +57 over 2750. schema.ts landed at 2790 (+40 over
+    // 2750 after the docstring is trimmed). Bumping 2750
+    // → 2800 to give the until-EOT-copy family room to
+    // land without fragmenting the chosen-X /
+    // additional-costs / affinity / grants /
+    // counter-ledger / cast-from-zone / mana-restriction /
+    // copy-permanent / creature-payment / aura-protection
+    // / until-eot-copy family (the historical precedent
+    // continues).
+    budgetLines: 2800,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),
