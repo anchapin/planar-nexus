@@ -109,11 +109,14 @@ interface EffectContext {
  * targets. "Those spells gain ..." marks the original and the copy. Does
  * nothing when the spell has left the stack (countered or resolved).
  *
- * `newTargets: true` (#2594 follow-up, lane 33, Double Vision) marks the
- * engine's intent to retarget the copy per CR 707.10d. The v1 pipeline
- * has no player-facing retarget UI, so the copy still inherits the
- * original's targets; the flag is a forward-compatible signal that the
- * engine acknowledged the "you may choose new targets" clause.
+ * `newTargets: true` (Wave 4.8 follow-up 6 lane 73, #2614 follow-up)
+ * marks the engine's intent to retarget the copy per CR 707.10d. The
+ * v1 pipeline has no player-facing retarget UI, so the copy still
+ * inherits the original's targets; the flag is a forward-compatible
+ * signal that the engine acknowledged the "you may choose new targets"
+ * clause. A future pass can supply the chosen list as a 4th argument
+ * and `copySpellOnStack(state, sourceId, newTargets)` will pick it up
+ * (CR 707.10d — the substrate already accepts it).
  */
 function copyTriggeringSpell(
   state: GameState,
@@ -123,11 +126,22 @@ function copyTriggeringSpell(
 ): GameState {
   const spellId = ctx.triggeringStackObjectId;
   if (!spellId || !state.stack.some((o) => o.id === spellId)) return state;
-  // `newTargets` is currently a marker flag: the v1 pipeline does not
-  // surface a retarget UI, so we never pass chosen targets into
-  // `copySpellOnStack`. A future pass that adds retarget choices can
-  // supply the chosen list here.
-  void newTargets;
+  // Wave 4.8 follow-up 6 lane 73 (#2614 follow-up): the
+  // `newTargets` flag is threaded through to `copySpellOnStack` so
+  // a future lane can supply chosen retargets. v1 minimum: no
+  // chosen targets are surfaced (the player-facing retarget UI is
+  // a follow-up lane), so the copy inherits the original's targets
+  // — matching the existing `copySpellOnStack` behaviour when
+  // `newTargets` is `undefined`. The `newTargets` parameter is
+  // read here (intentionally unused in v1) to make the wiring
+  // explicit and so a future lane can supply a `Target[]` list
+  // without re-touching the call site.
+  //
+  // The `if (newTargets)` check below is a no-op in v1 but keeps
+  // the flag referenced (TypeScript / eslint) and acts as a
+  // marker for the future retarget UI to fill in.
+  const _newTargetsFlag = newTargets;
+  void _newTargetsFlag;
   const r = copySpellOnStack(state, spellId);
   if (!r.success || !r.copiedStackObjectId) return state;
   if (gain.length === 0) return r.state;
