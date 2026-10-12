@@ -1863,6 +1863,35 @@ export const AuraStaticSchema = z
       })
       .strict()
       .optional(),
+    /**
+     * Wave 4.8 follow-up 6 lane 76 (#2614 follow-up): the
+     * Aura-shaped protection-from arm. "Enchanted creature
+     * has protection from [color]" / "Enchanted creature
+     * has protection from [quality]" (Akoumep Halberd /
+     * Niveous Wisps pattern — Auras that grant protection
+     * to the enchanted creature). A parallel arm to the
+     * lane 71 `StaticSchema.protectionFrom`; the engine
+     * stamps the qualities on the enchanted card via
+     * `refreshAuraBonuses`. The existing `hasProtectionFrom`
+     * / `canBeTargetedBy` / `canBeBlocked` checks in
+     * `evergreen-keywords.ts` consult the per-instance
+     * `protectionFrom` ledger (which the Aura now writes
+     * directly via the same `auraStaticAffected` pattern
+     * `refreshScriptedStatics` uses for lane 71).
+     *
+     * v1 supports a single quality (`["red"]`); multi-
+     * quality protection on Auras (`["red", "blue"]`) is
+     * data-driven via the same `hasProtectionFrom`
+     * `perInstance.some(...)` loop that lane 71 uses, so
+     * no engine change is needed for the multi-quality
+     * case (the schema accepts any length).
+     *
+     * Sample card: a synthetic Aura registered via the
+     * test harness with `protectionFrom: ["red"]` and a
+     * red creature + a red spell to verify the protection
+     * is honored at cast time and combat time.
+     */
+    protectionFrom: z.array(z.string().min(1)).optional(),
   })
   .strict()
   .refine((s) => (s.power === undefined) === (s.toughness === undefined), {
@@ -1888,10 +1917,16 @@ export const AuraStaticSchema = z
       // a granted-trigger Aura has no P/T and no
       // keywords; it's a pure ability-granter. Allow
       // `grants.triggers` as a stand-alone arm.
-      (s.grants?.triggers?.length ?? 0) > 0,
+      (s.grants?.triggers?.length ?? 0) > 0 ||
+      // Wave 4.8 follow-up 6 lane 76 (#2614 follow-up):
+      // a protection-granting Aura has no P/T and no
+      // keywords; it's a pure protection-granter
+      // ("Enchanted creature has protection from red").
+      // Allow `protectionFrom` as a stand-alone arm.
+      (s.protectionFrom?.length ?? 0) > 0,
     {
       message:
-        "an aura static needs power/toughness, keywords, a restriction, maxBlockers, removesAllAbilities, or grants",
+        "an aura static needs power/toughness, keywords, a restriction, maxBlockers, removesAllAbilities, grants, or protectionFrom",
     },
   );
 

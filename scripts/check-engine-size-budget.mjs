@@ -225,7 +225,20 @@ const SCOPES = [
     // affinity / grants / counter-ledger / cast-from-zone /
     // mana-restriction / copy-permanent / creature-payment
     // family (the historical precedent continues).
-    budgetLines: 2700,
+    //
+    // Wave 4.8 follow-up 6 lane 76 (#2614 follow-up) adds
+    // the `AuraStaticSchema.protectionFrom: string[]` arm
+    // (the "enchanted creature has protection from [color]"
+    // pattern: Akoumep Halberd, Niveous Wisps; v1 single
+    // quality, multi-quality is data-driven). schema.ts
+    // landed at 2733 (+33 over 2700). Bumping 2700 → 2750
+    // to give the aura-protection family room to land
+    // without fragmenting the chosen-X / additional-costs /
+    // affinity / grants / counter-ledger / cast-from-zone /
+    // mana-restriction / copy-permanent / creature-payment /
+    // aura-protection family (the historical precedent
+    // continues).
+    budgetLines: 2750,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

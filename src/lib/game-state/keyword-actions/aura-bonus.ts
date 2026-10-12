@@ -109,6 +109,21 @@ export function refreshAuraBonuses(state: GameState): GameState {
   const restrictUntap = new Map<string, string[]>();
   // #2614: "can't be blocked by more than one creature" (CR 509.1b).
   const maxBlockers = new Map<string, number>();
+  // Wave 4.8 follow-up 6 lane 76 (#2614 follow-up): the
+  // per-target protection-from ledger stamped by Auras
+  // with a `protectionFrom` arm ("Enchanted creature has
+  // protection from red"). The per-instance `protectionFrom`
+  // field is data-driven (read by `hasProtectionFrom` via
+  // the existing `perInstance.some(...)` loop) so multi-
+  // quality protection is automatic. The map is keyed by
+  // the enchanted card id; the value is the union of
+  // qualities granted by every attached Aura with a
+  // `protectionFrom` arm. The diff at the bottom of this
+  // function compares the current and next lists and
+  // stamps the diff on the card's `protectionFrom` field
+  // (battlefield-zone-only, dropped when no Aura with the
+  // arm is attached).
+  const auraProtFromByTarget = new Map<string, string[]>();
   // Wave 4.8 lane 54 (#2614 follow-up): cards with at
   // least one attached Aura whose static has
   // `removesAllAbilities: true`. A Set keyed by target id;
@@ -260,6 +275,32 @@ export function refreshAuraBonuses(state: GameState): GameState {
         }
         grantedTriggersByTarget.set(target, list);
       }
+      // Wave 4.8 follow-up 6 lane 76 (#2614 follow-up):
+      // an Aura with `protectionFrom: ["red"]` grants
+      // protection from the named quality to the
+      // enchanted creature. The per-target list is
+      // built up across every attached Aura (multiple
+      // Auras append; the `refreshAuraBonuses` diff
+      // path writes the union onto
+      // `card.protectionFrom` and clears it when no
+      // Aura with the `protectionFrom` arm is attached
+      // — parallel to the lane 65 grantedTriggers
+      // pattern). The same `hasProtectionFrom` check
+      // reads the field (no new engine code is needed
+      // for the per-instance check; the existing
+      // `perInstance.some(...)` loop in
+      // `evergreen-keywords.ts` covers multi-quality
+      // protection for free).
+      if (
+        scriptedStatic.protectionFrom &&
+        scriptedStatic.protectionFrom.length > 0
+      ) {
+        const list = auraProtFromByTarget.get(target) ?? [];
+        for (const q of scriptedStatic.protectionFrom) {
+          if (!list.includes(q)) list.push(q);
+        }
+        auraProtFromByTarget.set(target, list);
+      }
     }
   }
 
@@ -311,6 +352,21 @@ export function refreshAuraBonuses(state: GameState): GameState {
           JSON.stringify(wasGrantedTriggers[i].effects) ===
             JSON.stringify(g.effects),
       );
+    // Wave 4.8 follow-up 6 lane 76 (#2614 follow-up):
+    // the per-target protection-from ledger. Same
+    // shape as the lane 71 static arm: a sorted,
+    // deduped list of qualities stamped onto the
+    // enchanted card via the existing
+    // `hasProtectionFrom` check in
+    // `evergreen-keywords.ts`. The diff compares the
+    // sorted arrays element-by-element; the field is
+    // dropped when no Aura with the `protectionFrom`
+    // arm is attached.
+    const nextProtFrom = (auraProtFromByTarget.get(cardId) ?? []).sort();
+    const wasProtFrom = (card.protectionFrom ?? []).sort();
+    const sameProtFrom =
+      nextProtFrom.length === wasProtFrom.length &&
+      nextProtFrom.every((q, i) => q === wasProtFrom[i]);
     if (
       (was?.power ?? 0) === (next?.power ?? 0) &&
       (was?.toughness ?? 0) === (next?.toughness ?? 0) &&
@@ -320,7 +376,8 @@ export function refreshAuraBonuses(state: GameState): GameState {
       sameStringList(wasRU, nextRU) &&
       card.auraMaxBlockers === nextMB &&
       Boolean(card.losesAbilities) === nextLosesAbilities &&
-      sameGrantedTriggers
+      sameGrantedTriggers &&
+      sameProtFrom
     ) {
       continue;
     }
@@ -350,6 +407,18 @@ export function refreshAuraBonuses(state: GameState): GameState {
       updated.grantedTriggers = nextGrantedTriggers;
     } else {
       delete updated.grantedTriggers;
+    }
+    // Wave 4.8 follow-up 6 lane 76 (#2614 follow-up):
+    // write the protection-from ledger when at least
+    // one Aura with a `protectionFrom` arm is attached;
+    // clear the field when no such Aura is attached
+    // (battlefield-zone-only, dropped when the source
+    // leaves the battlefield — parallel to the lane 71
+    // static-arm pattern).
+    if (nextProtFrom.length > 0) {
+      updated.protectionFrom = nextProtFrom;
+    } else {
+      delete updated.protectionFrom;
     }
     cards.set(cardId, updated);
   }
