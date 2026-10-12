@@ -154,6 +154,26 @@ export interface StackObject {
     generic: number;
   };
   /**
+   * Wave 4.8 follow-up 6 lane 72 (#2614 follow-up): the
+   * creature-payment arm that the cast applied. Set on a
+   * spell's StackObject when its script declared
+   * `additionalCosts.creature_payment` AND the engine
+   * applied the creature payment at cast time (the player
+   * couldn't pay the printed cost normally, OR chose to pay
+   * the alternative path). Reads at resolve time so the
+   * spell's effect can know whether the creature payment
+   * was used. Undefined when the card was cast via the
+   * printed cost. Mirrors `additionalCosts.creature_payment`'s
+   * v1 shape exactly: a single `generic` reduction and
+   * the list of creatures tapped.
+   */
+  creaturePayment?: {
+    /** Amount of generic mana paid by tapping creatures. */
+    generic: number;
+    /** The creatures the engine tapped to pay. */
+    tappedCreatures: CardInstanceId[];
+  };
+  /**
    * Storm (CR 702.41).
    *
    * Set on a spell's StackObject when its Oracle text contains "Storm". Storm

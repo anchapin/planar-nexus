@@ -600,6 +600,14 @@ export function castSpell(
     // `case "improvise":` branch and tapped with the convoke taps after mana is
     // spent.
     const improviseTappedArtifacts: CardInstanceId[] = [];
+    // Wave 4.8 follow-up 6 lane 72 (#2614 follow-up): the
+    // creature-payment arm — creatures auto-tapped to pay
+    // for the generic portion of a spell. Validated in the
+    // `creature_payment` block right after the
+    // `mana_restriction` block; tapped with the convoke +
+    // improvise taps after mana is spent (see `tapsForCost`
+    // below).
+    const creaturePaymentTappedCreatures: CardInstanceId[] = [];
     // CR 702.61 - Delve: graveyard cards the player declared they would exile
     // while casting. Validated inside the `case "delve":` branch; the actual
     // exile is applied AFTER mana is spent (see the delve exile block below)
@@ -1454,6 +1462,103 @@ export function castSpell(
       }
     }
 
+    // Wave 4.8 follow-up 6 lane 72 (#2614 follow-up): the
+    // `additionalCosts.creature_payment` arm — "Pay the
+    // generic portion of this spell's cost by tapping a
+    // creature you control" (the Llawan / War Tax /
+    // "spend this mana only on creature spells" family).
+    // The v1 minimum supports a single tap-for-generic
+    // reduction (`creature_payment: { creature_only: true,
+    // generic: 1 }` on a `{1}{B}` instant: the player may
+    // pay `{1}{B}` normally, OR tap an untapped creature
+    // they control to pay the generic 1 — the v1 minimum).
+    //
+    // Auto-apply semantics (parallel to lane 69's
+    // `mana_restriction`): if the player CAN pay the
+    // printed cost, the engine does NOT apply the creature
+    // payment. If the player CANNOT pay the printed cost,
+    // but CAN tap `generic` untapped creatures they
+    // control, the engine applies the creature payment:
+    // collect `generic` creatures, reduce `totalGeneric`
+    // by `generic`. The cast fails if the player cannot
+    // pay the cost under either path AND cannot tap enough
+    // creatures.
+    //
+    // The "must be untapped, must be on the battlefield,
+    // must be controlled by the caster" constraints: the
+    // v1 minimum reads the state directly and rejects
+    // already-tapped creatures, non-battlefield cards, and
+    // opponent-controlled cards. Multi-color creature
+    // pools, per-creature-type pools, and opponent-only
+    // creature pools are separate follow-up lanes.
+    let creaturePaymentApplied:
+      | { generic: number; tappedCreatures: CardInstanceId[] }
+      | undefined;
+    const creaturePaymentScript = getCardScript(
+      card.cardData.name,
+    )?.additionalCosts?.creature_payment;
+    if (creaturePaymentScript) {
+      const cpGeneric = creaturePaymentScript.generic;
+      const poolAtCan = state.players.get(playerId)?.manaPool;
+      const canPayPrinted =
+        !!poolAtCan &&
+        poolAtCan.white >= totalWhite &&
+        poolAtCan.blue >= totalBlue &&
+        poolAtCan.black >= totalBlack &&
+        poolAtCan.red >= totalRed &&
+        poolAtCan.green >= totalGreen &&
+        poolAtCan.generic +
+          poolAtCan.white +
+          poolAtCan.blue +
+          poolAtCan.black +
+          poolAtCan.red +
+          poolAtCan.green +
+          poolAtCan.colorless >=
+          totalWhite +
+            totalBlue +
+            totalBlack +
+            totalRed +
+            totalGreen +
+            totalGeneric;
+      if (!canPayPrinted) {
+        // Collect `cpGeneric` untapped creatures the
+        // player controls. Reject if fewer than `cpGeneric`
+        // are available.
+        const candidates: CardInstanceId[] = [];
+        for (const [, cardInst] of state.cards) {
+          if (cardInst.controllerId !== playerId) continue;
+          if (cardInst.isTapped) continue;
+          const czKey = cardInst.currentZoneKey;
+          const cz = czKey ? state.zones.get(czKey) : undefined;
+          if (
+            !cz ||
+            cz.type !== ZoneType.BATTLEFIELD ||
+            !cz.cardIds.includes(cardInst.id)
+          ) {
+            continue;
+          }
+          if (!isCreature(cardInst)) continue;
+          candidates.push(cardInst.id);
+        }
+        if (candidates.length < cpGeneric) {
+          return {
+            success: false,
+            state,
+            error:
+              "Not enough energy (mana) available: cannot pay via creature payment (not enough untapped creatures).",
+          };
+        }
+        const tappedNow = candidates.slice(0, cpGeneric);
+        creaturePaymentTappedCreatures.push(...tappedNow);
+        totalGeneric = Math.max(0, totalGeneric - cpGeneric);
+        creaturePaymentApplied = {
+          generic: cpGeneric,
+          tappedCreatures: tappedNow,
+        };
+        alternativeCostsUsed.push("creature_payment");
+      }
+    }
+
     // Check if player has enough mana to cast the spell
     const player = state.players.get(playerId);
     if (!player) {
@@ -1514,6 +1619,7 @@ export function castSpell(
     const tapsForCost = [
       ...convokeTappedCreatures,
       ...improviseTappedArtifacts,
+      ...creaturePaymentTappedCreatures,
     ];
     if (tapsForCost.length > 0) {
       const updatedConvokeCards = new Map(currentState.cards);
@@ -1790,6 +1896,16 @@ export function castSpell(
       // used. Undefined when the player paid the printed
       // cost normally.
       manaRestriction: manaRestrictionApplied,
+      // Wave 4.8 follow-up 6 lane 72 (#2614 follow-up): the
+      // creature-payment arm applied at cast time (if any).
+      // Set when the script declared
+      // `additionalCosts.creature_payment` and the engine
+      // applied the creature payment because the player
+      // couldn't pay the printed cost. Reads at resolve
+      // time so the spell's effect can know whether the
+      // creature payment was used. Undefined when the
+      // player paid the printed cost normally.
+      creaturePayment: creaturePaymentApplied,
       // `wasKicked` preserves the caller's intent: when the legacy `isKicked`
       // boolean is the only signal (no explicit `timesKicked`) we stamp it
       // directly so callers see their declaration retained even on cards where
