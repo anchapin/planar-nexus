@@ -1661,3 +1661,119 @@ covers the bulk of the remaining #2614 drafter-list
 work, and lane 61 (replacement effect for death)
 requires a foundational replacement-effect layer that
 the engine doesn't yet have.
+
+## Wave 4.8 follow-up 8 lane 75b (PR [#2759](https://github.com/anchapin/planar-nexus/pull/2759)) — Named-card copy
+
+Lane 75b ships the named-card copy arm of the
+until-EOT-copy family. Lanes 75c/75d/75e + lane 61
+remain parked for the next follow-up loop(s).
+
+### Lane 75b — Named-card copy (PR #2759)
+
+- **Gap**: "as long as this is in play, it's a copy of
+  [named card] until end of turn" (Memnarch, Clone
+  Shell, the named-card-copy subfamily of the
+  until-EOT-copy family).
+- **Schema**: `StaticSchema.become_copy` becomes a
+  discriminated union — `{ target: CardInstanceId,
+until: "end_of_turn" }` (lane 75 chosen permanent on
+  the battlefield) OR `{ named_card: { name: string },
+until: "end_of_turn" }` (lane 75b named card, no
+  on-battlefield requirement). Exactly one arm per
+  static; the schema's `.strict()` discriminator
+  rejects `become_copy: { until: "end_of_turn" }` (the
+  empty-arms case) and `become_copy: { target: "x",
+named_card: { name: "y" }, until: "end_of_turn" }`
+  (the both-arms case).
+- **Engine**: `refreshScriptedStatics` collects the
+  `become_copy` arm into a tagged-union per-source
+  ledger (`{ kind: "id"; targetId } | { kind:
+"name"; name }`). The write phase branches on the
+  tag: `kind: "id"` looks up the chosen permanent by
+  `CardInstanceId` (lane 75 unchanged); `kind: "name"`
+  looks up the named card's printed `cardData` via the
+  new synchronous `getCardDataByName` registry helper
+  (parallel to the existing `getCardScript` synchronous
+  lookup the refresh uses elsewhere). The overlay
+  stamps the source's `cardData` with the named
+  card's via the existing lane 75
+  `animatedUntilEndOfTurn` + `copyOfTargetId`
+  infrastructure; the existing
+  `clearUntilEndOfTurnPT` /
+  `restoreAnimatedOffBattlefield` rollback paths
+  restore the printed characteristics at end of turn
+  or when the source leaves the battlefield. A missing
+  named card is a no-op (the source keeps its printed
+  `cardData` and the overlay never applies).
+- **`copyOfTargetId` ledger tag**: for `kind: "id"`
+  the ledger is the named permanent's `CardInstanceId`
+  (lane 75 unchanged). For `kind: "name"` the ledger
+  is `name:<card name>` (a stable string that distinguishes
+  different named-card copies; the change-detection diff
+  below compares `card.copyOfTargetId`, so the value just
+  needs to differ on a re-name).
+- **Per-instance `cardData` registry**: lane 75b's
+  v1 minimum uses a synchronous `cardDataByName`
+  registry helper in `card-scripts/registry.ts`.
+  Production: a follow-up lane hydrates this from the
+  Scryfall search index; v1 ships the registry shape
+  - the test hook (`registerCardDataForTests`,
+    `resetCardDataForTests`). Tests install hand-built
+    `cardData` for the cards the test exercises.
+- **Sample cards**: synthetic static registered via
+  the test harness (the
+  `lane75b-named-card-copy.test.ts` test installs
+  Grizzly Bears / Serra Angel `cardData` via
+  `registerCardDataForTests`). Real-world cards that
+  should now be scriptable in this pattern: Memnarch,
+  Clone Shell, the manifested-as-named-copy family.
+- **Dedicated test**: 10-case
+  `lane75b-named-card-copy.test.ts` covers schema
+  rejection (empty `named_card.name`, both arms,
+  neither arm, non-EOT `until`), schema acceptance,
+  characteristic overlay (Grizzly Bears copy —
+  name, type_line, P/T, colors, color_identity),
+  keyword copy (Serra Angel flying / vigilance),
+  missing-name no-op (the named card not in the
+  registry → source keeps its printed
+  characteristics, no `animatedUntilEndOfTurn` /
+  `copyOfTargetId` set), off-battlefield named card
+  (the named card is NOT required to be on the
+  battlefield — Memnarch / Clone Shell shape), and
+  EOT cleanup rollback (after
+  `clearUntilEndOfTurnPT`, the source's printed
+  `cardData` is restored).
+- **Engine-size budget**: bumped 2900 → 3000 in
+  `scripts/check-engine-size-budget.mjs` for the
+  until-EOT-copy family (schema.ts grew +58 lines
+  to 2923, leaving headroom for lanes 75c–75e).
+- **CI gate fix**: the `test-count-docs-guard` check
+  failed on the first push because the
+  `npm run ratchet:test-count` step had hit the known
+  `forge-gate` mid-ratchet flake (CI's full Jest run
+  reports 14138 passed locally vs 14136 from the
+  flake-affected local run). Updated the docs by hand
+  to 14138 passed and amended the commit; CI was
+  clean on the second pass.
+
+### Net delta from Wave 4.8 follow-up 8 (lane 75a loop)
+
+- Test suites: 731 → 732 (+1 for lane 75b).
+- Test cases: 14135 → 14145 (+10 for lane 75b).
+- Engine-size budget: schema.ts 2865 (lane 75a
+  baseline) → 2923 (+58 across lane 75b incl. the
+  docstring block for the new arm). Under the 3000
+  ceiling bumped in lane 75b.
+
+### Multi-lane follow-ups still open (tracked under #2614)
+
+Lanes 75c/75d/75e + lane 61 remain parked. Lanes 75c
+(copy-with-exception) and 75d (Aura-shaped copy) are
+the next smallest; lane 75e (nested-copy cycle guard)
+is the riskiest and is best deferred to a separate
+multi-lane plan (the cycle-detection snapshot at the
+top of the refresh pass touches the order of writes
+in `refreshScriptedStatics`). Lane 61 (replacement
+effect for death) still requires a foundational
+replacement-effect layer that the engine doesn't yet
+have.
