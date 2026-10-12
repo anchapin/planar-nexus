@@ -7,8 +7,9 @@
  * because `getEffectivePower` and `hasKeyword` only see the card.
  */
 import type { CardInstance, GameState } from "../types";
-import { getCardScript } from "../card-scripts/registry";
+import { getCardScript, getCardDataByName } from "../card-scripts/registry";
 import type { RuleStatic, ScriptedStatic } from "../card-scripts/schema";
+import type { ScryfallCard } from "../types/card-data";
 import { restoreAnimatedOffBattlefield } from "../pt-until-end-of-turn";
 import { returnEarthbentLands } from "./earthbend";
 import { getCardColors } from "../evergreen-keywords";
@@ -328,7 +329,24 @@ export function refreshScriptedStatics(input: GameState): GameState {
   // corrects when the named target leaves the battlefield
   // (the refresh pass sees no copy from the target and
   // restores from `animatedUntilEndOfTurn`).
-  const copyOfTargetBySourceId = new Map<string, string>();
+  // Wave 4.8 follow-up 7 lane 75 (#2614 follow-up):
+  // per-card copy-of-target ledger stamped by statics
+  // with a `become_copy` arm. The Wave 4.8 follow-up 8
+  // lane 75b schema extends this with a `{ kind:
+  // "name"; name: string }` arm for the
+  // named-card-copy variant — the write-phase below
+  // branches on `kind` (`"id"` uses
+  // `state.cards.get(targetId)`; `"name"` looks up
+  // the named card's `cardData` from the registry).
+  // The overlay restores the printed `cardData` at
+  // EOT or when the source leaves the battlefield via
+  // the existing `clearUntilEndOfTurnPT` /
+  // `restoreAnimatedOffBattlefield` rollback path.
+  const copyOfTargetBySourceId = new Map<
+    string,
+    | { kind: "id"; targetId: string }
+    | { kind: "name"; name: string }
+  >();
   for (const target of onField) {
     let power = 0;
     let toughness = 0;
@@ -417,7 +435,24 @@ export function refreshScriptedStatics(input: GameState): GameState {
         // overlay to take effect (the refresh pass checks
         // `state.cards.has(targetId)` at write time).
         if (stat.become_copy !== undefined) {
-          copyOfTargetBySourceId.set(card.id, stat.become_copy.target);
+          // Wave 4.8 follow-up 8 lane 75b (#2614
+          // follow-up): the schema is a discriminated
+          // union — `target: CardInstanceId` (lane 75)
+          // or `named_card: { name: string }` (lane 75b).
+          // The write phase below branches on the `kind`
+          // tag. The "last write wins" semantics carry
+          // over from lane 75.
+          if ("target" in stat.become_copy) {
+            copyOfTargetBySourceId.set(card.id, {
+              kind: "id",
+              targetId: stat.become_copy.target,
+            });
+          } else {
+            copyOfTargetBySourceId.set(card.id, {
+              kind: "name",
+              name: stat.become_copy.named_card.name,
+            });
+          }
         }
         if (stat.X) {
           // #2594 follow-up, lane 36: when `X` is set, the count
@@ -564,13 +599,47 @@ export function refreshScriptedStatics(input: GameState): GameState {
     // source-of-truth for the overlay; nested copies
     // would require a snapshot of the source order at
     // the top of the refresh pass and are not in scope.
-    const nextCopyTargetId = copyOfTargetBySourceId.get(cardId);
-    if (nextCopyTargetId !== undefined) {
-      const target = state.cards.get(nextCopyTargetId);
-      const targetOnField = target
-        ? target.currentZoneKey?.endsWith("-battlefield")
-        : false;
-      if (target && targetOnField) {
+    const nextCopyTarget = copyOfTargetBySourceId.get(cardId);
+    if (nextCopyTarget !== undefined) {
+      // Wave 4.8 follow-up 8 lane 75b (#2614 follow-up):
+      // the per-source copy-of-target ledger is a tagged
+      // union. For `kind: "id"` (lane 75), the named
+      // target is on the battlefield — its
+      // `cardData` provides the overlay source. For
+      // `kind: "name"` (lane 75b), the named card's
+      // `cardData` is fetched from the synchronous
+      // `cardDataByName` registry (a missing named card
+      // is a no-op — the source keeps its printed
+      // `cardData`).
+      let targetPrintedCardData: ScryfallCard | undefined;
+      let nextTargetLedger: string | undefined;
+      if (nextCopyTarget.kind === "id") {
+        const target = state.cards.get(nextCopyTarget.targetId);
+        const targetOnField = target
+          ? target.currentZoneKey?.endsWith("-battlefield")
+          : false;
+        if (target && targetOnField) {
+          targetPrintedCardData =
+            target.animatedUntilEndOfTurn?.cardData ?? target.cardData;
+          nextTargetLedger = nextCopyTarget.targetId;
+        }
+      } else {
+        // Wave 4.8 follow-up 8 lane 75b — named-card
+        // lookup. The named card is NOT required to be
+        // on the battlefield (Memnarch / Clone Shell
+        // shape). Missing name is a no-op.
+        const namedCardData = getCardDataByName(nextCopyTarget.name);
+        if (namedCardData) {
+          targetPrintedCardData = namedCardData;
+          // For the lane 75b ledger we use the named
+          // card's name (string) as a stable ledger
+          // tag; the change-detection diff below compares
+          // `card.copyOfTargetId` so the value just
+          // needs to differ on a re-name.
+          nextTargetLedger = `name:${nextCopyTarget.name}`;
+        }
+      }
+      if (targetPrintedCardData !== undefined && nextTargetLedger !== undefined) {
         // Snapshot the source's printed `cardData`
         // (the one stored in `animatedUntilEndOfTurn`
         // if a copy was already in effect, else the
@@ -594,27 +663,29 @@ export function refreshScriptedStatics(input: GameState): GameState {
         // copied — they're the spell's defining
         // characteristics, not the on-battlefield
         // copy semantics.
-        const targetPrinted =
-          target.animatedUntilEndOfTurn?.cardData ?? target.cardData;
         updated.cardData = {
           ...printed,
-          name: targetPrinted.name,
-          type_line: targetPrinted.type_line,
-          power: targetPrinted.power,
-          toughness: targetPrinted.toughness,
-          colors: targetPrinted.colors,
-          color_identity: targetPrinted.color_identity,
-          keywords: targetPrinted.keywords,
+          name: targetPrintedCardData.name,
+          type_line: targetPrintedCardData.type_line,
+          power: targetPrintedCardData.power,
+          toughness: targetPrintedCardData.toughness,
+          colors: targetPrintedCardData.colors,
+          color_identity: targetPrintedCardData.color_identity,
+          keywords: targetPrintedCardData.keywords,
         };
-        updated.copyOfTargetId = nextCopyTargetId;
+        updated.copyOfTargetId = nextTargetLedger;
+      } else if (card.animatedUntilEndOfTurn) {
+        // Target has left the battlefield / named
+        // card missing. Restore the source's printed
+        // `cardData` and clear the copy ledger.
+        updated.cardData = card.animatedUntilEndOfTurn.cardData;
+        delete updated.animatedUntilEndOfTurn;
+        delete updated.copyOfTargetId;
       } else {
-        // Target has left the battlefield. Restore the
-        // source's printed `cardData` and clear the
-        // copy ledger.
-        if (card.animatedUntilEndOfTurn) {
-          updated.cardData = card.animatedUntilEndOfTurn.cardData;
-          delete updated.animatedUntilEndOfTurn;
-        }
+        // Source has never had a copy overlay; no-op.
+        // (The `else if` branch below would also
+        // fire on a `become_copy` static going
+        // away — that's the expected behavior.)
         delete updated.copyOfTargetId;
       }
     } else if (card.copyOfTargetId !== undefined || card.animatedUntilEndOfTurn) {

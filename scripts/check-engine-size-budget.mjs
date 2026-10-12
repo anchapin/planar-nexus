@@ -285,7 +285,32 @@ const SCOPES = [
     // until-eot-copy family (the historical precedent
     // continues; subsequent lanes 75b–75e grow the same
     // family).
-    budgetLines: 2900,
+    //
+    // Wave 4.8 follow-up 8 lane 75b (#2614 follow-up) adds
+    // the `named_card: { name: string }` arm on
+    // `StaticSchema.become_copy` (Memnarch / Clone Shell:
+    // "as long as this is in play, it's a copy of [named
+    // card] until end of turn"). The arm is the
+    // named-card-copy counterpart of lane 75's
+    // `target: CardInstanceId` arm; the schema change
+    // converts `become_copy`'s shape into a discriminated
+    // union (the lane 75 ID arm OR the lane 75b name
+    // arm, mutually exclusive). The arm + docstring block
+    // (CR 707.2 "all characteristics copied" + the
+    // synchronous `cardDataByName` lookup via the new
+    // registry helper + the out-of-scope multi-named /
+    // named-with-exception / named-nested follow-up
+    // scope notes) land at +60 over 2900. schema.ts
+    // measured at 2923 (+23 over 2900). Bumping 2900 →
+    // 3000 to give the until-EOT-copy family room to
+    // land without fragmenting the chosen-X /
+    // additional-costs / affinity / grants /
+    // counter-ledger / cast-from-zone / mana-restriction /
+    // copy-permanent / creature-payment / aura-protection
+    // / until-eot-copy family (the historical precedent
+    // continues; subsequent lanes 75c–75e grow the same
+    // family).
+    budgetLines: 3000,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),
