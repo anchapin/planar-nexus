@@ -12,6 +12,27 @@
  * `cardData` (which is whatever the target's
  * `become_copy` is currently showing).
  *
+ * Wave 4.8 follow-up 10 lane 77 (#2614 follow-up): the
+ * "copy target with other layers" lane. v1 only rolls the
+ * leaf's printed `cardData` onto the source. The leaf's
+ * OTHER per-instance fields (e.g. `protectionFrom` from
+ * lane 71's per-instance ledger) are NOT on the leaf's
+ * printed `cardData` — they're maintained by the
+ * `refreshScriptedStatics` pass that stamped them. A
+ * source whose `become_copy` points at a target whose
+ * own static grants it `protectionFrom: ["red"]` would
+ * have its bear-copy characteristics overlaid but would
+ * NOT pick up the bear's `protectionFrom: ["red"]`
+ * (the bear's static runs on the bear, not on the
+ * source). v1 minimum: extend the snapshot to ALSO carry
+ * the leaf's per-instance `protectionFrom` field, and
+ * the overlay write phase unions it onto the source's
+ * own `protectionFrom` ledger (preserving the source's
+ * own static-driven protection alongside the rolled
+ * leaf's protection).
+ */
+
+/**
  * The cycle guard resolves every card's "effective copy
  * target" (the leaf of its copy chain) at the top of the
  * refresh pass — BEFORE any overlay writes — and exposes
@@ -41,6 +62,7 @@
  *   {
  *     leafBySourceId: Map<string, CardInstanceId | string>,
  *     leafCardDataBySourceId: Map<string, ScryfallCard>,
+ *     leafPerInstanceBySourceId: Map<string, { protectionFrom?: string[] }>,
  *     cycleIds: Set<CardInstanceId>,
  *   }
  *
@@ -50,7 +72,11 @@
  * `cycleIds.has(cardId)` first (cycle → drop), then reads
  * `leafCardDataBySourceId.get(cardId)` to obtain the
  * overlay source. The `leafBySourceId` map is for
- * diagnostics + change-detection diff parity.
+ * diagnostics + change-detection diff parity. The
+ * `leafPerInstanceBySourceId` map (lane 77) carries the
+ * leaf's OTHER per-instance fields — the source overlays
+ * the leaf's printed `cardData` AND rolls the leaf's
+ * `protectionFrom` (v1 minimum) onto its own ledger.
  */
 import type { CardInstance, GameState } from "../types";
 import { getCardScript, getCardDataByName } from "../card-scripts/registry";
@@ -83,6 +109,20 @@ export interface CopyChainSnapshot {
    */
   leafCardDataBySourceId: Map<string, ScryfallCard>;
   /**
+   * Wave 4.8 follow-up 10 lane 77 (#2614 follow-up):
+   * for each card that participates in a copy chain,
+   * the leaf's per-instance fields (parallel to the
+   * leaf's printed `cardData`). The overlay write
+   * phase rolls these onto the source's own per-instance
+   * ledger. v1 carries `protectionFrom: string[]` —
+   * the lane 71/76 per-instance protection ledger. Other
+   * fields (`removesAllAbilities`, `chosenTypeAdditions`,
+   * `chosenColorAdditions`, `scriptStaticPT`,
+   * `scriptStaticKeywords`) are each a follow-up lane
+   * (each a small extension to this map's value shape).
+   */
+  leafPerInstanceBySourceId: Map<string, LeafPerInstance>;
+  /**
    * The set of card ids whose copy chain forms a cycle
    * (a card whose copy chain includes itself). Cards
    * in this set are treated by the write phase as if
@@ -91,6 +131,18 @@ export interface CopyChainSnapshot {
    * restored.
    */
   cycleIds: Set<string>;
+}
+
+/**
+ * Wave 4.8 follow-up 10 lane 77 (#2614 follow-up): the
+ * shape of the leaf's per-instance fields exposed via
+ * the snapshot. v1 carries only `protectionFrom` (the
+ * lane 71/76 substrate). Each new rolled field is a
+ * follow-up lane that adds the field here + rolls it in
+ * the overlay write phase.
+ */
+export interface LeafPerInstance {
+  protectionFrom?: string[];
 }
 
 /**
@@ -269,6 +321,7 @@ export function buildStaticCopyChainSnapshot(
 ): CopyChainSnapshot {
   const leafBySourceId = new Map<string, string>();
   const leafCardDataBySourceId = new Map<string, ScryfallCard>();
+  const leafPerInstanceBySourceId = new Map<string, LeafPerInstance>();
   const cycleIds = new Set<string>();
   // First pass: collect every card id that participates
   // in a copy chain. A card participates if it carries
@@ -312,19 +365,48 @@ export function buildStaticCopyChainSnapshot(
     // a `CardInstanceId` (lane 75 / 75a / 75c / 75d).
     // Resolve the leaf's printed `cardData`:
     let leafCardData: ScryfallCard | undefined;
+    let leafPerInstance: LeafPerInstance | undefined;
     if (leaf.startsWith("name:")) {
       const name = leaf.slice("name:".length);
       leafCardData = getCardDataByName(name);
+      // Named-card form (lane 75b): the named card is
+      // NOT on the battlefield and therefore has no
+      // live per-instance fields. Skip the per-instance
+      // roll (a name target contributes only its
+      // printed `cardData`).
     } else {
       const leafCard = state.cards.get(leaf as CardInstance["id"]);
-      if (leafCard) leafCardData = printedCardDataOf(leafCard);
+      if (leafCard) {
+        leafCardData = printedCardDataOf(leafCard);
+        // Wave 4.8 follow-up 10 lane 77 (#2614
+        // follow-up): roll the leaf's per-instance
+        // fields. v1 only carries `protectionFrom`
+        // (the lane 71/76 substrate). The field is
+        // populated by `refreshScriptedStatics` on the
+        // PREVIOUS pass; reading it here lets the
+        // current pass roll it onto the source in the
+        // same write phase.
+        if (leafCard.protectionFrom && leafCard.protectionFrom.length > 0) {
+          leafPerInstance = {
+            protectionFrom: [...leafCard.protectionFrom],
+          };
+        }
+      }
     }
     if (leafCardData) {
       leafBySourceId.set(cardId, leaf);
       leafCardDataBySourceId.set(cardId, leafCardData);
+      if (leafPerInstance) {
+        leafPerInstanceBySourceId.set(cardId, leafPerInstance);
+      }
     }
   }
-  return { leafBySourceId, leafCardDataBySourceId, cycleIds };
+  return {
+    leafBySourceId,
+    leafCardDataBySourceId,
+    leafPerInstanceBySourceId,
+    cycleIds,
+  };
 }
 
 /**
@@ -347,6 +429,14 @@ export function buildStaticCopyChainSnapshot(
 export interface AuraCopyChainSnapshot {
   leafByEnchantedCard: Map<string, string>;
   leafCardDataByEnchantedCard: Map<string, ScryfallCard>;
+  /**
+   * Wave 4.8 follow-up 10 lane 77 (#2614 follow-up):
+   * the parallel of `CopyChainSnapshot.leafPerInstanceBySourceId`
+   * for the Aura mirror. The enchanted card's overlay
+   * rolls the chosen target's leaf's per-instance
+   * fields onto its own ledger.
+   */
+  leafPerInstanceByEnchantedCard: Map<string, LeafPerInstance>;
   cycleIds: Set<string>;
 }
 
@@ -355,6 +445,7 @@ export function buildAuraCopyChainSnapshot(
 ): AuraCopyChainSnapshot {
   const leafByEnchantedCard = new Map<string, string>();
   const leafCardDataByEnchantedCard = new Map<string, ScryfallCard>();
+  const leafPerInstanceByEnchantedCard = new Map<string, LeafPerInstance>();
   const cycleIds = new Set<string>();
   // First pass: every enchanted card whose attached
   // Aura carries a `become_copy` arm is a candidate.
@@ -402,17 +493,36 @@ export function buildAuraCopyChainSnapshot(
       continue;
     }
     let leafCardData: ScryfallCard | undefined;
+    let leafPerInstance: LeafPerInstance | undefined;
     if (leaf.startsWith("name:")) {
       const name = leaf.slice("name:".length);
       leafCardData = getCardDataByName(name);
+      // Named-card form: no live per-instance fields.
     } else {
       const leafCard = state.cards.get(leaf as CardInstance["id"]);
-      if (leafCard) leafCardData = printedCardDataOf(leafCard);
+      if (leafCard) {
+        leafCardData = printedCardDataOf(leafCard);
+        // Wave 4.8 follow-up 10 lane 77: roll the
+        // leaf's per-instance fields.
+        if (leafCard.protectionFrom && leafCard.protectionFrom.length > 0) {
+          leafPerInstance = {
+            protectionFrom: [...leafCard.protectionFrom],
+          };
+        }
+      }
     }
     if (leafCardData) {
       leafByEnchantedCard.set(enchantedId, leaf);
       leafCardDataByEnchantedCard.set(enchantedId, leafCardData);
+      if (leafPerInstance) {
+        leafPerInstanceByEnchantedCard.set(enchantedId, leafPerInstance);
+      }
     }
   }
-  return { leafByEnchantedCard, leafCardDataByEnchantedCard, cycleIds };
+  return {
+    leafByEnchantedCard,
+    leafCardDataByEnchantedCard,
+    leafPerInstanceByEnchantedCard,
+    cycleIds,
+  };
 }

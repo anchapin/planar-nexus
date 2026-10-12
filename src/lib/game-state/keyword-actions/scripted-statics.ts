@@ -372,6 +372,19 @@ export function refreshScriptedStatics(input: GameState): GameState {
 
   const pt = new Map<string, { power: number; toughness: number }>();
   const kws = new Map<string, string[]>();
+  // Wave 4.8 follow-up 10 lane 77 (#2614 follow-up):
+  // the leaf's per-instance `protectionFrom` rolled onto
+  // the source's own protection ledger. Populated when
+  // the overlay write phase rolls the leaf's
+  // `protectionFrom` onto the source; consumed at the
+  // bottom of the refresh pass when stamping the
+  // `protectionFrom` field on the source's updated
+  // state (union semantics: the source's own
+  // static-driven protection AND the leaf's rolled
+  // protection co-exist on the field). Cleared when
+  // the overlay is dropped (cycle, target left,
+  // source no longer has a `become_copy` static).
+  const leafProtFromById = new Map<string, string[]>();
   // Wave 4.8 lane 52 (#2614 follow-up): per-card subtype
   // additions stamped by `affects.add_creature_type` statics.
   // The chosen-type anthem (lane 45) reads `subtypesOf(target)`
@@ -604,6 +617,15 @@ export function refreshScriptedStatics(input: GameState): GameState {
     const nextAdds = typeAdditions.get(cardId);
     const nextColors = colorAdditions.get(cardId);
     const nextProtFrom = protFromById.get(cardId);
+    // Wave 4.8 follow-up 10 lane 77 (#2614 follow-up):
+    // the rolled leaf `protectionFrom` (union semantics
+    // with `nextProtFrom` — the source's own
+    // static-driven protection is preserved alongside
+    // the leaf's rolled protection). Empty when no
+    // overlay is in effect (the overlay write phase
+    // clears the entry on cycle / target-left /
+    // static-removed).
+    const leafProtFrom = leafProtFromById.get(cardId);
     const prevKw = card.scriptStaticKeywords ?? [];
     const prevAdds = card.chosenTypeAdditions ?? [];
     const prevColors = card.chosenColorAdditions ?? [];
@@ -633,9 +655,25 @@ export function refreshScriptedStatics(input: GameState): GameState {
     // diff compares the previous and next arrays element-
     // by-element so the refresh pass only re-stamps when
     // the protection actually changed.
+    //
+    // Wave 4.8 follow-up 10 lane 77 (#2614 follow-up):
+    // the diff compares the UNION of the source's own
+    // static-driven protection AND the leaf's rolled
+    // protection. The rolled protection is unioned at
+    // write time (see below) — here the diff just
+    // compares the resulting union against the previous
+    // ledger so the refresh pass only re-stamps when
+    // the rolled protection actually changed (a leaf
+    // adding a new quality, a leaf's protection
+    // dropping, the source acquiring a new
+    // `become_copy` target that picks up a fresh
+    // leaf's protection, etc.).
+    const mergedProtFrom: string[] = [];
+    if (nextProtFrom) mergedProtFrom.push(...nextProtFrom);
+    if (leafProtFrom) mergedProtFrom.push(...leafProtFrom);
     const sameProtFrom =
-      (nextProtFrom ? nextProtFrom.length : 0) === prevProtFrom.length &&
-      (nextProtFrom ?? []).every((q, i) => q === prevProtFrom[i]);
+      mergedProtFrom.length === prevProtFrom.length &&
+      mergedProtFrom.every((q, i) => q === prevProtFrom[i]);
     // Wave 4.8 follow-up 7 lane 75 (#2614 follow-up): the
     // per-instance `copyOfTargetId` is part of the change-
     // detection diff so the refresh pass re-stamps the card
@@ -729,9 +767,14 @@ export function refreshScriptedStatics(input: GameState): GameState {
     // `chosenColorAdditions` (battlefield-zone-only). The
     // `hasProtectionFrom` helper reads the field via the
     // existing `canBeTargetedBy` / `canBeBlocked` checks.
-    if (nextProtFrom && nextProtFrom.length > 0)
-      updated.protectionFrom = nextProtFrom;
-    else delete updated.protectionFrom;
+    //
+    // Wave 4.8 follow-up 10 lane 77 (#2614 follow-up):
+    // the write is moved AFTER the overlay write phase
+    // (the rolled leaf `protectionFrom` is populated by
+    // the overlay write, so the bottom write needs to
+    // run AFTER that). The post-overlay-write block
+    // below (just before `cards.set`) re-stamps
+    // `updated.protectionFrom` with the full union.
     // Wave 4.8 follow-up 7 lane 75 (#2614 follow-up):
     // overlay the source's `cardData` with the named
     // target's printed characteristics when the source
@@ -778,6 +821,23 @@ export function refreshScriptedStatics(input: GameState): GameState {
           // overlay is suppressed for this pass. The
           // copy ledger is cleared.
           delete updated.copyOfTargetId;
+        }
+        // Wave 4.8 follow-up 10 lane 77 (#2614
+        // follow-up): drop any leaf-rolled
+        // `protectionFrom` — the cycle case
+        // suppresses the overlay entirely, so the
+        // source's own static-driven protection is
+        // the only protection left.
+        leafProtFromById.delete(cardId);
+        // Lane 77: stamp the cycle card's
+        // `protectionFrom` with the source's own
+        // static-driven protection (the cycle drops
+        // the leaf-rolled protection; the final value
+        // is just `nextProtFrom`).
+        if (nextProtFrom && nextProtFrom.length > 0) {
+          updated.protectionFrom = [...nextProtFrom];
+        } else if ("protectionFrom" in updated) {
+          delete updated.protectionFrom;
         }
         // Skip the rest of the write phase for this
         // card; the cycle case is fully handled here.
@@ -933,6 +993,31 @@ export function refreshScriptedStatics(input: GameState): GameState {
           };
         }
         updated.copyOfTargetId = nextTargetLedger;
+        // Wave 4.8 follow-up 10 lane 77 (#2614
+        // follow-up): roll the leaf's per-instance
+        // `protectionFrom` onto the source. The
+        // snapshot's `leafPerInstanceBySourceId`
+        // carries the leaf's `protectionFrom`
+        // (populated by the previous pass's
+        // `refreshScriptedStatics` write). The rolled
+        // value is read at the bottom of the pass and
+        // unioned with the source's own
+        // static-driven `protectionFrom`. Multiple
+        // `become_copy` overlays stack their
+        // protection (the union semantics preserve
+        // every leaf's contribution across refreshes).
+        const leafPerInstance =
+          copyChain.leafPerInstanceBySourceId.get(cardId);
+        if (
+          leafPerInstance?.protectionFrom &&
+          leafPerInstance.protectionFrom.length > 0
+        ) {
+          leafProtFromById.set(cardId, [
+            ...leafPerInstance.protectionFrom,
+          ]);
+        } else {
+          leafProtFromById.delete(cardId);
+        }
       } else if (card.animatedUntilEndOfTurn) {
         // Target has left the battlefield / named
         // card missing. Restore the source's printed
@@ -940,12 +1025,20 @@ export function refreshScriptedStatics(input: GameState): GameState {
         updated.cardData = card.animatedUntilEndOfTurn.cardData;
         delete updated.animatedUntilEndOfTurn;
         delete updated.copyOfTargetId;
+        // Wave 4.8 follow-up 10 lane 77 (#2614
+        // follow-up): drop any leaf-rolled
+        // `protectionFrom` — the overlay is gone,
+        // the source's own static-driven protection
+        // is the only protection left.
+        leafProtFromById.delete(cardId);
       } else {
         // Source has never had a copy overlay; no-op.
         // (The `else if` branch below would also
         // fire on a `become_copy` static going
         // away — that's the expected behavior.)
         delete updated.copyOfTargetId;
+        // Wave 4.8 follow-up 10 lane 77: no prior
+        // overlay → no rolled protection to clear.
       }
     } else if (card.copyOfTargetId !== undefined || card.animatedUntilEndOfTurn) {
       // The source no longer carries a `become_copy`
@@ -953,6 +1046,10 @@ export function refreshScriptedStatics(input: GameState): GameState {
       // its `become_copy`-bearing state). Drop the
       // overlay: restore the printed `cardData` from
       // `animatedUntilEndOfTurn` and clear the ledger.
+      // Wave 4.8 follow-up 10 lane 77 (#2614
+      // follow-up): also drop any leaf-rolled
+      // `protectionFrom` — the overlay is gone.
+      leafProtFromById.delete(cardId);
       if (
         card.animatedUntilEndOfTurn &&
         !card.animatedUntilEndOfTurn.setBySpellEffect &&
@@ -1010,6 +1107,38 @@ export function refreshScriptedStatics(input: GameState): GameState {
           updated.cardData = card.animatedUntilEndOfTurn.cardData;
         }
       }
+    }
+    // Wave 4.8 follow-up 10 lane 77 (#2614 follow-up):
+    // post-overlay-write phase. After the overlay
+    // write has populated `leafProtFromById` (the leaf's
+    // rolled `protectionFrom`), union the rolled value
+    // with the source's own static-driven protection
+    // (`nextProtFrom`) and write the full union onto
+    // `updated.protectionFrom`. Multiple `become_copy`
+    // overlays stack their protection (the union
+    // semantics preserve every leaf's contribution
+    // across refreshes). The post-overlay-write phase
+    // is the only place where `protectionFrom` is
+    // written — the diff at the top of the loop uses
+    // the previous ledger's value for change detection;
+    // if the diff is a no-op (all `same*` flags true)
+    // the card is skipped and `leafProtFromById` is
+    // unused.
+    const finalLeafProtFrom = leafProtFromById.get(cardId);
+    const finalMerged: string[] = [];
+    if (nextProtFrom) finalMerged.push(...nextProtFrom);
+    if (finalLeafProtFrom) finalMerged.push(...finalLeafProtFrom);
+    if (finalMerged.length > 0) {
+      const seen = new Set<string>();
+      const deduped: string[] = [];
+      for (const q of finalMerged) {
+        if (seen.has(q)) continue;
+        seen.add(q);
+        deduped.push(q);
+      }
+      updated.protectionFrom = deduped;
+    } else if ("protectionFrom" in updated) {
+      delete updated.protectionFrom;
     }
     cards.set(cardId, updated);
   }

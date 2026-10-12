@@ -139,6 +139,19 @@ export function refreshAuraBonuses(state: GameState): GameState {
   // (battlefield-zone-only, dropped when no Aura with the
   // arm is attached).
   const auraProtFromByTarget = new Map<string, string[]>();
+  // Wave 4.8 follow-up 10 lane 77 (#2614 follow-up):
+  // the rolled leaf `protectionFrom` for enchanted
+  // cards whose attached Aura has a `become_copy` arm.
+  // Populated when the Aura overlay write phase rolls
+  // the chosen target's leaf's `protectionFrom` onto
+  // the enchanted card; consumed at the bottom of the
+  // refresh pass when stamping the `protectionFrom`
+  // field on the enchanted card's updated state (union
+  // semantics with the enchanted card's own
+  // Aura-driven `protectionFrom`). Cleared when the
+  // overlay is dropped (cycle, target left, Aura no
+  // longer attached).
+  const leafProtFromById = new Map<string, string[]>();
   // Wave 4.8 lane 54 (#2614 follow-up): cards with at
   // least one attached Aura whose static has
   // `removesAllAbilities: true`. A Set keyed by target id;
@@ -493,17 +506,26 @@ export function refreshAuraBonuses(state: GameState): GameState {
       delete updated.grantedTriggers;
     }
     // Wave 4.8 follow-up 6 lane 76 (#2614 follow-up):
-    // write the protection-from ledger when at least
-    // one Aura with a `protectionFrom` arm is attached;
-    // clear the field when no such Aura is attached
-    // (battlefield-zone-only, dropped when the source
-    // leaves the battlefield — parallel to the lane 71
-    // static-arm pattern).
-    if (nextProtFrom.length > 0) {
-      updated.protectionFrom = nextProtFrom;
-    } else {
-      delete updated.protectionFrom;
-    }
+    // the per-target protection-from ledger. Same
+    // shape as the lane 71 static arm: a sorted,
+    // deduped list of qualities stamped onto the
+    // enchanted card via the existing
+    // `hasProtectionFrom` check in
+    // `evergreen-keywords.ts`. The diff compares the
+    // sorted arrays element-by-element; the field is
+    // dropped when no Aura with the `protectionFrom`
+    // arm is attached.
+    //
+    // Wave 4.8 follow-up 10 lane 77 (#2614 follow-up):
+    // the WRITE of `updated.protectionFrom` is moved
+    // AFTER the overlay write phase (the rolled leaf
+    // `protectionFrom` is populated by the overlay
+    // write, so the bottom write needs to run AFTER
+    // that). The diff at the top of the loop reads
+    // the cached `wasProtFrom` for change detection;
+    // the post-overlay-write block re-stamps
+    // `updated.protectionFrom` with the full union
+    // before `cards.set`.
     // Wave 4.8 follow-up 8 lane 75d (#2614 follow-up):
     // write the copy-target overlay when at least one
     // Aura with a `become_copy` arm is attached to
@@ -557,6 +579,11 @@ export function refreshAuraBonuses(state: GameState): GameState {
           // ledger is cleared.
           delete updated.copyOfTargetId;
         }
+        // Wave 4.8 follow-up 10 lane 77 (#2614
+        // follow-up): drop any leaf-rolled
+        // `protectionFrom` — the cycle case
+        // suppresses the overlay entirely.
+        leafProtFromById.delete(cardId);
         cards.set(cardId, updated);
         continue;
       }
@@ -607,11 +634,36 @@ export function refreshAuraBonuses(state: GameState): GameState {
           keywords: targetPrinted.keywords,
         };
         updated.copyOfTargetId = nextAuraCopyOfTargetId;
+        // Wave 4.8 follow-up 10 lane 77 (#2614
+        // follow-up): roll the chosen target's leaf's
+        // `protectionFrom` onto the enchanted card.
+        // The snapshot's
+        // `leafPerInstanceByEnchantedCard` carries
+        // the leaf's per-instance fields (populated
+        // by the previous pass's
+        // `refreshScriptedStatics` write on the leaf).
+        // Union semantics at the bottom of the pass.
+        const leafPerInstance =
+          auraCopyChain.leafPerInstanceByEnchantedCard.get(cardId);
+        if (
+          leafPerInstance?.protectionFrom &&
+          leafPerInstance.protectionFrom.length > 0
+        ) {
+          leafProtFromById.set(cardId, [
+            ...leafPerInstance.protectionFrom,
+          ]);
+        } else {
+          leafProtFromById.delete(cardId);
+        }
       } else if (updated.animatedUntilEndOfTurn) {
         // Chosen target has left the battlefield — restore
         // the enchanted card's printed `cardData`.
         updated.cardData = updated.animatedUntilEndOfTurn.cardData;
         delete updated.animatedUntilEndOfTurn;
+        // Wave 4.8 follow-up 10 lane 77: drop any
+        // leaf-rolled `protectionFrom` — the chosen
+        // target is gone.
+        leafProtFromById.delete(cardId);
         delete updated.copyOfTargetId;
       }
     } else if (updated.animatedUntilEndOfTurn) {
@@ -623,6 +675,36 @@ export function refreshAuraBonuses(state: GameState): GameState {
       updated.cardData = updated.animatedUntilEndOfTurn.cardData;
       delete updated.animatedUntilEndOfTurn;
       delete updated.copyOfTargetId;
+      // Wave 4.8 follow-up 10 lane 77: drop any
+      // leaf-rolled `protectionFrom` — the Aura is
+      // gone, the overlay is gone, the rolled
+      // protection no longer applies.
+      leafProtFromById.delete(cardId);
+    }
+    // Wave 4.8 follow-up 10 lane 77 (#2614 follow-up):
+    // post-overlay-write phase. After the overlay
+    // write has populated `leafProtFromById`, union
+    // the rolled value with the enchanted card's own
+    // Aura-driven protection (`nextProtFrom`) and write
+    // the full union onto `updated.protectionFrom`.
+    // Multiple Auras stack their protection; the union
+    // semantics preserve every Aura's contribution
+    // across refreshes.
+    const finalLeafProtFrom = leafProtFromById.get(cardId);
+    const finalMerged: string[] = [];
+    if (nextProtFrom) finalMerged.push(...nextProtFrom);
+    if (finalLeafProtFrom) finalMerged.push(...finalLeafProtFrom);
+    if (finalMerged.length > 0) {
+      const seen = new Set<string>();
+      const deduped: string[] = [];
+      for (const q of finalMerged) {
+        if (seen.has(q)) continue;
+        seen.add(q);
+        deduped.push(q);
+      }
+      updated.protectionFrom = deduped;
+    } else if ("protectionFrom" in updated) {
+      delete updated.protectionFrom;
     }
     cards.set(cardId, updated);
   }
