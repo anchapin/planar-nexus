@@ -48,7 +48,7 @@ jobs:
       - name: Job summary
         if: always()
         run: cat bakeoff-out/report.md >> "$GITHUB_STEP_SUMMARY" || true
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: card-script-bakeoff
