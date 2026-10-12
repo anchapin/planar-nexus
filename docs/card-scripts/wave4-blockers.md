@@ -1993,6 +1993,100 @@ This loop shipped **lane 75e** (nested-copy cycle guard) as PR #2762. Lane 61 (r
 - Test cases: 14160 → 14167 (+7 for lane 75e; 14160 passed + 7 skipped).
 - Engine-size budget: schema.ts 3050 (lane 75d baseline) → 3050 (unchanged). Lane 75e is engine-only; the new file is in `keyword-actions/`, not `card-scripts/`, so the schema budget is unaffected. The `keyword-actions/` module's own size is captured by the module-size budget (still well under the 3310 ceiling for AI / 3050 ceiling for engine).
 
+### Wave 4.8 follow-up 10 loop done summary (lanes 77 / 78 / 79 shipped; lanes 80 / 81 already shipped)
+
+The Wave 4.8 follow-up 10 loop covered the priority queue from
+`docs/card-scripts/wave4.8-followup10-handoff.md`. Lanes 77
+through 79 were attempted in this loop; lanes 80 and 81 were
+discovered to be already shipped by prior waves (their schema
+arms + instance fields + `resolveEnterChoice` arms were
+already implemented and tested). Lanes 82 through 86
+(Midnight Snack / Needletooth Pack / Gorehorn Raider / Scrawling
+Crawler / Ajani's Pridemate) are the warmup drafter-list cards
+that remain in the queue — each is a single-card or two-card
+JSON + small test, with all plumbing already shipped (raid +
+`phaseEnds` + `intervening_if` + `CreatePredefinedToken` for Food
++ life-gain trigger). Each is a single-lane piece that fits the
+aggressive loop's per-lane 40-turn budget; the loop's process
+section was the source of the original priority order. The
+remaining work is deferred to a future Wave 4.5+/4.8+ pass —
+this loop concludes with lanes 77 / 78 / 79 / 80 / 81 either
+shipped or marked already-shipped.
+
+**Shipped lanes:**
+
+- **Lane 77 — Copy target with other layers** (#2614 follow-up).
+  Extended the lane 75e cycle-guard snapshot to also carry the
+  leaf's per-instance `protectionFrom` field. The overlay write
+  phase rolls the leaf's `protectionFrom` onto the source's own
+  protection ledger (union semantics — multiple `become_copy`
+  overlays stack their protection; the source's existing
+  static-driven protection is preserved). The Aura mirror does
+  the same on the enchanted card. Shipped as PR #2763.
+  Test cases: 7 in `lane77-copy-target-other-layers.test.ts`.
+
+- **Lane 78 — Cross-zones copy** (#2614 follow-up).
+  Replaced the `targetOnField`
+  (`currentZoneKey?.endsWith("-battlefield")`) check with
+  `targetInTrackedZone`
+  (`state.zones.has(target.currentZoneKey)`) in three places
+  (the static overlay write phase, the spell-effect-set overlay
+  write phase, and the Aura overlay write phase). Cross-zones
+  copy is battlefield-zone-only for the SOURCE (the source must
+  be on the battlefield for the static to apply) but the target
+  can be in any zone the engine tracks (graveyard, exile, hand,
+  library, command). CR 707.2 "copy a card that's not in play"
+  now resolves correctly. Shipped as PR #2764. Test cases: 5
+  in `lane78-cross-zones-copy.test.ts`.
+
+- **Lane 79 — 4-card copy chain** (#2614 follow-up).
+  Test-only work — confirmed the cycle guard's snapshot helper
+  handles 4- and 5-card chains (the recursion is bounded by
+  the chain length, which is bounded by the battlefield size
+  in practice). Shipped as PR #2765. Test cases: 3 in
+  `lane79-4-card-chain.test.ts`.
+
+**Already shipped (discovered during this loop):**
+
+- **Lane 80 — Chosen creature_type `enter_choice` arm**
+  (#2705). The schema's `enter_choice.kind` already accepts
+  `"creature_type"`; the `chosenCreatureType: string | null`
+  field is already on `CardInstance` (lane 45 forward-compat);
+  the `resolveEnterChoice` arm for `kind: "creature_type"` is
+  already implemented in `keyword-actions/enter-choice.ts`;
+  the chosen-type anthem reads `source.chosenCreatureType`
+  (via `subtype: "chosen"` sentinel); and the
+  `adaptive-automaton-chosen-type.test.ts` /
+  `enter-choice-creature-type.test.ts` /
+  `enter-choice-dual.test.ts` /
+  `add-creature-type-static.test.ts` /
+  `banner-of-kinship-counters.test.ts` test files (57 tests)
+  already cover the v1 minimum (the `enter_choice` arm + the
+  field). Lane 80 is a no-op for this loop — no work needed.
+  See #2705 for the prior implementation history.
+
+- **Lane 81 — Chosen card name `enter_choice` arm**
+  (#2708 phase 2b — Sorcerous Spyglass chosen-name gate). The
+  schema's `enter_choice.kind` already accepts `"chosen_name"`;
+  the `chosenCardName: string | null` field is already on
+  `CardInstance` (forward-compatible nullable per the lane 48
+  forward-compat); the `resolveEnterChoice` arm for
+  `kind: "chosen_name"` is already implemented in
+  `keyword-actions/enter-choice.ts`; and the lane 50 chosen-name
+  block static reads `source.chosenCardName` (via
+  `affects.chosen_name_block` arm). Lane 81 is a no-op for this
+  loop — no work needed. See #2708 phase 2b for the prior
+  implementation history.
+
+**Test-count snapshot (Wave 4.8 follow-up 10 loop):**
+
+- Test suites: 735 → 738 (+3 for lanes 77 / 78 / 79).
+- Test cases: 14167 → 14182 (+15 for lanes 77 / 78 / 79;
+  14175 passed + 7 skipped).
+- Engine-size budget: schema.ts 3050 (lane 75d baseline) → 3050
+  (unchanged). Lanes 77 / 78 / 79 are engine-only / test-only
+  / engine-only; the schema budget is unaffected.
+
 ### Multi-lane follow-ups still open (tracked under #2614)
 
 - **Lane 61 — Replacement effect for death (Whip of Erebos, False Dawn)**. Foundational replacement-effect layer; the engine has no general replacement-effect layer, so lane 61 is parked per the Wave 4.8 follow-up 2 handoff's process note. The handoff's process rule: the aggressive loop picks lanes one at a time, but lane 61 is parked because it requires a foundational layer that's a separate multi-lane plan. Open it as a separate multi-lane plan, NOT as the next lane in this loop. This is documented in the Wave 4.8 follow-up 9 handoff.
