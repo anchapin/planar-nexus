@@ -1253,6 +1253,31 @@ export const TriggerSchema = z
      * "you may" payment (lane 65 work).
      */
     you_may: z.boolean().optional(),
+    /**
+     * Wave 4.8 follow-up 2 lane 62 (#2614 follow-up): a counter
+     * gate on the trigger event itself (CR 603.2 — a "while-
+     * condition"-style gate, NOT an intervening-if CR 603.4).
+     * When set, the engine only fires the trigger if the source
+     * permanent's `card.instanceCounters[counter.type]` matches
+     * the gate's comparator:
+     *   - op: "gte" → `count >= n`
+     *   - op: "eq"  → `count === n`
+     * Default behavior on absent counters is `0`; the gate reads
+     * `card.instanceCounters?.[counter] ?? 0` so cards without
+     * the ledger default to 0 (matches the documented v1
+     * behavior of `CardInstance.instanceCounters` from lane 59).
+     * The sample card is Redcap Gutter-Dweller's deferred
+     * "Goblins you control have menace when 3+ counters" half —
+     * lane 57 (#2731) shipped the JSON shape; lane 62 wires the
+     * engine arm the card already carries.
+     */
+    counter_gate: z
+      .object({
+        counter: z.string().min(1),
+        op: z.enum(["gte", "eq"]),
+        n: z.number().int().min(0),
+      })
+      .optional(),
   })
   .strict()
   .refine((t) => (t.effects === undefined) !== (t.modes === undefined), {

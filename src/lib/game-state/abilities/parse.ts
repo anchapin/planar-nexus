@@ -143,6 +143,13 @@ function scriptedTrigger(t: ScriptedTrigger): ParsedTriggeredAbility {
     // intervening-if clauses (Crypt Feaster). String form matches
     // the engine's existing evaluateInterveningIfClause input.
     ...(t.intervening_if ? { interveningIf: t.intervening_if } : {}),
+    // Wave 4.8 follow-up 2 lane 62 (#2614 follow-up): pass-through
+    // for counter-gated triggers (Redcap Gutter-Dweller deferred
+    // half; CR 603.2 "while" gate variant). The engine reads the
+    // gate via `card.instanceCounters[gate.counter]` and a
+    // comparator (gte|eq); see `detectTriggeredAbilities` in
+    // `abilities/triggered.ts`.
+    ...(t.counter_gate ? { counterGate: t.counter_gate } : {}),
   };
 }
 
