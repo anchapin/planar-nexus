@@ -1,0 +1,55 @@
+## Summary
+
+Lane 74 of the Wave 4.8 follow-up 6 loop (#2614). The
+schema (`StaticSchema.protectionFrom: string[]`) and
+engine (`hasProtectionFrom` in evergreen-keywords.ts)
+already support multi-quality protection: the per-instance
+ledger is data-driven (`perInstance.some((q) => q ===
+color)`). Lane 74 is mostly a test-suite addition that
+verifies the multi-color / multi-quality path through the
+`refreshScriptedStatics` → `hasProtectionFrom` pipeline.
+
+## Pattern
+
+- Akoumep Halberd ("Enchanted creature has protection from
+  red and from blue")
+- Niveous Wisps ("Enchanted creature has protection from
+  red and from everything")
+- The "creatures you control have protection from [color A]
+  and from [color B]" family
+
+## What this lane adds
+
+A new dedicated test
+`lane74-multi-quality-protection.test.ts` (4 cases):
+
+- Schema parses `protectionFrom: ["red", "blue"]` (Akoumep
+  Halberd pattern).
+- Schema parses `protectionFrom: ["red", "everything"]`
+  (Niveous Wisps pattern).
+- After `refreshScriptedStatics`, the target's
+  `protectionFrom` ledger carries the multi-quality array,
+  and `hasProtectionFrom` correctly returns `true` for both
+  qualities and `false` for unrelated qualities.
+- A creature the anthem does not affect (opponent's
+  creature) is NOT stamped with the protection (the
+  `affects.controller: "you"` filter still applies).
+
+## Engine-size budget
+
+No change. No schema or engine changes — multi-quality
+protection was already data-driven via the lane 71
+`protectionFrom: string[]` substrate.
+
+## Test count
+
+- Suites: 726 → 727 (+1)
+- Cases: 14104 → 14108 (+4)
+- Both anchored in `docs/onboarding.md` and
+  `docs/TEST_VIDEO_FIXTURES.md` via
+  `npm run ratchet:test-count`.
+
+## Refs
+
+#2614 (drafter-list plan — multi-quality protection
+family).
