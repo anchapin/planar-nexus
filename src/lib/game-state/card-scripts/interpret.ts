@@ -14,6 +14,7 @@ import type {
   PlayerId,
   StackObject,
   Target,
+  WaitingChoice,
   Zone,
 } from "../types";
 import { hasSubtype } from "../spell-casting/affinity";
@@ -2027,14 +2028,86 @@ export function getScriptedAbilityEffects(
 }
 
 /**
+ * Wave 4.8 follow-up 2 lane 60 (#2614 follow-up): a triggered
+ * ability gated on `you_may: true` (CR 117.3a) produces a
+ * yes/no `waitingChoice` so the controller can decline. Surfacing
+ * the prompt returns the new state with `waitingChoice` set and the
+ * engine's resolution machinery suspends until the player answers
+ * (`resolveYouMayPrompt` in spell-casting/choices.ts).
+ *
+ * The same WaitingChoice type string (`you_may_prompt`) is reused
+ * for any scripted "you may" trigger; the resolver looks up the
+ * source trigger's `text` on the stack object to disambiguate when
+ * more than one such trigger is on the stack.
+ *
+ * `triggerText` is the script entry's `text` (the line before the
+ * colon in oracle text, e.g. "When this creature enters, you may
+ * draw a card"); the prompt labels the choice with that text so the
+ * UI can show the player exactly which trigger they're answering.
+ */
+export function createYouMayPromptWaitingChoice(
+  stackObjectId: string,
+  playerId: PlayerId,
+  triggerText: string,
+): WaitingChoice {
+  return {
+    type: "you_may_prompt",
+    playerId,
+    stackObjectId,
+    prompt: `${triggerText} (you may)`,
+    choices: [
+      { label: "Yes", value: true, isValid: true },
+      { label: "No", value: false, isValid: true },
+    ],
+    minChoices: 1,
+    maxChoices: 1,
+    presentedAt: Date.now(),
+  };
+}
+
+/**
  * Resolve a triggered or activated ability from its source's script.
  * Returns undefined when the ability isn't scripted, so the caller falls back
  * to reading its text.
+ *
+ * Wave 4.8 follow-up 2 lane 60 (#2614 follow-up) extension: when the
+ * scripted trigger carries `you_may: true`, the controller is
+ * offered a yes/no prompt before any of the trigger's effects run.
+ * If `stackObject.you_may_resolved === false`, the entire effects
+ * list is skipped (the trigger fizzles silently). If undefined, the
+ * prompt is surfaced and resolution is suspended — the engine's
+ * usual `waitingChoice` machinery resumes it.
  */
 export function resolveScriptedAbility(
   state: GameState,
   stackObject: StackObject,
 ): GameState | undefined {
+  const ability = getScriptedAbility(state, stackObject);
+  if (!ability) return undefined;
+  // Lane 60 (#2614 follow-up): "you may" trigger gate.
+  if (
+    "you_may" in ability &&
+    (ability as { you_may?: boolean }).you_may === true
+  ) {
+    if (stackObject.you_may_resolved === false) {
+      // Controller declined: the trigger does nothing.
+      return state;
+    }
+    if (stackObject.you_may_resolved === undefined) {
+      // Surface a yes/no prompt and suspend resolution. Strip any
+      // existing waitingChoice to avoid stacked prompts (each
+      // resolveScriptedAbility call is a fresh top-of-stack resolve).
+      return {
+        ...state,
+        waitingChoice: createYouMayPromptWaitingChoice(
+          stackObject.id,
+          stackObject.controllerId as PlayerId,
+          ability.text,
+        ),
+      };
+    }
+    // you_may_resolved === true: fall through and run effects.
+  }
   const effects = getScriptedAbilityEffects(state, stackObject);
   if (!effects) return undefined;
   return resolveScriptedEffects(state, effects, stackObject);

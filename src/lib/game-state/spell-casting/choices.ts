@@ -292,6 +292,48 @@ export function resolveWaitingChoice(
       : { success: false, state, error: result.description };
   }
 
+  // Wave 4.8 follow-up 2 lane 60 (#2614 follow-up): a trigger's
+  // `you_may: true` (CR 117.3a "you may") surfaces a yes/no prompt
+  // (created by `createYouMayPromptWaitingChoice` in
+  // card-scripts/interpret.ts). The controller's answer is
+  // normalized to a strict boolean, stamped on
+  // `stackObject.you_may_resolved`, and the choice is cleared.
+  // `resolveScriptedAbility` reads that flag on the next pass
+  // through top-of-stack resolution and either runs the
+  // trigger's effects (`true`) or skips them (`false`).
+  if (type === "you_may_prompt") {
+    const value = Array.isArray(selectedValue)
+      ? selectedValue[0]
+      : selectedValue;
+    const bool = value === true || value === "yes" || value === "true";
+    const wasYes = value === false || value === "no" ? false : bool;
+    if (!wasYes && value !== false && value !== "no") {
+      return {
+        success: false,
+        state,
+        error: "Expected a yes/no value for you_may_prompt",
+      };
+    }
+    const target = state.stack.find((s) => s.id === stackObjectId);
+    if (!target) {
+      return {
+        success: false,
+        state,
+        error: "Stack object not found for you_may_prompt",
+      };
+    }
+    return {
+      success: true,
+      state: {
+        ...state,
+        waitingChoice: null,
+        stack: state.stack.map((s) =>
+          s.id === stackObjectId ? { ...s, you_may_resolved: wasYes } : s,
+        ),
+      },
+    };
+  }
+
   if (type === "choose_value" && typeof selectedValue === "number") {
     const stackObj = state.stack.find((s) => s.id === stackObjectId);
 

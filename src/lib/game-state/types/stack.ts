@@ -172,6 +172,23 @@ export interface StackObject {
    * `evaluateInterveningIfClause` in abilities.ts.
    */
   interveningIf?: string;
+  /**
+   * Wave 4.8 follow-up 2 lane 60 (#2614 follow-up): answer to a
+   * trigger's `you_may` prompt (CR 117.3a "you may"). `true` /
+   * `false` is recorded when the controller resolves the
+   * `you_may_prompt` `waitingChoice`. The script-driven resolution
+   * (`resolveScriptedAbility`) reads this at apply time and either
+   * runs the trigger's effects (true) or skips them entirely (false).
+   * Undefined = the prompt hasn't been answered yet — the engine
+   *   surfaces the `you_may_prompt` waitingChoice and suspends
+   *   resolution until the controller picks yes/no.
+   *
+   * The field is the script-trigger analog of the modal
+   * `chosenModes` for "you may" gating. Modal `modes` and `you_may`
+   * are mutually exclusive on the same trigger; the schema rejects
+   * the combination (see `TriggerSchema`).
+   */
+  you_may_resolved?: boolean;
   /** Structured effects to resolve (CR 608) */
   effects?: StackEffect[];
 }
