@@ -42,8 +42,9 @@ import {
   shuffleZone,
 } from "../zones";
 import { startDiscard } from "../keyword-actions/discard-choice";
-import { addCounters, isCreature } from "../card-instance";
+import { addCounters, createCardInstance, isCreature } from "../card-instance";
 import { getEffectivePower } from "../evergreen-keywords";
+import type { ScryfallCard } from "../types";
 import {
   addUntilEndOfTurnKeywords,
   animateUntilEndOfTurn,
@@ -944,6 +945,143 @@ function applyEffect(
         if (card) cards.set(card.id, { ...card, isTapped: true });
       }
       return { ...r.state, cards };
+    }
+    case "CopyPermanent": {
+      // Wave 4.8 follow-up 5 lane 70 (#2614 follow-up): "Create
+      // a permanent that copies the characteristics of [a
+      // target permanent on the battlefield]" (Clone,
+      // Phantasmal Image, Vesuvan Doppelganger). The new
+      // permanent inherits the target's `cardData` (name,
+      // mana cost, type line, P/T, keywords, oracle text,
+      // colors) — i.e. "all characteristics copied"
+      // semantics (CR 707.2). The new permanent enters the
+      // battlefield under the spell's controller; the target
+      // is unchanged. The v1 minimum supports a single
+      // target of any kind (`target: "permanent"`); the
+      // controller narrows the source's controller when
+      // set. When no explicit target is chosen (the engine
+      // auto-pick path — the simplest v1 minimum), the
+      // engine finds the first matching permanent on the
+      // battlefield (any player's, ordered by APNAP).
+      //
+      // Out of scope (each a follow-up lane): "may become a
+      // copy until end of turn" (Sakashima-style / manifested
+      // / disposition-of-copy), "may copy a spell on the
+      // stack" (Splice), "may copy a card in a graveyard"
+      // (reanimation), "copied characteristics except for
+      // [X]" (Phyrexian Metamorph), and "named-copy" /
+      // "choose-creature-type-copy" filters.
+      const matchTargetType = (
+        typeLine: string,
+        want: string,
+      ): boolean => {
+        const lower = typeLine.toLowerCase();
+        if (want === "permanent") return true;
+        if (want === "creature") return lower.startsWith("creature");
+        if (want === "artifact")
+          return (
+            lower.startsWith("artifact") &&
+            !lower.startsWith("artifact creature")
+          );
+        if (want === "enchantment")
+          return (
+            lower.startsWith("enchantment") &&
+            !lower.startsWith("enchantment creature")
+          );
+        if (want === "land") return lower.startsWith("land");
+        return true;
+      };
+      const matchController = (
+        cardControllerId: PlayerId,
+      ): boolean => {
+        if (!effect.controller || effect.controller === "any") return true;
+        const wantsYou = effect.controller === "you";
+        return wantsYou
+          ? cardControllerId === ctx.controllerId
+          : cardControllerId !== ctx.controllerId;
+      };
+      // Find the target: either the chosen target on the
+      // stack object, or the first matching permanent on the
+      // battlefield (APNAP-ordered).
+      let sourceId: CardInstanceId | undefined;
+      if (target && target.type === "card") {
+        sourceId = target.targetId as CardInstanceId;
+        const sourceCard = state.cards.get(sourceId);
+        if (
+          !sourceCard ||
+          !isOnBattlefield(state, sourceId) ||
+          !matchTargetType(sourceCard.cardData.type_line ?? "", effect.target) ||
+          !matchController(sourceCard.controllerId)
+        ) {
+          sourceId = undefined;
+        }
+      }
+      if (!sourceId) {
+        // Auto-pick: iterate battlefields APNAP, find the
+        // first matching permanent.
+        const orderedPlayers = (() => {
+          const ids = [...state.players.keys()];
+          const activeIdx = ids.indexOf(state.turn.activePlayerId);
+          if (activeIdx < 0) return ids;
+          return [...ids.slice(activeIdx), ...ids.slice(0, activeIdx)];
+        })();
+        outer: for (const pid of orderedPlayers) {
+          const bf = state.zones.get(`${pid}-battlefield`);
+          if (!bf) continue;
+          for (const id of bf.cardIds) {
+            const inst = state.cards.get(id);
+            if (!inst) continue;
+            if (
+              matchTargetType(inst.cardData.type_line ?? "", effect.target) &&
+              matchController(inst.controllerId)
+            ) {
+              sourceId = id;
+              break outer;
+            }
+          }
+        }
+      }
+      if (!sourceId) return state;
+      const sourceCard = state.cards.get(sourceId);
+      if (!sourceCard) return state;
+      // Copy the cardData shallow. The new permanent carries
+      // the same `cardData` reference as the source; that's
+      // fine for read-only fields (name, mana_cost, type_line,
+      // P/T, keywords, oracle_text, colors) which never
+      // mutate. Per-instance fields (counters, attachedTo,
+      // etc.) start fresh.
+      const copiedCardData = { ...sourceCard.cardData };
+      const controllerId = ctx.controllerId;
+      const ownerId = controllerId;
+      const cardIdNew = `copyperm-${Date.now()}-${Math.random().toString(36).slice(2, 11)}` as CardInstanceId;
+      // Build the new CardInstance via createCardInstance so
+      // we get all the defaults (summoning sickness, counters,
+      // attachedTo, etc.).
+      const newInstance = createCardInstance(
+        copiedCardData as ScryfallCard,
+        ownerId,
+        controllerId,
+        {
+          id: cardIdNew,
+          currentZoneKey: `${controllerId}-battlefield`,
+        },
+      );
+      const newCards = new Map(state.cards);
+      newCards.set(cardIdNew, newInstance);
+      const bfKey = `${controllerId}-battlefield`;
+      const bf = state.zones.get(bfKey);
+      if (!bf) return state;
+      const newZones = new Map(state.zones);
+      newZones.set(bfKey, {
+        ...bf,
+        cardIds: [...bf.cardIds, cardIdNew],
+      });
+      return {
+        ...state,
+        cards: newCards,
+        zones: newZones,
+        lastModifiedAt: Date.now(),
+      };
     }
     case "Destroy": {
       // #2594 follow-up (lane 12): sweeper targets ("all_creatures",
