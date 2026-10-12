@@ -1655,6 +1655,30 @@ export const StaticSchema = z
      */
     X: z.enum(["treasures", "creatures", "lands"]).optional(),
     keywords: z.array(z.enum(TOKEN_KEYWORDS)).min(1).optional(),
+    /**
+     * Wave 4.8 follow-up 5 lane 71 (#2614 follow-up): the
+     * protection-from-static arm. Each entry is a protection
+     * quality (color or "everything") that the engine grants
+     * to each affected permanent. The engine stamps the
+     * values on the affected `CardInstance` per-instance
+     * `protectionFrom: string[]` field
+     * (`refreshScriptedStatics` in
+     * `keyword-actions/scripted-statics.ts`); the existing
+     * `hasProtectionFrom` / `canBeTargetedBy` / `canBeBlocked`
+     * checks in `evergreen-keywords.ts` consult the new
+     * field. v1 supports single-color protection
+     * (`["red"]`) and the "everything" quality
+     * (`["everything"]`); multi-color and
+     * "choose-a-quality" protection are follow-up lanes.
+     *
+     * Sample card: a synthetic anthem registered via the
+     * test harness with `protectionFrom: ["red"]` and
+     * `affects: { controller: "you" }` ("Creatures you
+     * control have protection from red"). A red creature +
+     * a red spell verify the protection is honored at cast
+     * time and combat time.
+     */
+    protectionFrom: z.array(z.string().min(1)).optional(),
   })
   .strict()
   .refine((s) => (s.power === undefined) === (s.toughness === undefined), {
@@ -1681,10 +1705,19 @@ export const StaticSchema = z
       // meta-static shape, allowed as a stand-alone arm
       // with the `addColorToSelf` flag. Redcap
       // Gutter-Dweller-style self-only semantics for v1.
-      (s.affects.add_color !== undefined && s.affects.addColorToSelf === true),
+      (s.affects.add_color !== undefined && s.affects.addColorToSelf === true) ||
+      // Wave 4.8 follow-up 5 lane 71 (#2614 follow-up):
+      // protection-from static is a meta-static — allow it
+      // as a stand-alone arm. The protection is granted via
+      // the per-instance `protectionFrom: string[]` field,
+      // read by `hasProtectionFrom` alongside the parsed
+      // keyword list (canonical contract — see
+      // `keyword-actions/protection.ts`). No P/T or keyword
+      // changes; the static only writes the new field.
+      (s.protectionFrom?.length ?? 0) > 0,
     {
       message:
-        "a static needs power/toughness, keywords, X, chosen_name_block, add_creature_type (with addCreatureTypeToSelf), or add_color (with addColorToSelf)",
+        "a static needs power/toughness, keywords, X, chosen_name_block, add_creature_type (with addCreatureTypeToSelf), add_color (with addColorToSelf), or protectionFrom",
     },
   );
 

@@ -183,6 +183,27 @@ export interface CardInstance {
    */
   chosenColorAdditions?: ("W" | "U" | "B" | "R" | "G")[];
   /**
+   * Wave 4.8 follow-up 5 lane 71 (#2614 follow-up): the
+   * per-instance protection-from qualities granted by a
+   * `StaticSchema.protectionFrom` arm on the source
+   * (e.g. "Creatures you control have protection from red").
+   * Set by `refreshScriptedStatics` at refresh time: for
+   * every static with `protectionFrom`, every affected
+   * permanent's `protectionFrom` field grows by the static's
+   * `protectionFrom` values (parallel to
+   * `scriptStaticKeywords` / `chosenTypeAdditions` /
+   * `chosenColorAdditions`). The field is read by
+   * `hasProtectionFrom` in `evergreen-keywords.ts` alongside
+   * the parsed `keywords` array and the regex fallback —
+   * a creature with `protectionFrom: ["red"]` cannot be the
+   * target of a red spell, cannot be blocked by a red
+   * creature, and cannot be dealt damage by a red source
+   * (CR 702.16). Battlefield-zone-only semantics: the
+   * field is cleared when the source leaves the
+   * battlefield.
+   */
+  protectionFrom?: string[];
+  /**
    * Wave 4.8 follow-up lane 59 (#2614 follow-up): per-instance
    * counter ledger keyed by counter type. Banner of Kinship
    * "enters with X counters on it" stamps N `+1/+1` counters

@@ -286,12 +286,27 @@ export function refreshScriptedStatics(input: GameState): GameState {
   // which unions these into the read at the next refresh
   // pass (mirroring lane 52's `typeAdditions`).
   const colorAdditions = new Map<string, ("W" | "U" | "B" | "R" | "G")[]>();
+  // Wave 4.8 follow-up 5 lane 71 (#2614 follow-up): the
+  // per-card protection-from ledger stamped by statics with
+  // a `protectionFrom` arm. The `hasProtectionFrom` helper
+  // in `evergreen-keywords.ts` consults the field via the
+  // existing `canBeTargetedBy` / `canBeBlocked` checks.
+  const protFromById = new Map<string, string[]>();
   for (const target of onField) {
     let power = 0;
     let toughness = 0;
     const granted = new Set<string>();
     const additions = new Set<string>();
     const colorAdds = new Set<"W"|"U"|"B"|"R"|"G">();
+    // Wave 4.8 follow-up 5 lane 71 (#2614 follow-up): the
+    // per-instance `protectionFrom` ledger for statics that
+    // grant protection ("Creatures you control have
+    // protection from red"). Collected alongside the other
+    // per-instance ledgers; stamped on the target card at
+    // the bottom of the pass. Read by `hasProtectionFrom`
+    // in `evergreen-keywords.ts` alongside the parsed
+    // keyword list and the regex fallback.
+    const protFrom = new Set<string>();
     for (const { card, statics } of sources) {
       for (const stat of statics) {
         if (!staticAffects(stat, card, target)) continue;
@@ -335,6 +350,19 @@ export function refreshScriptedStatics(input: GameState): GameState {
               : stat.affects.add_color;
           if (addition) colorAdds.add(addition);
         }
+        // Wave 4.8 follow-up 5 lane 71 (#2614 follow-up):
+        // collect the static's `protectionFrom` qualities
+        // onto the target's per-instance ledger. The
+        // protection is a meta-static (no P/T, no
+        // keywords, no P/T bonus); the
+        // `hasProtectionFrom` check in
+        // `evergreen-keywords.ts` consults the new
+        // field. The set is deduplicated per-quality so
+        // multiple statics granting the same color only
+        // stamp once.
+        if (stat.protectionFrom) {
+          for (const q of stat.protectionFrom) protFrom.add(q);
+        }
         if (stat.X) {
           // #2594 follow-up, lane 36: when `X` is set, the count
           // overrides the integer `power`/`toughness` for this
@@ -364,6 +392,8 @@ export function refreshScriptedStatics(input: GameState): GameState {
       typeAdditions.set(target.id, [...additions].sort());
     if (colorAdds.size > 0)
       colorAdditions.set(target.id, [...colorAdds].sort());
+    if (protFrom.size > 0)
+      protFromById.set(target.id, [...protFrom].sort());
   }
 
   let cards: GameState["cards"] | null = null;
@@ -372,9 +402,11 @@ export function refreshScriptedStatics(input: GameState): GameState {
     const nextKw = kws.get(cardId) ?? [];
     const nextAdds = typeAdditions.get(cardId);
     const nextColors = colorAdditions.get(cardId);
+    const nextProtFrom = protFromById.get(cardId);
     const prevKw = card.scriptStaticKeywords ?? [];
     const prevAdds = card.chosenTypeAdditions ?? [];
     const prevColors = card.chosenColorAdditions ?? [];
+    const prevProtFrom = card.protectionFrom ?? [];
     const samePT =
       (card.scriptStaticPT?.power ?? 0) === (nextPT?.power ?? 0) &&
       (card.scriptStaticPT?.toughness ?? 0) === (nextPT?.toughness ?? 0);
@@ -394,7 +426,23 @@ export function refreshScriptedStatics(input: GameState): GameState {
     const sameColors =
       (nextColors ? nextColors.length : 0) === prevColors.length &&
       (nextColors ?? []).every((c, i) => c === prevColors[i]);
-    if (samePT && sameKw && sameAdds && sameColors) continue;
+    // Wave 4.8 follow-up 5 lane 71 (#2614 follow-up): same
+    // shape for the per-instance `protectionFrom` ledger
+    // (sorted quality-name array). The change-detection
+    // diff compares the previous and next arrays element-
+    // by-element so the refresh pass only re-stamps when
+    // the protection actually changed.
+    const sameProtFrom =
+      (nextProtFrom ? nextProtFrom.length : 0) === prevProtFrom.length &&
+      (nextProtFrom ?? []).every((q, i) => q === prevProtFrom[i]);
+    if (
+      samePT &&
+      sameKw &&
+      sameAdds &&
+      sameColors &&
+      sameProtFrom
+    )
+      continue;
     cards ??= new Map(state.cards);
     const updated = { ...card };
     if (nextPT) updated.scriptStaticPT = nextPT;
@@ -419,6 +467,16 @@ export function refreshScriptedStatics(input: GameState): GameState {
     if (nextColors && nextColors.length > 0)
       updated.chosenColorAdditions = nextColors;
     else delete updated.chosenColorAdditions;
+    // Wave 4.8 follow-up 5 lane 71 (#2614 follow-up): the
+    // per-instance `protectionFrom` field is part of the
+    // write phase. The clear-when-source-leaves semantics
+    // mirror `chosenTypeAdditions` /
+    // `chosenColorAdditions` (battlefield-zone-only). The
+    // `hasProtectionFrom` helper reads the field via the
+    // existing `canBeTargetedBy` / `canBeBlocked` checks.
+    if (nextProtFrom && nextProtFrom.length > 0)
+      updated.protectionFrom = nextProtFrom;
+    else delete updated.protectionFrom;
     cards.set(cardId, updated);
   }
   return cards ? { ...state, cards } : state;
