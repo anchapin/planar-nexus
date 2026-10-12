@@ -921,3 +921,161 @@ creation with embedded static) per the Wave 4.8 follow-up
 foundational replacement-effect layer — pick that up only
 as a separate multi-lane plan, not as the next lane in
 this loop.
+
+## Wave 4.8 follow-up 4 loop done summary
+
+Lanes 66, 67, and 68 all shipped in the Wave 4.8 follow-up
+4 loop (PRs #2745, #2746, #2747 — see
+`docs/card-scripts/wave4.8-followup4-handoff.md` for the
+handoff and `docs/card-scripts/wave4-blockers.md` for
+the prior loop's done summary).
+
+### Shipped
+
+- **Lane 66 — Token creation with embedded static**
+  (PR #2745, #2614 follow-up). Adaptive Automaton,
+  Avenger of Zendikar, Hornet Queen, Cloudblazer — the
+  "creature token has keyword / gets +X/+X" family. The
+  v1 minimum ships the keywords + P/T arm on
+  `CreateTokenSchema.embedded_static`; the engine folds
+  P/T additively into the base P/T and stamps keywords
+  on the per-instance `embeddedStaticKeywords` field,
+  read by `hasKeyword` alongside `cardData.keywords` /
+  `auraKeywords` / `equipmentKeywords` /
+  `scriptStaticKeywords`. Restrictions
+  (`restrictAttack`, `restrictBlock`, `maxBlockers`) and
+  granted triggered abilities on the token are
+  follow-up lanes.
+- **Lane 67 — Stun / finality counters** (PR #2746,
+  #2614 follow-up). Magmatic Hellkite, Sheoldred's
+  Headcracker, the +1/+1 / -1/-1 family. The v1
+  minimum generalizes the `instanceCounters` ledger
+  (lane 59 substrate) to support arbitrary named
+  counter types at ETB via the new
+  `CardScriptSchema.enters_with_counters: [{ counter,
+count }]` arm. v1 supports the four counter types
+  `"+1/+1"`, `"-1/-1"`, `"stun"`, and `"finality"`.
+  The engine stamps both the `instanceCounters` ledger
+  AND mirrors to the legacy `card.counters` list so
+  the existing untap-skip + P/T paths pick up the
+  counter immediately. The per-turn stun-removal (the
+  active decrement of a stun counter during the untap
+  step) and the finality-skipping effect (blocking
+  graveyard recursion) are follow-up lanes.
+- **Lane 68 — Cast from exile / graveyard / command**
+  (PR #2747, #2614 follow-up). Evoke, Flashback,
+  Jump-Start, Undergrowth, Escape, As Foretold,
+  Yawgmoth's Vile Offer, commander cast. The v1
+  minimum adds `CardScriptSchema.castable_from:
+["exile" | "graveyard" | "command"]` — a
+  single-element array. The engine's `canCastSpell`
+  accepts the cast when the card is in the named zone
+  (instead of requiring the hand); the cast path
+  pushes `"castable_from"` to `alternativeCostsUsed`
+  and stamps `castableFromZone` on the StackObject;
+  the resolve path routes the card to the inferred
+  end zone (exile for `castable_from: ["graveyard"]`
+  and `castable_from: ["exile"]` instants/sorceries,
+  parallel to flashback / foretell; commander
+  return-to-command is a follow-up lane). Multi-zone
+  `castable_from` is a follow-up lane.
+
+### Blocked (multi-lane, tracked under #2614)
+
+- **Lane 61 — Replacement effect for death** (Whip of
+  Erebos, False Dawn). Foundational replacement-effect
+  layer; tracked separately per the Wave 4.8
+  follow-up 2 handoff's process note. Not attempted in
+  this loop.
+- **Lane 69 — X-spent-on-other-spells** (the
+  "spend this mana only on [X]" family). Multi-lane;
+  not attempted in this loop.
+- **Lane 70 — Copying a permanent** (Clone,
+  Phantasmal Image). Multi-lane; not attempted in
+  this loop.
+- **Lane 71 — Protection-from static** (e.g. "creatures
+  you control have protection from [color]"). Multi-lane;
+  not attempted in this loop.
+
+### Test count snapshot
+
+At the close of the Wave 4.8 follow-up 4 loop:
+
+- **Test suites:** 722 (was 719 at the start of the loop;
+  +3 for lanes 66 / 67 / 68)
+- **Test cases:** 14079 (was 14041 at the start of the
+  loop; +38 across the three lanes — 12 for lane 66,
+  11 for lane 67, 15 for lane 68)
+- **Engine-size budget:** 2550 / 2550 lines for
+  `schema.ts` (was 2408 at the start of the loop;
+  +111 across the three lanes — +14 for lane 66, +54
+  for lane 67, +43 for lane 68). Bumped 2400 → 2450
+  (lane 66 inherited lane 65's bump) → 2500 (lane 67)
+  → 2550 (lane 68), tracking the chosen-X /
+  additional-costs / affinity / grants / counter-ledger
+  / cast-from-zone family on the same trajectory.
+
+### Process notes carried from the Wave 4.8 follow-up 4 loop
+
+- Lane 66 (token embedded static) was a clean
+  one-piece add-on — schema arm + engine fold + one
+  test, no engine wiring refactor. The lane bumped
+  the **client bundle** budget (`config/bundle-budget.json`)
+  rather than the engine-size budget: the
+  `keyword-actions/tokens.ts` and `effect-resolution.ts`
+  changes pulled into the `/replay` route (and a
+  handful of other game routes) via the
+  `@/lib/game-state` barrel re-export, growing
+  `/replay` by +60.9 kB. The re-capture bumped the
+  budget in the same commit (the handoff's process
+  rule: "bump the budget rather than fragmenting the
+  chosen-X / additional-costs / affinity / grants
+  family" — the same precedent applies to the
+  client bundle budget; the previous wave 2 engine
+  additions took the same route in commit `c8e8f9a3`).
+- Lane 67 (stun / finality counters) was a clean
+  one-piece add-on — schema arm + engine helper
+  (`applyScriptEntersWithCounters`) + calls from
+  `fireEntersTriggers` and `spell-casting/resolve.ts`
+  - one test. The bump to the engine-size budget
+    (2450 → 2500) was in the same commit (the
+    handoff's process rule). The
+    `CardScriptSchema` refinement was extended to
+    accept `enters_with_counters` as a valid "card
+    script" form (a card with only `enters_with_counters`
+    is legal — the v0 substrate is the lane 59
+    `enters_with_counters_per_match` which is similarly
+    accepted). The mirror-to-`card.counters` was
+    deliberate so the existing untap-skip path picks
+    up the new stun counter on day one; the
+    follow-up lane can move the untap path to read
+    from `instanceCounters` once the legacy
+    `SearchLibrary.stun` substrate is retired.
+- Lane 68 (cast from exile / graveyard / command)
+  was a more invasive one-piece add-on — the cast
+  path runs through three layers (`canCastSpell`,
+  `castSpell` source-zone check, `validation-service.ts`
+  legality check) and the resolve path runs through
+  `resolveTopOfStack`. All three layers were extended
+  with a matching `castable_from` arm. The
+  `StackObject` type gained a new optional
+  `castableFromZone` field; the engine uses it at
+  resolve time to route the card to the inferred end
+  zone. The bump to the engine-size budget
+  (2500 → 2550) was in the same commit.
+- The AI `forge-gate` / `forge-selfplay` /
+  `expert-agent` "is deterministic for a seed" test
+  is a known order-dependent flake on main. The
+  Wave 4.8 follow-up 4 loop hit this once on lane 68's
+  full-suite run; the second run passed clean. The
+  documented `gh run rerun --failed` fallback was
+  not needed (the local re-run cleared it). Budget
+  for 1-2 extra CI runs per lane to absorb the flake.
+- Lane continue rule for the next session: lane 61
+  (replacement effect for death) remains parked
+  pending the foundational replacement-effect layer;
+  lane 69 (X-spent-on-other-spells), lane 70
+  (copying a permanent), and lane 71 (protection-from
+  static) are NOT in this loop's scope — pick those
+  up in a future Wave 4.8 follow-up 5 (or
+  equivalent) handoff.
