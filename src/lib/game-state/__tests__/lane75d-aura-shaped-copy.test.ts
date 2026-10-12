@@ -417,7 +417,17 @@ describe("Wave 4.8 follow-up 8 lane 75d — Aura-shaped until-EOT copy", () => {
       aliceId,
       {
         id: placeholderChosenId,
-        currentZoneKey: `${aliceId}-hand`,
+        // Place the placeholder chosen target in an
+        // untracked zone (a zone key that's NOT in
+        // `state.zones`). Lane 78's "in a tracked zone"
+        // check uses `state.zones.has(target.currentZoneKey)`,
+        // so a non-existent zone key drops the overlay.
+        // (v1 used `currentZoneKey.endsWith("-battlefield")`,
+        // which dropped the overlay for ANY non-battlefield
+        // zone — including tracked zones like hand,
+        // graveyard, exile. Lane 78 only drops the overlay
+        // for UNTRACKED zones.)
+        currentZoneKey: `${aliceId}-limbo`,
       },
     );
     const enchantedId = `card-enchanted-${Math.random().toString(36).slice(2)}` as CardInstanceId;

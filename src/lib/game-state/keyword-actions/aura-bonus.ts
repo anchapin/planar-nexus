@@ -588,10 +588,23 @@ export function refreshAuraBonuses(state: GameState): GameState {
         continue;
       }
       const chosenTarget = state.cards.get(nextAuraCopyOfTargetId);
-      const chosenTargetOnField =
+      // Wave 4.8 follow-up 10 lane 78 (#2614 follow-up):
+      // the chosen target's "in a tracked zone" check.
+      // v1 used `currentZoneKey?.endsWith("-battlefield")`
+      // which dropped the overlay when the chosen target
+      // was in any non-battlefield zone. Lane 78 removes
+      // the battlefield-only constraint — the overlay is
+      // applied for any chosen target whose zone is in
+      // `state.zones` (a "tracked zone"). Cross-zones copy
+      // is battlefield-zone-only for the ENCHANTED CARD
+      // (the enchanted card must be on the battlefield
+      // for the Aura's static to apply), but the chosen
+      // target can be in any zone the engine tracks.
+      const chosenTargetInTrackedZone =
         chosenTarget &&
-        chosenTarget.currentZoneKey?.endsWith("-battlefield");
-      if (chosenTarget && chosenTargetOnField) {
+        chosenTarget.currentZoneKey !== null &&
+        state.zones.has(chosenTarget.currentZoneKey);
+      if (chosenTarget && chosenTargetInTrackedZone) {
         const printed =
           updated.animatedUntilEndOfTurn?.cardData ?? updated.cardData;
         // Wave 4.8 follow-up 9 lane 75e (#2614 follow-up):
