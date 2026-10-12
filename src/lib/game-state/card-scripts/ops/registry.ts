@@ -27,6 +27,7 @@ import { CounterReference } from "./counter";
 import { CreatePredefinedTokenReference } from "./create-predefined-token";
 import { CreateTokenReference } from "./create-token";
 import { CopyPermanentReference } from "./copy-permanent";
+import { CopyUntilEndOfTurnReference } from "./copy-until-eot";
 import { DealDamageReference } from "./deal-damage";
 import { DestroyReference } from "./destroy";
 import { DiscardReference } from "./discard";
@@ -64,6 +65,7 @@ export const OP_REFERENCES: readonly CardOpReference[] = [
   CreateTokenReference,
   CreatePredefinedTokenReference,
   CopyPermanentReference,
+  CopyUntilEndOfTurnReference,
   DestroyReference,
   ExileReference,
   TapReference,

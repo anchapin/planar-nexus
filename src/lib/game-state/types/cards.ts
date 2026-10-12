@@ -567,6 +567,24 @@ export interface CardInstance {
   animatedUntilEndOfTurn?: {
     cardData: ScryfallCard;
     allCreatureTypes?: boolean;
+    /**
+     * Wave 4.8 follow-up 8 lane 75a (#2614 follow-up): when
+     * true, the `animatedUntilEndOfTurn` overlay was set by a
+     * spell effect (e.g. `CopyUntilEndOfTurn`'s "create a
+     * token that's a copy of [a chosen permanent] until end
+     * of turn") rather than a `StaticSchema.become_copy`
+     * static. The `refreshScriptedStatics` drop branch
+     * preserves these overlays across passes so the
+     * "until end of turn" semantics survive the next
+     * refresh; only the EOT cleanup step
+     * (`clearUntilEndOfTurnPT`) drops the overlay via
+     * `restoreAnimatedOffBattlefield`. Stamped at cast time
+     * by the lane 75a engine case; lane 75's static-driven
+     * overlay never sets this flag (the static-driven case is
+     * dropped by the refresh-eliminates-static branch, as
+     * before).
+     */
+    setBySpellEffect?: boolean;
   };
   /**
    * Keywords granted to this card's spell while it resolves (#2483): set

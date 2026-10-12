@@ -623,11 +623,62 @@ export function refreshScriptedStatics(input: GameState): GameState {
       // its `become_copy`-bearing state). Drop the
       // overlay: restore the printed `cardData` from
       // `animatedUntilEndOfTurn` and clear the ledger.
-      if (card.animatedUntilEndOfTurn) {
+      if (
+        card.animatedUntilEndOfTurn &&
+        !card.animatedUntilEndOfTurn.setBySpellEffect
+      ) {
+        // Static-driven overlay (no `setBySpellEffect`
+        // marker): drop on refresh.
         updated.cardData = card.animatedUntilEndOfTurn.cardData;
         delete updated.animatedUntilEndOfTurn;
+        delete updated.copyOfTargetId;
+      } else if (
+        card.animatedUntilEndOfTurn &&
+        card.animatedUntilEndOfTurn.setBySpellEffect
+      ) {
+        // Wave 4.8 follow-up 8 lane 75a (#2614 follow-up):
+        // spell-effect-set overlays (the
+        // `CopyUntilEndOfTurn` "create a token that's a
+        // copy of [a chosen permanent] until end of turn"
+        // shape) are preserved across refreshes — only the
+        // EOT cleanup step (`clearUntilEndOfTurnPT`) drops
+        // the overlay. The `setBySpellEffect` marker on
+        // `animatedUntilEndOfUntil` distinguishes the
+        // spell-effect-set overlay from lane 75's
+        // static-driven overlay (which drops immediately
+        // when no `become_copy` static is active). Without
+        // this guard, lane 75a's "until end of turn"
+        // semantics would be torn down by every
+        // `refreshScriptedStatics` call between cast and
+        // EOT. Re-stamp the target's characteristics when
+        // the named target is still on the battlefield;
+        // restore the printed `cardData` when the target
+        // has left (matches the "target leaves" semantics
+        // for the until-EOT copy family).
+        const target = card.copyOfTargetId
+          ? state.cards.get(card.copyOfTargetId)
+          : undefined;
+        const targetOnField = target
+          ? target.currentZoneKey?.endsWith("-battlefield")
+          : false;
+        if (target && targetOnField) {
+          const printed = card.animatedUntilEndOfTurn.cardData;
+          updated.cardData = {
+            ...printed,
+            name: target.cardData.name,
+            type_line: target.cardData.type_line,
+            power: target.cardData.power,
+            toughness: target.cardData.toughness,
+            colors: target.cardData.colors,
+            color_identity: target.cardData.color_identity,
+            keywords: target.cardData.keywords,
+          };
+        } else {
+          // Target has left the battlefield; restore
+          // the printed `cardData`.
+          updated.cardData = card.animatedUntilEndOfTurn.cardData;
+        }
       }
-      delete updated.copyOfTargetId;
     }
     cards.set(cardId, updated);
   }

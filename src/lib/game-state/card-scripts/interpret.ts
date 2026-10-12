@@ -1097,6 +1097,124 @@ function applyEffect(
         lastModifiedAt: Date.now(),
       };
     }
+    case "CopyUntilEndOfTurn": {
+      // Wave 4.8 follow-up 8 lane 75a (#2614 follow-up):
+      // "create a token that's a copy of [a chosen permanent]
+      // until end of turn" (Cackling Counterpart). The spell
+      // creates a NEW `CardInstance` whose printed `cardData`
+      // is the chosen permanent's cardData (CR 707.2 "all
+      // characteristics copied" — name, type_line, power,
+      // toughness, colors, color_identity, keywords) and
+      // stamps the new card with `animatedUntilEndOfTurn`
+      // (carrying the SPELL's printed `cardData`) and
+      // `copyOfTargetId` (carrying the chosen permanent's id).
+      // The existing lane 75 rollback paths
+      // (`clearUntilEndOfTurnPT` + `restoreAnimatedOffBattlefield`)
+      // restore the SPELL's printed `cardData` at end of
+      // turn or when the new card / chosen permanent leaves
+      // the battlefield. v1 single chosen target, "all
+      // characteristics copied" semantics, "until end of
+      // turn" duration.
+      //
+      // The chosen target must be on the battlefield at
+      // resolution time — if the target has left the
+      // battlefield (the player chose a then-tapped, then-
+      // destroyed permanent, etc.), the spell fizzles and no
+      // token is created. The chosen target itself is
+      // unchanged; the new card is stamped under the
+      // spell's controller.
+      //
+      // Distinct from lane 70's `CopyPermanent` op (the
+      // `CopyPermanent` op creates a permanent copy with no
+      // EOT rollback; lane 75a creates one that rolls back
+      // at end of turn via the lane 75 infrastructure) and
+      // distinct from lane 75's `StaticSchema.become_copy`
+      // static (the static copies an existing in-play
+      // permanent onto itself; the static itself pre-exists
+      // the copy. Lane 75a creates a NEW permanent; the
+      // permanent itself is the copy).
+      const chosenId = effect.chosen_permanent as CardInstanceId;
+      const chosenCard = state.cards.get(chosenId);
+      if (!chosenCard) return state;
+      if (!chosenCard.currentZoneKey?.endsWith("-battlefield")) return state;
+      // Stamp the chosen target's printed `cardData` onto
+      // the new permanent. The overlay covers the v1
+      // "all characteristics copied" surface (name,
+      // type_line, power, toughness, colors,
+      // color_identity, keywords). The new permanent's
+      // printed `cardData` is captured under
+      // `animatedUntilEndOfTurn` so the lane 75 rollback
+      // paths restore it at EOT or when the new permanent
+      // leaves the battlefield.
+      const chosenPrintedCardData = chosenCard.cardData;
+      const controllerId = ctx.controllerId;
+      const ownerId = controllerId;
+      const cardIdNew = `copyeot-${Date.now()}-${Math.random().toString(36).slice(2, 11)}` as CardInstanceId;
+      // Build the new CardInstance with the chosen target's
+      // printed characteristics, mirroring lane 70's
+      // `createCardInstance + zone push` flow so the new
+      // permanent enters the battlefield with the standard
+      // defaults (summoning sickness, counters, attachedTo,
+      // etc.). The spell's own script provides the printed
+      // cardData via the stack object's source; the chosen
+      // target's characteristics are stamped via
+      // `animatedUntilEndOfTurn` so the rollback paths
+      // (which read `animatedUntilEndOfTurn.cardData`) find
+      // the spell's printed cardData.
+      const spellSourceData = state.cards.get(
+        ctx.sourceId ?? ("" as CardInstanceId),
+      );
+      // Fallback: if the spell's source isn't resolvable,
+      // use the chosen target's cardData as both the printed
+      // and the overlaid (the overlay is a no-op when both
+      // are the same — the rollback paths self-correct).
+      const printed = spellSourceData?.cardData ?? chosenPrintedCardData;
+      const newInstance = createCardInstance(
+        {
+          ...printed,
+          name: chosenPrintedCardData.name,
+          type_line: chosenPrintedCardData.type_line,
+          power: chosenPrintedCardData.power,
+          toughness: chosenPrintedCardData.toughness,
+          colors: chosenPrintedCardData.colors,
+          color_identity: chosenPrintedCardData.color_identity,
+          keywords: chosenPrintedCardData.keywords,
+        } as ScryfallCard,
+        ownerId,
+        controllerId,
+        {
+          id: cardIdNew,
+          currentZoneKey: `${controllerId}-battlefield`,
+        },
+      );
+      const updatedInstance: typeof newInstance = {
+        ...newInstance,
+        animatedUntilEndOfTurn: {
+          cardData: printed,
+          // Mark the overlay as spell-effect-set so the
+          // lane 75 refresh-pass drop branch preserves the
+          // overlay until EOT cleanup.
+          setBySpellEffect: true,
+        },
+        copyOfTargetId: chosenId,
+      };
+      const newCards = new Map(state.cards);
+      newCards.set(cardIdNew, updatedInstance);
+      const bfKey = `${controllerId}-battlefield`;
+      const bf = state.zones.get(bfKey);
+      if (!bf) return state;
+      const newZones = new Map(state.zones);
+      newZones.set(bfKey, {
+        ...bf,
+        cardIds: [...bf.cardIds, cardIdNew],
+      });
+      return {
+        ...state,
+        cards: newCards,
+        zones: newZones,
+        lastModifiedAt: Date.now(),
+      };
+    }
     case "Destroy": {
       // #2594 follow-up (lane 12): sweeper targets ("all_creatures",
       // "all_artifacts", "all_enchantments", "all_nonland_permanents")
