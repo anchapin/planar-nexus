@@ -144,7 +144,16 @@ const SCOPES = [
     // abilities to other cards) room to land without
     // fragmenting the chosen-X / additional-costs / affinity
     // family.
-    budgetLines: 2400,
+    //
+    // Wave 4.8 follow-up 3 lane 65 (#2614 follow-up) adds
+    // a `grants.triggers` arm on `AuraStaticSchema` (CR
+    // 603.2 grant semantics, e.g. Lifelink-granting auras,
+    // Undying Malice, Fake Your Own Death). schema.ts landed
+    // at 2408 (+8 over 2400). Bumping 2400 → 2450 to leave
+    // headroom for any final follow-up edits without
+    // fragmenting the chosen-X / additional-costs /
+    // affinity / grants family.
+    budgetLines: 2450,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

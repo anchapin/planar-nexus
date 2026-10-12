@@ -1727,6 +1727,47 @@ export const AuraStaticSchema = z
      * (deferred, see `wave4-blockers.md`).
      */
     removesAllAbilities: z.literal(true).optional(),
+    /**
+     * Wave 4.8 follow-up 3 lane 65 (#2614 follow-up):
+     * "granting triggered abilities to other cards" (CR 603
+     * / CR 702.15-style static abundance, e.g. Lifelink-
+     * granting auras, Undying Malice, Fake Your Own Death).
+     * The Aura's `grants.triggers` arms list scripted
+     * triggers the Aura COPIES onto the enchanted card.
+     * The engine stamps the list on the enchanted card via
+     * `refreshAuraBonuses` as `card.grantedTriggers`; the
+     * trigger fire path (`detectTriggeredAbilities`) reads
+     * the list and fires each granted trigger alongside the
+     * target's own scripted triggers. The grant is dropped
+     * when the source leaves the battlefield (parallel to
+     * the lane 52 `add_creature_type` pattern).
+     *
+     * v1 supports a single `event: "dies"` trigger with a
+     * list of effect ops; the trigger fires when the
+     * ENCHANTED CARD (not the Aura) dies, with the
+     * enchanted card's controller as the trigger's
+     * controller. Multi-event grants (e.g. "dies OR
+     * attacks") and grants that reference the Aura's
+     * controller are follow-up lanes. Sample card: a
+     * synthetic Aura that grants "When enchanted creature
+     * dies, draw a card" (test harness).
+     */
+    grants: z
+      .object({
+        triggers: z
+          .array(
+            z
+              .object({
+                event: z.enum(["dies"]),
+                effects: z.array(EffectSchema).min(1),
+              })
+              .strict(),
+          )
+          .min(1)
+          .optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .refine((s) => (s.power === undefined) === (s.toughness === undefined), {
@@ -1747,10 +1788,15 @@ export const AuraStaticSchema = z
       // `removesAllAbilities: true` as a stand-alone arm
       // when the same Aura also has P/T or keywords
       // (Witness Protection: power: -1 + removes all).
-      s.removesAllAbilities === true,
+      s.removesAllAbilities === true ||
+      // Wave 4.8 follow-up 3 lane 65 (#2614 follow-up):
+      // a granted-trigger Aura has no P/T and no
+      // keywords; it's a pure ability-granter. Allow
+      // `grants.triggers` as a stand-alone arm.
+      (s.grants?.triggers?.length ?? 0) > 0,
     {
       message:
-        "an aura static needs power/toughness, keywords, a restriction, maxBlockers, or removesAllAbilities",
+        "an aura static needs power/toughness, keywords, a restriction, maxBlockers, removesAllAbilities, or grants",
     },
   );
 

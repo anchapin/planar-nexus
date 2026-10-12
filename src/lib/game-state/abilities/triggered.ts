@@ -165,6 +165,32 @@ export function detectTriggeredAbilities(
 ): TriggeredAbilityInstance[] {
   const triggeredAbilities: TriggeredAbilityInstance[] = [];
 
+  // Wave 4.8 follow-up 3 lane 65 (#2614 follow-up): a
+  // human-readable summary of the granted trigger's
+  // effects, used as the `effect` text on the resulting
+  // `TriggeredAbilityInstance`. The resolver reads the
+  // raw effects via the `grantedEffects` bag field; the
+  // text here is for logs / UI display. v1 covers
+  // `Draw` and `GainLife`; other ops render as "an
+  // effect" until a follow-up lane wires them.
+  function summarizeGrantedEffects(
+    effects: ReadonlyArray<{ op: string; [k: string]: unknown }>,
+  ): string {
+    if (effects.length === 0) return "an effect triggers";
+    const parts = effects.map((e) => {
+      if (e.op === "Draw") {
+        const amount = typeof e.amount === "number" ? e.amount : 1;
+        return `draw ${amount} card${amount === 1 ? "" : "s"}`;
+      }
+      if (e.op === "GainLife") {
+        const amount = typeof e.amount === "number" ? e.amount : 1;
+        return `gain ${amount} life`;
+      }
+      return "an effect triggers";
+    });
+    return parts.join(" and ");
+  }
+
   for (const [cardId, card] of state.cards) {
     if (!isOnBattlefield(state, cardId)) continue;
 
@@ -388,6 +414,86 @@ export function detectTriggeredAbilities(
           interveningIf: ability.interveningIf,
         });
       }
+    }
+  }
+
+  // Wave 4.8 follow-up 3 lane 65 (#2614 follow-up):
+  // granted triggers from attached Auras. After the
+  // main scripted-trigger loop, iterate the
+  // `card.grantedTriggers` list (stamped by
+  // `refreshAuraBonuses` for any Aura with
+  // `static.grants.triggers`) and fire each granted
+  // trigger alongside the card's own scripted triggers.
+  // The granted trigger's subject is the ENCHANTED CARD
+  // (the dying card), not the Aura; the effect's
+  // `who: "you"` resolves to the dying card's controller
+  // (the same as a normal self-dies trigger on the
+  // enchanted card would). The granted trigger's
+  // `sourceControllerId` is the Aura's controller at the
+  // time the trigger was stamped — used for
+  // `who: "controller"` style effects that point at the
+  // Aura's controller, not the enchanted card's
+  // controller. v1 supports a single `event: "dies"`
+  // arm; multi-event and "grants to another card"
+  // variants are follow-up lanes.
+  //
+  // The check runs AFTER the main scripted-trigger loop
+  // so the standard gate (CR 603.2 / 603.4) ordering is
+  // preserved — the main loop's whileCondition /
+  // losesAbilities / counterGate gates apply to the
+  // card's own scripted triggers, and the granted
+  // trigger fires only if the same event matches. The
+  // granted trigger's `effect` is a `text` string built
+  // from the granted `event` + `effects` so the
+  // downstream resolver can route it (the resolver
+  // already handles `text`-shaped effects on
+  // StackObjects).
+  for (const [cardId, card] of state.cards) {
+    if (!isOnBattlefield(state, cardId)) continue;
+    const granted = card.grantedTriggers;
+    if (!granted || granted.length === 0) continue;
+    for (const t of granted) {
+      // v1: only the "dies" event matches. Other events
+      // are reserved for follow-up lanes.
+      if (t.event !== "dies") continue;
+      if (
+        event !== "dies" &&
+        event !== "creatureDies"
+      ) {
+        continue;
+      }
+      // CR 603.10a: a self-dies trigger on the dying card
+      // itself. The granted trigger's subject is the
+      // dying card (the enchanted card, NOT the Aura);
+      // we reuse the existing subjectMatches path by
+      // routing through the cardId check below.
+      const isSelfMatch =
+        context?.dyingCardId === cardId ||
+        // For the v1 self-dies shape, the dyingCardId
+        // matches the card's id; the granted trigger
+        // fires when the enchanted card is the one
+        // dying.
+        (context?.dyingCardId !== undefined && context.dyingCardId === cardId);
+      if (!isSelfMatch) continue;
+      triggeredAbilities.push({
+        id: generateTriggeredAbilityId(),
+        sourceCardId: cardId,
+        triggeringPlayerId: card.controllerId,
+        triggerCondition: "dies",
+        effect: `When ${card.cardData.name} dies, ${summarizeGrantedEffects(t.effects)}.`,
+        timestamp: Date.now(),
+        sourceCardTimestamp: card.enteredBattlefieldTimestamp,
+        context,
+        interveningIf: undefined,
+        // Wave 4.8 follow-up 3 lane 65: stash the
+        // granted effects + source controller on the
+        // instance so the resolver can route them. The
+        // existing trigger resolver doesn't know about
+        // grantedTriggers today; v1 routes via these
+        // bag fields.
+        grantedEffects: t.effects,
+        grantedSourceControllerId: t.sourceControllerId,
+      });
     }
   }
 
