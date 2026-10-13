@@ -622,7 +622,7 @@ npm test -- --testPathPattern=video-derived --coverage
 | Lines      | **70%**        | 68%                                  |
 | Functions  | **70%**        | 60%                                  |
 | Statements | **70%**        | 67%                                  |
-| Branches   | **60%**        | 58%                                  |
+| Branches   | **60%**        | 59%                                  |
 
 <!-- coverage-floor:end -->
 
