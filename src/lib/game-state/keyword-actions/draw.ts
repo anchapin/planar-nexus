@@ -8,6 +8,7 @@ import type { GameState, CardInstanceId, PlayerId } from "../types";
 import { moveCardToZone } from "./removal";
 import { KeywordActionResult } from "./shared";
 import { recordCardsDrawn } from "./cards-drawn";
+import { checkTriggeredAbilities } from "../abilities/check";
 
 /**
  * Draw cards for a player
@@ -65,6 +66,21 @@ export function drawCards(
   }
 
   currentState = recordCardsDrawn(currentState, playerId, cardsDrawn);
+
+  // CR 121.2 / 603.2 (#2614 follow-up lane 87): fire any
+  // `event: "drawCard"` triggered abilities once per draw. The
+  // `drawingPlayerId` is stamped on the context so each trigger's
+  // `whose_draws` filter (e.g. Scrawling Crawler's "opponent") and any
+  // `LoseLife.who: "drawer"` op can route correctly. We fire once per
+  // card so multi-card draws (Nightmare, "draw two") fire twice; this
+  // matches MTG's CR 603.2 / 121.2 semantics where "whenever a player
+  // draws a card" fires per card.
+  for (let i = 0; i < cardsDrawn; i++) {
+    const triggered = checkTriggeredAbilities(currentState, "drawCard", {
+      drawingPlayerId: playerId,
+    });
+    currentState = triggered.state;
+  }
 
   return {
     success: cardsDrawn > 0,

@@ -272,9 +272,24 @@ export function detectTriggeredAbilities(
             ability.trigger.event === "endOfTurn" ||
             ability.trigger.event === "cleanupStep";
           break;
-        case "drawCard":
-          shouldTrigger = ability.trigger.event === "drawStep";
+        case "drawCard": {
+          // CR 121.2 / 603.2 (#2614 follow-up lane 87): a `drawCard`
+          // trigger fires for any player drawing a card. The
+          // optional `whoseDraws` filter narrows to opponent-only
+          // draws (Scrawling Crawler's second half) or your own
+          // draws (mirror card); "any" is the default. The
+          // `drawingPlayerId` is set by `drawCards` on every draw;
+          // legacy callers without it fire the trigger for any draw.
+          const drawer = context?.drawingPlayerId;
+          const whose = ability.trigger.whoseDraws ?? "any";
+          shouldTrigger =
+            ability.trigger.event === "drawCard" &&
+            (drawer === undefined ||
+              whose === "any" ||
+              (whose === "you" && drawer === card.controllerId) ||
+              (whose === "opponent" && drawer !== card.controllerId));
           break;
+        }
         case "cast":
         case "spellCast":
           shouldTrigger =

@@ -7146,13 +7146,35 @@ describe("scripted end-step and life-gain triggers (#2594 follow-up)", () => {
       triggers: [
         {
           text: "weird",
-          event: "drawCard",
+          // drawCard was added in Wave 4.8 follow-up 12 lane 87
+          // (#2614 follow-up), so the unknown-event test now uses a
+          // different unrecognised value.
+          event: "totallyMadeUpEvent",
           subject: "self",
           effects: [{ op: "Draw", amount: 1, who: "you" }],
         },
       ],
     });
     expect(result.success).toBe(false);
+  });
+
+  it("schema accepts `drawCard` event with whose_draws filter (lane 87)", () => {
+    const ok = CardScriptSchema.safeParse({
+      name: "Scrawling Crawler",
+      oracle: "Whenever an opponent draws a card, that player loses 1 life.",
+      triggers: [
+        {
+          text: "Whenever an opponent draws a card, that player loses 1 life.",
+          event: "drawCard",
+          subject: "self",
+          whose_draws: "opponent",
+          effects: [
+            { op: "LoseLife", amount: 1, who: "drawer" },
+          ],
+        },
+      ],
+    });
+    expect(ok.success).toBe(true);
   });
 
   it("getTriggeredAbilities parses a scripted `phaseEnds` trigger", () => {

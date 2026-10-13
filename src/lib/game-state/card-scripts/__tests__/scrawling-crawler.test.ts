@@ -76,17 +76,26 @@ function put(
   return { ...state, cards, zones };
 }
 
-describe("Scrawling Crawler (FDN 132): upkeep + each_player draws 1", () => {
-  it("registry exposes Scrawling Crawler with the upkeep trigger", () => {
+describe("Scrawling Crawler (FDN 132): upkeep + each_player draws 1 + opponent-draws life loss", () => {
+  it("registry exposes Scrawling Crawler with both triggers (lane 87)", () => {
     const crawler = getCardScript("Scrawling Crawler");
     expect(crawler).toBeDefined();
     expect(crawler!.triggers).toBeDefined();
-    expect(crawler!.triggers!).toHaveLength(1);
-    const trig = crawler!.triggers![0];
-    expect(trig.event).toBe("upkeep");
-    expect(trig.whose).toBe("you");
-    expect(trig.effects).toEqual([
+    // Wave 4.8 follow-up 12 lane 87 (#2614 follow-up): Scrawling Crawler
+    // now has TWO triggers — the lane 85 upkeep + the lane 87 opponent-
+    // draws life loss.
+    expect(crawler!.triggers!).toHaveLength(2);
+    const upkeep = crawler!.triggers![0];
+    expect(upkeep.event).toBe("upkeep");
+    expect(upkeep.whose).toBe("you");
+    expect(upkeep.effects).toEqual([
       { op: "Draw", amount: 1, who: "each_player" },
+    ]);
+    const drawsTrigger = crawler!.triggers![1];
+    expect(drawsTrigger.event).toBe("drawCard");
+    expect(drawsTrigger.whose_draws).toBe("opponent");
+    expect(drawsTrigger.effects).toEqual([
+      { op: "LoseLife", amount: 1, who: "drawer" },
     ]);
   });
 
@@ -97,6 +106,15 @@ describe("Scrawling Crawler (FDN 132): upkeep + each_player draws 1", () => {
     expect(abilities).toBeDefined();
     expect(abilities![0].trigger.event).toBe("upkeep");
     expect(abilities![0].trigger.upkeepOf).toBe("you");
+  });
+
+  it("forwards the drawCard trigger with whoseDraws: 'opponent' to the parsed ability (lane 87)", () => {
+    const abilities = getScriptedTriggeredAbilities({
+      name: "Scrawling Crawler",
+    } as unknown as Parameters<typeof getScriptedTriggeredAbilities>[0]);
+    expect(abilities).toBeDefined();
+    expect(abilities![1].trigger.event).toBe("drawCard");
+    expect(abilities![1].trigger.whoseDraws).toBe("opponent");
   });
 
   it("upkeep trigger fires on phaseChange with triggerCondition 'upkeep'", () => {

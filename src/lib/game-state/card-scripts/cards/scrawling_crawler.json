@@ -1,6 +1,6 @@
 {
   "name": "Scrawling Crawler",
-  "oracle": "At the beginning of your upkeep, each player draws a card.",
+  "oracle": "At the beginning of your upkeep, each player draws a card. Whenever an opponent draws a card, that player loses 1 life.",
   "triggers": [
     {
       "text": "At the beginning of your upkeep, each player draws a card.",
@@ -11,6 +11,19 @@
           "op": "Draw",
           "amount": 1,
           "who": "each_player"
+        }
+      ]
+    },
+    {
+      "text": "Whenever an opponent draws a card, that player loses 1 life.",
+      "event": "drawCard",
+      "subject": "self",
+      "whose_draws": "opponent",
+      "effects": [
+        {
+          "op": "LoseLife",
+          "amount": 1,
+          "who": "drawer"
         }
       ]
     }
