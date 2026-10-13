@@ -108,8 +108,8 @@ rg 'expect\([a-z_]+\.gameState\)\.toBeDefined\(\)' src/lib/game-state/__tests__/
 # Full test suite
 npm test --silent
 <!-- TEST_COUNT:START -->
-# → Test Suites: 747 passed, 747 total  (--listTests: 747 files)
-# → Tests: 14241 passed, 7 skipped, 14248 total
+# → Test Suites: 748 passed, 748 total  (--listTests: 748 files)
+# → Tests: 14247 passed, 7 skipped, 14254 total
 <!-- TEST_COUNT:END -->
 
 # Guard test alone

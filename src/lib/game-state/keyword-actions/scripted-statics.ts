@@ -163,6 +163,11 @@ export function exiledCardTypes(
  * (#2594 follow-up, lane 36, Smaug, Tempest Djinn, Blanchwood Armor).
  * Returns 0 when `X` is unset.
  */
+/**
+ * Compute the state-derived `X` contribution for a scaling anthem
+ * (#2594 follow-up, lane 36, Smaug, Tempest Djinn, Blanchwood Armor).
+ * Returns 0 when `X` is unset.
+ */
 function computeX(state: GameState, source: CardInstance, kind: string): number {
   if (kind === "treasures") {
     let n = 0;
@@ -193,6 +198,31 @@ function computeX(state: GameState, source: CardInstance, kind: string): number 
     return n;
   }
   return 0;
+}
+
+/**
+ * Wave 4.8 follow-up 12 lane 91 (#2614 follow-up): evaluate
+ * a static's `while_condition` gate (CR 603.2 "while" clause,
+ * parallel to a trigger's `whileCondition`). v1 supports a
+ * single shape: `{ kind: "life_minimum", value: N }` — the gate
+ * evaluates true when the source's controller's life is `>= N`
+ * (Twinblade Paladin's "as long as you have 25 or more life,
+ * this creature has double strike and lifelink" half). The
+ * controller path mirrors `computeX` (which also reads the
+ * source's `controllerId`). The opponent-condition variant
+ * ("as long as an opponent has less than X life") and the
+ * threshold-style "you control [type]" variant ride future lanes.
+ */
+function evaluateStaticWhileCondition(
+  cond: { kind: "life_minimum"; value: number },
+  source: CardInstance,
+  state: GameState,
+): boolean {
+  if (cond.kind === "life_minimum") {
+    const player = state.players.get(source.controllerId);
+    return player !== undefined && player.life >= cond.value;
+  }
+  return false;
 }
 
 /** True when the static on `source` applies to `target` (CR 611.3a). */
@@ -473,6 +503,22 @@ export function refreshScriptedStatics(input: GameState): GameState {
     for (const { card, statics } of sources) {
       for (const stat of statics) {
         if (!staticAffects(stat, card, target)) continue;
+        // Wave 4.8 follow-up 12 lane 91 (#2614 follow-up):
+        // the `while_condition` gate is part of the static
+        // (CR 603.2 "while" gate, parallel to a trigger's
+        // while-gate). When the gate evaluates false, the
+        // static's arms (power / toughness / keywords /
+        // X / protectionFrom / become_copy / etc.) are
+        // skipped — the static is inert for this pass.
+        // v1 supports a single shape: `kind:
+        // "life_minimum", value: N` — the static applies
+        // when the source's controller's life is >= N.
+        if (
+          stat.while_condition &&
+          !evaluateStaticWhileCondition(stat.while_condition, card, state)
+        ) {
+          continue;
+        }
         // Wave 4.8 lane 52 (#2614 follow-up): grow the
         // target's `chosenTypeAdditions` if this static
         // is a chosen-type addition and the source's

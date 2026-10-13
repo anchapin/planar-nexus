@@ -188,6 +188,14 @@ export const TOKEN_KEYWORDS = [
   "deathtouch",
   "reach",
   "first strike",
+  // Wave 4.8 follow-up 12 lane 91 (#2614 follow-up): Twinblade
+  // Paladin's "as long as you have 25 or more life, this creature
+  // has double strike and lifelink" static. The
+  // `double strike` arm is stamped onto the source via the
+  // existing `scriptStaticKeywords` ledger (parallel to the
+  // lane 65 `grantedTriggers` pattern), read by `hasKeyword`
+  // alongside the printed keyword list.
+  "double strike",
   "menace",
   "defender",
 ] as const;
@@ -1796,6 +1804,26 @@ export const StaticSchema = z
      * standard shape, but a card with "+1/+1 plus X" can stack both.
      */
     X: z.enum(["treasures", "creatures", "lands"]).optional(),
+    /**
+     * Wave 4.8 follow-up 12 lane 91 (#2614 follow-up): a
+     * CR 603.2 "while-condition" gate on the static ability itself
+     * (Twinblade Paladin's "as long as you have 25 or more life,
+     * this creature has double strike and lifelink"). When the
+     * gate evaluates false, the static's `keywords` / `power` /
+     * `toughness` are NOT applied at refresh time; when true,
+     * the static applies normally. v1 supports a single shape:
+     * `{ kind: "life_minimum", value: N }` — the static applies
+     * when the controller's life is `>= N`. The count ledger and
+     * additional kinds (your-library-size / opponent-life-min)
+     * are follow-up lanes.
+     */
+    while_condition: z
+      .object({
+        kind: z.literal("life_minimum"),
+        value: z.number().int().min(1),
+      })
+      .strict()
+      .optional(),
     keywords: z.array(z.enum(TOKEN_KEYWORDS)).min(1).optional(),
     /**
      * Wave 4.8 follow-up 5 lane 71 (#2614 follow-up): the
@@ -2034,7 +2062,14 @@ export const StaticSchema = z
       // EOT cleanup rolls them back. No P/T or keyword
       // changes of its own; the static only triggers the
       // copy swap.
-      s.become_copy !== undefined,
+      s.become_copy !== undefined ||
+      // Wave 4.8 follow-up 12 lane 91 (#2614 follow-up):
+      // a while-condition gate by itself isn't enough — the
+      // keyword/power arm must still be present — but allow
+      // it to be combined with `keywords: ["double strike",
+      // "lifelink"]` (Twinblade Paladin). Always evaluated
+      // alongside the keywords; nothing additional to add.
+      s.while_condition !== undefined,
     {
       message:
         "a static needs power/toughness, keywords, X, chosen_name_block, add_creature_type (with addCreatureTypeToSelf), add_color (with addColorToSelf), protectionFrom, or become_copy",
