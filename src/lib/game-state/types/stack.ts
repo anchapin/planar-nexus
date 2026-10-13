@@ -230,6 +230,16 @@ export interface StackObject {
    */
   interveningIf?: string;
   /**
+   * The trigger context that fired this triggered ability (#2614
+   * follow-up lane 87). Stamped by `checkTriggeredAbilities` when
+   * the trigger is detected, and read by `resolveScriptedAbility` →
+   * `resolveScriptedEffects` → `applyEffect` to route context-bound
+   * effects like `LoseLife.who: "drawer"` (which resolves to
+   * `context.drawingPlayerId`). Undefined for spell / activated
+   * ability stack objects.
+   */
+  triggerContext?: import("../abilities/types").TriggerContext;
+  /**
    * Wave 4.8 follow-up 2 lane 60 (#2614 follow-up): answer to a
    * trigger's `you_may` prompt (CR 117.3a "you may"). `true` /
    * `false` is recorded when the controller resolves the

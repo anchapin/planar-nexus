@@ -145,7 +145,20 @@ export const LoseLifeSchema = z
     op: z.literal("LoseLife"),
     amount: xAmount,
     who: z
-      .enum(["you", "target_player", "each_opponent"])
+      .enum([
+        "you",
+        "target_player",
+        "each_opponent",
+        /**
+         * "drawer": the player whose draw fired the trigger (#2614
+         * follow-up lane 87, Scrawling Crawler). Only valid when the
+         * parent trigger has `event: "drawCard"`; the engine routes
+         * the loss to `ctx.drawingPlayerId` (set by `drawCards` on
+         * every card draw). Falls back to the active player if the
+         * context is missing (defensive against legacy callers).
+         */
+        "drawer",
+      ])
       .default("target_player"),
     if_kicked: ifKicked,
   })
@@ -1309,6 +1322,10 @@ export const TriggerSchema = z
       // counter brings the count to `chapter` or past it (#2614 Summon:
       // Esper Maduin).
       "chapter",
+      // drawCard: any player draws a card. Narrowed by `whose_draws`
+      // ("opponent" for Scrawling Crawler's "Whenever an opponent draws
+      // a card, that player loses 1 life" #2614 follow-up, lane 87).
+      "drawCard",
     ]),
     /**
      * etb, dies, attacks: whose entry, death or attack it watches
@@ -1328,6 +1345,16 @@ export const TriggerSchema = z
     once: z.boolean().optional(),
     /** upkeep only: whose upkeep (CR 503.1a). */
     whose: z.enum(["you", "each", "opponent"]).optional(),
+    /**
+     * drawCard only: who drew the card (CR 121.2, #2614 follow-up lane
+     * 87). "opponent" narrows the trigger to opponent-only draws
+     * (Scrawling Crawler's "Whenever an opponent draws a card" half);
+     * "you" / "any" cover the rest. Default "any". The
+     * `whose_draws: "opponent"` filter is evaluated against the
+     * trigger's source controller in `detectTriggeredAbilities`; the
+     * `LoseLife.who: "drawer"` op routes the life loss to whoever drew.
+     */
+    whose_draws: z.enum(["you", "opponent", "any"]).optional(),
     /** cast only: who casts the spell. "you" when unstated. */
     caster: z.enum(["you", "opponent", "any"]).optional(),
     /** cast only: which spells count. "any" when unstated. */

@@ -134,6 +134,7 @@ export interface TriggerCondition {
     | "targeted"
     | "crime"
     | "chapter"
+    | "drawCard"
     | "unknown";
   /** Saga chapter ability: its chapter number (CR 714.2b). */
   chapter?: number;
@@ -165,6 +166,14 @@ export interface TriggerCondition {
   attackFilter?: { once?: boolean; alone?: boolean; defenderIsYou?: boolean };
   /** Upkeep triggers (CR 503.1a): whose upkeep. "you" when unstated. */
   upkeepOf?: "you" | "each" | "opponent";
+  /**
+   * drawCard triggers (CR 121.2, #2614 follow-up lane 87): whose
+   * draw the trigger watches. "opponent" for Scrawling Crawler's
+   * "Whenever an opponent draws a card" second half; "you" / "any"
+   * for the rest. Default "any". Read by `detectTriggeredAbilities`
+   * against `context.drawingPlayerId`.
+   */
+  whoseDraws?: "you" | "opponent" | "any";
   /**
    * Cast triggers (CR 601.2i, 603.2): who has to cast it and what kind of
    * spell. `types` is any-of on the spell's type line, `excludeTypes` none-of

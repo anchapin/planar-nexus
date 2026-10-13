@@ -37,6 +37,13 @@ export function putTriggersOnStack(
       isCountered: false,
       timestamp: trigger.timestamp,
       interveningIf: trigger.interveningIf,
+      // Wave 4.8 follow-up 12 lane 87 (#2614 follow-up): stamp the
+      // trigger's context onto the stack object so the resolver can
+      // route context-bound effects like `LoseLife.who: "drawer"`.
+      // `checkTriggeredAbilities` already stamps the same field; we
+      // mirror the change here for tests that call `putTriggersOnStack`
+      // directly.
+      triggerContext: trigger.context,
       // CR 702.32, #2564: a permanent's "when this creature enters, if it
       // was kicked" trigger fires only when the cast was kicked. The card
       // instance's `kicked` flag is stamped by `castSpell` and survives

@@ -64,6 +64,13 @@ export interface TriggerContext {
   attackerCount?: number;
   /** Upkeep (CR 503.1a): whose upkeep it is. */
   upkeepPlayerId?: PlayerId;
+  /**
+   * drawCard (CR 121.2, #2614 follow-up lane 87): the player whose draw
+   * fired the trigger. Set by `drawCards` for every card draw, on the
+   * context passed to `detectTriggeredAbilities`. The `LoseLife.who:
+   * "drawer"` op routes to this player.
+   */
+  drawingPlayerId?: PlayerId;
   /** Cast (CR 601.2i): who cast the spell (the spell is `spellCardId`). */
   castingPlayerId?: PlayerId;
   /**

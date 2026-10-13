@@ -102,6 +102,15 @@ interface EffectContext {
   x: number;
   /** Cast triggers: the spell that triggered the ability. */
   triggeringStackObjectId?: string;
+  /**
+   * Wave 4.8 follow-up 12 lane 87 (#2614 follow-up): the trigger's
+   * `drawingPlayerId` for `event: "drawCard"` triggers, propagated
+   * from `stackObject.triggerContext` set by `checkTriggeredAbilities`.
+   * Read by `LoseLife.who: "drawer"` to route the loss to whoever drew.
+   * Undefined for non-drawCard triggers and for direct spell / activated
+   * ability contexts.
+   */
+  drawingPlayerId?: PlayerId;
 }
 
 /**
@@ -890,6 +899,22 @@ function applyEffect(
           if (r.success) next = r.state;
         }
         return next;
+      }
+      // Wave 4.8 follow-up 12 lane 87 (#2614 follow-up):
+      // "Whenever an opponent draws a card, that player loses 1 life."
+      // Route the life loss to the player whose draw triggered the
+      // ability (CR 121.2). Falls back to the active player when
+      // the context is missing (defensive against non-drawCard
+      // callers, though the schema gates "drawer" to drawCard arms).
+      if (effect.who === "drawer") {
+        const drawer = ctx.drawingPlayerId ?? state.turn.activePlayerId;
+        const r = resolveLifeLossEffect(
+          state,
+          sourceId,
+          effect.amount,
+          drawer,
+        );
+        return r.success ? r.state : state;
       }
       const player = playerFor(effect.who, ctx);
       if (!player) return state;
@@ -1934,6 +1959,7 @@ type ScriptStackObject = Pick<
       | "variableValues"
       | "wasKicked"
       | "timesKicked"
+      | "triggerContext"
     >
   >;
 
@@ -2094,6 +2120,8 @@ export function resolveScriptedEffects(
           wasKicked,
           x,
           triggeringStackObjectId: stackObject.triggeringStackObjectId,
+          drawingPlayerId:
+            stackObject.triggerContext?.drawingPlayerId ?? undefined,
         };
         const legal =
           taken.length === skippedCount &&
@@ -2170,6 +2198,8 @@ export function resolveScriptedEffects(
           wasKicked,
           x,
           triggeringStackObjectId: stackObject.triggeringStackObjectId,
+          drawingPlayerId:
+            stackObject.triggerContext?.drawingPlayerId ?? undefined,
         };
         const legal =
           taken.length === count &&
@@ -2191,6 +2221,8 @@ export function resolveScriptedEffects(
       wasKicked,
       x,
       triggeringStackObjectId: stackObject.triggeringStackObjectId,
+      drawingPlayerId:
+        stackObject.triggerContext?.drawingPlayerId ?? undefined,
     });
   }
   return current;

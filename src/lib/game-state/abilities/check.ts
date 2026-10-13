@@ -37,6 +37,10 @@ export function checkTriggeredAbilities(
         isCountered: false,
         timestamp: trigger.timestamp,
         interveningIf: trigger.interveningIf,
+        // Lane 87 (#2614 follow-up): stamp the trigger context on the
+        // stack object so `resolveScriptedAbility` can route
+        // context-bound effects like `LoseLife.who: "drawer"`.
+        triggerContext: context,
       };
 
       const updatedStack = [...currentState.stack, stackObject];

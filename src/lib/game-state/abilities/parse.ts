@@ -113,6 +113,11 @@ function scriptedCondition(t: ScriptedTrigger): TriggerCondition {
   if (t.event === "crime") return { event: "crime" };
   // chapter: a Saga chapter ability (#2614); see keyword-actions/saga.ts.
   if (t.event === "chapter") return { event: "chapter", chapter: t.chapter };
+  // drawCard: any player draws a card (#2614 follow-up lane 87).
+  // The `whose_draws` field narrows to opponent-only / you-only draws;
+  // the engine routes the "drawer" id from `TriggerContext.drawingPlayerId`.
+  if (t.event === "drawCard")
+    return { event: "drawCard", whoseDraws: t.whose_draws ?? "any" };
   // The script index is installed without a zod parse (registry.ts), so the
   // schema's subject default never runs: a missing subject means "self".
   const subject = t.subject ?? "self";

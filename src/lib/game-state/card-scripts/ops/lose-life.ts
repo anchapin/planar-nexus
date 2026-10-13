@@ -3,5 +3,5 @@ import type { CardOpReference } from "./types";
 export const LoseLifeReference: CardOpReference = {
   name: "LoseLife",
   reference:
-    '{"op":"LoseLife","amount":N|"X","who":"you"|"target_player"|"each_opponent"}',
+    '{"op":"LoseLife","amount":N|"X","who":"you"|"target_player"|"each_opponent"|"drawer"}',
 };
