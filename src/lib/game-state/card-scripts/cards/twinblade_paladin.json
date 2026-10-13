@@ -1,0 +1,19 @@
+{
+  "name": "Twinblade Paladin",
+  "oracle": "Whenever you gain life, put a +1/+1 counter on this creature. As long as you have 25 or more life, this creature has double strike and lifelink.",
+  "triggers": [
+    {
+      "text": "Whenever you gain life, put a +1/+1 counter on this creature.",
+      "event": "lifeGain",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "PutCounters",
+          "counter": "+1/+1",
+          "amount": 1,
+          "target": "self"
+        }
+      ]
+    }
+  ]
+}
