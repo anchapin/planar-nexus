@@ -143,12 +143,24 @@ export const DrawSchema = z
   })
   .strict();
 
+/**
+ * Wave 4.8 follow-up 12 lane 92 (#2614 follow-up): the
+ * `X: "toughness"` arm reads the entering creature's
+ * `cardData.toughness` (Drogskol Reaver's "you gain life equal
+ * to its toughness"). The integer `amount` is ignored when
+ * `X` is set; the engine reads the named creature's toughness
+ * from state and passes it as the resolved life-gain amount
+ * to `resolveLifeGainEffect`. v1 supports a single shape; the
+ * `X: "power"`, `X: "mana_value"`, and `X: "creatures"` variants
+ * ride future lanes.
+ */
 export const GainLifeSchema = z
   .object({
     op: z.literal("GainLife"),
     amount: xAmount,
     who: z.enum(["you", "target_player"]).default("you"),
     if_kicked: ifKicked,
+    X: z.enum(["toughness"]).optional(),
   })
   .strict();
 

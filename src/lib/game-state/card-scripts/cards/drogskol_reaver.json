@@ -1,6 +1,6 @@
 {
   "name": "Drogskol Reaver",
-  "oracle": "Flying\nLifelink\nWhenever you gain life, draw a card.",
+  "oracle": "Flying\nLifelink\nWhenever you gain life, draw a card.\nWhenever a creature you control enters, if its mana value is 4 or greater, you gain life equal to its toughness.",
   "triggers": [
     {
       "text": "Whenever you gain life, draw a card.",
@@ -11,6 +11,21 @@
           "op": "Draw",
           "amount": 1,
           "who": "you"
+        }
+      ]
+    },
+    {
+      "text": "Whenever a creature you control enters, if its mana value is 4 or greater, you gain life equal to its toughness.",
+      "event": "etb",
+      "subject": "another",
+      "controller": "you",
+      "intervening_if": "if its mana value is 4 or greater",
+      "effects": [
+        {
+          "op": "GainLife",
+          "amount": 1,
+          "who": "you",
+          "X": "toughness"
         }
       ]
     }
