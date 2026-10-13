@@ -121,13 +121,25 @@ export const DealDamageSchema = z
     },
   );
 
-/** #2594 lane 25: each_player draws a card for every player. */
+/**
+ * #2594 lane 25: each_player draws a card for every player.
+ *
+ * Wave 4.8 follow-up 12 lane 90 (#2614 follow-up): the
+ * `X: "creaturesDiedThisTurn"` arm adds a state-derived draw count
+ * (Needletooth Pack's "draw cards equal to the number of creatures
+ * that died this turn" — lane 90 v1 minimum reads the boolean
+ * `state.turn.creatureDiedThisTurn` for 0 or 1; the COUNT ledger
+ * is a follow-up lane). When `X` is set, the integer `amount` is
+ * ignored; the engine reads the named count from state and passes
+ * it as the resolved draw amount to `resolveCardDrawEffect`.
+ */
 export const DrawSchema = z
   .object({
     op: z.literal("Draw"),
     amount: xAmount,
     who: z.enum(["you", "target_player", "each_player"]).default("you"),
     if_kicked: ifKicked,
+    X: z.enum(["creaturesDiedThisTurn"]).optional(),
   })
   .strict();
 
