@@ -334,6 +334,49 @@ export function resolveWaitingChoice(
     };
   }
 
+  // Wave 4.8 follow-up 12 lane 88 (#2614 follow-up): a trigger's
+  // `cost.sacrifice_self: true` (CR 602.2b "Sacrifice this
+  // [permanent]:" as a trigger cost) surfaces a yes/no prompt
+  // (created by `createSacrificeSelfPromptWaitingChoice` in
+  // card-scripts/interpret.ts). The controller's answer is
+  // normalized to a strict boolean, stamped on
+  // `stackObject.cost_paid`, and the choice is cleared. The
+  // resolution path resumes: on `true` the engine sacrifices the
+  // source THEN runs the trigger's effects; on `false` the
+  // trigger fizzles silently.
+  if (type === "sacrifice_self_prompt") {
+    const value = Array.isArray(selectedValue)
+      ? selectedValue[0]
+      : selectedValue;
+    const bool = value === true || value === "yes" || value === "true";
+    const wasYes = value === false || value === "no" ? false : bool;
+    if (!wasYes && value !== false && value !== "no") {
+      return {
+        success: false,
+        state,
+        error: "Expected a yes/no value for sacrifice_self_prompt",
+      };
+    }
+    const target = state.stack.find((s) => s.id === stackObjectId);
+    if (!target) {
+      return {
+        success: false,
+        state,
+        error: "Stack object not found for sacrifice_self_prompt",
+      };
+    }
+    return {
+      success: true,
+      state: {
+        ...state,
+        waitingChoice: null,
+        stack: state.stack.map((s) =>
+          s.id === stackObjectId ? { ...s, cost_paid: wasYes } : s,
+        ),
+      },
+    };
+  }
+
   if (type === "choose_value" && typeof selectedValue === "number") {
     const stackObj = state.stack.find((s) => s.id === stackObjectId);
 

@@ -256,6 +256,20 @@ export interface StackObject {
    * the combination (see `TriggerSchema`).
    */
   you_may_resolved?: boolean;
+  /**
+   * Wave 4.8 follow-up 12 lane 88 (#2614 follow-up): answer to a
+   * `cost.sacrifice_self: true` prompt (CR 602.2b "Sacrifice this
+   * [permanent]:" cost). `true` / `false` is recorded when the
+   * controller resolves the `sacrifice_self_prompt` waitingChoice.
+   * `resolveScriptedAbility` reads this: on `true` it sacrifices
+   * the source permanent THEN runs the trigger's effects; on
+   * `false` it skips the trigger (CR 602.2b — failing to pay the
+   * cost cancels the ability). Undefined = the prompt hasn't been
+   * answered yet — the engine surfaces the `sacrifice_self_prompt`
+   * waitingChoice and suspends resolution. The presence of this
+   * field does NOT affect non-sacrifice-cost triggers.
+   */
+  cost_paid?: boolean;
   /** Structured effects to resolve (CR 608) */
   effects?: StackEffect[];
 }

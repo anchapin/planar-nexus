@@ -31,6 +31,7 @@ import {
   destroyCard,
   exileCard,
   moveCardToZone,
+  sacrificeCard,
 } from "../keyword-actions/removal";
 import { discardCards } from "../keyword-actions/draw";
 import { tapCardAction, untapCardAction } from "../keyword-actions/damage-tap";
@@ -2386,6 +2387,41 @@ export function createYouMayPromptWaitingChoice(
 }
 
 /**
+ * Wave 4.8 follow-up 12 lane 88 (#2614 follow-up): a triggered
+ * ability's `cost.sacrifice_self: true` gate (CR 602.2b — "Sacrifice
+ * this [permanent]:" as a trigger cost). Surfaces a yes/no
+ * `sacrifice_self_prompt` WaitingChoice; the controller picks yes /
+ * no. On yes, the source permanent is sacrificed BEFORE the
+ * trigger's effects resolve (CR 602.2b "the cost is paid before
+ * the spell or ability resolves"); on no, the trigger does nothing.
+ *
+ * The prompt text names the trigger and surfaces the "yes/no" choice
+ * for the controller. Resolved by the `sacrifice_self_prompt`
+ * branch in spell-casting/choices.ts, which stamps
+ * `stackObject.cost_paid` and returns the controller to the
+ * resolution path.
+ */
+export function createSacrificeSelfPromptWaitingChoice(
+  stackObjectId: string,
+  playerId: PlayerId,
+  triggerText: string,
+): WaitingChoice {
+  return {
+    type: "sacrifice_self_prompt",
+    playerId,
+    stackObjectId,
+    prompt: `${triggerText} (sacrifice this permanent to pay the cost?)`,
+    choices: [
+      { label: "Yes", value: true, isValid: true },
+      { label: "No", value: false, isValid: true },
+    ],
+    minChoices: 1,
+    maxChoices: 1,
+    presentedAt: Date.now(),
+  };
+}
+
+/**
  * Resolve a triggered or activated ability from its source's script.
  * Returns undefined when the ability isn't scripted, so the caller falls back
  * to reading its text.
@@ -2397,6 +2433,14 @@ export function createYouMayPromptWaitingChoice(
  * list is skipped (the trigger fizzles silently). If undefined, the
  * prompt is surfaced and resolution is suspended — the engine's
  * usual `waitingChoice` machinery resumes it.
+ *
+ * Wave 4.8 follow-up 12 lane 88 (#2614 follow-up) extension: when
+ * the scripted trigger carries `cost.sacrifice_self: true`, the
+ * engine surfaces a `sacrifice_self_prompt` waitingChoice at
+ * resolution; the controller picks yes / no. On yes, the source
+ * permanent is sacrificed BEFORE the effects (CR 602.2b); on no,
+ * the trigger does nothing. The `cost_paid` field on the
+ * StackObject tracks the player's choice.
  */
 export function resolveScriptedAbility(
   state: GameState,
@@ -2427,6 +2471,52 @@ export function resolveScriptedAbility(
       };
     }
     // you_may_resolved === true: fall through and run effects.
+  }
+  // Lane 88 (#2614 follow-up): sacrifice-self cost gate.
+  const hasSacrificeCost = (ability as { cost?: { sacrifice_self?: boolean } })
+    .cost?.sacrifice_self === true;
+  if (hasSacrificeCost) {
+    // Defensive: if the source has already been sacrificed by another
+    // effect (the cost can't be paid), the trigger fizzles. CR 602.2b.
+    const sourceStillPresent =
+      stackObject.sourceCardId !== null &&
+      state.cards.has(stackObject.sourceCardId as CardInstanceId) &&
+      state.zones.get(
+        `${stackObject.controllerId as PlayerId}-battlefield`,
+      )?.cardIds.includes(stackObject.sourceCardId);
+    if (!sourceStillPresent) return state;
+    // Track the cost_paid status; default undefined = awaiting answer.
+    const costPaid = (stackObject as StackObject & { cost_paid?: boolean })
+      .cost_paid;
+    if (costPaid === false) {
+      // Controller declined: the trigger does nothing.
+      return state;
+    }
+    if (costPaid === undefined) {
+      return {
+        ...state,
+        waitingChoice: createSacrificeSelfPromptWaitingChoice(
+          stackObject.id,
+          stackObject.controllerId as PlayerId,
+          ability.text,
+        ),
+      };
+    }
+    // costPaid === true: sacrifice the source, then fall through to
+    // resolve effects. The sacrifice is its own state mutation that
+    // runs before the effects loop (CR 602.2b "the cost is paid
+    // before the spell or ability resolves").
+    if (
+      stackObject.sourceCardId !== null &&
+      state.cards.has(stackObject.sourceCardId as CardInstanceId)
+    ) {
+      const sacrificed = sacrificeCard(
+        state,
+        stackObject.sourceCardId,
+      );
+      if (sacrificed.success) state = sacrificed.state;
+      else return state;
+    }
   }
   const effects = getScriptedAbilityEffects(state, stackObject);
   if (!effects) return undefined;

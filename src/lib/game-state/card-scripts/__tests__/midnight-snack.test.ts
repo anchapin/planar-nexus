@@ -134,7 +134,7 @@ describe("Midnight Snack (FDN 65): raid + end-of-turn Food token (#2614 lane 82)
     expect(snackTriggers).toHaveLength(0);
   });
 
-  it("end-of-turn trigger fires after the controller attacks, and resolves into a Food token", () => {
+  it("end-of-turn trigger fires after the controller attacks, surfaces sacrifice_self_prompt, and resolves into a Food token (lane 88)", () => {
     let state = startGame(
       createInitialGameState(["Player1", "Player2"], 20, false),
     );
@@ -162,7 +162,23 @@ describe("Midnight Snack (FDN 65): raid + end-of-turn Food token (#2614 lane 82)
 
     const stackObject = stacked.stack[0];
     const beforeFoods = countFoodTokens(stacked, p1);
-    const resolved = resolveScriptedAbility(stacked, stackObject)!;
+
+    // First resolve pass surfaces the lane 88 sacrifice_self_prompt
+    // (the trigger's cost is sacrifice_self: true). No Food yet —
+    // the player hasn't paid the cost.
+    const prompted = resolveScriptedAbility(stacked, stackObject)!;
+    expect(prompted.waitingChoice).toBeDefined();
+    expect(prompted.waitingChoice!.type).toBe("sacrifice_self_prompt");
+    const afterPromptFoods = countFoodTokens(prompted, p1);
+    expect(afterPromptFoods).toBe(beforeFoods);
+
+    // Second resolve pass after answering the prompt yes → sacrifice
+    // + Food created.
+    const stamped = {
+      ...stackObject,
+      cost_paid: true,
+    } as typeof stackObject & { cost_paid: boolean };
+    const resolved = resolveScriptedAbility(prompted, stamped)!;
     const afterFoods = countFoodTokens(resolved, p1);
     expect(afterFoods).toBe(beforeFoods + 1);
   });

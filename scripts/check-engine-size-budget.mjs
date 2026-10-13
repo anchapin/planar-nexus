@@ -339,7 +339,32 @@ const SCOPES = [
     // / until-eot-copy family (the historical precedent
     // continues; subsequent lane 75e may grow the same
     // family).
-    budgetLines: 3100,
+    //
+    // Wave 4.8 follow-up 12 lane 87 (#2614 follow-up):
+    // Scrawling Crawler's "Whenever an opponent draws a
+    // card, that player loses 1 life" half. The schema
+    // accepts a new `"drawCard"` event arm + a new
+    // `whose_draws` filter on TriggerSchema (parallel to
+    // the existing `whose` upkeep filter); `LoseLife.who`
+    // extends with a `"drawer"` arm. +27 lines;
+    // schema.ts measured at 3077. Still within the 3100
+    // bump.
+    //
+    // Wave 4.8 follow-up 12 lane 88 (#2614 follow-up):
+    // Midnight Snack's "sacrifice this artifact as a
+    // cost" trigger-cost substrate. The schema accepts
+    // a new `cost: { sacrifice_self: true }` arm on
+    // TriggerSchema (parallel to the `additionalCosts`
+    // slot on spells, but for trigger-cost — lane 63's
+    // `additionalCosts.sacrifice.target: "self"` was
+    // spell-cast only; the lane 88 arm covers trigger-
+    // cost). +28 lines; schema.ts measured at 3105.
+    // Bumping 3100 → 3150 to give the trigger-cost /
+    // sacrifice-self family room to land without
+    // fragmenting the until-EOT-copy family (the
+    // historical precedent continues; subsequent
+    // follow-up lanes may grow the same family).
+    budgetLines: 3150,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

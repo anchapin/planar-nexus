@@ -1420,6 +1420,27 @@ export const TriggerSchema = z
      */
     you_may: z.boolean().optional(),
     /**
+     * Wave 4.8 follow-up 12 lane 88 (#2614 follow-up): a "Sacrifice
+     * this [permanent]:" cost on a triggered ability (Midnight Snack,
+     * FDN 65's deferred half — "Sacrifice this artifact: create a
+     * Food token"). When `true`, the engine surfaces a yes/no prompt
+     * (`sacrifice_self_prompt` waitingChoice) at trigger resolution;
+     * on yes, the source permanent is sacrificed BEFORE the trigger's
+     * effects resolve; on no, the trigger does nothing (CR 602.2b).
+     *
+     * The v1 supports only `sacrifice_self: true` (a self-sacrifice
+     * cost). Multi-target sacrifice costs, hybrid mana costs combined
+     * with sacrifice, and "sacrifice this OR pay X life" alternates
+     * are follow-up lanes. Mutual exclusion with `modes`: a single
+     * trigger is either modal OR has a sacrifice cost, not both.
+     */
+    cost: z
+      .object({
+        sacrifice_self: z.literal(true).optional(),
+      })
+      .strict()
+      .optional(),
+    /**
      * Wave 4.8 follow-up 2 lane 62 (#2614 follow-up): a counter
      * gate on the trigger event itself (CR 603.2 — a "while-
      * condition"-style gate, NOT an intervening-if CR 603.4).
@@ -1453,6 +1474,13 @@ export const TriggerSchema = z
     message:
       "you_may and modes are mutually exclusive on a trigger (lane 60, #2614)",
   })
+  .refine(
+    (t) => !(t.cost?.sacrifice_self === true && t.modes !== undefined),
+    {
+      message:
+        "cost.sacrifice_self and modes are mutually exclusive on a trigger (lane 88, #2614)",
+    },
+  )
   .refine((t) => (t.event === "chapter") === (t.chapter !== undefined), {
     message: "chapter is required on, and only for, chapter triggers",
   })
