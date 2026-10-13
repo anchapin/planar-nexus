@@ -377,6 +377,26 @@ function artifactCount(state: GameState, playerId: PlayerId): number {
 }
 
 /**
+ * Wave 4.8 follow-up 12 lane 90 (#2614 follow-up): resolve a
+ * `Draw.amount` from state when the `X` arm is set (Needletooth
+ * Pack's "draw N cards where N = creatures that died this turn").
+ * The v1 minimum reads the boolean `state.turn.creatureDiedThisTurn`
+ * for 0 or 1; the count ledger is a follow-up lane. When `X` is
+ * not set, the integer `amount` (which may itself be `number | "X"`
+ * — "X" here falls back to 0 per the existing CR 107.3 default) is
+ * returned as-is.
+ */
+function resolveDrawAmount(
+  state: GameState,
+  effect: { amount: number | "X"; X?: "creaturesDiedThisTurn" },
+): number {
+  if (effect.X === "creaturesDiedThisTurn") {
+    return state.turn.creatureDiedThisTurn === true ? 1 : 0;
+  }
+  return typeof effect.amount === "number" ? effect.amount : 0;
+}
+
+/**
  * The defending player for an attacking source (CR 506.2): the player it
  * attacks, or the controller of the planeswalker it attacks. Falls back to
  * the first opponent when the source is not in combat.
@@ -845,6 +865,14 @@ function applyEffect(
       );
     }
     case "Draw": {
+      // Wave 4.8 follow-up 12 lane 90 (#2614 follow-up): when
+      // `X: "creaturesDiedThisTurn"` is set, the engine reads the
+      // boolean `state.turn.creatureDiedThisTurn` (Needletooth
+      // Pack's "draw N cards where N = creatures that died this
+      // turn" — v1 minimum is the boolean, 0 or 1; the count ledger
+      // is a follow-up lane). The integer `amount` is ignored when
+      // `X` is set.
+      const drawAmount = resolveDrawAmount(state, effect);
       // #2594 lane 25: each_player (Scrawling Crawler, FDN).
       if (effect.who === "each_player") {
         let next = state;
@@ -852,7 +880,7 @@ function applyEffect(
           const r = resolveCardDrawEffect(
             next,
             sourceId ?? ("unknown" as CardInstanceId),
-            effect.amount,
+            drawAmount,
             pid,
           );
           if (r.success) next = r.state;
@@ -864,7 +892,7 @@ function applyEffect(
       const r = resolveCardDrawEffect(
         state,
         sourceId ?? ("unknown" as CardInstanceId),
-        effect.amount,
+        drawAmount,
         player,
       );
       return r.success ? r.state : state;

@@ -75,7 +75,7 @@ function put(
 }
 
 describe("Needletooth Pack (FDN 108): morbid + phaseEnds creature-ctrled trigger", () => {
-  it("registry exposes Needletooth Pack with morbid + phaseEnds", () => {
+  it("registry exposes Needletooth Pack with morbid + phaseEnds + Draw X (lane 90)", () => {
     const card = getCardScript("Needletooth Pack");
     expect(card).toBeDefined();
     const trig = card!.triggers![0];
@@ -88,6 +88,15 @@ describe("Needletooth Pack (FDN 108): morbid + phaseEnds creature-ctrled trigger
         amount: 2,
         target: "creature",
         controller: "you",
+      },
+      // Lane 90 (#2614 follow-up): the second effect draws N cards
+      // where N = creatures that died this turn (boolean read: 0
+      // or 1 in v1).
+      {
+        op: "Draw",
+        amount: 1,
+        who: "you",
+        X: "creaturesDiedThisTurn",
       },
     ]);
   });
