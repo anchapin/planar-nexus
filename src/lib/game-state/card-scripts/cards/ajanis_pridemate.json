@@ -1,0 +1,19 @@
+{
+  "name": "Ajani's Pridemate",
+  "oracle": "Whenever you gain life, put a +1/+1 counter on this creature.",
+  "triggers": [
+    {
+      "text": "Whenever you gain life, put a +1/+1 counter on this creature.",
+      "event": "lifeGain",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "PutCounters",
+          "counter": "+1/+1",
+          "amount": 1,
+          "target": "self"
+        }
+      ]
+    }
+  ]
+}
