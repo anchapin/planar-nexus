@@ -1,0 +1,42 @@
+{
+  "name": "Wardens of the Cycle",
+  "oracle": "Morbid — At the beginning of your end step, if a creature died this turn, choose one —\n• You gain 2 life.\n• You draw a card and you lose 1 life.",
+  "triggers": [
+    {
+      "text": "Morbid — At the beginning of your end step, if a creature died this turn, choose one —",
+      "event": "phaseEnds",
+      "subject": "self",
+      "intervening_if": "a creature died this turn",
+      "modes": {
+        "choose": 1,
+        "options": [
+          {
+            "text": "You gain 2 life.",
+            "effects": [
+              {
+                "op": "GainLife",
+                "amount": 2,
+                "who": "you"
+              }
+            ]
+          },
+          {
+            "text": "You draw a card and you lose 1 life.",
+            "effects": [
+              {
+                "op": "Draw",
+                "amount": 1,
+                "who": "you"
+              },
+              {
+                "op": "LoseLife",
+                "amount": 1,
+                "who": "you"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

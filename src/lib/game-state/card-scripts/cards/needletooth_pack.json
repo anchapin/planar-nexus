@@ -1,0 +1,21 @@
+{
+  "name": "Needletooth Pack",
+  "oracle": "Morbid — At the beginning of your end step, if a creature died this turn, put two +1/+1 counters on target creature you control.",
+  "triggers": [
+    {
+      "text": "Morbid — At the beginning of your end step, if a creature died this turn, put two +1/+1 counters on target creature you control.",
+      "event": "phaseEnds",
+      "subject": "self",
+      "intervening_if": "a creature died this turn",
+      "effects": [
+        {
+          "op": "PutCounters",
+          "counter": "+1/+1",
+          "amount": 2,
+          "target": "creature",
+          "controller": "you"
+        }
+      ]
+    }
+  ]
+}
