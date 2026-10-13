@@ -364,7 +364,31 @@ const SCOPES = [
     // fragmenting the until-EOT-copy family (the
     // historical precedent continues; subsequent
     // follow-up lanes may grow the same family).
-    budgetLines: 3150,
+    //
+    // Wave 4.8 follow-up 12 lane 90 (#2614 follow-up):
+    // Needletooth Pack's "draw N where N = creatures that
+    // died this turn" half. The schema accepts a new
+    // `X: "creaturesDiedThisTurn"` arm on DrawSchema
+    // (parallel to the StaticSchema.X state-derived
+    // count). +12 lines; schema.ts measured at 3117.
+    // Within the 3150 budget.
+    //
+    // Wave 4.8 follow-up 12 lane 91 (#2614 follow-up):
+    // Twinblade Paladin's "as long as you have 25 or
+    // more life, this creature has double strike and
+    // lifelink" static. The schema accepts a new
+    // `while_condition: { kind: "life_minimum",
+    // value: N }` arm on StaticSchema (CR 603.2
+    // "while"-gate, parallel to a trigger's
+    // whileCondition). The TOKEN_KEYWORDS enum gains
+    // `"double strike"` for the keyword grant (+3 lines
+    // total). schema.ts measured at 3152. Bumping
+    // 3150 → 3200 to give the while-condition family
+    // room to land without fragmenting the
+    // until-EOT-copy family (the historical precedent
+    // continues; subsequent follow-up lanes may grow
+    // the same family).
+    budgetLines: 3200,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

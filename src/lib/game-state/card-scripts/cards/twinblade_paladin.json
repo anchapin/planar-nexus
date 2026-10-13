@@ -15,5 +15,19 @@
         }
       ]
     }
+  ],
+  "statics": [
+    {
+      "text": "As long as you have 25 or more life, this creature has double strike and lifelink.",
+      "affects": {
+        "controller": "you",
+        "self": true
+      },
+      "keywords": ["double strike", "lifelink"],
+      "while_condition": {
+        "kind": "life_minimum",
+        "value": 25
+      }
+    }
   ]
 }
