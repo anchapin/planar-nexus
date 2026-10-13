@@ -1,12 +1,15 @@
 {
   "name": "Midnight Snack",
-  "oracle": "Raid — At the beginning of your end step, if you attacked this turn, create a Food token.",
+  "oracle": "Raid — At the beginning of your end step, if you attacked this turn, sacrifice this artifact and create a Food token.",
   "triggers": [
     {
-      "text": "Raid — At the beginning of your end step, if you attacked this turn, create a Food token.",
+      "text": "Raid — At the beginning of your end step, if you attacked this turn, sacrifice this artifact and create a Food token.",
       "event": "phaseEnds",
       "subject": "self",
       "intervening_if": "you attacked this turn",
+      "cost": {
+        "sacrifice_self": true
+      },
       "effects": [
         {
           "op": "CreatePredefinedToken",

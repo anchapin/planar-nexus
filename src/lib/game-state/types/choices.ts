@@ -43,7 +43,16 @@ export interface WaitingChoice {
       // the `you_may_prompt` branch in spell-casting/choices.ts, which
       // stamps `stackObject.you_may_resolved` and returns the
       // controller to the trigger resolution path.
-      "you_may_prompt";
+      "you_may_prompt"
+    | // Wave 4.8 follow-up 12 lane 88 (#2614 follow-up): a
+      // scripted trigger with `cost.sacrifice_self: true` (CR 602.2b
+      // "Sacrifice this [permanent]:" as a trigger cost). Surfaced by
+      // `card-scripts/interpret.ts#resolveScriptedAbility` at
+      // resolution; resolved by the `sacrifice_self_prompt` branch
+      // in spell-casting/choices.ts (parallel to `you_may_prompt`),
+      // which stamps `stackObject.cost_paid` and returns the
+      // controller to the resolution path.
+      "sacrifice_self_prompt";
   /** ID of player who needs to make this choice */
   playerId: PlayerId;
   /** ID of the stack object this choice is for */
