@@ -112,6 +112,21 @@ interface EffectContext {
    * ability contexts.
    */
   drawingPlayerId?: PlayerId;
+  /**
+   * Wave 4.8 follow-up 12 lane 92 (#2614 follow-up): the trigger's
+   * `enteringCardId` for `event: "etb"` triggers (Drogskol Reaver's
+   * "Whenever a creature you control enters, if its mana value is
+   * 4 or greater, you gain life equal to its toughness"). The
+   * entering creature's id is propagated from
+   * `stackObject.triggerContext.enteringCardId` (set by
+   * `checkTriggeredAbilities`) into the EffectContext. Read by
+   * `GainLife.amount.X: "toughness"` (and any future
+   * `X: "power" | "mana_value" | "creatures"` arm) to read the
+   * entering creature's printed `cardData` fields. Undefined for
+   * non-ETB triggers and for direct spell / activated ability
+   * contexts.
+   */
+  enteringCardId?: CardInstanceId;
 }
 
 /**
@@ -392,6 +407,42 @@ function resolveDrawAmount(
 ): number {
   if (effect.X === "creaturesDiedThisTurn") {
     return state.turn.creatureDiedThisTurn === true ? 1 : 0;
+  }
+  return typeof effect.amount === "number" ? effect.amount : 0;
+}
+
+/**
+ * Wave 4.8 follow-up 12 lane 92 (#2614 follow-up): resolve a
+ * `GainLife.amount` from state when the `X` arm is set
+ * (Drogskol Reaver's "you gain life equal to its toughness" —
+ * the entering creature's printed `cardData.toughness` becomes
+ * the life-gain amount). v1 supports a single shape:
+ * `toughness` reads `state.cards[ctx.enteringCardId]` — the
+ * entering creature's id is on the `EffectContext` (set via
+ * the trigger's `triggerContext.enteringCardId`). Falls back
+ * to the integer `amount` (which may be `number | "X"` —
+ * "X" here falls back to 0 per the existing CR 107.3 default)
+ * when `X` is not set.
+ */
+function resolveGainLifeAmount(
+  state: GameState,
+  effect: { amount: number | "X"; X?: "toughness" },
+  ctx: { enteringCardId?: CardInstanceId },
+): number {
+  if (effect.X === "toughness") {
+    const enteringId = ctx.enteringCardId;
+    if (!enteringId) {
+      return typeof effect.amount === "number" ? effect.amount : 0;
+    }
+    const entering = state.cards.get(enteringId);
+    if (!entering) {
+      return typeof effect.amount === "number" ? effect.amount : 0;
+    }
+    const toughness = parseInt(
+      entering.cardData.toughness ?? "0",
+      10,
+    );
+    return Number.isFinite(toughness) ? toughness : 0;
   }
   return typeof effect.amount === "number" ? effect.amount : 0;
 }
@@ -915,9 +966,19 @@ function applyEffect(
       });
     }
     case "GainLife": {
+      // Wave 4.8 follow-up 12 lane 92 (#2614 follow-up): when
+      // `X: "toughness"` is set, the engine reads the entering
+      // creature's `cardData.toughness` (Drogskol Reaver's
+      // "you gain life equal to its toughness"). The integer
+      // `amount` is ignored when `X` is set; the trigger's
+      // `triggerContext` (carried on the stack object via
+      // `stackObject.triggerContext` and threaded into the
+      // EffectContext in `resolveScriptedEffects`) provides
+      // `enteringCardId` for the read.
+      const lifeAmount = resolveGainLifeAmount(state, effect, ctx);
       const player = playerFor(effect.who, ctx);
       if (!player) return state;
-      const r = resolveLifeGainEffect(state, sourceId, effect.amount, player);
+      const r = resolveLifeGainEffect(state, sourceId, lifeAmount, player);
       return r.success ? r.state : state;
     }
     case "LoseLife": {
@@ -2151,6 +2212,8 @@ export function resolveScriptedEffects(
           triggeringStackObjectId: stackObject.triggeringStackObjectId,
           drawingPlayerId:
             stackObject.triggerContext?.drawingPlayerId ?? undefined,
+          enteringCardId:
+            stackObject.triggerContext?.enteringCardId ?? undefined,
         };
         const legal =
           taken.length === skippedCount &&
@@ -2229,6 +2292,8 @@ export function resolveScriptedEffects(
           triggeringStackObjectId: stackObject.triggeringStackObjectId,
           drawingPlayerId:
             stackObject.triggerContext?.drawingPlayerId ?? undefined,
+          enteringCardId:
+            stackObject.triggerContext?.enteringCardId ?? undefined,
         };
         const legal =
           taken.length === count &&
@@ -2252,6 +2317,8 @@ export function resolveScriptedEffects(
       triggeringStackObjectId: stackObject.triggeringStackObjectId,
       drawingPlayerId:
         stackObject.triggerContext?.drawingPlayerId ?? undefined,
+      enteringCardId:
+        stackObject.triggerContext?.enteringCardId ?? undefined,
     });
   }
   return current;

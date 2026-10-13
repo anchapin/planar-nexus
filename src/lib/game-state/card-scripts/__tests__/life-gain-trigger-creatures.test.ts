@@ -196,15 +196,30 @@ describe("Twinblade Paladin (FDN): lifeGain → +1/+1 counter on self", () => {
 });
 
 describe("Drogskol Reaver (FDN 655): lifeGain → Draw 1", () => {
-  it("registry exposes Drogskol Reaver with the lifeGain trigger", () => {
+  it("registry exposes Drogskol Reaver with both triggers (lane 92)", () => {
     const reaver = getCardScript("Drogskol Reaver");
     expect(reaver).toBeDefined();
-    expect(reaver!.triggers!).toHaveLength(1);
-    const trig = reaver!.triggers![0];
-    expect(trig.event).toBe("lifeGain");
-    expect(trig.subject).toBe("self");
-    expect(trig.effects).toEqual([
+    // Wave 4.8 follow-up 12 lane 92 (#2614 follow-up): the
+    // existing lifeGain trigger (lane 86 v1 minimum) AND a new
+    // "Whenever a creature you control enters, if its mana value
+    // is 4 or greater, you gain life equal to its toughness"
+    // trigger.
+    expect(reaver!.triggers!).toHaveLength(2);
+    const lifeGain = reaver!.triggers![0];
+    expect(lifeGain.event).toBe("lifeGain");
+    expect(lifeGain.subject).toBe("self");
+    expect(lifeGain.effects).toEqual([
       { op: "Draw", amount: 1, who: "you" },
+    ]);
+    const etbTrigger = reaver!.triggers![1];
+    expect(etbTrigger.event).toBe("etb");
+    expect(etbTrigger.subject).toBe("another");
+    expect(etbTrigger.controller).toBe("you");
+    expect(etbTrigger.intervening_if).toBe(
+      "if its mana value is 4 or greater",
+    );
+    expect(etbTrigger.effects).toEqual([
+      { op: "GainLife", amount: 1, who: "you", X: "toughness" },
     ]);
   });
 
