@@ -1,0 +1,19 @@
+{
+  "name": "Storm Fleet Spy",
+  "oracle": "Raid — When this creature enters, if you attacked this turn, draw a card.",
+  "triggers": [
+    {
+      "text": "Raid — When this creature enters, if you attacked this turn, draw a card.",
+      "event": "etb",
+      "subject": "self",
+      "intervening_if": "you attacked this turn",
+      "effects": [
+        {
+          "op": "Draw",
+          "amount": 1,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}

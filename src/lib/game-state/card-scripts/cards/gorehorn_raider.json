@@ -1,0 +1,19 @@
+{
+  "name": "Gorehorn Raider",
+  "oracle": "Raid — When this creature enters, if you attacked this turn, this creature deals 2 damage to any target.",
+  "triggers": [
+    {
+      "text": "Raid — When this creature enters, if you attacked this turn, this creature deals 2 damage to any target.",
+      "event": "etb",
+      "subject": "self",
+      "intervening_if": "you attacked this turn",
+      "effects": [
+        {
+          "op": "DealDamage",
+          "amount": 2,
+          "target": "any"
+        }
+      ]
+    }
+  ]
+}
