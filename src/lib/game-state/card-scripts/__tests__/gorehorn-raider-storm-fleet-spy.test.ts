@@ -75,8 +75,8 @@ function put(
   return { ...state, cards, zones };
 }
 
-describe("Gorehorn Raider (FDN 89): raid + ETB DealDamage any target", () => {
-  it("registry exposes Gorehorn Raider with the raid ETB trigger", () => {
+describe("Gorehorn Raider (FDN 89): raid + ETB DealDamage + 1/1 red Goblin token", () => {
+  it("registry exposes Gorehorn Raider with the raid ETB trigger (DealDamage + CreateToken, lane 89)", () => {
     const raider = getCardScript("Gorehorn Raider");
     expect(raider).toBeDefined();
     const trig = raider!.triggers![0];
@@ -84,6 +84,14 @@ describe("Gorehorn Raider (FDN 89): raid + ETB DealDamage any target", () => {
     expect(trig.intervening_if).toBe("you attacked this turn");
     expect(trig.effects).toEqual([
       { op: "DealDamage", amount: 2, target: "any" },
+      {
+        op: "CreateToken",
+        count: 1,
+        power: 1,
+        toughness: 1,
+        color: "red",
+        subtypes: ["Goblin"],
+      },
     ]);
   });
 
@@ -118,7 +126,7 @@ describe("Gorehorn Raider (FDN 89): raid + ETB DealDamage any target", () => {
     ).toBe(true);
   });
 
-  it("ETB trigger fires when the controller has attacked and resolves 2 damage to the target", () => {
+  it("ETB trigger fires when the controller has attacked and resolves 2 damage + 1/1 red Goblin token (lane 89)", () => {
     let state = startGame(
       createInitialGameState(["Player1", "Player2"], 20, false),
     );
@@ -152,6 +160,7 @@ describe("Gorehorn Raider (FDN 89): raid + ETB DealDamage any target", () => {
       ],
     };
     const beforeLife = targeted.players.get(p2id)!.life;
+    const beforeBattlefield = targeted.zones.get(`${p1}-battlefield`)!.cardIds.length;
     const resolved = resolveScriptedAbility(
       targeted,
       targeted.stack[0],
@@ -160,6 +169,23 @@ describe("Gorehorn Raider (FDN 89): raid + ETB DealDamage any target", () => {
     expect(afterLife).toBe(beforeLife - 2);
     // Sanity: p2 didn't change identity.
     expect(p2name).toBe("Player2");
+
+    // Lane 89: a new 1/1 red Goblin creature token was created on
+    // the controller's battlefield.
+    const afterBattlefield = resolved.zones.get(`${p1}-battlefield`)!.cardIds.length;
+    expect(afterBattlefield).toBe(beforeBattlefield + 1);
+    // The new Goblin token has the right P/T and color.
+    const goblinId = resolved.zones.get(`${p1}-battlefield`)!.cardIds.find(
+      (cid) => !targeted.cards.has(cid),
+    );
+    expect(goblinId).toBeDefined();
+    const goblin = resolved.cards.get(goblinId!);
+    expect(goblin).toBeDefined();
+    expect(goblin!.cardData.name).toBe("Goblin");
+    expect(goblin!.cardData.power).toBe("1");
+    expect(goblin!.cardData.toughness).toBe("1");
+    expect(goblin!.cardData.colors).toEqual(["red"]);
+    expect(goblin!.cardData.type_line).toContain("Goblin");
   });
 });
 
