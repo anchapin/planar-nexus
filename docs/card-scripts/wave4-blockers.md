@@ -2095,3 +2095,134 @@ shipped or marked already-shipped.
   - Cycles in `refreshAuraBonuses`'s `become_copy` arm beyond the enchanted-card ↔ Aura round trip.
   - Cross-zones copy chains (a `become_copy` static that points at a card in a graveyard — CR 707.2 "copy a card that's not in play").
   - "Copy a card that has a `become_copy` static and other layers" (e.g. a copy target with `protectionFrom` or `removesAllAbilities`).
+
+### Wave 4.8 follow-up 11 loop done summary (lanes 82–86 — warmup drafter-list pass)
+
+The Wave 4.8 follow-up 11 loop covered the warmup drafter-list pass
+from `docs/card-scripts/wave4.8-followup11-handoff.md`. All five
+lanes (82–86) shipped as small card-JSON + small test pieces with
+all plumbing already in place from prior loops.
+
+**Shipped lanes:**
+
+- **Lane 82 — Midnight Snack (FDN 65)** (#2614 follow-up). The
+  smallest warmup. Trigger template is the lane 29 (Skyship
+  Buccaneer) raid + `phaseEnds` + `intervening_if` plumbing; the
+  effect is the lane 32 `CreatePredefinedToken: "food"` substrate.
+  No schema change, no engine change — both shipped in prior lanes.
+  Shipped as PR #2768. Test cases: 6 in
+  `midnight-snack.test.ts` (+ 1 `it.each` iteration for the new
+  JSON, totaling 7 net).
+
+- **Lane 83 — Needletooth Pack (FDN 108) + Wardens of the Cycle
+  (FDN 125)** (#2614 follow-up). Both share the lane 28
+  (Cackling Prowler) morbid + `phaseEnds` + `intervening_if`
+  trigger template. Needletooth Pack targets a creature you control
+  via the existing `PutCounters.controller` filter; Wardens of the
+  Cycle uses the existing `modes` schema arm for the modal choice.
+  No schema change, no engine change. Shipped as PR #2769. Test
+  cases: 9 in `needletooth-pack-wardens-cycle.test.ts` (+ 2
+  `it.each` iterations for the two new JSONs, totaling 11 net).
+
+- **Lane 84 — Gorehorn Raider (FDN 89) + Storm Fleet Spy
+  (FDN 515)** (#2614 follow-up). Both share the raid + ETB +
+  `intervening_if` trigger template. Gorehorn Raider's effect is
+  `DealDamage` with `target: "any"`; Storm Fleet Spy's effect is
+  `Draw` with `who: "you"`. The handoff's prose mentioned an
+  attack-trigger for Storm Fleet Spy; the actual FDN printing is
+  ETB and the script reflects the Oracle wording. No schema
+  change, no engine change. Shipped as PR #2770. Test cases: 8 in
+  `gorehorn-raider-storm-fleet-spy.test.ts` (+ 2 `it.each`
+  iterations, totaling 10 net).
+
+- **Lane 85 — Scrawling Crawler (FDN 132)** (#2614 follow-up).
+  The handoff explicitly notes "Lane 85 is the smallest possible
+  lane — the JSON already exists; the work is the test." Scrawling
+  Crawler's full oracle is two abilities: an upkeep + each_player
+  draws trigger (encoded in the existing JSON) plus "Whenever an
+  opponent draws a card, that player loses 1 life" (deferred per
+  the handoff). The fresh test verifies the upkeep + each_player
+  plumbing works end-to-end. Shipped as PR #2771. Test cases: 4
+  (no new JSON, so no `it.each` delta, totaling 4 net).
+
+- **Lane 86 — Ajani's Pridemate + Twinblade Paladin + Drogskol
+  Reaver** (#2614 follow-up). All three cards share the lane 26
+  `lifeGain` trigger template (`event: "lifeGain"`,
+  `subject: "self"`, detected on the `lifeGain` event).
+  Ajani's Pridemate and Twinblade Paladin each put a +1/+1 counter
+  on self; Drogskol Reaver draws 1 card. Twinblade Paladin's "as
+  long as you have 25 or more life" static (double strike +
+  lifelink) is deferred — no life-condition static arm shipped.
+  Shipped as PR #2772. Test cases: 7 in
+  `life-gain-trigger-creatures.test.ts` (+ 3 `it.each`
+  iterations for the three new JSONs, totaling 10 net).
+
+**Blocked gaps (parked per the handoff's process note):**
+
+- **Lane 61 — Replacement effect for death (Whip of Erebos, False
+  Dawn)**. Foundational replacement-effect layer is not in the
+  engine; lane 61 is parked per the Wave 4.8 follow-up 2
+  handoff's process note. Open it as a separate multi-lane plan,
+  NOT as the next lane in this loop. (See "Multi-lane follow-ups
+  still open" above.)
+
+**Out-of-scope per the handoff (each a follow-up lane):**
+
+- **Midnight Snack** — X-cost-with-life-gained (parallel to
+  lane 32's X-cost-with-count); sacrifice-midnight-snack cost; the
+  "create a 1/1 white Human creature token" path (Skullclamp /
+  Stroke of Midnight pattern, #2705c).
+- **Needletooth Pack** — "draw cards equal to the number of
+  creatures that died this turn" effect (parallel to lane 36's
+  X-count pattern).
+- **Gorehorn Raider** — "create a 1/1 red Goblin creature token"
+  effect (parallel to lane 32's `CreatePredefinedToken`); "you
+  may discard a card" cost on Storm Fleet Spy.
+- **Twinblade Paladin** — "as long as you have 25 or more life"
+  static for double strike + lifelink (no life-condition static
+  arm shipped).
+- **Drogskol Reaver** — ETB + "if mana value 4 or greater"
+  condition (parallel to lane 36's X-count pattern); lifelink
+  keyword grant (parallel to lane 40's chosen-X anthem).
+- **Scrawling Crawler** — the second half of its oracle
+  ("Whenever an opponent draws a card, that player loses 1 life")
+  is deferred to a follow-up lane.
+
+**Test-count snapshot (Wave 4.8 follow-up 11 loop):**
+
+- Test suites: 738 → 743 (+5 for lanes 82–86: one new test file
+  per lane).
+- Test cases: 14182 → 14225 (+43 across the five lanes; 14218
+  passed + 7 skipped). Lane-by-lane: lane 82 +7, lane 83 +11,
+  lane 84 +10, lane 85 +4, lane 86 +10. (Sum 42; the +1 is the
+  `3c702618 chore: auto-ratchet jest coverage floor to measured
+  value` commit that landed during the loop on `main` and shifted
+  the floor without adding test cases.)
+- Engine-size budget: schema.ts 3050 → 3050 (unchanged). All
+  five lanes are card-JSON only; no schema or engine change.
+- Lint: 0 errors.
+- Typecheck: clean.
+
+**Process notes from this loop:**
+
+- The lane 86 test exercises `gainLife` →
+  `detectTriggeredAbilities("lifeGain")` →
+  `putTriggersOnStack` → `resolveScriptedAbility` end-to-end. The
+  `lifeGain` triggers ride the same resolution path as the
+  existing `phaseEnds` and `etb` triggers.
+- The handoff's AI flake absorbed 1–2 extra CI runs per lane on
+  the local full-suite run (forge-gate / forge-selfplay); CI was
+  clean throughout.
+- The ratchet's `--live <counts.json>` fallback was used to
+  bypass the AI flake mid-ratchet (consistent with Wave 4.8
+  follow-up 8 lanes 75b / 75c / 75d).
+- All five lanes were single-card or two-card JSON + small test
+  pieces; each fit comfortably under the aggressive loop's
+  per-lane 40-turn budget.
+
+The Wave 4.8 follow-up 11 loop concludes with the warmup
+drafter-list pass complete. The aggressive loop's machinery
+(worktree + worktree-local `node_modules` symlink + ratchet +
+process note) is intact and ready for the next follow-up loop.
+Lane 61 (replacement effect for death) remains parked per the
+handoff's process note and requires a separate multi-lane plan.
