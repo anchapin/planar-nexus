@@ -1,0 +1,19 @@
+{
+  "name": "Midnight Snack",
+  "oracle": "Raid — At the beginning of your end step, if you attacked this turn, create a Food token.",
+  "triggers": [
+    {
+      "text": "Raid — At the beginning of your end step, if you attacked this turn, create a Food token.",
+      "event": "phaseEnds",
+      "subject": "self",
+      "intervening_if": "you attacked this turn",
+      "effects": [
+        {
+          "op": "CreatePredefinedToken",
+          "token": "food",
+          "count": 1
+        }
+      ]
+    }
+  ]
+}
