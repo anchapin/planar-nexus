@@ -39,6 +39,7 @@ import type {
   ReplacementEvent,
   ReplacementEffectType,
 } from "../replacement-effects/types";
+import { evaluateInterveningIfClause } from "../abilities/evaluate";
 import type { ScriptedReplacementEffect } from "./schema";
 import { getCardScript } from "./registry";
 
@@ -85,6 +86,7 @@ export function buildScriptedDeathReplacementEffect(
   sourceCardId: CardInstanceId,
   controllerId: PlayerId,
   re: ScriptedReplacementEffect,
+  state: GameState,
 ): ReplacementAbility | null {
   // v1 only — other shapes ride follow-up lanes.
   if (re.event !== "would_die") return null;
@@ -161,6 +163,29 @@ export function buildScriptedDeathReplacementEffect(
       // the source is immune to its own replacement
       // (the anthem can't exile ITSELF when it dies).
       if (re.applies_to.notSelf === true && sourceCardId === event.targetId) {
+        return false;
+      }
+      // Wave 4.8 follow-up 13 lane 103 (#2614 follow-up):
+      // `if_condition` — the replacement only fires
+      // when the named condition holds (CR 603.4
+      // intervening-if at replacement time). The
+      // condition string is evaluated via
+      // `evaluateInterveningIfClause` (parallel to the
+      // lane 91 `while_condition` pattern but at
+      // replacement time, not static-refresh time).
+      // The condition reads the controller's
+      // perspective (the consult path is the controller's
+      // replacement — the drafter writes the
+      // condition as the controller would read it).
+      // v1 supports a single-shape pattern: any
+      // condition string `evaluateInterveningIfClause`
+      // recognizes. When `if_condition` is unset, the
+      // replacement always fires (the field is
+      // optional).
+      if (
+        re.if_condition !== undefined &&
+        !evaluateInterveningIfClause(re.if_condition, state, controllerId)
+      ) {
         return false;
       }
       return true;
@@ -268,6 +293,7 @@ export function buildScriptedDeathReplacementEffects(
           card.id as CardInstanceId,
           card.controllerId,
           re,
+          state,
         );
         if (effect) out.push(effect);
       }
@@ -294,6 +320,7 @@ export function buildScriptedDeathReplacementEffects(
           card.id as CardInstanceId,
           card.controllerId,
           re,
+          state,
         );
         if (effect) out.push(effect);
       }
