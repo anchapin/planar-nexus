@@ -1,23 +1,33 @@
 /**
- * Gorehorn Raider (FDN 89) — 1/1 red Goblin token half (lane 89).
+ * Gorehorn Raider (FDN 89) — 1/1 red Goblin token half (lane 89) +
+ * keywords-on-token menace (lane 96).
  *
  * Wave 4.8 follow-up 12 lane 89 (#2614 follow-up). Gorehorn Raider's
  * full oracle (per the handoff's "third warmup"): raid + ETB +
  * DealDamage + 1/1 red Goblin token. The lane 84 v1 minimum shipped
- * the raid + ETB + DealDamage half only. This lane chains the
+ * the raid + ETB + DealDamage half only. Lane 89 chains the
  * `CreateToken` effect (1/1 red Goblin) onto the existing trigger.
+ *
+ * Wave 4.8 follow-up 13 lane 96 (#2614 follow-up). The
+ * Redcap Gutter-Dweller-style deferred half — "create a 1/1 red
+ * Goblin creature token with menace" — is JSON-only: chain a
+ * `CreateToken` effect with `keywords: ["menace"]` onto the
+ * existing trigger. The lane 66 `CreateToken` substrate already
+ * supports `keywords: ["menace"]`; this lane adds the field to
+ * Gorehorn Raider's `CreateToken` effect.
  *
  * The v1 minimum uses the existing `CreateToken` op (lane 66's
  * substrate) with `count: 1, power: 1, toughness: 1, color: "R",
- * subtypes: ["Goblin"]`. No new schema arm; the engine substrate
- * already covers the power / toughness / color / keywords fields.
+ * subtypes: ["Goblin"], keywords: ["menace"]`. No new schema arm;
+ * the engine substrate already covers the keywords field (the
+ * engine capitalizes the keyword and stamps it on the token's
+ * `cardData.keywords` array).
  *
- * Out of scope for lane 89 (each a follow-up lane):
- * - the Storm Fleet Spy "may discard a card" variant
- * - keywords-on-token ("create a 1/1 red Goblin creature token
- *   with menace") — Redcap Gutter-Dweller-style
- * - multi-token variants ("create X 1/1 red Goblin creature
- *   tokens" — Redcap-style counters)
+ * Out of scope for lane 96 (each a follow-up lane):
+ * - the "create X 1/1 red Goblin creature tokens" X-count
+ *   variant (lane 97)
+ * - the "create a 1/1 red Goblin creature token AND exile it"
+ *   multi-effect (a future lane)
  */
 import { getCardScript } from "../index";
 import {
@@ -82,8 +92,8 @@ function put(
   return { ...state, cards, zones };
 }
 
-describe("Gorehorn Raider (FDN 89): raid + ETB 1/1 red Goblin token (lane 89)", () => {
-  it("registry exposes Gorehorn Raider with DealDamage + CreateToken effects chained", () => {
+describe("Gorehorn Raider (FDN 89): raid + ETB 1/1 red Goblin token with menace (lanes 89 & 96)", () => {
+  it("registry exposes Gorehorn Raider with DealDamage + CreateToken-with-menace effects chained", () => {
     const raider = getCardScript("Gorehorn Raider");
     expect(raider).toBeDefined();
     const trig = raider!.triggers![0];
@@ -96,6 +106,7 @@ describe("Gorehorn Raider (FDN 89): raid + ETB 1/1 red Goblin token (lane 89)", 
         toughness: 1,
         color: "red",
         subtypes: ["Goblin"],
+        keywords: ["menace"],
       },
     ]);
   });
@@ -172,5 +183,52 @@ describe("Gorehorn Raider (FDN 89): raid + ETB 1/1 red Goblin token (lane 89)", 
     expect(goblin!.cardData.colors).toEqual(["red"]);
     expect(goblin!.cardData.type_line.toLowerCase()).toContain("goblin");
     expect(goblin!.cardData.type_line.toLowerCase()).toContain("creature");
+    // Lane 96: the keywords-on-token arm — "create a 1/1 red
+    // Goblin creature token with menace". The engine's
+    // `CreateToken` op capitalizes the keyword ("Menace") and
+    // stamps it on the token's `cardData.keywords` array; the
+    // keyword surfaces in `hasKeyword` alongside the printed
+    // keyword list. The oracle_text is set to the capitalized
+    // keywords joined by ", ".
+    expect(goblin!.cardData.keywords).toEqual(["Menace"]);
+  });
+
+  it("lane 96: the Goblin token has menace via cardData.keywords (regression)", () => {
+    // Standalone test for the lane 96 half — the end-to-end
+    // test above also asserts the keyword list; this test
+    // isolates the menace-specific behavior so a future lane
+    // change to the existing CreateToken substrate doesn't
+    // accidentally drop the keyword-stamping logic.
+    let state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    const [p1] = Array.from(state.players.keys());
+    state = put(state, p1, "raider", card("Gorehorn Raider", "Creature — Minotaur Pirate", [3, 3]));
+    state = markAttackedThisTurn(state, [p1]);
+
+    const triggers = detectTriggeredAbilities(state, "entersBattlefield");
+    const raiderTriggers = triggers.filter(
+      (t) => t.sourceCardId === id("raider"),
+    );
+    const { state: stacked } = putTriggersOnStack(state, raiderTriggers);
+    const stackObject = stacked.stack[0];
+    const targeted = {
+      ...stacked,
+      stack: [
+        {
+          ...stackObject,
+          targets: [
+            { type: "player", targetId: p1, isValid: true } as Target,
+          ],
+        },
+      ],
+    };
+
+    const resolved = resolveScriptedAbility(targeted, targeted.stack[0])!;
+    const goblinId = resolved.zones
+      .get(`${p1}-battlefield`)!
+      .cardIds.find((cid) => !targeted.cards.has(cid));
+    const goblin = resolved.cards.get(goblinId!);
+    expect(goblin!.cardData.keywords).toContain("Menace");
   });
 });
