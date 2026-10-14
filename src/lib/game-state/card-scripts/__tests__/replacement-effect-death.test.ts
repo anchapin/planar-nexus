@@ -585,6 +585,73 @@ describe("Whispering Ward of the Grave (lane 61a): death replacement-effect foun
       id("bear"),
     );
   });
+
+  /**
+   * Wave 4.8 follow-up 13 lane 102 (#2614 follow-up):
+   * `notSelf: true` excludes the source's own instance
+   * from the replacement ("if ANOTHER creature you
+   * control would die, instead..."). The synthetic
+   * card is a defender-of-the-faith-style anthem —
+   * the source IS the replacement effect's anchor;
+   * dying to the source's own anthem (it has the
+   * `applies_to.controller: "you"` filter and would
+   * catch itself) must be excluded via `notSelf`.
+   */
+  it("lane 102: registry exposes If Another Creature Dies Exile with notSelf: true", () => {
+    const anthem = getCardScript("If Another Creature Dies Exile");
+    expect(anthem).toBeDefined();
+    const re = anthem!.replacement_effects![0];
+    expect(re.applies_to.notSelf).toBe(true);
+  });
+
+  it("lane 102: the source's own death is NOT redirected (notSelf filter)", () => {
+    // Synthetic midrange: the anthem itself is the
+    // replacement source. When the anthem dies, the
+    // `notSelf: true` filter excludes it from its
+    // OWN replacement — the anthem goes to the
+    // graveyard (normal death; no exile).
+    let state = startTwoPlayerState();
+    const [p1] = Array.from(state.players.keys());
+    state = put(state, p1, "anthem", card("If Another Creature Dies Exile", "Creature — Cleric"));
+    state = refreshScriptedStatics(state);
+
+    const result = destroyCard(state, id("anthem"));
+    expect(result.success).toBe(true);
+    // The anthem IS in the graveyard (the
+    // replacement didn't fire — `notSelf` excluded it).
+    expect(result.state.zones.get(`${p1}-graveyard`)?.cardIds ?? []).toContain(
+      id("anthem"),
+    );
+    // The anthem is NOT in exile.
+    expect(result.state.zones.get(`${p1}-exile`)?.cardIds ?? []).not.toContain(
+      id("anthem"),
+    );
+  });
+
+  it("lane 102: a different creature the controller owns dies → redirected (the filter)", () => {
+    // Same anthem on the field; destroy a different
+    // creature the controller owns. The `notSelf`
+    // filter passes (the dying card IS NOT the
+    // source's own instance) — the replacement fires
+    // and the bear goes to exile.
+    let state = startTwoPlayerState();
+    const [p1] = Array.from(state.players.keys());
+    state = put(state, p1, "anthem", card("If Another Creature Dies Exile", "Creature — Cleric"));
+    state = put(state, p1, "bear", card("Bear Cub", "Creature — Bear", [2, 2]));
+    state = refreshScriptedStatics(state);
+
+    const result = destroyCard(state, id("bear"));
+    expect(result.success).toBe(true);
+    // The bear IS in exile.
+    expect(result.state.zones.get(`${p1}-exile`)?.cardIds ?? []).toContain(
+      id("bear"),
+    );
+    // The anthem is still on the battlefield (not
+    // exiled — `notSelf` didn't apply to it).
+    expect(result.state.zones.get(`${p1}-battlefield`)?.cardIds ?? []).toContain(
+      id("anthem"),
+    );
+  });
 });
 
 /**
