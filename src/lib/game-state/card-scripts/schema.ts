@@ -141,6 +141,15 @@ export const DealDamageSchema = z
  * `recordCardsDrawn` helper already maintains the
  * per-player counter; lane 94 just reads it). When `X` is
  * set, the integer `amount` is ignored.
+ *
+ * Wave 4.8 follow-up 13 lane 95 (#2614 follow-up): the
+ * `X: "cardsDrawnThisTurnByOpponents"` arm sums the
+ * per-opponent counters — every player EXCEPT the
+ * controller — for "draw N where N = cards drawn by
+ * opponents this turn" (Rhystic Study's deferred half).
+ * The sum is taken across all opponents in
+ * `state.players` (a 3-player game has 2 opponents;
+ * the lane 95 read sums both).
  */
 export const DrawSchema = z
   .object({
@@ -148,7 +157,13 @@ export const DrawSchema = z
     amount: xAmount,
     who: z.enum(["you", "target_player", "each_player"]).default("you"),
     if_kicked: ifKicked,
-    X: z.enum(["creaturesDiedThisTurn", "cardsDrawnThisTurn"]).optional(),
+    X: z
+      .enum([
+        "creaturesDiedThisTurn",
+        "cardsDrawnThisTurn",
+        "cardsDrawnThisTurnByOpponents",
+      ])
+      .optional(),
   })
   .strict();
 
