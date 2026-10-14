@@ -153,6 +153,16 @@ export function buildScriptedDeathReplacementEffect(
       // here at consult time (the consult sets
       // `event.controllerId` to the dying card's controller).
       if (controllerId !== event.controllerId) return false;
+      // Wave 4.8 follow-up 13 lane 102 (#2614 follow-up):
+      // `notSelf: true` excludes the source's own
+      // instance from the replacement. The replacement
+      // effect's source is the anthem (a creature); the
+      // dying card is `event.targetId`. When they match,
+      // the source is immune to its own replacement
+      // (the anthem can't exile ITSELF when it dies).
+      if (re.applies_to.notSelf === true && sourceCardId === event.targetId) {
+        return false;
+      }
       return true;
     },
     apply: (event: ReplacementEvent) => ({

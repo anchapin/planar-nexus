@@ -2694,6 +2694,20 @@ export const ReplacementEffectSchema = z
      * v1 minimum: `type: "creature"` + `controller: "you"`.
      * Other combinations parse but are out of scope for lane
      * 61a's engine consult.
+     *
+     * Wave 4.8 follow-up 13 lane 102 (#2614 follow-up):
+     * `notSelf: true` excludes the source permanent from
+     * the replacement ("if ANOTHER creature you control
+     * would die, instead..." — defender-of-the-faith-
+     * style anthem). When `notSelf: true`, the consult
+     * skips the replacement when the dying card IS
+     * the source's own instance — the source is
+     * immune to its own replacement. The
+     * implementation: the `canApply` filter
+     * compares the event's `sourceId` against the
+     * dying card's `targetId` (a miss when the dying
+     * card IS the source's own). v1 supports `notSelf:
+     * true` only.
      */
     applies_to: z
       .object({
@@ -2708,6 +2722,7 @@ export const ReplacementEffectSchema = z
           ])
           .default("creature"),
         controller: z.enum(["you", "opponent", "any"]).default("you"),
+        notSelf: z.literal(true).optional(),
       })
       .strict()
       .default({ type: "creature", controller: "you" }),
