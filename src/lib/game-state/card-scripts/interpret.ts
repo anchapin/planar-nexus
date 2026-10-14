@@ -447,6 +447,60 @@ function resolveDrawAmount(
 }
 
 /**
+ * Wave 4.8 follow-up 13 lane 97 (#2614 follow-up): resolve a
+ * `CreateToken.count` from state when the `X` arm is set
+ * (Redcap-style "create X 1/1 red Goblin creature tokens" —
+ * the X-counts scale with the board state).
+ *   - `cardsDrawnThisTurn`: integer
+ *     `state.players[controllerId].cardsDrawnThisTurn`
+ *     (same as `Draw.X: "cardsDrawnThisTurn"`, lane 94).
+ *   - `creaturesDiedThisTurn`: boolean
+ *     `state.turn.creatureDiedThisTurn` for 0 or 1
+ *     (same as `Draw.X: "creaturesDiedThisTurn"`, lane 90).
+ *   - `yourCreatures`: integer — the number of creatures
+ *     the controller controls on the battlefield
+ *     (Redcap-style X-count that scales with the
+ *     controller's board).
+ *
+ * When `X` is not set, the integer `count` is
+ * returned as-is. `xCount` permits the literal "X"
+ * (CR 107.3 default of 0), which falls through to 0.
+ */
+function resolveCreateTokenAmount(
+  state: GameState,
+  effect: {
+    count: number | "X";
+    X?: "cardsDrawnThisTurn" | "creaturesDiedThisTurn" | "yourCreatures";
+  },
+  controllerId?: PlayerId,
+): number {
+  if (effect.X === "creaturesDiedThisTurn") {
+    return state.turn.creatureDiedThisTurn === true ? 1 : 0;
+  }
+  if (effect.X === "cardsDrawnThisTurn") {
+    if (!controllerId) return 0;
+    return state.players.get(controllerId)?.cardsDrawnThisTurn ?? 0;
+  }
+  if (effect.X === "yourCreatures") {
+    if (!controllerId) return 0;
+    let count = 0;
+    for (const [cardId, card] of state.cards) {
+      if (card.controllerId !== controllerId) continue;
+      // Parallel to `countControlledByType` in
+      // `evaluate.ts` but counts ALL creatures (any
+      // type_line that includes "creature").
+      const typeLine = (card.cardData.type_line ?? "").toLowerCase();
+      if (!typeLine.includes("creature")) continue;
+      // Only count cards on the battlefield.
+      if (!card.currentZoneKey?.endsWith("-battlefield")) continue;
+      count += 1;
+    }
+    return count;
+  }
+  return typeof effect.count === "number" ? effect.count : 0;
+}
+
+/**
  * Wave 4.8 follow-up 12 lane 92 (#2614 follow-up): resolve a
  * `GainLife.amount` from state when the `X` arm is set
  * (Drogskol Reaver's "you gain life equal to its toughness" —
@@ -1079,6 +1133,15 @@ function applyEffect(
       const embeddedKeywords = effect.embedded_static?.keywords?.map(
         (k) => k.charAt(0).toUpperCase() + k.slice(1),
       );
+      // Wave 4.8 follow-up 13 lane 97 (#2614 follow-up): the
+      // `X` arm resolves the token count from state
+      // (Redcap-style X-count that scales with the board).
+      // The integer `count` is ignored when `X` is set.
+      const tokenCount = resolveCreateTokenAmount(
+        state,
+        effect,
+        ctx.controllerId,
+      );
       const r = resolveTokenCreationEffect(
         state,
         sourceId,
@@ -1092,7 +1155,7 @@ function applyEffect(
           oracle_text: keywords.join(", "),
           embeddedStaticKeywords: embeddedKeywords,
         },
-        effect.count,
+        tokenCount,
         ctx.controllerId,
         effect.embedded_static?.power,
         effect.embedded_static?.toughness,

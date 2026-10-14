@@ -298,6 +298,32 @@ export const CreateTokenSchema = z
       .strict()
       .optional(),
     if_kicked: ifKicked,
+    /**
+     * Wave 4.8 follow-up 13 lane 97 (#2614 follow-up):
+     * `CreateToken.X` — the X-count substrate for
+     * `count`. Parallel to `GainLifeSchema.X: "toughness"`
+     * (lane 92), `DrawSchema.X: "creaturesDiedThisTurn"`
+     * (lane 90), `DrawSchema.X: "cardsDrawnThisTurn"`
+     * (lane 94), and `DrawSchema.X:
+     * "cardsDrawnThisTurnByOpponents"` (lane 95). The
+     * v1 minimum supports three arms:
+     *   - `cardsDrawnThisTurn`: integer
+     *     `state.players[controllerId].cardsDrawnThisTurn`
+     *   - `creaturesDiedThisTurn`: boolean
+     *     `state.turn.creatureDiedThisTurn` (0 or 1)
+     *   - `yourCreatures`: integer — the number of
+     *     creatures the controller controls on the
+     *     battlefield (Redcap-style "create X 1/1 red
+     *     Goblin creature tokens where X is the number
+     *     of creatures you control" — X-counts scale
+     *     with the board state)
+     *
+     * When `X` is set, the integer `count` is ignored;
+     * the engine resolves the named count from state.
+     */
+    X: z
+      .enum(["cardsDrawnThisTurn", "creaturesDiedThisTurn", "yourCreatures"])
+      .optional(),
   })
   .strict()
   .refine((t) => (t.color === undefined) !== (t.colors === undefined), {
