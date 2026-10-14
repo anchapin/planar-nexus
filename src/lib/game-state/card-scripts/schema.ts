@@ -132,6 +132,15 @@ export const DealDamageSchema = z
  * is a follow-up lane). When `X` is set, the integer `amount` is
  * ignored; the engine reads the named count from state and passes
  * it as the resolved draw amount to `resolveCardDrawEffect`.
+ *
+ * Wave 4.8 follow-up 13 lane 94 (#2614 follow-up): the
+ * `X: "cardsDrawnThisTurn"` arm reads the integer
+ * `state.players[controllerId].cardsDrawnThisTurn` counter
+ * (Proft's Eidetic Memory's "you draw cards equal to the number
+ * of cards you've drawn this turn" — the lane 87
+ * `recordCardsDrawn` helper already maintains the
+ * per-player counter; lane 94 just reads it). When `X` is
+ * set, the integer `amount` is ignored.
  */
 export const DrawSchema = z
   .object({
@@ -139,7 +148,7 @@ export const DrawSchema = z
     amount: xAmount,
     who: z.enum(["you", "target_player", "each_player"]).default("you"),
     if_kicked: ifKicked,
-    X: z.enum(["creaturesDiedThisTurn"]).optional(),
+    X: z.enum(["creaturesDiedThisTurn", "cardsDrawnThisTurn"]).optional(),
   })
   .strict();
 

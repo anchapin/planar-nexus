@@ -450,7 +450,23 @@ const SCOPES = [
     // (the historical precedent continues; follow-up
     // 13 lanes 95 / 96 / 97 / 98 / 99 / 100 / 106 ride
     // the same family).
-    budgetLines: 3450,
+    //
+    // Wave 4.8 follow-up 13 lane 94 (#2614 follow-up):
+    // the "draw N where N = cards drawn this turn"
+    // X-count (Proft's Eidetic Memory's deferred
+    // half). The schema adds
+    // `X: "cardsDrawnThisTurn"` to DrawSchema (parallel
+    // to lane 90's `creaturesDiedThisTurn`). The
+    // docstring + the schema entry land at +9 lines;
+    // schema.ts measured at 3456. Bumping 3450 →
+    // 3500 to give the cards-drawn-this-turn family
+    // room to land without fragmenting the
+    // trigger-cost / while-condition /
+    // replacement-effect / you-may-cost family
+    // (the historical precedent continues; follow-up
+    // 13 lanes 95 / 98 / 99 / 100 / 106 ride the same
+    // family).
+    budgetLines: 3500,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

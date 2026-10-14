@@ -393,21 +393,31 @@ function artifactCount(state: GameState, playerId: PlayerId): number {
 }
 
 /**
- * Wave 4.8 follow-up 12 lane 90 (#2614 follow-up): resolve a
- * `Draw.amount` from state when the `X` arm is set (Needletooth
- * Pack's "draw N cards where N = creatures that died this turn").
- * The v1 minimum reads the boolean `state.turn.creatureDiedThisTurn`
- * for 0 or 1; the count ledger is a follow-up lane. When `X` is
- * not set, the integer `amount` (which may itself be `number | "X"`
- * — "X" here falls back to 0 per the existing CR 107.3 default) is
- * returned as-is.
+ * Wave 4.8 follow-up 12 lane 90 (#2614 follow-up) + follow-up 13
+ * lane 94 (#2614 follow-up): resolve a `Draw.amount` from state
+ * when the `X` arm is set. The v1 minimum for
+ * `creaturesDiedThisTurn` reads the boolean
+ * `state.turn.creatureDiedThisTurn` for 0 or 1 (Needletooth Pack).
+ * The lane 94 minimum for `cardsDrawnThisTurn` reads the integer
+ * `state.players[controllerId].cardsDrawnThisTurn` counter
+ * (Proft's Eidetic Memory's "draw N where N = cards drawn this
+ * turn" half — the lane 87 `recordCardsDrawn` helper already
+ * maintains the counter; lane 94 just reads it). When `X` is
+ * not set, the integer `amount` (which may itself be
+ * `number | "X"` — "X" here falls back to 0 per the existing
+ * CR 107.3 default) is returned as-is.
  */
 function resolveDrawAmount(
   state: GameState,
-  effect: { amount: number | "X"; X?: "creaturesDiedThisTurn" },
+  effect: { amount: number | "X"; X?: "creaturesDiedThisTurn" | "cardsDrawnThisTurn" },
+  controllerId?: PlayerId,
 ): number {
   if (effect.X === "creaturesDiedThisTurn") {
     return state.turn.creatureDiedThisTurn === true ? 1 : 0;
+  }
+  if (effect.X === "cardsDrawnThisTurn") {
+    if (!controllerId) return 0;
+    return state.players.get(controllerId)?.cardsDrawnThisTurn ?? 0;
   }
   return typeof effect.amount === "number" ? effect.amount : 0;
 }
@@ -924,7 +934,20 @@ function applyEffect(
       // turn" — v1 minimum is the boolean, 0 or 1; the count ledger
       // is a follow-up lane). The integer `amount` is ignored when
       // `X` is set.
-      const drawAmount = resolveDrawAmount(state, effect);
+      //
+      // Wave 4.8 follow-up 13 lane 94 (#2614 follow-up): when
+      // `X: "cardsDrawnThisTurn"` is set, the engine reads the
+      // integer `state.players[controllerId].cardsDrawnThisTurn`
+      // counter (Proft's Eidetic Memory). The controller is
+      // `ctx.controllerId` for a normal scripted trigger; for
+      // an `each_player` Draw, the helper falls through to the
+      // global default (the helper handles the `each_player`
+      // fan-out below).
+      const drawAmount = resolveDrawAmount(
+        state,
+        effect,
+        ctx.controllerId,
+      );
       // #2594 lane 25: each_player (Scrawling Crawler, FDN).
       if (effect.who === "each_player") {
         let next = state;
