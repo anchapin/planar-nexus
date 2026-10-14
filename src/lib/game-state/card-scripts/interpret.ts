@@ -33,6 +33,7 @@ import {
   moveCardToZone,
   sacrificeCard,
 } from "../keyword-actions/removal";
+import { loseLife } from "../player-actions";
 import { discardCards } from "../keyword-actions/draw";
 import { tapCardAction, untapCardAction } from "../keyword-actions/damage-tap";
 import {
@@ -2566,6 +2567,112 @@ export function resolveScriptedAbility(
       };
     }
     // you_may_resolved === true: fall through and run effects.
+  }
+  // Wave 4.8 follow-up 13 lane 93 (#2614 follow-up):
+  // "you may pay [cost]; if you do, [effects]" gate.
+  // Combines the lane 60 `you_may` yes/no prompt with a
+  // cost-on-yes path (CR 117.3a "you may pay N life;
+  // if you do, ..." pattern; Skyship Buccaneer is the
+  // canonical example).
+  //
+  // The v1 minimum supports two cost shapes (parallel
+  // to the lane 88 `cost` substrate):
+  //   - `sacrifice_self: true` — sacrifice the source
+  //     permanent. Reuses the lane 88 sacrifice-card
+  //     path.
+  //   - `pay_life: { amount: N }` — pay N life. Reuses
+  //     the lane 63 `resolveLifeLossEffect` /
+  //     `loseLife` helpers.
+  //
+  // Mutual exclusion with `cost` is enforced in the
+  // schema (the refine rule rejects both arms on the
+  // same trigger). The cost runs only when
+  // `you_may_resolved === true` (the yes is the
+  // consent); on `=== false` the trigger is skipped
+  // by the lane 60 `you_may` gate above. The cost
+  // stamps `cost_paid: true` (reusing the lane 88
+  // flag — the schema guarantees `cost` and
+  // `you_may_cost` are mutually exclusive, so no
+  // double-stamp risk) and re-runs the effects loop.
+  const youMayCost = (ability as { you_may_cost?: unknown }).you_may_cost;
+  if (youMayCost !== undefined) {
+    // Defensive: if the controller's `you_may` flag is
+    // missing, surface the prompt (the schema's
+    // refine rule already enforces `you_may: true`,
+    // but a hand-written ability could miss it). This
+    // mirrors the lane 60 gate.
+    if (stackObject.you_may_resolved !== true) {
+      // The lane 60 gate handles `=== undefined`
+      // (surface prompt) and `=== false` (skip). If
+      // we're here with `you_may_resolved !== true`,
+      // the lane 60 gate's logic already covered the
+      // case — fall through.
+      // (No-op here; the lane 60 gate's return paths
+      // covered undefined and false above.)
+    } else {
+      // `you_may_resolved === true`: pay it.
+      const stackAny = stackObject as StackObject & {
+        cost_paid?: boolean;
+      };
+      if (stackAny.cost_paid === undefined) {
+        // Stamp and apply the cost in the same pass —
+        // the yes/no gate has already settled the
+        // controller's consent; the cost_paid flag
+        // guards against double-apply on subsequent
+        // resolve passes.
+        if (
+          typeof youMayCost === "object" &&
+          youMayCost !== null &&
+          "sacrifice_self" in youMayCost &&
+          (youMayCost as { sacrifice_self: unknown }).sacrifice_self === true
+        ) {
+          // Defensive: if the source has been
+          // destroyed by another effect before the
+          // cost runs, the trigger fizzles (CR
+          // 602.2b). Reuses the lane 88 source-
+          // presence guard.
+          const sourceStillPresent =
+            stackObject.sourceCardId !== null &&
+            state.cards.has(stackObject.sourceCardId as CardInstanceId) &&
+            state.zones
+              .get(`${stackObject.controllerId as PlayerId}-battlefield`)
+              ?.cardIds.includes(stackObject.sourceCardId);
+          if (!sourceStillPresent) {
+            stackAny.cost_paid = false;
+            return state;
+          }
+          const sacrificed = sacrificeCard(
+            state,
+            stackObject.sourceCardId as CardInstanceId,
+          );
+          if (sacrificed.success) state = sacrificed.state;
+          else {
+            stackAny.cost_paid = false;
+            return state;
+          }
+        } else if (
+          typeof youMayCost === "object" &&
+          youMayCost !== null &&
+          "pay_life" in youMayCost
+        ) {
+          const amount = (
+            youMayCost as { pay_life: { amount: number } }
+          ).pay_life.amount;
+          // Pay the cost: lose N life. The helper
+          // stamps the spectator's `lastTurnLifeLost`
+          // for CR 702.135 spectacle. Defensive:
+          // losing more life than the controller has
+          // floors at 0 (the helper handles this), so
+          // the cost always succeeds.
+          state = loseLife(state, stackObject.controllerId as PlayerId, amount);
+        }
+        stackAny.cost_paid = true;
+      }
+      // `cost_paid === true` (already paid): fall
+      // through to effects. `cost_paid === false`
+      // (the trigger fizzled defensively above).
+      if (stackAny.cost_paid === false) return state;
+    }
   }
   // Lane 88 (#2614 follow-up): sacrifice-self cost gate.
   const hasSacrificeCost = (ability as { cost?: { sacrifice_self?: boolean } })
