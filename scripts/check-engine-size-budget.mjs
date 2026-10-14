@@ -388,7 +388,29 @@ const SCOPES = [
     // until-EOT-copy family (the historical precedent
     // continues; subsequent follow-up lanes may grow
     // the same family).
-    budgetLines: 3200,
+    //
+    // Wave 4.8 follow-up 13 lane 61a (#2614 follow-up):
+    // the foundational replacement-effect-for-death
+    // layer (Whip of Erebos-style "if a creature you
+    // control would die, instead exile it"). The
+    // schema adds a new `ReplacementEffectSchema`
+    // (event / applies_to / redirect / if_condition /
+    // optional / once_per_turn) and a top-level
+    // `replacement_effects: z.array(...)` arm on
+    // `CardScriptSchema` (parallel to `triggers` /
+    // `activated` / `statics`). The docstring + the
+    // schema entry land at +144 lines; schema.ts
+    // measured at 3308. Bumping 3200 → 3350 to give
+    // the replacement-effect family room to land
+    // without fragmenting the chosen-X /
+    // additional-costs / affinity / grants /
+    // counter-ledger / cast-from-zone / mana-restriction
+    // / copy-permanent / creature-payment /
+    // aura-protection / until-EOT-copy /
+    // trigger-cost / while-condition family (the
+    // historical precedent continues; the follow-up 13
+    // lanes 100 / 102 / 103 / 105 ride the same family).
+    budgetLines: 3350,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

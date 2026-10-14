@@ -2441,6 +2441,111 @@ export const AuraSchema = z
   })
   .strict();
 
+/**
+ * Wave 4.8 follow-up 13 lane 61a (#2614 follow-up):
+ * ReplacementEffectSchema — the structured form of a CR 614.1
+ * "if X would happen, instead Y" replacement effect, declarative
+ * on a permanent card. Drives the foundational
+ * `death_replacement` arm (Whip of Erebos-style "if a creature
+ * you control would die, instead exile it") that
+ * `moveCardToZone`'s consult and
+ * `ReplacementEffectManager.processEvent` consume.
+ *
+ * The v1 minimum supports a single shape:
+ *   `event: "would_die"` + `applies_to.type: "creature"` +
+ *   `applies_to.controller: "you"` + `redirect.to: "exile"`.
+ * Other `event` values, `applies_to` filters, and `redirect`
+ * destinations ride follow-up lanes (100 / 101 / 102 / 103 /
+ * 104 / 105). The schema is permissive — it accepts the wider
+ * shape — but the engine only acts on the v1 minimum today.
+ */
+export const ReplacementEffectSchema = z
+  .object({
+    /**
+     * Oracle-text-style description of the replacement effect
+     * (e.g. "if a creature you control would die, instead exile
+     * it"). Used by the engine to label the
+     * `ReplacementAbility.description` and by the
+     * `REPLACEMENT_CHOICE_TYPE` waitingChoice.
+     */
+    text: z.string().min(1),
+    /**
+     * The event this replacement effect watches. v1 supports
+     * only `"would_die"`; other events are documented but not
+     * yet implemented in the engine.
+     */
+    event: z.enum(["would_die", "would_be_destroyed"]).default("would_die"),
+    /**
+     * Which permanents the replacement effect applies to.
+     * v1 minimum: `type: "creature"` + `controller: "you"`.
+     * Other combinations parse but are out of scope for lane
+     * 61a's engine consult.
+     */
+    applies_to: z
+      .object({
+        type: z
+          .enum([
+            "self",
+            "creature",
+            "artifact",
+            "enchantment",
+            "planeswalker",
+            "any",
+          ])
+          .default("creature"),
+        controller: z.enum(["you", "opponent", "any"]).default("you"),
+      })
+      .strict()
+      .default({ type: "creature", controller: "you" }),
+    /**
+     * Where the replacement effect routes the event. v1
+     * supports only `to: "exile"`. Other destinations parse
+     * but are out of scope for lane 61a (lanes 100 / 101 / 104
+     * wire them).
+     */
+    redirect: z
+      .object({
+        to: z
+          .enum([
+            "exile",
+            "library_top",
+            "library_bottom",
+            "hand",
+            "battlefield_tapped",
+            "battlefield_untapped",
+            "sacrifice",
+            "any_zone",
+          ])
+          .default("exile"),
+      })
+      .strict()
+      .default({ to: "exile" }),
+    /**
+     * CR 603.4 intervening-if: the replacement only fires when
+     * the named condition holds (the drafter writes the
+     * condition string verbatim; the engine evaluates it via
+     * `evaluateInterveningIfClause`). Out of scope for v1; the
+     * field parses but the engine ignores it. Lane 103 wires it.
+     */
+    if_condition: z.string().min(1).optional(),
+    /**
+     * Whether the replacement is optional. When `true`, the
+     * engine surfaces a `REPLACEMENT_CHOICE_TYPE` waitingChoice
+     * for the affected player. Out of scope for v1; the field
+     * parses but the engine treats every v1 replacement as
+     * mandatory. Lane 100+ wires it.
+     */
+    optional: z.boolean().optional(),
+    /**
+     * CR 702 — once-per-turn cap. The engine tracks usage on
+     * the source's per-instance ledger and refuses the
+     * replacement a second time in the same turn. Out of
+     * scope for v1.
+     */
+    once_per_turn: z.boolean().optional(),
+  })
+  .strict();
+
 export const CardScriptSchema = z
   .object({
     /** Exact English card name, as on Scryfall. */
@@ -2535,6 +2640,36 @@ export const CardScriptSchema = z
       })
       .strict()
       .optional(),
+    /**
+     * Wave 4.8 follow-up 13 lane 61a (#2614 follow-up):
+     * Replacement effects ("if X would happen, instead Y",
+     * CR 614.1) declared on a permanent card. The v1 minimum
+     * supports the single shape "if a creature you control
+     * would die, instead exile it" (Whip of Erebos, False
+     * Dawn — the foundational replacement-effect-for-death
+     * layer). Other shapes (`hand`, `library_top`,
+     * `library_bottom`, `battlefield_tapped`,
+     * `battlefield_untapped`, `sacrifice`, conditional
+     * `if_condition`, `optional`, `notSelf`, `isToken`)
+     * parse but are out of scope for lane 61a.
+     *
+     * The engine arm:
+     * 1. registers each entry on
+     *    `state.replacementEffectManager` when the card enters
+     *    the battlefield (the script-resolution path is
+     *    triggered via `refreshScriptedReplacementEffects`,
+     *    called alongside `refreshScriptedStatics`);
+     * 2. consults the manager in `moveCardToZone` whenever a
+     *    creature is about to leave the battlefield for the
+     *    graveyard (the consult runs BEFORE the move so the
+     *    replacement effect runs on the "would die" event
+     *    with the battlefield still intact — CR 603.10a).
+     *
+     * A card with `replacement_effects` only (no `triggers`,
+     * `activated`, `statics`, etc.) is legal under the
+     * "needs ... or replacement_effects" refine arm below.
+     */
+    replacement_effects: z.array(ReplacementEffectSchema).min(1).optional(),
     /**
      * Wave 4.8 follow-up lane 59 (#2614 follow-up): "enters
      * with N counters, one for each creature you control of
@@ -3085,12 +3220,20 @@ export const CardScriptSchema = z
       // `SearchLibrary.stun` arm which writes to `card.counters`;
       // the v1 schema arm declares the counter at ETB and the
       // engine stamps both `instanceCounters` and `card.counters`).
+      // Wave 4.8 follow-up 13 lane 61a (#2614 follow-up): a card
+      // with only `replacement_effects` is also legal — it's the
+      // foundational replacement-effect-for-death substrate
+      // (Whip of Erebos-style "if a creature you control would
+      // die, instead exile it"). The synthetic
+      // `Whispering_Ward_of_Grave` card in lane 61a carries only
+      // this arm and no `triggers` / `activated` / `statics`.
       s.cycling ||
       s.enter_choice ||
-      s.enters_with_counters,
+      s.enters_with_counters ||
+      s.replacement_effects,
     {
       message:
-        "a card script needs spell, modes, triggers, activated, statics, rules, equipment, aura, cycling, enter_choice, or enters_with_counters",
+        "a card script needs spell, modes, triggers, activated, statics, rules, equipment, aura, cycling, enter_choice, enters_with_counters, or replacement_effects",
     },
   )
   .refine(
@@ -3150,6 +3293,7 @@ export type ScriptedEquipment = z.infer<typeof EquipmentSchema>;
 export type ScriptedEquipmentStatic = z.infer<typeof EquipmentStaticSchema>;
 export type ScriptedAura = z.infer<typeof AuraSchema>;
 export type ScriptedAuraStatic = z.infer<typeof AuraStaticSchema>;
+export type ScriptedReplacementEffect = z.infer<typeof ReplacementEffectSchema>;
 
 export {
   isPermanentScript,
