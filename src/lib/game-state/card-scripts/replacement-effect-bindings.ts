@@ -202,23 +202,53 @@ export function buildScriptedDeathReplacementEffects(
     if (!onBattlefield) continue;
     if (!card.cardData?.name) continue;
     const script = getCardScript(card.cardData.name);
-    if (!script || !script.replacement_effects) continue;
     if (!card.controllerId) continue;
-    for (const re of script.replacement_effects) {
-      // Runtime filter: the v1 minimum restricts to
-      // `applies_to.type: "creature"` — when the dying
-      // card is not a creature (an enchantment, an
-      // artifact, a planeswalker), skip the effect. The
-      // factory returns null for non-creature scripts
-      // already, but a creature-shape script applied to
-      // a non-creature dying card is also a miss.
-      if (re.applies_to.type === "creature" && !dyingIsCreature) continue;
-      const effect = buildScriptedDeathReplacementEffect(
-        card.id as CardInstanceId,
-        card.controllerId,
-        re,
-      );
-      if (effect) out.push(effect);
+    // Wave 4.8 follow-up 13 lane 61a (#2614 follow-up):
+    // the script-side `replacement_effects` arm.
+    if (script?.replacement_effects) {
+      for (const re of script.replacement_effects) {
+        // Runtime filter: the v1 minimum restricts to
+        // `applies_to.type: "creature"` — when the dying
+        // card is not a creature (an enchantment, an
+        // artifact, a planeswalker), skip the effect.
+        // The factory returns null for non-creature
+        // scripts already, but a creature-shape script
+        // applied to a non-creature dying card is also
+        // a miss.
+        if (re.applies_to.type === "creature" && !dyingIsCreature) continue;
+        const effect = buildScriptedDeathReplacementEffect(
+          card.id as CardInstanceId,
+          card.controllerId,
+          re,
+        );
+        if (effect) out.push(effect);
+      }
+    }
+    // Wave 4.8 follow-up 13 lane 61b (#2614 follow-up):
+    // also iterate the per-instance `deathReplacement`
+    // ledger. The ledger is populated by
+    // `refreshScriptedStatics` from any source's
+    // `static[].death_replacement` arm — the
+    // printed-card mechanism for Whip of Erebos's
+    // actual oracle ("Whenever a creature you control
+    // would die, exile it instead"). Each entry is a
+    // structured `ScriptedReplacementEffect`; the
+    // factory builds the same `ReplacementAbility`
+    // shape as the lane 61a schema arm. The ledger
+    // path runs alongside (not gated by) the
+    // `replacement_effects` arm — a card with only
+    // `statics[].death_replacement` (the Whip of Erebos
+    // shape) still surfaces its replacement here.
+    if (card.deathReplacement && card.deathReplacement.length > 0) {
+      for (const re of card.deathReplacement) {
+        if (re.applies_to.type === "creature" && !dyingIsCreature) continue;
+        const effect = buildScriptedDeathReplacementEffect(
+          card.id as CardInstanceId,
+          card.controllerId,
+          re,
+        );
+        if (effect) out.push(effect);
+      }
     }
   }
   return out;

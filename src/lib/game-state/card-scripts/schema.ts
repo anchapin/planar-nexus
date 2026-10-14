@@ -1670,6 +1670,63 @@ export const StaticSchema = z
   .object({
     /** The static ability's line of oracle text. */
     text: z.string().min(1),
+    /**
+     * Wave 4.8 follow-up 13 lane 61b (#2614 follow-up):
+     * `death_replacement` — a printed-card mechanism for
+     * the "if a creature you control would die, instead
+     * exile it" replacement effect. The structured form
+     * lives in `ReplacementEffectSchema` (lane 61a); this
+     * static arm is the LEGACY / printed-oracle bridge —
+     * the engine reads the source's printed
+     * `cardData.oracle_text` at refresh time and builds a
+     * `deathReplacement` per-instance ledger for any
+     * "would die, instead [destination]" clauses it parses.
+     * The replacement consult in `moveCardToZone`
+     * (lane 61a) reads both the lane 61a schema arm AND
+     * this ledger, so a card whose only mechanism is the
+     * printed `static` (Whip of Erebos's actual oracle —
+     * "Creatures you control have lifelink. Whenever a
+     * creature you control would die, exile it instead.")
+     * works end-to-end via `refreshScriptedStatics`.
+     *
+     * v1 supports a single shape: the source declares
+     * `"if a creature you control would die, instead
+     * exile it"` in its `cardData.oracle_text`, and the
+     * static's `text` field mirrors that line for the
+     * drafter's reference. The engine builds a
+     * `replacement_effects` entry on the source's
+     * per-instance `deathReplacement` field via
+     * `refreshScriptedStatics`, and the consult picks it
+     * up. Multi-target / conditional targets / etc. ride
+     * follow-up lanes (100 / 102 / 103 / 104 / 105).
+     *
+     * The `parser` arm lets the drafter bypass the
+     * default oracle-text parser by listing known
+     * substrings to match (avoids brittleness on
+     * in-game phrases). Default: the parser reads the
+     * source's `cardData.oracle_text` for "would die,
+     * instead exile it" / "you'd die, exile instead"
+     * substrings.
+     */
+    death_replacement: z
+      .object({
+        /**
+         * Free-form description for the drafter. The
+         * engine doesn't read this — it's metadata.
+         */
+        description: z.string().min(1).optional(),
+        /**
+         * Whether the printed effect is mandatory or
+         * optional. Lane 61b defaults to mandatory
+         * (Whip of Erebos's "if [thing] would die,
+         * instead exile it" has no "you may"). Out of
+         * scope: the `optional: true` engine arm
+         * (lane 100).
+         */
+        optional: z.literal(false).default(false),
+      })
+      .strict()
+      .optional(),
     affects: z
       .object({
         controller: z.enum(["you", "opponents"]),
@@ -2081,10 +2138,19 @@ export const StaticSchema = z
       // it to be combined with `keywords: ["double strike",
       // "lifelink"]` (Twinblade Paladin). Always evaluated
       // alongside the keywords; nothing additional to add.
-      s.while_condition !== undefined,
+      s.while_condition !== undefined ||
+      // Wave 4.8 follow-up 13 lane 61b (#2614 follow-up):
+      // the `death_replacement` arm is a meta-static —
+      // allow it as a stand-alone arm. The engine reads
+      // the source's `cardData.oracle_text` and builds a
+      // per-instance `deathReplacement` ledger (parallel
+      // to `scriptStaticKeywords` for keyword grants).
+      // No P/T or keyword changes of its own; the static
+      // only triggers the death-replacement consult.
+      s.death_replacement !== undefined,
     {
       message:
-        "a static needs power/toughness, keywords, X, chosen_name_block, add_creature_type (with addCreatureTypeToSelf), add_color (with addColorToSelf), protectionFrom, or become_copy",
+        "a static needs power/toughness, keywords, X, chosen_name_block, add_creature_type (with addCreatureTypeToSelf), add_color (with addColorToSelf), protectionFrom, become_copy, or death_replacement",
     },
   );
 

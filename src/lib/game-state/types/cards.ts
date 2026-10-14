@@ -6,6 +6,7 @@
  */
 import type { ScryfallCard } from "./card-data";
 import { PlayerId } from "./players";
+import type { ScriptedReplacementEffect } from "../card-scripts/schema";
 
 /**
  * Unique identifier for a card instance in the game
@@ -529,6 +530,26 @@ export interface CardInstance {
    * (issue #2496). Maintained by `refreshScriptedStatics`.
    */
   scriptStaticKeywords?: string[];
+  /**
+   * Wave 4.8 follow-up 13 lane 61b (#2614 follow-up):
+   * death-replacement effects sourced from this card's
+   * `static[].death_replacement` arms (the printed-card
+   * mechanism for Whip of Erebos-style "if a creature you
+   * control would die, instead exile it"). Each entry is a
+   * structured `ScriptedReplacementEffect` built by
+   * `refreshScriptedStatics` from the source's printed
+   * `cardData.oracle_text`; the consult in
+   * `keyword-actions/removal.ts`'s `moveCardToZone` reads
+   * the field in addition to the lane 61a schema arm.
+   * Cleared when the source leaves the battlefield (the
+   * `refreshScriptedStatics` drop branch deletes the
+   * field — the consult uses a fresh build per call, so
+   * stale entries don't affect the consult, but a stale
+   * entry on a source that bounced would point to the
+   * wrong card; the drop branch keeps the ledger
+   * consistent with the source's battlefield presence).
+   */
+  deathReplacement?: ScriptedReplacementEffect[];
   /**
    * Wave 4.8 lane 54 (#2614 follow-up): true while this card
    * is enchanted by an Aura with `static.removesAllAbilities:

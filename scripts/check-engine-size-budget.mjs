@@ -410,7 +410,29 @@ const SCOPES = [
     // trigger-cost / while-condition family (the
     // historical precedent continues; the follow-up 13
     // lanes 100 / 102 / 103 / 105 ride the same family).
-    budgetLines: 3350,
+    //
+    // Wave 4.8 follow-up 13 lane 61b (#2614 follow-up):
+    // the printed-card mechanism for Whip of Erebos's
+    // actual oracle. The schema accepts a new
+    // `death_replacement: { description, optional }`
+    // arm on `StaticSchema` (parallel to the lane 71
+    // `protectionFrom` static arm) — the engine
+    // reads the source's `cardData.oracle_text` at
+    // refresh time and writes a per-instance
+    // `deathReplacement` ledger. The docstring + the
+    // schema entry land at +66 lines; schema.ts
+    // measured at 3374. Bumping 3350 → 3400 to give
+    // the printed-oracle replacement-effect family
+    // room to land without fragmenting the
+    // chosen-X / additional-costs / affinity / grants /
+    // counter-ledger / cast-from-zone / mana-restriction
+    // / copy-permanent / creature-payment /
+    // aura-protection / until-EOT-copy /
+    // trigger-cost / while-condition /
+    // replacement-effect family (the historical
+    // precedent continues; follow-up 13 lanes 100 /
+    // 102 / 103 / 104 / 105 ride the same family).
+    budgetLines: 3400,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

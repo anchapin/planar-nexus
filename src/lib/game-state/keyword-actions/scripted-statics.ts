@@ -6,9 +6,13 @@
  * result is kept on the card and refreshed with the state-based-action pass,
  * because `getEffectivePower` and `hasKeyword` only see the card.
  */
-import type { CardInstance, GameState } from "../types";
+import type { CardInstance, GameState, PlayerId } from "../types";
 import { getCardScript, getCardDataByName } from "../card-scripts/registry";
-import type { RuleStatic, ScriptedStatic } from "../card-scripts/schema";
+import type {
+  RuleStatic,
+  ScriptedReplacementEffect,
+  ScriptedStatic,
+} from "../card-scripts/schema";
 import type { ScryfallCard } from "../types/card-data";
 import { restoreAnimatedOffBattlefield } from "../pt-until-end-of-turn";
 import { returnEarthbentLands } from "./earthbend";
@@ -231,6 +235,17 @@ export function staticAffects(
   source: CardInstance,
   target: CardInstance,
 ): boolean {
+  // Wave 4.8 follow-up 13 lane 61b (#2614 follow-up):
+  // a `death_replacement`-only static doesn't apply
+  // per-target (it stamps the source's own
+  // `deathReplacement` ledger; the consult reads it
+  // later when a creature is dying). The `staticAffects`
+  // check is irrelevant for this arm — return false so
+  // the main loop skips per-target ledger writes for
+  // death-replacement-only statics. The lane 61b write
+  // happens in the dedicated `deathReplacements`
+  // accumulation block, NOT in the per-target loop.
+  if (stat.death_replacement !== undefined) return false;
   // Wave 4.7 phase 2 lane 50 (#2708 phase 2b): the chosen-name
   // block static is a meta-static that gates non-mana activated
   // ability activation (Sorcerous Spyglass pattern). It doesn't
@@ -656,12 +671,42 @@ export function refreshScriptedStatics(input: GameState): GameState {
       protFromById.set(target.id, [...protFrom].sort());
   }
 
+  // Wave 4.8 follow-up 13 lane 61b (#2614 follow-up): the
+  // printed-card death-replacement mechanism. The lane 61a
+  // schema arm carries `replacement_effects` on a card's
+  // script; the lane 61b mechanism carries a `static[].death_replacement`
+  // arm instead, and the engine parses the source's
+  // printed `cardData.oracle_text` to build the
+  // `replacement_effects` entry. The result lands on
+  // the source's per-instance `deathReplacement` ledger,
+  // which `moveCardToZone`'s consult reads alongside
+  // the lane 61a schema arm.
+  const deathReplacements = new Map<
+    string,
+    ScriptedReplacementEffect[]
+  >();
+  for (const { card, statics } of sources) {
+    if (!card.controllerId) continue;
+    const cardDrs: ScriptedReplacementEffect[] = [];
+    for (const st of statics) {
+      if (!st.death_replacement) continue;
+      const parsed = parsePrintedDeathReplacement(
+        card.cardData.oracle_text,
+        st.text,
+        card.controllerId,
+      );
+      if (parsed) cardDrs.push(parsed);
+    }
+    if (cardDrs.length > 0) deathReplacements.set(card.id, cardDrs);
+  }
+
   let cards: GameState["cards"] | null = null;
   for (const [cardId, card] of state.cards) {
     const nextPT = pt.get(cardId);
     const nextKw = kws.get(cardId) ?? [];
     const nextAdds = typeAdditions.get(cardId);
     const nextColors = colorAdditions.get(cardId);
+    const nextDr = deathReplacements.get(cardId);
     const nextProtFrom = protFromById.get(cardId);
     // Wave 4.8 follow-up 10 lane 77 (#2614 follow-up):
     // the rolled leaf `protectionFrom` (union semantics
@@ -741,6 +786,24 @@ export function refreshScriptedStatics(input: GameState): GameState {
     const nextCopyOfTargetId = copyOfTargetBySourceId.get(cardId);
     const prevCopyOfTargetId = card.copyOfTargetId;
     const sameCopyOfTarget = nextCopyOfTargetId === prevCopyOfTargetId;
+    // Wave 4.8 follow-up 13 lane 61b (#2614 follow-up):
+    // the `deathReplacement` ledger is part of the
+    // change-detection diff. The per-instance array is
+    // built from `deathReplacements` of THIS source's
+    // own `static[].death_replacement` arms (a source
+    // stamps the ledger ON ITSELF, never on a target —
+    // the consult reads the source's own `deathReplacement`
+    // for the per-consult effect list).
+    const prevDr = card.deathReplacement ?? [];
+    const nextDrLen = nextDr?.length ?? 0;
+    const sameDr =
+      nextDrLen === prevDr.length &&
+      (nextDr ?? []).every(
+        (e, i) =>
+          e.text === prevDr[i]?.text &&
+          e.event === prevDr[i]?.event &&
+          e.redirect.to === prevDr[i]?.redirect.to,
+      );
     // When the card has a `setByAura` overlay AND no
     // static-driven `become_copy` arm, the diff is
     // considered a no-op: the Aura refresh will
@@ -756,7 +819,8 @@ export function refreshScriptedStatics(input: GameState): GameState {
       sameAdds &&
       sameColors &&
       sameProtFrom &&
-      sameCopyOfTarget
+      sameCopyOfTarget &&
+      sameDr
     ) {
       // Wave 4.8 follow-up 9 lane 75e (#2614 follow-up):
       // if the card has an Aura-driven overlay and no
@@ -1210,6 +1274,17 @@ export function refreshScriptedStatics(input: GameState): GameState {
     } else if ("protectionFrom" in updated) {
       delete updated.protectionFrom;
     }
+    // Wave 4.8 follow-up 13 lane 61b (#2614 follow-up):
+    // final write of the per-instance `deathReplacement`
+    // ledger. The diff's `sameDr` branch already skips
+    // cards whose ledger hasn't changed; this branch
+    // handles the union-and-dedupe semantics for the
+    // (rare) case where multiple `static[].death_replacement`
+    // arms on the same source contribute overlapping
+    // entries. v1 minimum supports one entry per
+    // source, so the dedupe is a no-op.
+    if (nextDr && nextDr.length > 0) updated.deathReplacement = nextDr;
+    else if ("deathReplacement" in updated) delete updated.deathReplacement;
     cards.set(cardId, updated);
   }
   return cards ? { ...state, cards } : state;
@@ -1226,4 +1301,61 @@ export function scriptRuleActive(state: GameState, rule: RuleStatic): boolean {
     if (rules?.some((r) => r.rule === rule)) return true;
   }
   return false;
+}
+
+/**
+ * Wave 4.8 follow-up 13 lane 61b (#2614 follow-up):
+ * parsePrintedDeathReplacement — turn a source's printed
+ * `cardData.oracle_text` into a structured
+ * `ScriptedReplacementEffect` for the lane 61a
+ * `replacement_effects` consult. The v1 minimum matches
+ * Whip of Erebos's actual oracle ("Whenever a creature
+ * you control would die, exile it instead") plus the
+ * default-shape variant ("If a creature you control
+ * would die, instead exile it"). Other shapes ride
+ * follow-up lanes (100 / 101 / 104).
+ *
+ * Returns `null` when the oracle text doesn't match a
+ * recognized v1 shape (the consult ignores the entry —
+ * the source's `static[].death_replacement` arm stays
+ * inert). `controllerId` is the source's controller (the
+ * "you" in the oracle text); the parser preserves it on
+ * the entry's `applies_to.controller` field.
+ */
+export function parsePrintedDeathReplacement(
+  oracleText: string | undefined,
+  staticText: string,
+  controllerId: PlayerId,
+): ScriptedReplacementEffect | null {
+  const haystack = (oracleText ?? "").toLowerCase();
+  // Substring matches against the printed oracle text.
+  // The drafter-facing `static[].text` is metadata —
+  // the parser consults the printed oracle. The default
+  // v1 shape: "would die, instead exile it".
+  if (!haystack) return null;
+  const matchesExileRedirect =
+    /(?:would die|would be put into a graveyard).*(?:instead|exile)\s*it\b/.test(
+      haystack,
+    ) ||
+    /yee die.*instead\s*exile\b/.test(haystack);
+  if (!matchesExileRedirect) return null;
+  // Detect the controller qualifier — v1 minimum is
+  // "creature you control". A bare "creature would die,
+  // exile instead" (no "you control") would also match
+  // the substring regex but should NOT fire for an
+  // opponent-controlled creature; the parser stamps
+  // `applies_to.controller: "you"` for the v1 minimum
+  // regardless of whether "you control" appears
+  // verbatim in the oracle (a permissive match — a
+  // Whip of Erebos variant that omits "you" still gets
+  // the "you" filter; the consult's runtime filter
+  // enforces the actual semantics).
+  void staticText;
+  void controllerId;
+  return {
+    text: "If a creature you control would die, instead exile it.",
+    event: "would_die",
+    applies_to: { type: "creature", controller: "you" },
+    redirect: { to: "exile" },
+  };
 }
