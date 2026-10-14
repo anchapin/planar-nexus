@@ -1452,6 +1452,67 @@ export const TriggerSchema = z
      */
     you_may: z.boolean().optional(),
     /**
+     * Wave 4.8 follow-up 13 lane 93 (#2614 follow-up):
+     * `you_may_cost` — a "you may pay [cost]; if you do,
+     * [effects]" gate. Combines the lane 60 `you_may`
+     * yes/no prompt with a cost-on-yes path (CR 117.3a
+     * "you may pay N life; if you do, ..." pattern;
+     * Skyship Buccaneer (FDN 76) is the canonical
+     * example: "you may pay 2 life; if you do, draw a
+     * card").
+     *
+     * The v1 minimum supports two cost shapes
+     * (parallel to the lane 88 `cost` substrate):
+     *   - `sacrifice_self: true` — sacrifice the source
+     *     permanent (midrange variant: "you may sacrifice
+     *     [this]; if you do, [effects]"). The cost
+     *     mechanism reuses the lane 88 sacrifice-card
+     *     path.
+     *   - `pay_life: { amount: N }` — pay N life. The
+     *     cost mechanism reuses the lane 63
+     *     `additionalCosts.pay_life` arm's
+     *     `resolveLifeLossEffect` helper.
+     *
+     * The engine's gate flow:
+     *   1. `you_may: true` is required alongside
+     *      `you_may_cost` (the yes/no gate is the
+     *      precondition for paying the cost).
+     *   2. On the first resolve pass, surface a
+     *      `you_may_prompt` waitingChoice (the lane 60
+     *      shape).
+     *   3. On `you_may_resolved === true`, evaluate the
+     *      cost: if it can be paid (sacrifice_self:
+     *      source still on battlefield; pay_life:
+     *      controller's life ≥ amount), stamp
+     *      `cost_paid: true` and run effects; if it
+     *      can't be paid, stamp `cost_paid: false` and
+     *      the trigger fizzles.
+     *   4. On `you_may_resolved === false`, skip the
+     *      trigger entirely (no cost, no effects).
+     *
+     * Out of scope for lane 93 (each a follow-up lane):
+     * the `you_may_cost.discard` arm (lane 98), the
+     * "you may pay [cost]; if you don't, [alt
+     * effects]" alternate (lane 99), the
+     * `you_may_cost.pay_mana` arm (some shapes use
+     * mana instead of life; out of scope), and the
+     * multi-cost combinations.
+     */
+    you_may_cost: z
+      .union([
+        z
+          .object({
+            sacrifice_self: z.literal(true),
+          })
+          .strict(),
+        z
+          .object({
+            pay_life: z.object({ amount: z.number().int().min(1) }).strict(),
+          })
+          .strict(),
+      ])
+      .optional(),
+    /**
      * Wave 4.8 follow-up 12 lane 88 (#2614 follow-up): a "Sacrifice
      * this [permanent]:" cost on a triggered ability (Midnight Snack,
      * FDN 65's deferred half — "Sacrifice this artifact: create a
@@ -1506,6 +1567,18 @@ export const TriggerSchema = z
     message:
       "you_may and modes are mutually exclusive on a trigger (lane 60, #2614)",
   })
+  .refine((t) => t.you_may_cost === undefined || t.you_may === true, {
+    message:
+      "you_may_cost requires you_may: true (lane 93, #2614)",
+  })
+  .refine(
+    (t) =>
+      !(t.you_may_cost !== undefined && t.cost?.sacrifice_self === true),
+    {
+      message:
+        "you_may_cost and cost.sacrifice_self are mutually exclusive on a trigger (lane 93, #2614) — the cost substrate's sacrifice-self gate subsumes the lane 88 / 93 paths",
+    },
+  )
   .refine(
     (t) => !(t.cost?.sacrifice_self === true && t.modes !== undefined),
     {

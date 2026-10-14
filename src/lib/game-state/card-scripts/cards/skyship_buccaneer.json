@@ -1,6 +1,6 @@
 {
   "name": "Skyship Buccaneer",
-  "oracle": "Raid — At the beginning of your end step, if you attacked this turn, put a +1/+1 counter on this creature.",
+  "oracle": "Flying\nRaid — At the beginning of your end step, if you attacked this turn, put a +1/+1 counter on this creature.\nWhenever Skyship Buccaneer attacks, you may pay 2 life. If you do, draw a card.",
   "triggers": [
     {
       "text": "Raid — At the beginning of your end step, if you attacked this turn, put a +1/+1 counter on this creature.",
@@ -13,6 +13,25 @@
           "counter": "+1/+1",
           "amount": 1,
           "target": "self"
+        }
+      ]
+    },
+    {
+      "text": "Whenever Skyship Buccaneer attacks, you may pay 2 life. If you do, draw a card.",
+      "event": "attacks",
+      "subject": "self",
+      "once": true,
+      "you_may": true,
+      "you_may_cost": {
+        "pay_life": {
+          "amount": 2
+        }
+      },
+      "effects": [
+        {
+          "op": "Draw",
+          "amount": 1,
+          "who": "you"
         }
       ]
     }

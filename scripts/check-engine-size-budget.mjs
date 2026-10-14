@@ -432,7 +432,25 @@ const SCOPES = [
     // replacement-effect family (the historical
     // precedent continues; follow-up 13 lanes 100 /
     // 102 / 103 / 104 / 105 ride the same family).
-    budgetLines: 3400,
+    //
+    // Wave 4.8 follow-up 13 lane 93 (#2614 follow-up):
+    // the "you may pay [cost]; if you do, [effects]"
+    // gate (Skyship Buccaneer's deferred half — the
+    // CR 117.3a "you may pay 2 life; if you do, draw
+    // a card" pattern). The schema accepts a new
+    // `you_may_cost` arm on `TriggerSchema` (parallel
+    // to the lane 88 `cost` substrate) with two v1
+    // shapes (`sacrifice_self: true` and
+    // `pay_life: { amount: N }`). The docstring + the
+    // schema entries land at +73 lines; schema.ts
+    // measured at 3447. Bumping 3400 → 3450 to give
+    // the you-may + cost family room to land without
+    // fragmenting the trigger-cost /
+    // while-condition / replacement-effect family
+    // (the historical precedent continues; follow-up
+    // 13 lanes 95 / 96 / 97 / 98 / 99 / 100 / 106 ride
+    // the same family).
+    budgetLines: 3450,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),
