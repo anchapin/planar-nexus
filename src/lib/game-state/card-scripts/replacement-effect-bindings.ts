@@ -96,14 +96,27 @@ export function buildScriptedDeathReplacementEffect(
   // instead return it to its owner's hand"). The
   // lane 61a engine surface accepts the redirect; the
   // factory now stamps `redirectToZone: "hand"` on
-  // the result. Out of scope: the
-  // "library_top" / "library_bottom" /
+  // the result.
+  //
+  // Wave 4.8 follow-up 13 lane 101 (#2614 follow-up):
+  // added `redirect.to: "sacrifice"` (False Dawn's
+  // deferred sacrifice-redirect — "if [thing] would
+  // die, instead sacrifice it"). The factory stamps
+  // `redirectToZone: "sacrifice"` on the result; the
+  // engine consult's `moveCardToZone` switch routes
+  // the dying card through the `sacrificeCard` path
+  // (the sacrifice keyword bumps
+  // `state.turn.creatureDiedThisThisTurn` and
+  // suppresses dies triggers — see
+  // `keyword-actions/removal.ts`).
+  //
+  // Out of scope: "library_top" / "library_bottom" /
   // "battlefield_tapped" / "battlefield_untapped" /
-  // "sacrifice" / "any_zone" / "life_loss"
-  // destinations ride follow-up lanes (101 / 104).
+  // "any_zone" / "life_loss" (lanes 104).
   if (
     re.redirect.to !== "exile" &&
-    re.redirect.to !== "hand"
+    re.redirect.to !== "hand" &&
+    re.redirect.to !== "sacrifice"
   ) {
     return null;
   }

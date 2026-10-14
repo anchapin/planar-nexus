@@ -1,0 +1,17 @@
+{
+  "name": "Instead Sacrifice On Die",
+  "oracle": "Enchantment\nIf a creature you control would die, instead sacrifice it.",
+  "replacement_effects": [
+    {
+      "text": "If a creature you control would die, instead sacrifice it.",
+      "event": "would_die",
+      "applies_to": {
+        "type": "creature",
+        "controller": "you"
+      },
+      "redirect": {
+        "to": "sacrifice"
+      }
+    }
+  ]
+}

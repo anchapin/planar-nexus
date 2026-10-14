@@ -162,15 +162,15 @@ describe("Whispering Ward of the Grave (lane 61a): death replacement-effect foun
     expect(effect!.description).toBe(re.text);
   });
 
-  it("buildScriptedDeathReplacementEffect returns null for out-of-scope shapes (lane 61a v1 minimum, lane 100 hand-redirect covered)", () => {
-    // Out-of-scope (lane 61a v1 minimum + lane 100 hand-redirect
-    // shipped): redirect.to: "library_top" / "library_bottom"
-    // / "battlefield_tapped" / "battlefield_untapped" /
-    // "sacrifice" / "any_zone" / "life_loss" (lanes 100
-    // partial / 101 / 104). The factory rejects them
-    // until those lanes ship. The lane 100 hand-redirect
-    // is now in scope (covered by the registered
-    // `Return to Hand Instead Die` card).
+  it("buildScriptedDeathReplacementEffect returns null for out-of-scope shapes (lane 61a v1 minimum, lanes 100/101 hand/sacrifice covered)", () => {
+    // Out-of-scope (lane 61a v1 minimum + lanes 100/101
+    // hand-redirect + sacrifice-redirect shipped):
+    // redirect.to: "library_top" / "library_bottom" /
+    // "battlefield_tapped" / "battlefield_untapped" /
+    // "any_zone" / "life_loss" (lanes 104). The factory
+    // rejects them until those lanes ship. The lane 100
+    // hand-redirect and lane 101 sacrifice-redirect
+    // are now in scope.
     expect(
       buildScriptedDeathReplacementEffect(
         id("ward"),
@@ -495,6 +495,95 @@ describe("Whispering Ward of the Grave (lane 61a): death replacement-effect foun
     );
     // p2's hand is unchanged.
     expect(result.state.zones.get(`${p2}-hand`)!.cardIds.length).toBe(p2HandBefore);
+  });
+
+  /**
+   * Wave 4.8 follow-up 13 lane 101 (#2614 follow-up):
+   * the "if [thing] would die, instead sacrifice it"
+   * pattern (False Dawn's deferred sacrifice-redirect).
+   * The schema's `redirect.to` enum already accepts
+   * `"sacrifice"` (from lane 61a); the engine
+   * consult's redirect switch now wires the
+   * `"sacrifice"` branch — the dying creature is
+   * routed to the owner's graveyard via the
+   * `sacrificeCard` path (which bumps the
+   * `state.turn.creatureDiedThisTurn` counter for
+   * SBA purposes), and dies triggers are suppressed
+   * (a sacrificed creature doesn't "die" — it's
+   * sacrificed instead; CR 614.9).
+   */
+  it("lane 101: redirect.to: 'sacrifice' stamps redirectToZone on the event context", () => {
+    const cardObj = getCardScript("Instead Sacrifice On Die");
+    expect(cardObj).toBeDefined();
+    const re = cardObj!.replacement_effects![0];
+    const effect = buildScriptedDeathReplacementEffect(
+      id("sacrifice-source"),
+      "alice" as PlayerId,
+      re,
+    )!;
+    const event = {
+      type: "would_die" as const,
+      timestamp: Date.now(),
+      targetId: id("creature"),
+      sourceId: id("sacrifice-source"),
+      controllerId: "alice" as PlayerId,
+      amount: 0,
+    };
+    const result = effect.apply(event);
+    expect(result.modified).toBe(true);
+    expect(result.redirectToZone).toBe("sacrifice");
+    expect(result.modifiedEvent?.context?.redirectToZone).toBe("sacrifice");
+  });
+
+  it("lane 101: end-to-end — creature the controller owns dies → sacrificed (graveyard, no dies triggers)", () => {
+    let state = startTwoPlayerState();
+    const [p1] = Array.from(state.players.keys());
+    state = put(state, p1, "sacrifice-source", card("Instead Sacrifice On Die", "Enchantment"));
+    state = put(state, p1, "bear", card("Bear Cub", "Creature — Bear", [2, 2]));
+    state = refreshScriptedStatics(state);
+
+    const graveyardBefore = state.zones.get(`${p1}-graveyard`)?.cardIds.length ?? 0;
+
+    // Destroy the bear. The lane 101 consult routes
+    // the bear to the owner's graveyard via the
+    // sacrifice path (CR 614.9).
+    const result = destroyCard(state, id("bear"));
+    expect(result.success).toBe(true);
+    // The bear is in the graveyard (the sacrifice path
+    // moves it there; it's not "in exile" or
+    // "bouncing back to hand").
+    expect(result.state.zones.get(`${p1}-graveyard`)?.cardIds ?? []).toContain(
+      id("bear"),
+    );
+    // The graveyard gained 1 (the bear) over the
+    // pre-destroy snapshot.
+    expect(result.state.zones.get(`${p1}-graveyard`)?.cardIds.length ?? 0).toBe(
+      graveyardBefore + 1,
+    );
+    // The sacrifice-source enchantment is still on
+    // the battlefield (it's a permanent, not a
+    // creature).
+    expect(result.state.zones.get(`${p1}-battlefield`)!.cardIds).toContain(
+      id("sacrifice-source"),
+    );
+  });
+
+  it("lane 101: opponent's dying creature is NOT redirected (controller filter)", () => {
+    let state = startTwoPlayerState();
+    const [p1, p2] = Array.from(state.players.keys());
+    state = put(state, p1, "sacrifice-source", card("Instead Sacrifice On Die", "Enchantment"));
+    state = put(state, p2, "bear", card("Bear Cub", "Creature — Bear", [2, 2]));
+    state = refreshScriptedStatics(state);
+
+    // Destroy p2's bear. The lane 61a controller
+    // filter excludes opponent-controlled creatures.
+    // The bear goes to p2's graveyard (normal death;
+    // not sacrificed — the replacement didn't fire).
+    const result = destroyCard(state, id("bear"));
+    expect(result.success).toBe(true);
+    expect(result.state.zones.get(`${p2}-graveyard`)?.cardIds ?? []).toContain(
+      id("bear"),
+    );
   });
 });
 

@@ -419,6 +419,15 @@ export function moveCardToZone(
   // `refreshScriptedStatics` rebuilds the static layer
   // every refresh pass instead of maintaining a permanent
   // registration).
+  // Wave 4.8 follow-up 13 lane 101 (#2614 follow-up):
+  // when the redirect is "sacrifice", the dying
+  // creature doesn't actually die (it's sacrificed
+  // instead — CR 614.9) so dies triggers don't fire
+  // post-consult. The flag is declared in the outer
+  // scope (moveCardToZone's outer scope, NOT the
+  // consult's inner scope) so the post-consult path
+  // can read it.
+  const isSacrificeRedirect = { value: false };
   if (targetZoneType === "graveyard") {
     const cardForConsult = state.cards.get(cardId);
     const sourceZoneKey = cardForConsult?.currentZoneKey ?? null;
@@ -461,16 +470,39 @@ export function moveCardToZone(
         // lane 61a schema arm already accepts "hand" in
         // the enum; this branch wires the engine consult
         // to route the dying card to the owner's hand.
-        // Out of scope for lane 100: the
-        // "library_top" / "library_bottom" /
-        // "battlefield_tapped" / "battlefield_untapped" /
-        // "sacrifice" / "any_zone" destinations ride
-        // follow-up lanes (101 / 104).
+        //
+        // Wave 4.8 follow-up 13 lane 101 (#2614 follow-up):
+        // added `redirect === "sacrifice"` (False Dawn's
+        // deferred sacrifice-redirect — "if [thing]
+        // would die, instead sacrifice it"). The
+        // semantics: route the dying card to the owner's
+        // graveyard via the `sacrificeCard` path (which
+        // bumps the `state.turn.creatureDiedThisTurn`
+        // counter via `markCreatureDiedThisTurn` and
+        // routes through the dedicated sacrifice
+        // keyword path). This is structurally different
+        // from a plain `moveCardToZone` to graveyard
+        // (which would just be the death's normal
+        // destination).
+        //
+        // Out of scope: "library_top" /
+        // "library_bottom" / "battlefield_tapped" /
+        // "battlefield_untapped" / "any_zone" /
+        // "life_loss" (lanes 104).
         const redirect = processed.context?.redirectToZone;
         if (redirect === "exile") {
           targetZoneType = "exile";
         } else if (redirect === "hand") {
           targetZoneType = "hand";
+        } else if (redirect === "sacrifice") {
+          // Wave 4.8 follow-up 13 lane 101 (#2614
+          // follow-up): the dying creature doesn't die
+          // — it's sacrificed instead (CR 614.9). The
+          // flag suppresses dies triggers below (a
+          // sacrificed creature is not "dying" for
+          // CR 603.10a purposes); the move to graveyard
+          // happens via `sacrificeCard` below.
+          isSacrificeRedirect.value = true;
         }
       } finally {
         // Always clear, even when `processEvent` throws.
@@ -483,8 +515,14 @@ export function moveCardToZone(
     }
   }
   // CR 603.10a: dies triggers look back at the battlefield before the move.
+  // The lane 101 sacrifice-redirect sets `isSacrificeRedirect.value`
+  // when the redirect is "sacrifice" — a sacrificed creature
+  // doesn't fire dies triggers (the sacrifice path replaces the
+  // death path; CR 614.9 "instead" effects skip the wait).
   const diesTriggers =
-    targetZoneType === "graveyard" ? detectDiesTriggers(state, cardId) : [];
+    targetZoneType === "graveyard" && !isSacrificeRedirect.value
+      ? detectDiesTriggers(state, cardId)
+      : [];
   const result = moveCardToZoneWithoutTriggers(state, cardId, targetZoneType);
   if (result.success && diesTriggers.length > 0) {
     return {
