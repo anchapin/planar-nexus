@@ -466,7 +466,23 @@ const SCOPES = [
     // (the historical precedent continues; follow-up
     // 13 lanes 95 / 98 / 99 / 100 / 106 ride the same
     // family).
-    budgetLines: 3500,
+    //
+    // Wave 4.8 follow-up 13 lane 98 (#2614 follow-up):
+    // the "may discard a card" cost (Storm Fleet Spy
+    // variant — parallel to the lane 88 sacrifice-self
+    // substrate). The schema accepts a new
+    // `cost: { discard: { amount: 1 } }` arm on
+    // `TriggerSchema`. The docstring + the schema
+    // entries land at +22 lines; schema.ts measured
+    // at 3522. Bumping 3500 → 3550 to give the
+    // discard-cost family room to land without
+    // fragmenting the trigger-cost / you-may-cost /
+    // while-condition / replacement-effect /
+    // cards-drawn / opponent-drawn /
+    // create-token-xcount family (the historical
+    // precedent continues; follow-up 13 lane 99
+    // rides the same family).
+    budgetLines: 3550,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

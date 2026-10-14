@@ -52,7 +52,17 @@ export interface WaitingChoice {
       // in spell-casting/choices.ts (parallel to `you_may_prompt`),
       // which stamps `stackObject.cost_paid` and returns the
       // controller to the resolution path.
-      "sacrifice_self_prompt";
+      "sacrifice_self_prompt"
+    | // Wave 4.8 follow-up 13 lane 98 (#2614 follow-up): a
+      // scripted trigger with `cost.discard: { amount: N }` (CR
+      // 602.2b "Discard a card:" as a trigger cost — Storm Fleet
+      // Spy variant). Surfaced by
+      // `card-scripts/interpret.ts#resolveScriptedAbility` at
+      // resolution; resolved by the `discard_prompt` branch in
+      // spell-casting/choices.ts (parallel to `sacrifice_self_prompt`),
+      // which stamps `stackObject.cost_paid` and returns the
+      // controller to the trigger resolution path.
+      "discard_prompt";
   /** ID of player who needs to make this choice */
   playerId: PlayerId;
   /** ID of the stack object this choice is for */

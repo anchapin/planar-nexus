@@ -1580,6 +1580,31 @@ export const TriggerSchema = z
     cost: z
       .object({
         sacrifice_self: z.literal(true).optional(),
+        /**
+         * Wave 4.8 follow-up 13 lane 98 (#2614 follow-up):
+         * the "you may discard a card as cost" arm
+         * (Storm Fleet Spy variant — parallel to the lane
+         * 88 sacrifice-self substrate). When set, the
+         * engine surfaces a yes/no prompt
+         * (`discard_prompt` WaitingChoice) at trigger
+         * resolution; on yes, the controller discards
+         * `amount` cards (the lane 87 `startDiscard` helper
+         * surfaces a target-card choice — v1 minimum uses
+         * a simple "discard a random card" path; multi-card
+         * discard with explicit targeting is a follow-up
+         * lane); on no, the trigger does nothing
+         * (CR 602.2b).
+         *
+         * v1 supports `amount: 1` only (single-card
+         * discard). The "discard 2 cards" variant rides
+         * a follow-up lane.
+         */
+        discard: z
+          .object({
+            amount: z.number().int().min(1).max(1),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),
