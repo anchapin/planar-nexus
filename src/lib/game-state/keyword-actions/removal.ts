@@ -6,6 +6,7 @@ import { detectDiesTriggers } from "./dies";
 import { putTriggersOnStack } from "../trigger-system/stack-ops";
 import { applyEntersWithCounters } from "./enters-with-counters";
 import { isCreatureOnCurrentFace, markCreatureDiedThisTurn } from "./morbid";
+import { buildScriptedDeathReplacementEffects } from "../card-scripts/replacement-effect-bindings";
 /**
  * Zone-removal keyword actions (CR 701): destroy, exile, sacrifice, regenerate, and generic zone moves.
  *
@@ -387,6 +388,84 @@ export function moveCardToZone(
   // exiled instead, so it never dies (#2614 Esper Origins).
   if (targetZoneType === "graveyard" && hasFinalityCounter(state, cardId)) {
     targetZoneType = "exile";
+  }
+  // Wave 4.8 follow-up 13 lane 61a (#2614 follow-up): the
+  // foundational death-replacement consult. When a creature
+  // would move from the battlefield to the graveyard, ask
+  // `state.replacementEffectManager` whether any registered
+  // `death_replacement` arm wants to redirect the dying
+  // permanent (CR 614.1). v1 supports `redirect.to: "exile"`
+  // (Whip of Erebos); other destinations ride follow-up lanes
+  // (100 / 101 / 104).
+  //
+  // The consult runs BEFORE the move and BEFORE the dies-trigger
+  // snapshot so the replacement effect runs on the "would die"
+  // event with the battlefield still intact (CR 603.10a — the
+  // dies triggers look back at the battlefield the permanent
+  // left; the replacement consult decides whether it leaves
+  // at all). The `processEvent` APNAP ordering handles
+  // multi-player ties; the per-effect `canApply` filters
+  // implement the "if a creature you control would die"
+  // controller filter.
+  //
+  // The consult builds a fresh set of `ReplacementAbility`
+  // entries from every battlefield card's
+  // `CardScript.replacement_effects` arm, registers them
+  // on the manager, runs `processEvent`, then clears the
+  // just-registered entries via `removeEffectsFromSource`
+  // before returning. This keeps the manager stateless
+  // w.r.t. death-replacement — the consult is the single
+  // owner of the effect list (parallel to how
+  // `refreshScriptedStatics` rebuilds the static layer
+  // every refresh pass instead of maintaining a permanent
+  // registration).
+  if (targetZoneType === "graveyard") {
+    const cardForConsult = state.cards.get(cardId);
+    const sourceZoneKey = cardForConsult?.currentZoneKey ?? null;
+    const onBattlefield = sourceZoneKey?.endsWith("-battlefield") ?? false;
+    if (onBattlefield && cardForConsult) {
+      const consultEvent = {
+        type: "would_die" as const,
+        timestamp: Date.now(),
+        targetId: cardId,
+        sourceId: cardId,
+        controllerId: cardForConsult.controllerId,
+        amount: 0,
+      };
+      const effects =
+        buildScriptedDeathReplacementEffects(state, cardId);
+      for (const eff of effects) {
+        state.replacementEffectManager.registerEffect(eff);
+      }
+      try {
+        const apnapOrder =
+          state.replacementEffectManager.createAPNAPOrder(
+            state.turn.activePlayerId,
+            Array.from(state.players.keys()),
+          );
+        const processed = state.replacementEffectManager.processEvent(
+          consultEvent,
+          apnapOrder,
+        );
+        // `processEvent` returns the resulting
+        // `ReplacementEvent` (not the `ReplacementResult`),
+        // so the redirect destination rides on the event's
+        // `context` side-channel. The lane 61a
+        // `apply` function stamps `redirectToZone: "exile"`
+        // there when the death-replacement fires.
+        const redirect = processed.context?.redirectToZone;
+        if (redirect === "exile") {
+          targetZoneType = "exile";
+        }
+      } finally {
+        // Always clear, even when `processEvent` throws.
+        for (const eff of effects) {
+          state.replacementEffectManager.removeEffectsFromSource(
+            eff.sourceCardId,
+          );
+        }
+      }
+    }
   }
   // CR 603.10a: dies triggers look back at the battlefield before the move.
   const diesTriggers =

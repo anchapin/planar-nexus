@@ -35,7 +35,8 @@ export type ReplacementEffectType =
   | "as_though" // "As though" effects
   | "sacrifice_replacement" // Replace sacrifice
   | "command_zone_replacement" // Commander redirect (CR 903.9)
-  | "land_enter_replacement"; // Replace how a land enters (e.g., enters tapped)
+  | "land_enter_replacement" // Replace how a land enters (e.g., enters tapped)
+  | "death_replacement"; // Wave 4.8 follow-up 13 lane 61a (#2614 follow-up): replace the "would die" event (Whip of Erebos-style "if a creature you control would die, instead exile it").
 
 /**
  * A replacement or prevention ability
@@ -98,7 +99,8 @@ export type ReplacementEventType =
   | "untap"
   | "put_into_hand" // CR 903.9a — commander bounced to hand
   | "put_into_library" // CR 903.9a — commander shuffled into library
-  | "landEnterBattlefield"; // CR 614.1 — replacement effects for land entering battlefield
+  | "landEnterBattlefield" // CR 614.1 — replacement effects for land entering battlefield
+  | "would_die"; // Wave 4.8 follow-up 13 lane 61a (#2614 follow-up): the "if [thing] would die, instead [redirect]" event (CR 614.1). Consulted by `moveCardToZone` whenever a creature is about to move from the battlefield to the graveyard.
 
 export interface ReplacementEvent {
   type: ReplacementEventType;
@@ -111,8 +113,34 @@ export interface ReplacementEvent {
   hasLifelink?: boolean;
   hasDeathtouch?: boolean;
   entersTapped?: boolean; // CR 614.1 — for landEnterBattlefield events
+  /**
+   * Wave 4.8 follow-up 13 lane 61a (#2614 follow-up): the
+   * controller of the dying permanent on a `would_die` event.
+   * Used by the death-replacement filter (Whip of Erebos's "if a
+   * creature *you* control would die") and as the affected player
+   * for the APNAP order on multi-player death-replacement chains.
+   */
+  controllerId?: PlayerId;
   context?: Record<string, unknown>;
 }
+
+/**
+ * Where a "would die" replacement effect redirects the dying permanent.
+ * Wave 4.8 follow-up 13 lane 61a (#2614 follow-up): the v1 minimum
+ * supports only `exile` (Whip of Erebos's "instead exile it"). Other
+ * destinations (`hand`, `library_top`, `library_bottom`,
+ * `battlefield_tapped`, `battlefield_untapped`, `sacrifice`,
+ * `life_loss`) ride follow-up lanes (100 / 101 / 104).
+ */
+export type DeathRedirectZone =
+  | "exile"
+  | "hand"
+  | "library_top"
+  | "library_bottom"
+  | "battlefield_tapped"
+  | "battlefield_untapped"
+  | "sacrifice"
+  | "life_loss";
 
 export interface ReplacementResult {
   modified: boolean;
@@ -120,6 +148,17 @@ export interface ReplacementResult {
   description: string;
   instead?: boolean;
   skipEvent?: boolean;
+  /**
+   * Wave 4.8 follow-up 13 lane 61a (#2614 follow-up): when the
+   * replacement effect was applied to a `would_die` event, the
+   * destination zone the dying permanent should be redirected to
+   * (e.g. `"exile"`). Read by `moveCardToZone`'s consult after
+   * `processEvent` returns. The v1 minimum only carries this
+   * field when `modifiedEvent.type === "would_die"` and the
+   * applied effect's redirect is one of the supported
+   * {@link DeathRedirectZone} values.
+   */
+  redirectToZone?: DeathRedirectZone;
 }
 
 export interface PreventionShield {

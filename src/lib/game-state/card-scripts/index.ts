@@ -50,3 +50,7 @@ export {
   resolveScriptedEffects,
   resolveScriptedSpell,
 } from "./interpret";
+export {
+  buildScriptedDeathReplacementEffect,
+  buildScriptedDeathReplacementEffects,
+} from "./replacement-effect-bindings";

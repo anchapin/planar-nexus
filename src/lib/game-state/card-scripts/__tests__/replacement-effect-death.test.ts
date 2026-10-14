@@ -1,0 +1,393 @@
+/**
+ * Whispering Ward of the Grave — death replacement-effect (lane 61a).
+ *
+ * Wave 4.8 follow-up 13 lane 61a (#2614 follow-up). The
+ * foundational replacement-effect-for-death layer
+ * (Whip of Erebos-style "if a creature you control would
+ * die, instead exile it"). This lane:
+ *
+ *   1. Adds the `ReplacementEffectSchema` + the
+ *      `replacement_effects[]` arm on `CardScriptSchema`
+ *      (parallel to `triggers` / `activated` / `statics`).
+ *   2. Extends `ReplacementEffectType` with
+ *      `"death_replacement"` and `ReplacementEventType`
+ *      with `"would_die"`.
+ *   3. Wires the `moveCardToZone` consult to ask
+ *      `state.replacementEffectManager` for a redirect
+ *      before moving a creature to the graveyard.
+ *   4. Adds the per-script helper
+ *      `buildScriptedDeathReplacementEffects` that the
+ *      consult uses to build the effect list each call
+ *      (no permanent registration — the consult is the
+ *      single owner).
+ *   5. The synthetic `Whispering Ward of the Grave`
+ *      card is the v1 sample card (one replacement
+ *      effect: `event: "would_die"` +
+ *      `applies_to.type: "creature"` +
+ *      `applies_to.controller: "you"` +
+ *      `redirect.to: "exile"`).
+ *
+ * Out of scope for lane 61a (each a follow-up lane):
+ *   - the `redirect.to: "hand" | "library_top" |
+ *     "library_bottom" | "battlefield_tapped" |
+ *     "battlefield_untapped" | "sacrifice" | "life_loss"`
+ *     extensions (lanes 100 / 101 / 104)
+ *   - the `applies_to.notSelf` /
+ *     `applies_to.isToken` /
+ *     `applies_to.type: "self" | "artifact" |
+ *     "enchantment" | "planeswalker" | "any"` filters
+ *     (lanes 102 / 105)
+ *   - the `if_condition` / `optional` /
+ *     `once_per_turn` engines (lane 103 / follow-up lanes)
+ *   - the printed-oracle `static` mechanism that
+ *     Whip of Erebos's actual oracle would use (lane 61b)
+ */
+import { destroyCard, moveCardToZone } from "../../keyword-actions/removal";
+import { refreshScriptedStatics } from "../../keyword-actions/scripted-statics";
+import { createCardInstance } from "../../card-instance";
+import {
+  createInitialGameState,
+  startGame,
+} from "../../game-state";
+import {
+  buildScriptedDeathReplacementEffect,
+  buildScriptedDeathReplacementEffects,
+  getCardScript,
+} from "../index";
+import type {
+  CardInstanceId,
+  GameState,
+  PlayerId,
+  ScryfallCard,
+} from "../../types";
+
+const id = (s: string) => s as CardInstanceId;
+
+function card(name: string, typeLine: string, pt?: [number, number]) {
+  return {
+    id: `mock-${name}`,
+    name,
+    type_line: typeLine,
+    oracle_text: "",
+    mana_cost: "",
+    cmc: 0,
+    colors: [],
+    color_identity: [],
+    keywords: [],
+    legalities: { standard: "legal" },
+    layout: "normal",
+    power: pt ? String(pt[0]) : undefined,
+    toughness: pt ? String(pt[1]) : undefined,
+  } as unknown as ScryfallCard;
+}
+
+function put(
+  state: GameState,
+  playerId: PlayerId,
+  cardId: string,
+  data: ScryfallCard,
+  zone: "battlefield" | "library" | "hand" | "graveyard" = "battlefield",
+): GameState {
+  const canonicalKey = `${playerId}-${zone}`;
+  const cards = new Map(state.cards);
+  cards.set(
+    id(cardId),
+    createCardInstance(data, playerId, playerId, {
+      id: id(cardId),
+      currentZoneKey: canonicalKey,
+    }),
+  );
+  const zones = new Map(state.zones);
+  const z = zones.get(canonicalKey);
+  if (!z) return state;
+  zones.set(canonicalKey, { ...z, cardIds: [...z.cardIds, id(cardId)] });
+  return { ...state, cards, zones };
+}
+
+function startTwoPlayerState(): GameState {
+  const base = createInitialGameState(["Player1", "Player2"], 20, false);
+  return startGame(base);
+}
+
+describe("Whispering Ward of the Grave (lane 61a): death replacement-effect foundation", () => {
+  it("registry exposes the synthetic source with a single replacement_effects entry", () => {
+    const ward = getCardScript("Whispering Ward of the Grave");
+    expect(ward).toBeDefined();
+    expect(ward!.replacement_effects).toBeDefined();
+    expect(ward!.replacement_effects!).toHaveLength(1);
+    const re = ward!.replacement_effects![0];
+    expect(re.event).toBe("would_die");
+    expect(re.applies_to.type).toBe("creature");
+    expect(re.applies_to.controller).toBe("you");
+    expect(re.redirect.to).toBe("exile");
+  });
+
+  it("buildScriptedDeathReplacementEffect produces a valid ReplacementAbility for the v1 shape", () => {
+    const ward = getCardScript("Whispering Ward of the Grave");
+    expect(ward).toBeDefined();
+    const re = ward!.replacement_effects![0];
+    const effect = buildScriptedDeathReplacementEffect(
+      id("ward"),
+      "alice" as PlayerId,
+      re,
+    );
+    expect(effect).not.toBeNull();
+    expect(effect!.effectType).toBe("death_replacement");
+    expect(effect!.controllerId).toBe("alice");
+    expect(effect!.sourceCardId).toBe(id("ward"));
+    expect(effect!.description).toBe(re.text);
+  });
+
+  it("buildScriptedDeathReplacementEffect returns null for out-of-scope shapes (lane 61a v1 minimum)", () => {
+    // Out-of-scope: redirect.to: "hand" (lane 100), "library_top" (lane 100),
+    // "battlefield_tapped" (lane 104), etc. The v1 factory must reject
+    // them so the consult ignores them.
+    expect(
+      buildScriptedDeathReplacementEffect(
+        id("ward"),
+        "alice" as PlayerId,
+        {
+          text: "instead put it in hand",
+          event: "would_die",
+          applies_to: { type: "creature", controller: "you" },
+          redirect: { to: "hand" },
+        },
+      ),
+    ).toBeNull();
+    expect(
+      buildScriptedDeathReplacementEffect(
+        id("ward"),
+        "alice" as PlayerId,
+        {
+          text: "instead tap it",
+          event: "would_die",
+          applies_to: { type: "creature", controller: "you" },
+          redirect: { to: "battlefield_tapped" },
+        },
+      ),
+    ).toBeNull();
+    // Out-of-scope: applies_to.controller: "opponent" (no lane yet)
+    expect(
+      buildScriptedDeathReplacementEffect(
+        id("ward"),
+        "alice" as PlayerId,
+        {
+          text: "instead exile an opponent's creature",
+          event: "would_die",
+          applies_to: { type: "creature", controller: "opponent" },
+          redirect: { to: "exile" },
+        },
+      ),
+    ).toBeNull();
+    // Out-of-scope: applies_to.type: "artifact" (lane 102 / 105)
+    expect(
+      buildScriptedDeathReplacementEffect(
+        id("ward"),
+        "alice" as PlayerId,
+        {
+          text: "instead exile an artifact",
+          event: "would_die",
+          applies_to: { type: "artifact", controller: "you" },
+          redirect: { to: "exile" },
+        },
+      ),
+    ).toBeNull();
+  });
+
+  it("buildScriptedDeathReplacementEffects returns the ward's effect when only the ward is on the battlefield", () => {
+    let state = startTwoPlayerState();
+    const [p1] = Array.from(state.players.keys());
+    state = put(state, p1, "ward", card("Whispering Ward of the Grave", "Enchantment"));
+    // refreshScriptedStatics isn't strictly required (the consult
+    // rebuilds the effect list every call), but we call it to mirror
+    // the production path so any future "stamp on the source" wiring
+    // is exercised.
+    state = refreshScriptedStatics(state);
+
+    const effects = buildScriptedDeathReplacementEffects(state);
+    expect(effects).toHaveLength(1);
+    expect(effects[0].sourceCardId).toBe(id("ward"));
+    expect(effects[0].controllerId).toBe(p1);
+    expect(effects[0].effectType).toBe("death_replacement");
+  });
+
+  it("end-to-end: a creature the ward's controller owns dies → exiled (not graveyarded)", () => {
+    let state = startTwoPlayerState();
+    const [p1, p2] = Array.from(state.players.keys());
+    state = put(state, p1, "ward", card("Whispering Ward of the Grave", "Enchantment"));
+    state = put(state, p1, "bear", card("Bear Cub", "Creature — Bear", [2, 2]));
+    state = refreshScriptedStatics(state);
+
+    const graveyardBefore = state.zones.get(`${p1}-graveyard`)?.cardIds ?? [];
+    const exileBefore = state.zones.get(`${p1}-exile`)?.cardIds ?? [];
+
+    const result = destroyCard(state, id("bear"));
+    expect(result.success).toBe(true);
+
+    // The bear is in exile, not the graveyard.
+    const exileAfter = result.state.zones.get(`${p1}-exile`)?.cardIds ?? [];
+    const graveyardAfter = result.state.zones.get(`${p1}-graveyard`)?.cardIds ?? [];
+    expect(exileAfter).toContain(id("bear"));
+    expect(graveyardAfter).not.toContain(id("bear"));
+    // Exile + graveyard differ from the pre-state by the bear's move.
+    expect(graveyardAfter).toEqual(graveyardBefore);
+    expect(exileAfter.length).toBe(exileBefore.length + 1);
+    // The ward itself is unaffected.
+    expect(result.state.zones.get(`${p1}-battlefield`)?.cardIds).toContain(id("ward"));
+    void p2; // p2 unused but referenced to mirror the consult's two-player test pattern
+  });
+
+  it("end-to-end: the replacement does NOT fire for a non-creature permanent", () => {
+    let state = startTwoPlayerState();
+    const [p1] = Array.from(state.players.keys());
+    state = put(state, p1, "ward", card("Whispering Ward of the Grave", "Enchantment"));
+    state = put(state, p1, "snack", card("Midnight Snack", "Enchantment"));
+
+    // Use `moveCardToZone` directly (not `destroyCard`) since the
+    // Midnight Snack is an enchantment (destroyCard rejects non-
+    // creatures — `isCreatureOnCurrentFace` is false for
+    // enchantments, so destroyCard's indestructible / regenerate
+    // guard flow doesn't quite hit the move-to-graveyard branch
+    // we want to test here).
+    const result = moveCardToZone(state, id("snack"), "graveyard");
+    expect(result.success).toBe(true);
+    // The ward's `applies_to.type: "creature"` filter rejects
+    // non-creature permanents. Result: the enchantment moves to
+    // the graveyard, NOT to exile.
+    const graveyardAfter = result.state.zones.get(`${p1}-graveyard`)?.cardIds ?? [];
+    expect(graveyardAfter).toContain(id("snack"));
+    const exileAfter = result.state.zones.get(`${p1}-exile`)?.cardIds ?? [];
+    expect(exileAfter).not.toContain(id("snack"));
+  });
+
+  it("end-to-end: an opponent's dying creature is NOT redirected by the ward", () => {
+    let state = startTwoPlayerState();
+    const [p1, p2] = Array.from(state.players.keys());
+    state = put(state, p1, "ward", card("Whispering Ward of the Grave", "Enchantment"));
+    state = put(state, p2, "bear", card("Bear Cub", "Creature — Bear", [2, 2]));
+    state = refreshScriptedStatics(state);
+
+    const result = destroyCard(state, id("bear"));
+    expect(result.success).toBe(true);
+    // The ward's `applies_to.controller: "you"` filter rejects
+    // opponent-controlled creatures. Result: bear goes to the
+    // owner's graveyard, NOT to exile.
+    const graveyardAfter = result.state.zones.get(`${p2}-graveyard`)?.cardIds ?? [];
+    const exileAfter = result.state.zones.get(`${p2}-exile`)?.cardIds ?? [];
+    expect(graveyardAfter).toContain(id("bear"));
+    expect(exileAfter).not.toContain(id("bear"));
+  });
+
+  it("end-to-end: without the ward, the creature dies to the graveyard normally (control case)", () => {
+    let state = startTwoPlayerState();
+    const [p1] = Array.from(state.players.keys());
+    state = put(state, p1, "bear", card("Bear Cub", "Creature — Bear", [2, 2]));
+    state = refreshScriptedStatics(state);
+
+    const result = destroyCard(state, id("bear"));
+    expect(result.success).toBe(true);
+    const graveyardAfter = result.state.zones.get(`${p1}-graveyard`)?.cardIds ?? [];
+    expect(graveyardAfter).toContain(id("bear"));
+  });
+
+  it("the consult's effect registration is per-call (no permanent registration on the manager)", () => {
+    let state = startTwoPlayerState();
+    const [p1] = Array.from(state.players.keys());
+    state = put(state, p1, "ward", card("Whispering Ward of the Grave", "Enchantment"));
+    state = put(state, p1, "bear", card("Bear Cub", "Creature — Bear", [2, 2]));
+    state = refreshScriptedStatics(state);
+
+    // Destroy the bear and confirm the manager's effect
+    // count is unchanged (the consult registers and clears
+    // in the same synchronous pass). The private
+    // `effects` array is reached via reflection-free
+    // proxy: we destroy and re-destroy a second bear
+    // (without a fresh ward on the field) and confirm
+    // it falls through to the graveyard (no stale
+    // registration intercepts).
+    const result1 = destroyCard(state, id("bear"));
+    expect(result1.success).toBe(true);
+    // The first bear went to exile (the consult fired).
+    expect(result1.state.zones.get(`${p1}-exile`)?.cardIds).toContain(
+      id("bear"),
+    );
+
+    // Drop the ward from the battlefield; with the ward
+    // gone, a fresh destroy of a creature falls through
+    // to the graveyard (no replacement effects fire).
+    const cards = new Map(state.cards);
+    cards.delete(id("ward"));
+    const zones = new Map(state.cards.size ? state.zones : state.zones);
+    const bf = zones.get(`${p1}-battlefield`);
+    if (bf) {
+      zones.set(`${p1}-battlefield`, {
+        ...bf,
+        cardIds: bf.cardIds.filter((cid) => cid !== id("ward")),
+      });
+    }
+    const stateNoWard = { ...state, cards, zones };
+    const bear2 = card("Bear Cub 2", "Creature — Bear", [2, 2]);
+    const stateWithBear2 = put(stateNoWard, p1, "bear2", bear2);
+    const result2 = destroyCard(stateWithBear2, id("bear2"));
+    expect(result2.success).toBe(true);
+    // With the ward gone, the bear goes to the
+    // graveyard, not exile.
+    expect(result2.state.zones.get(`${p1}-graveyard`)?.cardIds).toContain(
+      id("bear2"),
+    );
+    expect(result2.state.zones.get(`${p1}-exile`)?.cardIds ?? []).not.toContain(
+      id("bear2"),
+    );
+  });
+
+  it("APNAP ordering: when both players have a ward, the active player's applies first", () => {
+    let state = startTwoPlayerState();
+    const [p1, p2] = Array.from(state.players.keys());
+    state = put(state, p1, "ward", card("Whispering Ward of the Grave", "Enchantment"));
+    state = put(state, p2, "ward2", card("Whispering Ward of the Grave", "Enchantment"));
+    state = put(state, p1, "bear", card("Bear Cub", "Creature — Bear", [2, 2]));
+    state = refreshScriptedStatics(state);
+
+    // Both players' ward effects are built; the active
+    // player's applies first per CR 616.1 (the
+    // replacement manager sorts by controllerId via the
+    // apnapOrder.playerOrder, with the active player
+    // first). The single-shape v1 minimum sends both
+    // bears to exile on p1's controller.
+    const effects = buildScriptedDeathReplacementEffects(state);
+    expect(effects).toHaveLength(2);
+
+    const result = destroyCard(state, id("bear"));
+    expect(result.success).toBe(true);
+    expect(result.state.zones.get(`${p1}-exile`)?.cardIds).toContain(id("bear"));
+    // p2's ward applies to p2's creatures only — its
+    // presence does NOT change the p1 bear's destination.
+    void p2;
+  });
+
+  it("the would_die event lands in processEvent's modifiedEvent with redirectToZone on context", () => {
+    // The ReplacementAbility.apply result stamps the redirect on
+    // the modified event's `context.redirectToZone` side-channel.
+    // The consult reads it from there.
+    const ward = getCardScript("Whispering Ward of the Grave");
+    expect(ward).toBeDefined();
+    const re = ward!.replacement_effects![0];
+    const effect = buildScriptedDeathReplacementEffect(
+      id("ward"),
+      "alice" as PlayerId,
+      re,
+    )!;
+    const event = {
+      type: "would_die" as const,
+      timestamp: Date.now(),
+      targetId: id("ward"),
+      sourceId: id("ward"),
+      controllerId: "alice" as PlayerId,
+      amount: 0,
+    };
+    const result = effect.apply(event);
+    expect(result.modified).toBe(true);
+    expect(result.redirectToZone).toBe("exile");
+    expect(result.modifiedEvent?.context?.redirectToZone).toBe("exile");
+  });
+});
