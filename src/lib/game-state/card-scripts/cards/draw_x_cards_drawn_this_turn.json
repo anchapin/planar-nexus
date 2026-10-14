@@ -1,0 +1,19 @@
+{
+  "name": "Draw X Cards Drawn This Turn",
+  "oracle": "Whenever you draw a card, draw a card equal to the number of cards you've drawn this turn.",
+  "triggers": [
+    {
+      "text": "Whenever you draw a card, draw a card equal to the number of cards you've drawn this turn.",
+      "event": "drawCard",
+      "whose_draws": "you",
+      "effects": [
+        {
+          "op": "Draw",
+          "amount": 0,
+          "who": "you",
+          "X": "cardsDrawnThisTurn"
+        }
+      ]
+    }
+  ]
+}
