@@ -394,22 +394,37 @@ function artifactCount(state: GameState, playerId: PlayerId): number {
 
 /**
  * Wave 4.8 follow-up 12 lane 90 (#2614 follow-up) + follow-up 13
- * lane 94 (#2614 follow-up): resolve a `Draw.amount` from state
- * when the `X` arm is set. The v1 minimum for
- * `creaturesDiedThisTurn` reads the boolean
- * `state.turn.creatureDiedThisTurn` for 0 or 1 (Needletooth Pack).
- * The lane 94 minimum for `cardsDrawnThisTurn` reads the integer
- * `state.players[controllerId].cardsDrawnThisTurn` counter
- * (Proft's Eidetic Memory's "draw N where N = cards drawn this
- * turn" half — the lane 87 `recordCardsDrawn` helper already
- * maintains the counter; lane 94 just reads it). When `X` is
- * not set, the integer `amount` (which may itself be
- * `number | "X"` — "X" here falls back to 0 per the existing
- * CR 107.3 default) is returned as-is.
+ * lanes 94 + 95 (#2614 follow-up): resolve a `Draw.amount`
+ * from state when the `X` arm is set.
+ *   - `creaturesDiedThisTurn`: boolean
+ *     `state.turn.creatureDiedThisTurn` for 0 or 1
+ *     (Needletooth Pack).
+ *   - `cardsDrawnThisTurn`: integer
+ *     `state.players[controllerId].cardsDrawnThisTurn`
+ *     (Proft's Eidetic Memory's "draw N where N = cards drawn
+ *     this turn" — the lane 87 `recordCardsDrawn` helper
+ *     already maintains the per-player counter; lane 94
+ *     just reads it).
+ *   - `cardsDrawnThisTurnByOpponents`: sum of the
+ *     per-opponent counters — every player EXCEPT the
+ *     controller — across all opponents
+ *     (Rhystic Study's "draw N where N = cards drawn by
+ *     opponents this turn" — lane 95). A 3-player game
+ *     has 2 opponents; the sum is across both.
+ *
+ * When `X` is not set, the integer `amount` (which may
+ * itself be `number | "X"` — "X" here falls back to 0
+ * per the existing CR 107.3 default) is returned as-is.
  */
 function resolveDrawAmount(
   state: GameState,
-  effect: { amount: number | "X"; X?: "creaturesDiedThisTurn" | "cardsDrawnThisTurn" },
+  effect: {
+    amount: number | "X";
+    X?:
+      | "creaturesDiedThisTurn"
+      | "cardsDrawnThisTurn"
+      | "cardsDrawnThisTurnByOpponents";
+  },
   controllerId?: PlayerId,
 ): number {
   if (effect.X === "creaturesDiedThisTurn") {
@@ -418,6 +433,15 @@ function resolveDrawAmount(
   if (effect.X === "cardsDrawnThisTurn") {
     if (!controllerId) return 0;
     return state.players.get(controllerId)?.cardsDrawnThisTurn ?? 0;
+  }
+  if (effect.X === "cardsDrawnThisTurnByOpponents") {
+    if (!controllerId) return 0;
+    let sum = 0;
+    for (const [pid, p] of state.players) {
+      if (pid === controllerId) continue;
+      sum += p.cardsDrawnThisTurn ?? 0;
+    }
+    return sum;
   }
   return typeof effect.amount === "number" ? effect.amount : 0;
 }

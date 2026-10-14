@@ -1,0 +1,19 @@
+{
+  "name": "Draw X Opponents Drawn This Turn",
+  "oracle": "Enchantment\nAt the beginning of your upkeep, draw a card equal to the number of cards opponents have drawn this turn.",
+  "triggers": [
+    {
+      "text": "At the beginning of your upkeep, draw a card equal to the number of cards opponents have drawn this turn.",
+      "event": "upkeep",
+      "whose": "you",
+      "effects": [
+        {
+          "op": "Draw",
+          "amount": 0,
+          "who": "you",
+          "X": "cardsDrawnThisTurnByOpponents"
+        }
+      ]
+    }
+  ]
+}
