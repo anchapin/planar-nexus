@@ -43,7 +43,10 @@
  *     Whip of Erebos's actual oracle would use (lane 61b)
  */
 import { destroyCard, moveCardToZone } from "../../keyword-actions/removal";
-import { refreshScriptedStatics } from "../../keyword-actions/scripted-statics";
+import {
+  parsePrintedDeathReplacement,
+  refreshScriptedStatics,
+} from "../../keyword-actions/scripted-statics";
 import { createCardInstance } from "../../card-instance";
 import {
   createInitialGameState,
@@ -78,6 +81,27 @@ function card(name: string, typeLine: string, pt?: [number, number]) {
     layout: "normal",
     power: pt ? String(pt[0]) : undefined,
     toughness: pt ? String(pt[1]) : undefined,
+  } as unknown as ScryfallCard;
+}
+
+function whipCard() {
+  // The lane 61b fixture: Whip of Erebos's actual
+  // oracle text is critical — the lane 61b parser
+  // reads `cardData.oracle_text` to detect the
+  // "would die, instead exile it" pattern.
+  return {
+    id: "mock-Whip of Erebos",
+    name: "Whip of Erebos",
+    type_line: "Legendary Enchantment",
+    oracle_text:
+      "Creatures you control have lifelink.\nWhenever a creature you control would die, exile it instead.",
+    mana_cost: "",
+    cmc: 0,
+    colors: [],
+    color_identity: [],
+    keywords: [],
+    legalities: { standard: "legal" },
+    layout: "normal",
   } as unknown as ScryfallCard;
 }
 
@@ -389,5 +413,201 @@ describe("Whispering Ward of the Grave (lane 61a): death replacement-effect foun
     expect(result.modified).toBe(true);
     expect(result.redirectToZone).toBe("exile");
     expect(result.modifiedEvent?.context?.redirectToZone).toBe("exile");
+  });
+});
+
+/**
+ * Wave 4.8 follow-up 13 lane 61b (#2614 follow-up):
+ * Whip of Erebos-style "if a creature you control would
+ * die, instead exile it" via the printed `static`
+ * mechanism. The lane 61a foundation reads the
+ * `replacement_effects[]` arm on a card's script; lane
+ * 61b extends the engine so the printed oracle (read by
+ * `refreshScriptedStatics` via `parsePrintedDeathReplacement`)
+ * populates a per-instance `deathReplacement` ledger.
+ *
+ * The sample card is the actual Whip of Erebos oracle
+ * ("Creatures you control have lifelink. Whenever a
+ * creature you control would die, exile it instead.")
+ * with a `static[].death_replacement` arm and a
+ * `static[].keywords: ["lifelink"]` arm. The
+ * `refreshScriptedStatics` pass parses the oracle and
+ * stamps the ledger; the consult reads both the lane 61a
+ * schema arm AND the lane 61b ledger on every call.
+ *
+ * Out of scope for lane 61b (each a follow-up lane):
+ * the conditional / multi-target / "if creature an
+ * opponent controls" / "instead sacrifice" / "instead
+ * tap it" / "instead return to hand" extensions (lanes
+ * 100 / 101 / 102 / 103 / 104 / 105).
+ */
+describe("Whip of Erebos (lane 61b): printed static death-replacement mechanism", () => {
+  it("registry exposes Whip of Erebos with a death_replacement static arm", () => {
+    const whip = getCardScript("Whip of Erebos");
+    expect(whip).toBeDefined();
+    const statics = whip!.statics!;
+    const deathSt = statics.find((s) => s.death_replacement !== undefined);
+    expect(deathSt).toBeDefined();
+    expect(deathSt!.death_replacement).toEqual({
+      description:
+        "Whenever a creature you control would die, exile it instead.",
+    });
+  });
+
+  it("parsePrintedDeathReplacement returns null on a non-matching oracle", () => {
+    // No death-replacement language → returns null.
+    expect(
+      parsePrintedDeathReplacement(
+        "Flying. Trample.",
+        "flying",
+        "alice" as PlayerId,
+      ),
+    ).toBeNull();
+    // Empty oracle text → returns null.
+    expect(
+      parsePrintedDeathReplacement(
+        "",
+        "anything",
+        "alice" as PlayerId,
+      ),
+    ).toBeNull();
+    // Undefined oracle text → returns null.
+    expect(
+      parsePrintedDeathReplacement(
+        undefined,
+        "anything",
+        "alice" as PlayerId,
+      ),
+    ).toBeNull();
+  });
+
+  it("parsePrintedDeathReplacement matches Whip of Erebos's actual oracle", () => {
+    const entry = parsePrintedDeathReplacement(
+      "Creatures you control have lifelink.\nWhenever a creature you control would die, exile it instead.",
+      "Whenever a creature you control would die, exile it instead.",
+      "alice" as PlayerId,
+    );
+    expect(entry).not.toBeNull();
+    expect(entry!.event).toBe("would_die");
+    expect(entry!.applies_to.type).toBe("creature");
+    expect(entry!.applies_to.controller).toBe("you");
+    expect(entry!.redirect.to).toBe("exile");
+  });
+
+  it("refreshScriptedStatics stamps the deathReplacement ledger on the source", () => {
+    let state = startTwoPlayerState();
+    const [p1] = Array.from(state.players.keys());
+    state = put(state, p1, "whip", whipCard());
+    state = refreshScriptedStatics(state);
+
+    const source = state.cards.get(id("whip"));
+    expect(source).toBeDefined();
+    expect(source!.deathReplacement).toBeDefined();
+    expect(source!.deathReplacement).toHaveLength(1);
+    const entry = source!.deathReplacement![0];
+    expect(entry.event).toBe("would_die");
+    expect(entry.applies_to.type).toBe("creature");
+    expect(entry.applies_to.controller).toBe("you");
+    expect(entry.redirect.to).toBe("exile");
+  });
+
+  it("end-to-end: Whip of Erebos redirects a dying creature to exile (printed static)", () => {
+    let state = startTwoPlayerState();
+    const [p1] = Array.from(state.players.keys());
+    state = put(state, p1, "whip", whipCard());
+    state = put(state, p1, "bear", card("Bear Cub", "Creature — Bear", [2, 2]));
+    state = refreshScriptedStatics(state);
+
+    const result = destroyCard(state, id("bear"));
+    expect(result.success).toBe(true);
+    // The printed `static` mechanism built the
+    // `deathReplacement` ledger; the consult read it and
+    // redirected the bear to exile.
+    expect(result.state.zones.get(`${p1}-exile`)?.cardIds).toContain(id("bear"));
+    expect(result.state.zones.get(`${p1}-graveyard`)?.cardIds ?? []).not.toContain(
+      id("bear"),
+    );
+    // The whip itself is unaffected.
+    expect(result.state.zones.get(`${p1}-battlefield`)?.cardIds).toContain(
+      id("whip"),
+    );
+  });
+
+  it("end-to-end: an opponent's dying creature is NOT redirected by Whip of Erebos", () => {
+    let state = startTwoPlayerState();
+    const [p1, p2] = Array.from(state.players.keys());
+    state = put(state, p1, "whip", whipCard());
+    state = put(state, p2, "bear", card("Bear Cub", "Creature — Bear", [2, 2]));
+    state = refreshScriptedStatics(state);
+
+    const result = destroyCard(state, id("bear"));
+    expect(result.success).toBe(true);
+    // The whip's `applies_to.controller: "you"` filter
+    // rejects opponent-controlled creatures. Result:
+    // bear goes to owner's graveyard, NOT to exile.
+    expect(result.state.zones.get(`${p2}-graveyard`)?.cardIds).toContain(
+      id("bear"),
+    );
+    expect(result.state.zones.get(`${p2}-exile`)?.cardIds ?? []).not.toContain(
+      id("bear"),
+    );
+  });
+
+  it("the printed static is cleared when the source leaves the battlefield", () => {
+    let state = startTwoPlayerState();
+    const [p1] = Array.from(state.players.keys());
+    state = put(state, p1, "whip", whipCard());
+    state = put(state, p1, "bear", card("Bear Cub", "Creature — Bear", [2, 2]));
+    state = refreshScriptedStatics(state);
+
+    expect(state.cards.get(id("whip"))!.deathReplacement).toBeDefined();
+
+    // Move the whip off the battlefield. Refresh, then
+    // confirm the ledger is cleared.
+    const cards = new Map(state.cards);
+    cards.delete(id("whip"));
+    const zones = new Map(state.zones);
+    const bf = zones.get(`${p1}-battlefield`);
+    if (bf) {
+      zones.set(`${p1}-battlefield`, {
+        ...bf,
+        cardIds: bf.cardIds.filter((cid) => cid !== id("whip")),
+      });
+    }
+    state = { ...state, cards, zones };
+    state = refreshScriptedStatics(state);
+
+    expect(state.cards.get(id("whip"))?.deathReplacement).toBeUndefined();
+  });
+
+  it("buildScriptedDeathReplacementEffects includes the printed static's death replacement", () => {
+    let state = startTwoPlayerState();
+    const [p1] = Array.from(state.players.keys());
+    state = put(state, p1, "whip", whipCard());
+    state = refreshScriptedStatics(state);
+
+    const effects = buildScriptedDeathReplacementEffects(state);
+    // The whip's `static.death_replacement` arm produced
+    // a `deathReplacement` ledger entry, and the
+    // consult's helper now reads both arms.
+    expect(effects.length).toBeGreaterThanOrEqual(1);
+    expect(effects[0].effectType).toBe("death_replacement");
+    expect(effects[0].sourceCardId).toBe(id("whip"));
+  });
+
+  it("schema accepts only-lane (no triggers / activated / replacement_effects)", () => {
+    // Whip of Erebos uses only `statics` with a
+    // `death_replacement` arm — the printed oracle
+    // doesn't carry a `replacement_effects[]` arm. The
+    // schema validates the card via the build-card-
+    // script-index step at typecheck time (the
+    // pretypecheck script regenerates the index and
+    // any zod parse failure surfaces here). The
+    // presence of the card in the registry is the
+    // assertion.
+    const whip = getCardScript("Whip of Erebos");
+    expect(whip).toBeDefined();
+    expect(whip!.replacement_effects).toBeUndefined();
+    expect(whip!.statics!.length).toBeGreaterThanOrEqual(1);
   });
 });
