@@ -34,6 +34,7 @@
  */
 import type { CardInstanceId, GameState, PlayerId } from "../types";
 import type {
+  DeathRedirectZone,
   ReplacementAbility,
   ReplacementEvent,
   ReplacementEffectType,
@@ -89,7 +90,23 @@ export function buildScriptedDeathReplacementEffect(
   if (re.event !== "would_die") return null;
   if (re.applies_to.type !== "creature") return null;
   if (re.applies_to.controller !== "you") return null;
-  if (re.redirect.to !== "exile") return null;
+  // Wave 4.8 follow-up 13 lane 100 (#2614 follow-up):
+  // added `redirect.to: "hand"` (Whip of Erebos's
+  // deferred hand-redirect — "if [thing] would die,
+  // instead return it to its owner's hand"). The
+  // lane 61a engine surface accepts the redirect; the
+  // factory now stamps `redirectToZone: "hand"` on
+  // the result. Out of scope: the
+  // "library_top" / "library_bottom" /
+  // "battlefield_tapped" / "battlefield_untapped" /
+  // "sacrifice" / "any_zone" / "life_loss"
+  // destinations ride follow-up lanes (101 / 104).
+  if (
+    re.redirect.to !== "exile" &&
+    re.redirect.to !== "hand"
+  ) {
+    return null;
+  }
 
   const timestamp = makeTimestamp();
   const effectType: ReplacementEffectType = "death_replacement";
@@ -137,14 +154,22 @@ export function buildScriptedDeathReplacementEffect(
         // `ReplacementResult`), so a side-channel field is
         // the cleanest path. The consult reads
         // `processed.context?.redirectToZone`.
+        //
+        // Wave 4.8 follow-up 13 lane 100 (#2614 follow-up):
+        // the redirect destination flows from the script's
+        // `replacement_effects[].redirect.to` field. v1
+        // supports `"exile"` (lane 61a) and `"hand"`
+        // (lane 100); other destinations parse in the
+        // schema but the factory returns null for them
+        // (lanes 101 / 104 wire them).
         context: {
           ...(event.context ?? {}),
-          redirectToZone: "exile",
+          redirectToZone: re.redirect.to as DeathRedirectZone,
         },
       },
       description: re.text,
       instead: true,
-      redirectToZone: "exile",
+      redirectToZone: re.redirect.to as DeathRedirectZone,
     }),
   };
 }

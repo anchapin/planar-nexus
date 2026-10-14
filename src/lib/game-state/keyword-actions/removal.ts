@@ -451,11 +451,26 @@ export function moveCardToZone(
         // `ReplacementEvent` (not the `ReplacementResult`),
         // so the redirect destination rides on the event's
         // `context` side-channel. The lane 61a
-        // `apply` function stamps `redirectToZone: "exile"`
+        // `apply` function stamps `redirectToZone`
         // there when the death-replacement fires.
+        //
+        // Wave 4.8 follow-up 13 lane 100 (#2614 follow-up):
+        // added `redirect === "hand"` (Whip of Erebos's
+        // deferred hand-redirect — "if [thing] would die,
+        // instead return it to its owner's hand"). The
+        // lane 61a schema arm already accepts "hand" in
+        // the enum; this branch wires the engine consult
+        // to route the dying card to the owner's hand.
+        // Out of scope for lane 100: the
+        // "library_top" / "library_bottom" /
+        // "battlefield_tapped" / "battlefield_untapped" /
+        // "sacrifice" / "any_zone" destinations ride
+        // follow-up lanes (101 / 104).
         const redirect = processed.context?.redirectToZone;
         if (redirect === "exile") {
           targetZoneType = "exile";
+        } else if (redirect === "hand") {
+          targetZoneType = "hand";
         }
       } finally {
         // Always clear, even when `processEvent` throws.
