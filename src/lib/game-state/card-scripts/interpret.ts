@@ -2628,6 +2628,42 @@ export function createSacrificeSelfPromptWaitingChoice(
 }
 
 /**
+ * Wave 4.8 follow-up 13 lane 98 (#2614 follow-up):
+ * `createDiscardPromptWaitingChoice` — surfaces a
+ * yes/no prompt asking the controller to discard a
+ * card as a trigger cost (Storm Fleet Spy variant —
+ * parallel to {@link createSacrificeSelfPromptWaitingChoice}).
+ * On yes, the engine calls `discardCards` to move
+ * `amount` cards from the controller's hand to the
+ * graveyard; on no, the trigger does nothing
+ * (CR 602.2b). v1 uses a random-discard path; explicit
+ * controller selection rides a follow-up lane.
+ */
+export function createDiscardPromptWaitingChoice(
+  stackObjectId: string,
+  playerId: PlayerId,
+  triggerText: string,
+  amount: number,
+): WaitingChoice {
+  return {
+    type: "discard_prompt",
+    playerId,
+    stackObjectId,
+    prompt:
+      amount === 1
+        ? `${triggerText} (discard a card to pay the cost?)`
+        : `${triggerText} (discard ${amount} cards to pay the cost?)`,
+    choices: [
+      { label: "Yes", value: true, isValid: true },
+      { label: "No", value: false, isValid: true },
+    ],
+    minChoices: 1,
+    maxChoices: 1,
+    presentedAt: Date.now(),
+  };
+}
+
+/**
  * Resolve a triggered or activated ability from its source's script.
  * Returns undefined when the ability isn't scripted, so the caller falls back
  * to reading its text.
@@ -2828,6 +2864,56 @@ export function resolveScriptedAbility(
       );
       if (sacrificed.success) state = sacrificed.state;
       else return state;
+    }
+  }
+  // Wave 4.8 follow-up 13 lane 98 (#2614 follow-up):
+  // discard-a-card cost gate (parallel to the lane 88
+  // sacrifice-self substrate). When `cost.discard: {
+  // amount: 1 }` is set, the engine surfaces a yes/no
+  // `discard_prompt` WaitingChoice; on yes, the
+  // controller discards `amount` cards; on no, the
+  // trigger does nothing (CR 602.2b). v1 supports a
+  // single-card discard (`amount: 1`); the multi-card
+  // variant rides a follow-up lane.
+  const discardCost = (ability as {
+    cost?: { discard?: { amount: number } };
+  }).cost?.discard;
+  if (discardCost !== undefined) {
+    const stackAny = stackObject as StackObject & {
+      cost_paid?: boolean;
+    };
+    const costPaid = stackAny.cost_paid;
+    if (costPaid === false) {
+      // Controller declined: the trigger does nothing.
+      return state;
+    }
+    if (costPaid === undefined) {
+      return {
+        ...state,
+        waitingChoice: createDiscardPromptWaitingChoice(
+          stackObject.id,
+          stackObject.controllerId as PlayerId,
+          ability.text,
+          discardCost.amount,
+        ),
+      };
+    }
+    // costPaid === true: discard `amount` cards, then
+    // fall through to resolve effects. The discard is
+    // its own state mutation that runs before the
+    // effects loop (CR 602.2b).
+    const discard = discardCards(
+      state,
+      stackObject.controllerId as PlayerId,
+      discardCost.amount,
+      true, // v1 uses random discard (controller-choice selection is a follow-up lane)
+    );
+    if (discard.success) state = discard.state;
+    else {
+      // The controller's hand is empty or doesn't have
+      // enough cards — defensive: the trigger fizzles
+      // (CR 602.2b).
+      return state;
     }
   }
   const effects = getScriptedAbilityEffects(state, stackObject);
