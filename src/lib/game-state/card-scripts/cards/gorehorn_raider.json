@@ -1,9 +1,9 @@
 {
   "name": "Gorehorn Raider",
-  "oracle": "Raid — When this creature enters, if you attacked this turn, this creature deals 2 damage to any target and you create a 1/1 red Goblin creature token.",
+  "oracle": "Raid — When this creature enters, if you attacked this turn, this creature deals 2 damage to any target and you create a 1/1 red Goblin creature token with menace.",
   "triggers": [
     {
-      "text": "Raid — When this creature enters, if you attacked this turn, this creature deals 2 damage to any target and you create a 1/1 red Goblin creature token.",
+      "text": "Raid — When this creature enters, if you attacked this turn, this creature deals 2 damage to any target and you create a 1/1 red Goblin creature token with menace.",
       "event": "etb",
       "subject": "self",
       "intervening_if": "you attacked this turn",
@@ -19,7 +19,8 @@
           "power": 1,
           "toughness": 1,
           "color": "red",
-          "subtypes": ["Goblin"]
+          "subtypes": ["Goblin"],
+          "keywords": ["menace"]
         }
       ]
     }

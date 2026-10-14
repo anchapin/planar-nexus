@@ -91,6 +91,13 @@ describe("Gorehorn Raider (FDN 89): raid + ETB DealDamage + 1/1 red Goblin token
         toughness: 1,
         color: "red",
         subtypes: ["Goblin"],
+        // Wave 4.8 follow-up 13 lane 96 (#2614 follow-up):
+        // keywords-on-token arm (the Redcap Gutter-Dweller
+        // deferred half). The lane 66 substrate already
+        // supports `keywords: ["menace"]`; this lane adds
+        // the field to Gorehorn Raider's CreateToken
+        // effect.
+        keywords: ["menace"],
       },
     ]);
   });
