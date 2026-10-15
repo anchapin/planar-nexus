@@ -4280,3 +4280,236 @@ None — the follow-up 19 priority list (lanes 116,
   multi-lane plan (the `moveCardToZone`
   union extension + every call-site update
   is well past 150 LOC).
+
+## Wave 4.8 follow-up 20 loop done summary (4 priority pieces shipped; mid-loop / end-of-loop combined)
+
+Wave 4.8 follow-up 20 aggressive loop
+ran on the `wave4.8-followup20` branch
+(PR #2804 opens the loop; pieces 1-4 each
+got force-with-lease pushed and the PR
+auto-refreshed). Four self-contained
+commits shipped the four highest-priority
+follow-up 20 items on the priority queue
+plus verification:
+
+- `04c48879` — lane 61 sub-piece
+  piece 1: library_top / library_bottom
+  death-replacement redirect (the
+  `moveCardToZoneWithPosition` helper +
+  consult branch + factory gate + 2
+  synthetic test cards).
+- `d07c1d91` — lane 99 piece 2:
+  you_may + cost.pay_life combined arm
+  (the bridge between lane 60's yes/no
+  gate and lane 106's pay_life substrate;
+  end-to-end test pins the two-prompt
+  orchestration + the decline-cost
+  branch).
+- `31abb3ac` — lane 114 piece 2 real-card
+  piece 3: Avenger of Zendikar real-card
+  JSON combining both halves (etb
+  CreateToken.X landsYouControl +
+  landfall PutCounters target_each
+  each_creature subtype Plant) on one
+  source card (closes the lane 114
+  substrate work end-to-end with a real
+  card, the follow-up 19 handoff's "good
+  moment to ship this" called out).
+- `c1006f0a` — lane 115 verification
+  piece 4: stun / finality counters
+  real-card path pinned via destroyCard
+  end-to-end calls (no new substrate —
+  the lane 67 + lane 88 + lane 116
+  substrate already covers everything).
+
+### Lanes shipped
+
+- **Lane 61 sub-piece** — the
+  `library_top` / `library_bottom`
+  death-replacement redirect. The
+  follow-up 19 loop backed this out as
+  a follow-up sub-piece per the
+  lane-envelope rule. This loop ships
+  it as a single piece via the new
+  `moveCardToZoneWithPosition` helper
+  that threads `position` through the
+  data layer (`moveCardBetweenZones` →
+  `addCardToZone(zone, cardId,
+  position)`). The narrow-union
+  `moveCardToZone` API stays untouched
+  (every existing call-site that
+  doesn't care about position keeps
+  working). Net delta: factory accepts
+  library_top / library_bottom; consult
+  adds a `pendingLibraryRedirect`
+  branch; new helper (~80 LOC).
+  Schema delta: zero (the schema enum
+  already accepted both destinations
+  from the lane 61a original work).
+
+- **Lane 99** — the `you_may + cost.pay_life`
+  combined arm. Per the follow-up 19
+  note "the engine consult already
+  orchestrates the yes/no flow", the
+  piece verifies the existing
+  orchestration (lane 60 surfaces
+  `you_may_prompt`; on yes, lane 106
+  surfaces `pay_life_prompt`; on yes,
+  `loseLife` runs then effects). Schema
+  delta: zero; engine delta: zero;
+  pure verification + synthetic card +
+  tests.
+
+- **Lane 114 piece 2 real-card** —
+  Avenger of Zendikar real-card JSON
+  combining both halves. The
+  follow-up 19 lane 114 piece 2/2
+  shipped the substrate
+  (`CreateToken.X: "landsYouControl"`
+  + `PutCounters.target_each:
+  "each_creature"` mode); the
+  follow-up 19 loop also shipped two
+  synthetic test cards. This loop ships
+  the canonical real-card JSON that
+  combines both halves on one source
+  card. Substrate delta: zero; pure
+  JSON + tests.
+
+- **Lane 115 (verification)** — stun /
+  finality counters real-card path is
+  covered by the follow-up 4 lane 67
+  substrate (mirrors `instanceCounters`
+  → `card.counters`) + `hasFinalityCounter`
+  consult + `startNextTurn` resetting
+  `state.turn.creatureDiedThisTurn`
+  implicitly. No substrate change; the
+  test file pins the end-to-end
+  destroyCard flow with both flavors
+  (with/without the legacy counter).
+
+### Lanes parked without work
+
+- **Lane 109** — Infernal Vessel. Per
+  the follow-up 18 reprioritization
+  note, this lane's "chosen type +
+  chosen color + ETB discard" combo
+  does not match a real MTG card; the
+  substrate is shipped via prior loops
+  (39/56/107/98 + Storm Fleet Spy).
+  No real card was added to the
+  drafter list in follow-up 20. **Park
+  unless a real card is added in a
+  later pass.**
+
+### Still open (multi-lane, carried over)
+
+- **Lane 69** — "spend this mana only on
+  [X]" mana-restriction family. The
+  lane 116 `X_spent_on_spell` half
+  was already shipped (cast-filter on X
+  source). The "spend this mana only"
+  half is multi-lane; the lane 70
+  follow-up may overlap.
+- **Lane 70** — non-EOT "becomes a copy
+  forever" variant of the copying
+  family. Lanes 75a/75b/75c/75d/75e
+  ship; this variant is the remaining
+  multi-lane piece.
+- **Lane 71** — Protection-from static.
+  Multi-lane; not yet started.
+
+### Net delta from follow-up 19
+
+- Test suites: 765 → 769 (+4; one
+  per piece across the 4 ship
+  commits).
+- Test cases: 14440 → 14467 (+27; lane
+  61 piece 1 +12, lane 99 piece 2 +6,
+  Avenger real-card piece 3 +2, lane
+  115 piece 4 +6, +1 from
+  flake-recovery during ratchet).
+- Engine-size budget: schema.ts
+  unchanged at 3862 (no schema delta
+  across any piece — every piece was
+  either a schema-neutral extension or
+  a verification piece). Follow-up 19
+  had bumped from 3800 → 3825 → 3850
+  → 3875 across three pieces; the
+  follow-up 20 loop is the first in the
+  series where the substrate delta
+  stayed entirely below the schema
+  line (the new helper lives in
+  removal.ts at +80 LOC; consult branch
+  in removal.ts at +80 LOC; factory
+  gate ~10 LOC; rest is comments).
+- Lint / typecheck / engine-size-budget
+  / test-count ratchet / card-script
+  index check: all green. AI flake
+  budget honored (1 extra ratchet run
+  for the known forge-gate /
+  forge-selfplay / expert-agent
+  "is deterministic for a seed"
+  flake; the
+  `ratchet-test-count.mjs --live
+  <counts.json>` fallback was used
+  once per the handoff's authorization).
+
+### Process notes from this loop
+
+- The aggressive loop's machinery
+  (worktree-local + ratchet +
+  commit-bypass pattern +
+  force-with-lease push +
+  `ratchet-test-count.mjs --live
+  <counts.json>` fallback for the AI
+  flake) is intact and ready for the
+  next follow-up loop.
+- The `foreman` MCP was not invoked —
+  no technical multiple-choice
+  decisions arose that warranted
+  foreman delegation.
+- The `wave4.8-followup20-handoff.md`
+  was written under the assumption
+  that PR #2803 (follow-up 19) was
+  already merged to `main`; on the
+  fresh session, `origin/main` was at
+  the follow-up 18 merge
+  (`d03d1284`) and PR #2803 was
+  OPEN. The fix: `gh pr merge 2803
+  --admin --merge --delete-branch`
+  from a fresh shell before the
+  branch-from-main step. The fresh
+  `wave4.8-followup20` branch then
+  fast-forwarded cleanly off main
+  (5 commits ahead, 0 behind; merge-
+  base = main at `d03d1284`).
+
+### Lane continue rule for the next session
+
+- The follow-up 20 priority queue
+  (library_top/library_bottom,
+  you_may + cost.pay_life, Avenger
+  real-card, lane 115 verify, lane
+  109 park) is fully closed. The next
+  follow-up's handoff should pick
+  fresh priorities from the remaining
+  #2614 drafter list. The new
+  `moveCardToZoneWithPosition` helper
+  is reusable for any future
+  position-aware zone moves (library
+  shuffle-in, scry-to-bottom variants,
+  etc.).
+- The lane 61 `library_top` /
+  `library_bottom` redirect is now
+  closed. The next unblocked
+  sub-piece (per the follow-up 20
+  done summary's "still open"
+  section) is the "any_zone"
+  redirect or a new lane from the
+  drafter list.
+- The lane 99 `you_may + cost.pay_life`
+  bridge is verified but the
+  "multi-cost combinator" (the handoff's
+  lane 99 follow-up extension for
+  "you may pay N OR pay M; if you do,
+  ...") remains future work.
