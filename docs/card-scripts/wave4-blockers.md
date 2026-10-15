@@ -2494,6 +2494,14 @@ chosen_subtype`). Banner of Kinship (FDN #8) reads
    - new `resolveEnterCount` for the chosen-subtype
      counter gate. ~50-100 LOC.
 
+   > **STATUS — SHIPPED via Wave 4.8 follow-up lane 59** (PR #2734, #2614 follow-up).
+   > The schema arm (`enters_with_counters_per_match: { subtype, counter }`),
+   > the `resolveEnterChoice` count-stamp branch, the Banner of Kinship JSON,
+   > and the dedicated `banner-of-kinship-counters.test.ts` (9 cases) all
+   > landed under lane 59. This priority-queue entry is kept for traceability
+   > but is not pick-up-able as new work. See the Wave 4.8 follow-up 16
+   > loop done summary at the bottom of this file.
+
 5. **Lane 109 — Infernal Vessel script** (chosen
    creature type + chosen color + discard a card). The
    "as this enters, choose a creature type" and "as
@@ -2516,12 +2524,25 @@ Ability` deny); the triggered-ability path needs a
    leak beyond the player's battlefield when the card
    moves zone).
 
+   > **STATUS — SHIPPED via Wave 4.8 follow-up lane 58** (PR #2732, #2614 follow-up).
+   > The `detectTriggeredAbilities` consult already skips scripted triggers
+   > on cards with `losesAbilities: true`; `loses-abilities-trigger-gate.test.ts`
+   > pins the suppression. This entry kept for traceability; not pick-up-able
+   > as new work.
+
 7. **Lane 111 — Affinity / cost reduction arm** (lane 57,
    Claws Out etc.). New `cost_reduction: { filter, n }`
    arm on `CardScriptSchema` + engine reduction in
    `effect-resolution.ts`. The chosen-subtype filter
    follows the same shape as the lane 40 chosen-color
    anthem. ~50-100 LOC.
+
+   > **STATUS — SHIPPED via Wave 4.8 follow-up 3 lane 64** (PR #2743, #2614 follow-up).
+   > `affinity: { subtype, reduction_per_match }` is in place on `CardScriptSchema`;
+   > Sapling Nursery and Dragonlord's Servant ride it. `affinityReduction` is
+   > exported from `src/lib/game-state/spell-casting/affinity.ts`. The lane 111
+   > docstring's "chosen-subtype filter follows the lane 40 chosen-color anthem
+   > shape" was already true at lane 64 ship time. Not pick-up-able as new work.
 
 8. **Lane 112 — Granting triggered abilities** (Aura's
    `static.grants.triggers` arm — CR 603.2 grant
@@ -3602,3 +3623,151 @@ follow-up 16 loop done summary" to
   enter_choice chassis stamps (lane 107)` — full
   chassis-side stamps landed; all gates green;
   pushed to origin/main.
+
+## Wave 4.8 follow-up 16 loop done summary (lanes 108–117)
+
+The Wave 4.8 follow-up 15 loop (the wave this
+handoff was authored for) opens lane 108 as its
+first pick. On intake, the schema / engine / JSON
+/ dedicated-test work the lane 108 docstring
+describes was discovered to have already shipped
+via Wave 4.8 follow-up lane 59 (#2734, #2614
+follow-up) — the lane 108 docstring itself
+anticipated this ("a v0 foundation may already
+exist from a prior lane"). A survey of the rest
+of the priority queue (lanes 108–117) revealed the
+same: lanes 108 / 110 / 111 had all landed under
+prior follow-up lanes (59 / 58 / 64). The loop
+has no remaining single-lane work; it stops.
+
+### Lanes shipped (verified against HEAD)
+
+- **Lane 108 — `enters_with_counters_per_match:
+  chosen_subtype` arm**. The schema arm,
+  `resolveEnterChoice` count-stamp branch, the
+  Banner of Kinship JSON, and the dedicated
+  `banner-of-kinship-counters.test.ts` (9 cases:
+  0-count, 3-count, Goblin filter, controller-only
+  filter, chosenTypeAdditions inclusion, schema
+  acceptance, empty-subtype rejection, JSON
+  hydration, ETB-only refresh persistence) all
+  shipped under lane 59 (Wave 4.8 follow-up 2,
+  PR #2734). `git log --grep="Banner of Kinship"
+  --oneline` traces the original commit; the
+  current test file's preamble still credits
+  "Wave 4.8 follow-up lane 59". The lane 108
+  docstring's `resolveEnterCount` helper is the
+  lane 59 inline block in `resolveEnterChoice`
+  (the helpers `countCreaturesYouControlOfSubtype`
+  + `applyCountersToCard` live in
+  `src/lib/game-state/keyword-actions/enter-choice.ts`
+  around lines 665–772) — not extracted to a
+  named export, but functionally complete. The
+  ETB-only snapshot semantics are pinned by the
+  refresh-persistence test (`refreshScriptedStatics`
+  does NOT clear `instanceCounters`).
+
+- **Lane 110 — `losesAbilities` triggered-ability
+  suppression**. The `detectTriggeredAbilities`
+  consult already skips firing scripted triggers
+  on a card whose `losesAbilities` is true, and
+  Witness Protection's `removesAllAbilities: true`
+  static rides the lane 54 `losesAbilities`
+  substrate with the trigger suppression wired in.
+  Lane 58 (Wave 4.8 follow-up, PR #2732) shipped
+  the trigger-side gate; the
+  `loses-abilities-trigger-gate.test.ts` dedicated
+  test pins the suppression.
+
+- **Lane 111 — Affinity / cost reduction arm**.
+  `affinity: { subtype, reduction_per_match }` on
+  `CardScriptSchema` is in place (Sapling
+  Nursery, Dragonlord's Servant are real cards in
+  the generated registry); `affinityReduction`
+  is exported from `src/lib/game-state/spell-casting/affinity.ts`;
+  the engine reads it during cast-time cost
+  reduction. Lane 64 (Wave 4.8 follow-up 3,
+  PR #2743) shipped this. The lane 111 docstring's
+  "chosen-subtype filter follows the same shape
+  as the lane 40 chosen-color anthem" was already
+  true when lane 64 landed; no follow-up work.
+
+### Lanes remaining open (each a multi-lane concern)
+
+- **Lane 109 — Infernal Vessel script** (chosen
+  creature type + chosen color + discard a
+  card). Multi-lane: the dual compound kind
+  `color_and_creature_type` (lane 56 / lane 107)
+  is in place, but the `cost.discard` chaining
+  on ETB and the triple-oracle coordination are
+  not. Pick up only when a dedicated multi-lane
+  plan is scoped.
+
+- **Lane 112 — Granting triggered abilities**
+  (CR 603.2 grant semantics). The schema
+  `StaticSchema.grants.triggers` arm is documented
+  but the engine does not yet consume it
+  (commented-out stub at
+  `src/lib/game-state/card-scripts/schema.ts:2498`
+  notes "still need to plumb"). Multi-lane:
+  touches the trigger-fire pipeline directly.
+
+- **Lane 113 — Casting spells from exile /
+  graveyard** (Flashback, Jump-Start, Undergrowth,
+  Escape, As Foretold). `castable_from: [...]`
+  arm is documented (schema.ts:3135+); the engine
+  reads it at cast time per the docstring but
+  lane 68 (Wave 4.8 follow-up 4) shipped v1 with
+  a single entry only. Multi-zone casting and
+  end-zone inference are follow-ups.
+
+- **Lane 114 — Token creation with embedded
+  static**. `embeddedStaticKeywords` exists in
+  `resolveTokenCreationEffect`; the
+  Adaptive Automaton / Avenger of Zendikar /
+  Hornet Queen / Cloudblazer cards are not yet
+  token-creators with embedded static. Multi-lane.
+
+- **Lane 115 — Stun / finality counters**. The
+  `enters_with_counters` field (lane 67) handles
+  the stamping side; the per-turn stun-removal
+  decrement and the finality-skipping effect
+  are follow-ups.
+
+- **Lane 116 — X-spent-on-other-spells arm**.
+  `state.castVariableValues` not yet wired.
+
+- **Lane 117 — `you_may` + `pay_life` combined**.
+  Lane 99 (you-may + sacrifice-cost chained
+  gates) and lane 106 (pay-life cost on trigger)
+  ship the constituent pieces; the bridge is
+  not.
+
+- **Multi-lane follow-up lane 61 — Replacement
+  effect for death**. Parked pending the
+  foundational replacement-effect layer; per the
+  Wave 4.8 follow-up 15 handoff's process rules,
+  open as a separate multi-lane plan.
+
+### Verified lane 108 baseline (this loop's exit
+### state)
+
+- `git log --oneline -1` → lane 108 docstring
+  read; no code change required (lane 59
+  shipped).
+- `grep "Test suites" docs/onboarding.md` →
+  `**Test suites:** 758` (unchanged).
+- `grep "Test cases" docs/onboarding.md` →
+  `**Test cases:** 14384 (14377 passed + 7
+  skipped)` (unchanged).
+- Engine-size budget cap: `3700` (unchanged —
+  no schema delta).
+- Branch: `main`.
+- Working directory: clean except for the
+  followup13 / followup15 stale handoff files
+  left by earlier sessions; not the deliverable.
+
+Wave 4.8 follow-up 16 loop is complete. The
+remaining open lanes are all multi-lane; open
+each as a dedicated multi-lane plan per the
+follow-up 15 process rules.
