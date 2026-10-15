@@ -6,7 +6,7 @@
  * result is kept on the card and refreshed with the state-based-action pass,
  * because `getEffectivePower` and `hasKeyword` only see the card.
  */
-import type { CardInstance, GameState, PlayerId } from "../types";
+import type { CardInstance, CardInstanceId, GameState, PlayerId } from "../types";
 import { getCardScript, getCardDataByName } from "../card-scripts/registry";
 import type {
   RuleStatic,
@@ -300,6 +300,17 @@ export function staticAffects(
   // happens in the dedicated `deathReplacements`
   // accumulation block, NOT in the per-target loop.
   if (stat.death_replacement !== undefined) return false;
+  // Wave 4.8 follow-up 18 lane 112 (#2614 follow-up):
+  // a `grants.triggers`-only static doesn't apply
+  // per-target (it stamps the source's own
+  // `grantedTriggers` field via the dedicated
+  // `grantedTriggersBySourceId` accumulation block;
+  // the per-target P/T / keywords / etc. consult is
+  // irrelevant for this arm). Short-circuit on the
+  // missing-`affects` shape so the meta-static path
+  // doesn't try to read `stat.affects.chosen_name_block`
+  // on an undefined `affects` object.
+  if (stat.grants !== undefined) return false;
   // Wave 4.7 phase 2 lane 50 (#2708 phase 2b): the chosen-name
   // block static is a meta-static that gates non-mana activated
   // ability activation (Sorcerous Spyglass pattern). It doesn't
@@ -310,7 +321,7 @@ export function staticAffects(
   // to be any kind of permanent (not just creatures) — Sorcerous
   // Spyglass's restriction is on "sources" of activated abilities,
   // which includes lands, artifacts, and enchantments.
-  if (stat.affects.chosen_name_block === true) {
+  if (stat.affects?.chosen_name_block === true) {
     if (!source.chosenCardName) return false;
     return target.cardData.name === source.chosenCardName;
   }
@@ -328,6 +339,16 @@ export function staticAffects(
   // The actual growth of `source.chosenTypeAdditions` is
   // handled by `refreshScriptedStatics` (this branch only
   // computes applicability).
+  // Wave 4.8 follow-up 18 lane 112 (#2614 follow-up):
+  // `stat.affects` is now optional. Meta-statics with
+  // alternative arms (grants / pure death_replacement)
+  // already short-circuited at the top of the function.
+  // Anything reaching the `affects`-shape branches
+  // below is a "real" static carrying the standard
+  // `affects` shape; the schema-side optional means
+  // future meta-static arms may need their own short-
+  // circuit, but v1 is conservative.
+  if (!stat.affects) return false;
   if (stat.affects.add_creature_type !== undefined) {
     if (stat.affects.addCreatureTypeToSelf !== true) return false;
     if (source.id !== target.id) return false;
@@ -351,6 +372,19 @@ export function staticAffects(
   // choice yet). The actual `cardData.type_line` overlay
   // is performed by `refreshScriptedStatics` (this branch
   // only computes applicability).
+  // Wave 4.8 follow-up 18 lane 112 (#2614 follow-up):
+  // `stat.affects` is now optional in the schema. Meta-
+  // statics that ship a non-`affects` arm (grants,
+  // pure death_replacement, etc.) need an early
+  // return before the `affects` shape is read. By the
+  // time we reach this line, the earlier
+  // `stat.grants !== undefined` and
+  // `stat.death_replacement !== undefined` short-
+  // circuits already returned. Any affect-less
+  // static reaching this point shouldn't apply to
+  // this target; return false rather than crash on
+  // the destructure below.
+  if (!stat.affects) return false;
   if (stat.affects.becomes_chosen_creature_type === true) {
     if (source.id !== target.id) return false;
     return source.chosenCreatureType !== null;
@@ -600,6 +634,20 @@ export function refreshScriptedStatics(input: GameState): GameState {
     const protFrom = new Set<string>();
     for (const { card, statics } of sources) {
       for (const stat of statics) {
+        // Wave 4.8 follow-up 18 lane 112 (#2614 follow-up):
+        // skip statics without an `affects` arm. The
+        // affects object is now optional (lane 112 makes
+        // it possible to ship meta-statics like a grants
+        // arm without an `affects` shape — the meta-static
+        // applies at the source level via the dedicated
+        // `grantedTriggersBySourceId` accumulation block,
+        // NOT through the per-target P/T / keywords /
+        // chosen-type / chosen-color arm consultations
+        // below). The earlier `staticAffects` check
+        // already short-circuits for the lane 112
+        // meta-static, so this guard is a defensive
+        // belt-and-suspenders.
+        if (!stat.affects) continue;
         if (!staticAffects(stat, card, target)) continue;
         // Wave 4.8 follow-up 12 lane 91 (#2614 follow-up):
         // the `while_condition` gate is part of the static
@@ -783,6 +831,60 @@ export function refreshScriptedStatics(input: GameState): GameState {
     if (cardDrs.length > 0) deathReplacements.set(card.id, cardDrs);
   }
 
+  // Wave 4.8 follow-up 18 lane 112 (#2614 follow-up):
+  // the SELF-GRANT triggered-ability arm of
+  // `StaticSchema`. A permanent's own
+  // `static[].grants.triggers` list is collected here
+  // and stamped on the SOURCE's per-instance
+  // `grantedTriggers` field (CR 603.2 grant
+  // semantics). The trigger fire path
+  // (`detectTriggeredAbilities` in
+  // `abilities/triggered.ts`) already reads
+  // `card.grantedTriggers` (the lane 65 Aura-shaped
+  // path) and fires each granted trigger alongside
+  // the card's own scripted triggers — so the lane
+  // 112 v1 minimum only needs the collection + stamp
+  // step here; the fire path is unchanged. The
+  // granted trigger's `event` is `dies`, parallel to
+  // the lane 65 v1 minimum.
+  const grantedTriggersBySourceId = new Map<
+    CardInstanceId,
+    Array<{
+      event: "dies";
+      effects: Array<{ op: string; [k: string]: unknown }>;
+      from: CardInstanceId;
+      sourceControllerId: PlayerId;
+    }>
+  >();
+  for (const { card, statics } of sources) {
+    if (!card.controllerId) continue;
+    const grantedList: Array<{
+      event: "dies";
+      effects: Array<{ op: string; [k: string]: unknown }>;
+      from: CardInstanceId;
+      sourceControllerId: PlayerId;
+    }> = [];
+    for (const st of statics) {
+      const triggers = st.grants?.triggers;
+      if (!triggers || triggers.length === 0) continue;
+      for (const t of triggers) {
+        grantedList.push({
+          event: t.event,
+          effects: t.effects as Array<{
+            op: string;
+            [k: string]: unknown;
+          }>,
+          from: card.id,
+          sourceControllerId: card.controllerId,
+        });
+      }
+    }
+    if (grantedList.length > 0) {
+      grantedTriggersBySourceId.set(card.id, grantedList);
+    }
+  }
+
+
   let cards: GameState["cards"] | null = null;
   for (const [cardId, card] of state.cards) {
     const nextPT = pt.get(cardId);
@@ -914,6 +1016,35 @@ export function refreshScriptedStatics(input: GameState): GameState {
     const auraOverlayActive =
       card.animatedUntilEndOfTurn?.setByAura === true &&
       nextCopyOfTargetId === undefined;
+    // Wave 4.8 follow-up 18 lane 112 (#2614 follow-up):
+    // the `grantedTriggers` self-grant diff. The lane 65
+    // Aura-shaped path compares `card.grantedTriggers`
+    // against `nextGrantedTriggers` (the lane 65 map); the
+    // lane 112 self-grant path compares the same field
+    // against `nextSelfGrantedTriggers` (the lane 112
+    // map). The combined write at the bottom of the
+    // refresh pass unions any existing Aura-driven
+    // grants (carried over from `updated.grantedTriggers`
+    // after the Aura path ran earlier in the
+    // orchestrator's pass order) with the lane 112
+    // self-grants; the diff compares the previous field
+    // against the unioned next value to decide whether
+    // to skip the no-op write.
+    const nextSelfGrantedTriggers_DIFF =
+      grantedTriggersBySourceId.get(cardId) ?? [];
+    const wasSelfGrantedTriggers_DIFF = card.grantedTriggers ?? [];
+    const sameSelfGrantedTriggers =
+      nextSelfGrantedTriggers_DIFF.length === wasSelfGrantedTriggers_DIFF.length &&
+      nextSelfGrantedTriggers_DIFF.every(
+        (g, i) =>
+          wasSelfGrantedTriggers_DIFF[i] &&
+          wasSelfGrantedTriggers_DIFF[i].event === g.event &&
+          wasSelfGrantedTriggers_DIFF[i].from === g.from &&
+          wasSelfGrantedTriggers_DIFF[i].sourceControllerId ===
+            g.sourceControllerId &&
+          JSON.stringify(wasSelfGrantedTriggers_DIFF[i].effects) ===
+            JSON.stringify(g.effects),
+      );
     if (
       samePT &&
       sameKw &&
@@ -922,7 +1053,8 @@ export function refreshScriptedStatics(input: GameState): GameState {
       sameProtFrom &&
       sameCopyOfTarget &&
       sameDr &&
-      sameTypeOverlay
+      sameTypeOverlay &&
+      sameSelfGrantedTriggers
     ) {
       // Wave 4.8 follow-up 9 lane 75e (#2614 follow-up):
       // if the card has an Aura-driven overlay and no
@@ -1461,6 +1593,33 @@ export function refreshScriptedStatics(input: GameState): GameState {
     // source, so the dedupe is a no-op.
     if (nextDr && nextDr.length > 0) updated.deathReplacement = nextDr;
     else if ("deathReplacement" in updated) delete updated.deathReplacement;
+    // Wave 4.8 follow-up 18 lane 112 (#2614 follow-up):
+    // final write of the per-instance `grantedTriggers`
+    // ledger for the self-grant static arm. The
+    // `grantedTriggersBySourceId` map was built earlier
+    // in this refresh pass from each source's
+    // `statics[].grants.triggers` (CR 603.2 grant
+    // semantics — the source grants a triggered ability
+    // onto itself). When a source's static has at least
+    // one granted trigger, the list is appended to any
+    // existing `grantedTriggers` (the Aura-shape lane 65
+    // path runs in `refreshAuraBonuses` BEFORE this
+    // pass; the field may already carry Aura-shaped
+    // grants for the same card, and lane 112 preserves
+    // them). v1 the two paths coexist additively
+    // (parallel to how `scriptStaticKeywords` unions
+    // multiple statics' keyword grants). v1 doesn't
+    // delete the field for cards without self-grants
+    // — the Aura path's `refreshAuraBonuses` diff is
+    // the canonical clear site; lane 112 only adds.
+    const nextSelfGrantedTriggers = grantedTriggersBySourceId.get(cardId);
+    if (nextSelfGrantedTriggers && nextSelfGrantedTriggers.length > 0) {
+      const existing = updated.grantedTriggers ?? [];
+      updated.grantedTriggers = [
+        ...existing,
+        ...nextSelfGrantedTriggers,
+      ];
+    }
     cards.set(cardId, updated);
   }
   return cards ? { ...state, cards } : state;

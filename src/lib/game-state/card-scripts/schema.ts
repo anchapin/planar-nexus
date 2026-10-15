@@ -2110,7 +2110,27 @@ export const StaticSchema = z
          */
         addColorToSelf: z.literal(true).optional(),
       })
-      .strict(),
+      .strict()
+      // Wave 4.8 follow-up 18 lane 112 (#2614 follow-up):
+      // the `affects` slot is now optional. v1 statics
+      // that have at least one of `affects`,
+      // `power`, `toughness`, etc. use `affects` for
+      // per-target filtering. Lane 61b's pure
+      // `death_replacement` meta-static
+      // (Whip of Erebos-style replacement effects)
+      // also carries `affects` in v1 — the consult
+      // reads `source.controllerId` rather than the
+      // static's `affects.controller` for the
+      // replacement-applies-to set, but the schema
+      // requires the field for symmetry. The lane 112
+      // self-grant arm — and any future
+      // meta-static arms — may legitimately omit
+      // `affects` because the meta-static doesn't
+      // apply per-target (it stamps the source's own
+      // `grantedTriggers` field via a side channel).
+      // Without the `.optional()`, such meta-statics
+      // would fail schema validation.
+      .optional(),
     power: z.number().int().optional(),
     toughness: z.number().int().optional(),
     /**
@@ -2350,6 +2370,60 @@ export const StaticSchema = z
           .strict(),
       ])
       .optional(),
+    /**
+     * Wave 4.8 follow-up 18 lane 112 (#2614 follow-up):
+     * the self-grant triggered-ability arm of `StaticSchema`.
+     * CR 603.2 grant semantics — the source's own static
+     * copies one or more triggered abilities onto the
+     * SOURCE itself. Mirrors the lane 65 Aura-shaped
+     * variant (`AuraStaticSchema.grants.triggers`, which
+     * grants triggers onto the ENCHANTED card) but routes
+     * the grant onto the source. The engine consumer
+     * (`refreshScriptedStatics`) reads the static's
+     * `grants.triggers` list and merges each entry into
+     * the source's per-instance `grantedTriggers` field
+     * with `from: source.id` and `sourceControllerId:
+     * source.controllerId`; the trigger fire path
+     * (`detectTriggeredAbilities` in
+     * `abilities/triggered.ts`) already reads the
+     * `grantedTriggers` list (lane 65's path) and fires
+     * alongside the card's own scripted triggers.
+     *
+     * v1 supports a single `event: "dies"` trigger
+     * (parallel to the lane 65 v1 minimum). Multi-event
+     * grants (`["dies" | "etb" | "attacks"]`) and
+     * grants that reference the source's controller
+     * (vs the source's controller at fire time) ride
+     * future lanes. CR 603.2: the static-creature
+     * itself becomes the source of the granted trigger;
+     * the trigger's `effect text` reads `[card name]
+     * dies, …` (matching the lane 65 Aura path's
+     * `When [enchanted card name] dies, …`).
+     *
+     * Use case (single-card sample + lane 112 v1): a
+     * creature whose static reads "When this creature
+     * dies, draw a card" but written as a self-grant
+     * (the card has no native `triggers`; the static
+     * grants the trigger). The v1 minimum covers the
+     * self-dies shape so the lane parallels the Aura
+     * pattern end-to-end.
+     */
+    grants: z
+      .object({
+        triggers: z
+          .array(
+            z
+              .object({
+                event: z.enum(["dies"]),
+                effects: z.array(EffectSchema).min(1),
+              })
+              .strict(),
+          )
+          .min(1)
+          .optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .refine((s) => (s.power === undefined) === (s.toughness === undefined), {
@@ -2364,19 +2438,19 @@ export const StaticSchema = z
       // chosen-name block is a meta-static — allow it as a
       // stand-alone arm. See lane 50's `chosen_name_block`
       // docstring.
-      s.affects.chosen_name_block === true ||
+      s.affects?.chosen_name_block === true ||
       // Wave 4.8 lane 52 (#2614 follow-up): chosen-type
       // addition is a pure type-changer — also a
       // meta-static, allowed as a stand-alone arm with the
       // `addCreatureTypeToSelf` flag.
-      (s.affects.add_creature_type !== undefined &&
-        s.affects.addCreatureTypeToSelf === true) ||
+      (s.affects?.add_creature_type !== undefined &&
+        s.affects?.addCreatureTypeToSelf === true) ||
       // Wave 4.8 lane 55 (#2614 follow-up): chosen-color
       // addition is a pure color-changer — same
       // meta-static shape, allowed as a stand-alone arm
       // with the `addColorToSelf` flag. Redcap
       // Gutter-Dweller-style self-only semantics for v1.
-      (s.affects.add_color !== undefined && s.affects.addColorToSelf === true) ||
+      (s.affects?.add_color !== undefined && s.affects?.addColorToSelf === true) ||
       // Wave 4.8 follow-up 14 lane 51 (#2614 follow-up):
       // a permanent type-line overlay meta-static —
       // `becomes_chosen_creature_type: true` is allowed
@@ -2387,7 +2461,7 @@ export const StaticSchema = z
       // type-change half). No P/T or keywords of its
       // own; the static only triggers the type-line
       // overlay.
-      s.affects.becomes_chosen_creature_type === true ||
+      s.affects?.becomes_chosen_creature_type === true ||
       // Wave 4.8 follow-up 5 lane 71 (#2614 follow-up):
       // protection-from static is a meta-static — allow it
       // as a stand-alone arm. The protection is granted via
@@ -2421,10 +2495,25 @@ export const StaticSchema = z
       // to `scriptStaticKeywords` for keyword grants).
       // No P/T or keyword changes of its own; the static
       // only triggers the death-replacement consult.
-      s.death_replacement !== undefined,
+      s.death_replacement !== undefined ||
+      // Wave 4.8 follow-up 18 lane 112 (#2614 follow-up):
+      // the self-grant triggered-ability arm
+      // (`grants.triggers`) is a meta-static — allow it
+      // as a stand-alone arm. The engine reads the
+      // source's `statics[].grants.triggers` list in
+      // `refreshScriptedStatics` and merges each entry
+      // onto the source's per-instance `grantedTriggers`
+      // field (with `from: source.id`). The trigger fire
+      // path (`detectTriggeredAbilities`) consumes the
+      // list alongside the card's own scripted triggers —
+      // no P/T or keyword changes of its own. The
+      // v1 schema accepts an array of `event: "dies"`
+      // + `effects[]` entries (parallel to the lane 65
+      // Aura variant).
+      (s.grants?.triggers?.length ?? 0) > 0,
     {
       message:
-        "a static needs power/toughness, keywords, X, chosen_name_block, add_creature_type (with addCreatureTypeToSelf), add_color (with addColorToSelf), protectionFrom, becomes_chosen_creature_type, become_copy, or death_replacement",
+        "a static needs power/toughness, keywords, X, chosen_name_block, add_creature_type (with addCreatureTypeToSelf), add_color (with addColorToSelf), protectionFrom, becomes_chosen_creature_type, become_copy, death_replacement, or grants.triggers",
     },
   );
 

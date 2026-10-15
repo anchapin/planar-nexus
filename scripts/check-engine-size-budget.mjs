@@ -526,7 +526,19 @@ const SCOPES = [
     // cover the trigger-cost family on the same
     // trajectory as the follow-up 13 / 14 / lane 51
     // budget bumps.
-    budgetLines: 3750,
+    //
+    // Wave 4.8 follow-up 18 lane 112 (#2614 follow-up):
+    // the self-grant triggered-ability arm on
+    // StaticSchema (`grants.triggers`). Mirrors the
+    // lane 65 Aura-shaped variant but routes the
+    // grant onto the SOURCE itself. The arm adds
+    // ~50 lines (docstring + the grants object schema
+    // + the refine-list entry for stand-alone arm
+    // permission) — schema.ts measured at 3770 (+20
+    // over 3750). Bumping 3750 → 3800 to give the
+    // follow-up 18 self-grant family room to land
+    // without fragmenting the StaticSchema sub-family.
+    budgetLines: 3800,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

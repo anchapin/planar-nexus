@@ -9747,8 +9747,8 @@ describe("Knight of Grace: literal color anthem (#2594 lane 30)", () => {
     expect(knight).toBeDefined();
     expect(knight!.statics).toHaveLength(1);
     const stat = knight!.statics![0];
-    expect(stat.affects.controller).toBe("you");
-    expect(stat.affects.color).toBe("W");
+    expect(stat.affects!.controller).toBe("you");
+    expect(stat.affects!.color).toBe("W");
     expect(stat.power).toBe(1);
     expect(stat.toughness).toBe(1);
   });

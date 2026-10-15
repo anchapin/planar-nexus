@@ -1,0 +1,23 @@
+{
+  "name": "Self-Grant Draw on Die",
+  "oracle": "When this creature dies, draw a card.",
+  "statics": [
+    {
+      "text": "When this creature dies, draw a card.",
+      "grants": {
+        "triggers": [
+          {
+            "event": "dies",
+            "effects": [
+              {
+                "op": "Draw",
+                "amount": 1,
+                "who": "you"
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}
