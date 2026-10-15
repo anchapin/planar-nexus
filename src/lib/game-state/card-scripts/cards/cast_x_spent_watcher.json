@@ -1,0 +1,20 @@
+{
+  "name": "Cast X Spent Watcher",
+  "oracle": "Creature \u2014 Spirit\nWhenever you cast a spell with X in its mana cost, this creature gets +1/+1 counters equal to the X spent on that spell.",
+  "triggers": [
+    {
+      "text": "Whenever you cast a spell with X in its mana cost, this creature gets +1/+1 counters equal to the X spent on that spell.",
+      "event": "cast",
+      "caster": "you",
+      "X": "X_spent_on_spell",
+      "effects": [
+        {
+          "op": "PutCounters",
+          "target": "self",
+          "counter": "+1/+1",
+          "amount": 1
+        }
+      ]
+    }
+  ]
+}

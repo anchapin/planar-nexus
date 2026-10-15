@@ -206,6 +206,19 @@ export interface CastFilter {
   color?: "W" | "U" | "B" | "R" | "G";
   self?: boolean;
   unsupported?: boolean;
+  /**
+   * Wave 4.8 follow-up 19 lane 116 (#2614 follow-up):
+   * the trigger fires only when the cast spell has X
+   * in its mana cost AND `state.castVariableValues
+   * [spellCardId]` is set. The schema-side enum mirrors
+   * `ScriptedTrigger.X` (the same single-arm enum);
+   * v1 supports a single value (`"X_spent_on_spell"`).
+   * The effect's amount can then read the stored X via
+   * the `evaluateCastVariable` helper in
+   * `abilities/triggered.ts` (read-only path; the
+   * cast-time writer is a follow-up sub-piece).
+   */
+  X?: "X_spent_on_spell";
 }
 
 const CAST_SPELL_TYPES = new Set([

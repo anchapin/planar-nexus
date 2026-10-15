@@ -89,6 +89,27 @@ function hasSubtype(typeLine: string, subtype: string): boolean {
 }
 
 /**
+ * Wave 4.8 follow-up 19 lane 116 (#2614 follow-up):
+ * the X value the engine has stored for the spell
+ * identified by `spellCardId`. Returns `undefined` when
+ * the spell isn't in `state.castVariableValues` (the
+ * spell is not an X-cost spell, or the engine's
+ * cast-time writer — a follow-up sub-piece, lane 116
+ * piece 2/2 — hasn't yet stamped the map). The
+ * `castTriggerMatches` consumer uses this to gate
+ * triggers whose `castFilter.X: "X_spent_on_spell"` is
+ * set, and downstream effects read the same value to
+ * resolve an "X equals the X spent on the previous
+ * spell" amount.
+ */
+export function evaluateCastVariable(
+  state: GameState,
+  spellCardId: CardInstanceId,
+): number | undefined {
+  return state.castVariableValues?.get(spellCardId);
+}
+
+/**
  * CR 601.2i / 603.2: does a cast trigger care about this spell and caster?
  * Without a caster in the context (older callers) every cast trigger fires,
  * as before; in real games only triggers whose filter was parsed fire.
@@ -121,6 +142,18 @@ function castTriggerMatches(
   if (filter.singleTarget) {
     const onStack = castSpellStackObject(state, spell.id);
     if (!onStack || onStack.targets.length !== 1) return false;
+  }
+  // Wave 4.8 follow-up 19 lane 116 (#2614 follow-up):
+  // the `X: "X_spent_on_spell"` cast-filter arm gates
+  // the trigger on the cast spell having X in its mana
+  // cost AND `state.castVariableValues[spellCardId]`
+  // being set. The trigger does NOT fire if either
+  // condition is unmet (the schema-side enum is the
+  // single value `"X_spent_on_spell"`; future arms
+  // ride follow-up lanes).
+  if (filter.X === "X_spent_on_spell") {
+    if (!spell.cardData.mana_cost?.includes("X")) return false;
+    if (evaluateCastVariable(state, spell.id) === undefined) return false;
   }
   return true;
 }

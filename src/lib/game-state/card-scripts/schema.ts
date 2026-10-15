@@ -1466,6 +1466,29 @@ export const TriggerSchema = z
     once_per_turn: z.literal(true).optional(),
     /** cast only: "a spell with a single target" (exactly one target). */
     targets: z.literal("single").optional(),
+    /**
+     * Wave 4.8 follow-up 19 lane 116 (#2614 follow-up):
+     * "this spell's X equals the X spent on the previous
+     * spell" — a cast-only X-source filter. When set, the
+     * trigger fires only when the cast spell has X in its
+     * mana cost AND `state.castVariableValues[spellCardId]`
+     * is set (the spell that triggered this). The
+     * `interpret.ts` consumer reads
+     * `state.castVariableValues[spellCardId]` to surface
+     * the stored X as the effect's resolved X.
+     *
+     * v1 supports a single arm
+     * (`"X_spent_on_spell"`); the "X spent on any prior
+     * spell this turn" / "X spent on the most recent
+     * instant or sorcery" variants ride follow-up lanes.
+     * v1 ships a **read-only path** — the engine surfaces
+     * the helper but does NOT yet write to
+     * `state.castVariableValues` at cast time. The
+     * synthetic test pre-populates the map directly; the
+     * write step is a follow-up sub-piece (lane 116
+     * piece 2/2).
+     */
+    X: z.enum(["X_spent_on_spell"]).optional(),
     /** The chapter number of a Saga chapter ability (I = 1). */
     chapter: z.number().int().min(1).max(6).optional(),
     effects: effects.optional(),
@@ -1739,10 +1762,11 @@ export const TriggerSchema = z
       (t.caster === undefined &&
         t.spell === undefined &&
         t.targets === undefined &&
-        t.cast_color === undefined),
+        t.cast_color === undefined &&
+        t.X === undefined),
     {
       message:
-        "caster, spell, targets and cast_color are only for cast triggers",
+        "caster, spell, targets, cast_color and X are only for cast triggers (lane 116, #2614)",
     },
   )
   .refine(

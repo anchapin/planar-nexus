@@ -538,7 +538,19 @@ const SCOPES = [
     // over 3750). Bumping 3750 → 3800 to give the
     // follow-up 18 self-grant family room to land
     // without fragmenting the StaticSchema sub-family.
-    budgetLines: 3800,
+    //
+    // Wave 4.8 follow-up 19 lane 116 (#2614 follow-up):
+    // the `X: "X_spent_on_spell"` cast-filter arm on
+    // TriggerSchema (read-only path; the cast-time
+    // writer is a follow-up sub-piece). The arm
+    // adds ~14 lines (docstring + the X enum +
+    // refine-list entry for cast-only permission) —
+    // schema.ts measured at 3814 (+14 over 3800).
+    // Bumping 3800 → 3825 to give the follow-up 19
+    // X-spent cast-filter family room to land on
+    // the same trajectory as the follow-up 12 / 13 /
+    // 14 / 15 / 16 / 17 / 18 budget bumps.
+    budgetLines: 3825,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),
