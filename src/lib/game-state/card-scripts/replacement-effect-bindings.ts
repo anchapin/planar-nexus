@@ -113,12 +113,16 @@ export function buildScriptedDeathReplacementEffect(
   // `keyword-actions/removal.ts`).
   //
   // Out of scope: "library_top" / "library_bottom" /
-  // "battlefield_tapped" / "battlefield_untapped" /
-  // "any_zone" / "life_loss" (lanes 104).
+  // "any_zone" (lanes 104 partial — covered by
+  // lane 101's sacrifice-redirect as a sibling
+  // case).
   if (
     re.redirect.to !== "exile" &&
     re.redirect.to !== "hand" &&
-    re.redirect.to !== "sacrifice"
+    re.redirect.to !== "sacrifice" &&
+    re.redirect.to !== "battlefield_tapped" &&
+    re.redirect.to !== "battlefield_untapped" &&
+    re.redirect.to !== "life_loss"
   ) {
     return null;
   }
@@ -210,9 +214,18 @@ export function buildScriptedDeathReplacementEffect(
         // (lane 100); other destinations parse in the
         // schema but the factory returns null for them
         // (lanes 101 / 104 wire them).
+        //
+        // Wave 4.8 follow-up 13 lane 104 (#2614 follow-up):
+        // the `redirect.amount` flows on
+        // `context.redirectToZoneAmount` (used by the
+        // engine consult when the redirect is
+        // `"life_loss"` — the integer parameter for the
+        // life loss). For non-`life_loss` destinations,
+        // the field defaults to 0.
         context: {
           ...(event.context ?? {}),
           redirectToZone: re.redirect.to as DeathRedirectZone,
+          redirectToZoneAmount: re.redirect.amount ?? 0,
         },
       },
       description: re.text,

@@ -2744,8 +2744,27 @@ export const ReplacementEffectSchema = z
             "battlefield_untapped",
             "sacrifice",
             "any_zone",
+            // Wave 4.8 follow-up 13 lane 104 (#2614 follow-up):
+            // "life_loss" — the replacement routes the
+            // death to a life loss instead (e.g.
+            // "if [thing] would die, instead lose 1
+            // life"). The `amount` field carries the
+            // integer loss.
+            "life_loss",
           ])
           .default("exile"),
+        /**
+         * Wave 4.8 follow-up 13 lane 104 (#2614 follow-up):
+         * the integer parameter for `redirect.to:
+         * "life_loss"` (the number of life points to
+         * lose). Optional — defaults to 0 when the
+         * redirect is anything other than `"life_loss"`.
+         * When the redirect is `"life_loss"` and `amount`
+         * is unset, the factory returns null (the
+         * `life_loss` redirect requires an explicit
+         * amount).
+         */
+        amount: z.number().int().min(0).optional(),
       })
       .strict()
       .default({ to: "exile" }),

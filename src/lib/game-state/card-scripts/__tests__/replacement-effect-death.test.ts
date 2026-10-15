@@ -164,29 +164,17 @@ describe("Whispering Ward of the Grave (lane 61a): death replacement-effect foun
     expect(effect!.description).toBe(re.text);
   });
 
-  it("buildScriptedDeathReplacementEffect returns null for out-of-scope shapes (lane 61a v1 minimum, lanes 100/101 hand/sacrifice covered)", () => {
+  it("buildScriptedDeathReplacementEffect returns null for out-of-scope shapes (lane 61a v1 minimum, lanes 100/101/104 hand/sacrifice/periodic covered)", () => {
     // Out-of-scope (lane 61a v1 minimum + lanes 100/101
-    // hand-redirect + sacrifice-redirect shipped):
-    // redirect.to: "library_top" / "library_bottom" /
-    // "battlefield_tapped" / "battlefield_untapped" /
-    // "any_zone" / "life_loss" (lanes 104). The factory
-    // rejects them until those lanes ship. The lane 100
-    // hand-redirect and lane 101 sacrifice-redirect
-    // are now in scope.
+    // hand-redirect + sacrifice-redirect + lane 104
+    // periodic self-replacement shipped): redirect.to:
+    // "library_top" / "library_bottom" / "any_zone"
+    // (lanes 104 partial). The factory rejects them
+    // until those lanes ship. The lane 100
+    // hand-redirect, lane 101 sacrifice-redirect,
+    // and lane 104 periodic destinations are now in
+    // scope.
     const state = startTwoPlayerState();
-    expect(
-      buildScriptedDeathReplacementEffect(
-        id("ward"),
-        "alice" as PlayerId,
-        {
-          text: "instead tap it",
-          event: "would_die",
-          applies_to: { type: "creature", controller: "you" },
-          redirect: { to: "battlefield_tapped" },
-        },
-        state,
-      ),
-    ).toBeNull();
     // Out-of-scope: applies_to.controller: "opponent" (no lane yet)
     expect(
       buildScriptedDeathReplacementEffect(
@@ -765,6 +753,116 @@ describe("Whispering Ward of the Grave (lane 61a): death replacement-effect foun
     expect(result.state.zones.get(`${p1}-graveyard`)?.cardIds ?? []).toContain(
       id("bear"),
     );
+  });
+
+  /**
+   * Wave 4.8 follow-up 13 lane 104 (#2614 follow-up):
+   * periodic self-replacement destinations
+   * (`"battlefield_tapped"` / `"battlefield_untapped"`
+   * / `"life_loss"`). The dying creature stays on the
+   * battlefield and a side-effect applies (tap /
+   * untap / life loss) instead of a zone move. The
+   * sample card (`Instead Tap When Die`) is a
+   * Cyclops-style anthem — the dying creature is
+   * tapped instead of moved to graveyard.
+   */
+  it("lane 104: registry exposes Instead Tap When Die with battlefield_tapped redirect", () => {
+    const cardObj = getCardScript("Instead Tap When Die");
+    expect(cardObj).toBeDefined();
+    const re = cardObj!.replacement_effects![0];
+    expect(re.redirect.to).toBe("battlefield_tapped");
+  });
+
+  it("lane 104: end-to-end — dying creature stays on battlefield, tapped", () => {
+    let state = startTwoPlayerState();
+    const [p1] = Array.from(state.players.keys());
+    state = put(
+      state,
+      p1,
+      "tap-source",
+      card("Instead Tap When Die", "Creature — Cyclops"),
+    );
+    state = refreshScriptedStatics(state);
+
+    // Pre-condition: the cyclops is untapped (the
+    // default state).
+    expect(
+      state.cards.get(id("tap-source"))?.isTapped,
+    ).toBeFalsy();
+
+    const result = destroyCard(state, id("tap-source"));
+    expect(result.success).toBe(true);
+    // The cyclops IS still on the battlefield (not
+    // moved to graveyard).
+    expect(
+      result.state.zones.get(`${p1}-battlefield`)!.cardIds,
+    ).toContain(id("tap-source"));
+    expect(
+      result.state.zones.get(`${p1}-graveyard`)?.cardIds ?? [],
+    ).not.toContain(id("tap-source"));
+    // The cyclops IS tapped (the replacement's
+    // side effect).
+    expect(
+      result.state.cards.get(id("tap-source"))?.isTapped,
+    ).toBe(true);
+  });
+
+  it("lane 104: end-to-end — controller filter excludes opponent's dying creature", () => {
+    let state = startTwoPlayerState();
+    const [p1, p2] = Array.from(state.players.keys());
+    // The cyclops belongs to p1.
+    state = put(
+      state,
+      p1,
+      "tap-source",
+      card("Instead Tap When Die", "Creature — Cyclops"),
+    );
+    state = refreshScriptedStatics(state);
+
+    // Destroy a creature p2 owns (any creature — the
+    // cyclops' replacement applies only to p1's
+    // creatures, so p2's bear goes to the graveyard
+    // normally).
+    state = put(state, p2, "bear", card("Bear Cub", "Creature — Bear", [2, 2]));
+    state = refreshScriptedStatics(state);
+    const result = destroyCard(state, id("bear"));
+    expect(result.success).toBe(true);
+    // The bear IS in p2's graveyard (the cyclops'
+    // replacement didn't fire — controller filter).
+    expect(
+      result.state.zones.get(`${p2}-graveyard`)?.cardIds ?? [],
+    ).toContain(id("bear"));
+    // The cyclops is still on p1's battlefield, untapped.
+    expect(
+      result.state.zones.get(`${p1}-battlefield`)!.cardIds,
+    ).toContain(id("tap-source"));
+    expect(
+      result.state.cards.get(id("tap-source"))?.isTapped,
+    ).toBeFalsy();
+  });
+
+  it("lane 104: factory accepts life_loss redirect with amount", () => {
+    // Direct factory assertion: the factory returns
+    // a valid ReplacementAbility when the script
+    // carries a `redirect.to: "life_loss"` with an
+    // explicit amount. The engine consult handles the
+    // `life_loss` path post-consult (applies
+    // `loseLife` to the controller, skips the
+    // move-to-graveyard).
+    const state = startTwoPlayerState();
+    const effect = buildScriptedDeathReplacementEffect(
+      id("life-loss-source"),
+      "alice" as PlayerId,
+      {
+        text: "if a creature you control would die, instead lose 1 life",
+        event: "would_die",
+        applies_to: { type: "creature", controller: "you" },
+        redirect: { to: "life_loss", amount: 1 },
+      },
+      state,
+    )!;
+    expect(effect).toBeDefined();
+    expect(effect.effectType).toBe("death_replacement");
   });
 });
 
