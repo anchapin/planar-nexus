@@ -3140,25 +3140,27 @@ export const CardScriptSchema = z
      * zone as a script-level `castable_from: ["exile" | "graveyard"
      * | "command"]` array.
      *
-     * v1 supports a SINGLE entry in the array (multi-zone
-     * casting is a follow-up lane). The engine reads the
-     * field at cast time (`canCastSpell` extends to accept the
-     * card from any named zone) and at resolve time (the
-     * post-resolution end zone is inferred from the source:
-     * `castable_from: ["graveyard"]` → exile, `castable_from:
-     * ["exile"]` → exile, `castable_from: ["command"]` →
-     * command). The end zone is implicit for v1; a future
-     * lane can extend the field with an explicit
-     * `end_zone` arm.
+     * Wave 4.8 follow-up 17 lane 113 piece 2 (#2614 follow-up):
+     * relax the v1 single-entry cap to support multi-zone
+     * arrays. v1.1 accepts any non-empty subset of
+     * ["exile", "graveyard", "command"] (e.g. flashback+foretell
+     * cards that cast from BOTH graveyard AND exile — the
+     * classic Yawgmoth's Vile Offer / Jump-Start pattern when
+     * combined with the printed flashback effect). At cast time
+     * the engine iterates the array and accepts the cast from
+     * the FIRST matching zone (the script's listed order is the
+     * preference order — graveyard over exile over command).
+     * The `castableFromZone` field on the StackObject reflects
+     * the actual source zone so the resolve path routes correctly.
      *
-     * v1 ships the standard printed mana cost (no
-     * `cost` arm; the v0 `flashback.cost` field still works
-     * alongside — the engine uses the flashback cost when
-     * both are set, mirroring how the lane 22 / 23 / 24
-     * additional-costs arms compose with the printed mana
-     * cost). The cast-time legality check just confirms the
-     * card is in one of the named zones; the resolve-time
-     * redirect routes the card to the right end zone.
+     * The end zone is implicit for v1.1; a future lane can
+     * extend the field with an explicit `end_zone` arm (the
+     * follow-up 17 lane 113 piece 3 work).
+     *
+     * The cast-time legality check just confirms the card is in
+     * one of the named zones; the resolve-time redirect routes
+     * the card to the right end zone (exile for graveyard or
+     * exile source; command for commander).
      *
      * Sample card: a synthetic 1/1 creature that can be cast
      * from exile via `castable_from: ["exile"]` (foretell-
@@ -3167,12 +3169,14 @@ export const CardScriptSchema = z
      * keeps the card in exile after resolution). A flashback-
      * style sample (`castable_from: ["graveyard"]`) would
      * accept the cast when the card is in the graveyard and
-     * route it to exile on resolution.
+     * route it to exile on resolution. A multi-zone sample
+     * (`castable_from: ["graveyard", "exile"]`) accepts the
+     * cast from EITHER zone and prefers the graveyard entry
+     * when the card is in both.
      */
     castable_from: z
       .array(z.enum(["exile", "graveyard", "command"]))
       .min(1)
-      .max(1)
       .optional(),
     /**
      * Harmonize (CR 702.180) — "You may cast this card from your graveyard

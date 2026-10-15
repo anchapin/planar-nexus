@@ -198,15 +198,18 @@ describe("Cast from exile / graveyard / command (Wave 4.8 follow-up 4 lane 68, #
       ).toThrow();
     });
 
-    it("rejects a multi-zone castable_from array (follow-up lane)", () => {
-      expect(() =>
-        CardScriptSchema.parse({
-          name: "Test Multi Zone (lane 68)",
-          oracle: "Cast from graveyard or exile.",
-          spell: [{ op: "Draw", amount: 1 }],
-          castable_from: ["graveyard", "exile"],
-        }),
-      ).toThrow();
+    it("accepts a multi-zone castable_from array (Wave 4.8 follow-up 17 lane 113 piece 2)", () => {
+      // Wave 4.8 follow-up 17 lane 113 piece 2 (#2614 follow-up):
+      // the v1 single-entry cap is relaxed; multi-zone arrays
+      // are accepted by the schema. The engine iterates the
+      // array and picks the first matching zone at cast time.
+      const parsed = CardScriptSchema.parse({
+        name: "Test Multi Zone (lane 113)",
+        oracle: "Cast from graveyard or exile.",
+        spell: [{ op: "Draw", amount: 1 }],
+        castable_from: ["graveyard", "exile"],
+      });
+      expect(parsed.castable_from).toEqual(["graveyard", "exile"]);
     });
 
     it("keeps the existing CardScriptSchema shape byte-compatible (no castable_from)", () => {
