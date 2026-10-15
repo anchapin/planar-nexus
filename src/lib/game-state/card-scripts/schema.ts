@@ -2723,6 +2723,21 @@ export const ReplacementEffectSchema = z
           .default("creature"),
         controller: z.enum(["you", "opponent", "any"]).default("you"),
         notSelf: z.literal(true).optional(),
+        /**
+         * Wave 4.8 follow-up 13 lane 105 (#2614 follow-up):
+         * `isToken: true` filters the replacement to
+         * only fire for dying TOKEN creatures
+         * (Hedron Crawler-style "if a token you control
+         * would die, instead exile it"). The consult's
+         * `canApply` filter reads
+         * `state.cards[dyingCardId].isToken`; when
+         * `isToken: true` is set on the replacement,
+         * the filter returns false for non-token
+         * dying cards. v1 supports `isToken: true`
+         * only — the inverse ("if a nontoken creature
+         * would die") rides a follow-up lane.
+         */
+        isToken: z.literal(true).optional(),
       })
       .strict()
       .default({ type: "creature", controller: "you" }),

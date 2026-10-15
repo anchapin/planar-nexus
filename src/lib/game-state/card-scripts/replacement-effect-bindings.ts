@@ -169,6 +169,23 @@ export function buildScriptedDeathReplacementEffect(
       if (re.applies_to.notSelf === true && sourceCardId === event.targetId) {
         return false;
       }
+      // Wave 4.8 follow-up 13 lane 105 (#2614 follow-up):
+      // `isToken: true` filters the replacement to only
+      // fire for dying TOKEN creatures (Hedron Crawler-
+      // style "if a token you control would die,
+      // instead exile it"). The consult's `canApply`
+      // filter reads `state.cards[dyingCardId].isToken`;
+      // when `isToken: true` is set on the replacement,
+      // the filter returns false for non-token dying
+      // cards. v1 supports `isToken: true` only — the
+      // inverse ("if a nontoken creature would die")
+      // rides a follow-up lane.
+      if (re.applies_to.isToken === true) {
+        const dyingCard = state.cards.get(event.targetId ?? "");
+        if (!dyingCard?.isToken) {
+          return false;
+        }
+      }
       // Wave 4.8 follow-up 13 lane 103 (#2614 follow-up):
       // `if_condition` — the replacement only fires
       // when the named condition holds (CR 603.4
