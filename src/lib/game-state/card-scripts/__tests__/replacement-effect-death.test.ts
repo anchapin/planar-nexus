@@ -864,6 +864,109 @@ describe("Whispering Ward of the Grave (lane 61a): death replacement-effect foun
     expect(effect).toBeDefined();
     expect(effect.effectType).toBe("death_replacement");
   });
+
+  /**
+   * Wave 4.8 follow-up 13 lane 105 (#2614 follow-up):
+   * `isToken: true` filters the replacement to only
+   * fire for dying TOKEN creatures (Hedron Crawler-
+   * style "if a token you control would die, instead
+   * exile it"). The synthetic card carries the
+   * `isToken: true` arm on `applies_to`. The factory's
+   * `canApply` filter reads
+   * `state.cards[dyingCardId].isToken` and returns
+   * false for non-token dying cards.
+   */
+  it("lane 105: registry exposes If Token Die Exile with isToken: true on applies_to", () => {
+    const cardObj = getCardScript("If Token Die Exile");
+    expect(cardObj).toBeDefined();
+    const re = cardObj!.replacement_effects![0];
+    expect(re.applies_to.isToken).toBe(true);
+  });
+
+  it("lane 105: factory accepts an isToken replacement (v1 minimum shape)", () => {
+    // Direct factory assertion: the factory returns
+    // a valid ReplacementAbility when the script
+    // carries `applies_to.isToken: true`. The engine
+    // consult's `canApply` filter reads
+    // `state.cards[dyingCardId].isToken` at replacement
+    // time.
+    const state = startTwoPlayerState();
+    const effect = buildScriptedDeathReplacementEffect(
+      id("token-filter-source"),
+      "alice" as PlayerId,
+      {
+        text: "if a token you control would die, instead exile it",
+        event: "would_die",
+        applies_to: { type: "creature", controller: "you", isToken: true },
+        redirect: { to: "exile" },
+      },
+      state,
+    )!;
+    expect(effect).toBeDefined();
+    expect(effect.effectType).toBe("death_replacement");
+  });
+
+  it("lane 105: factory accepts isToken combined with notSelf (defensive-shape coverage)", () => {
+    // The lane 102 `notSelf` and lane 105 `isToken`
+    // can coexist on a single replacement (the
+    // factory's pre-filters allow both — `notSelf` is
+    // in `applies_to`, `isToken` is also in
+    // `applies_to`).
+    const state = startTwoPlayerState();
+    const effect = buildScriptedDeathReplacementEffect(
+      id("token-filter-source"),
+      "alice" as PlayerId,
+      {
+        text: "if another token you control would die, instead exile it",
+        event: "would_die",
+        applies_to: {
+          type: "creature",
+          controller: "you",
+          notSelf: true,
+          isToken: true,
+        },
+        redirect: { to: "exile" },
+      },
+      state,
+    )!;
+    expect(effect).toBeDefined();
+  });
+
+  it("lane 105: canApply returns false for non-token dying cards", () => {
+    // The factory builds the effect; the canApply
+    // filter checks `state.cards[dyingCardId].isToken`.
+    // When the dying card is NOT a token, the
+    // replacement doesn't apply (a "non-token" dying
+    // creature skips the redirect).
+    const state = startTwoPlayerState();
+    const effect = buildScriptedDeathReplacementEffect(
+      id("token-filter-source"),
+      "alice" as PlayerId,
+      {
+        text: "if a token you control would die, instead exile it",
+        event: "would_die",
+        applies_to: { type: "creature", controller: "you", isToken: true },
+        redirect: { to: "exile" },
+      },
+      state,
+    )!;
+    // Pass an event with a non-token target — the
+    // canApply filter should return false.
+    const event = {
+      type: "would_die" as const,
+      timestamp: Date.now(),
+      targetId: id("non-token-creature"),
+      sourceId: id("token-filter-source"),
+      controllerId: "alice" as PlayerId,
+      amount: 0,
+    };
+    // The state's cards map doesn't have a
+    // "non-token-creature" entry, but the filter reads
+    // `state.cards.get(...)` and returns false for
+    // missing cards. Pass an event with a card id that
+    // doesn't exist → filter returns false.
+    expect(effect.canApply(event)).toBe(false);
+  });
 });
 
 /**

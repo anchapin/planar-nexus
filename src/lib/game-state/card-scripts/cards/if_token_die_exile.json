@@ -1,0 +1,18 @@
+{
+  "name": "If Token Die Exile",
+  "oracle": "Enchantment\nIf a token you control would die, instead exile it.",
+  "replacement_effects": [
+    {
+      "text": "If a token you control would die, instead exile it.",
+      "event": "would_die",
+      "applies_to": {
+        "type": "creature",
+        "controller": "you",
+        "isToken": true
+      },
+      "redirect": {
+        "to": "exile"
+      }
+    }
+  ]
+}
