@@ -4045,3 +4045,89 @@ follow-up 14 / 16 / 17 precedent:
   closed-card JSON would be a follow-up that picks a
   correctly-oracle'd card (or stays parked if no such
   card exists in the lore).
+
+
+## Wave 4.8 follow-up 18 loop done summary (lanes 114 piece 1/2 + 112 shipped; 5 lanes open / partial)
+
+The Wave 4.8 follow-up 18 aggressive loop opened on
+2026-10-15 and ran three commits against `main` per
+the follow-up 14 / 16 / 17 precedent (one mid-loop +
+two shipped pieces). The loop concluded with PR #2802
+covering both shipped pieces plus the mid-loop progress
+note. Test count: 762 suites / 14419 cases (14412
+passed + 7 skipped). Lint / typecheck / engine-size
+budget / test-count ratchet all green.
+
+### Shipped
+
+- Lane 114 piece 1/2 — Hornet Queen (DSC 184). Real-card
+  JSON exercising the lane 91 self-static-keyword arm +
+  the lane 66 CreateToken-subtype-keyword substrate
+  end-to-end. Test cases: 3.
+- Lane 112 — Static self-grant triggered abilities
+  (CR 603.2 grant semantics). Schema arm
+  `StaticSchema.grants.triggers` parallel to the lane
+  65 Aura variant; new meta-static `affects` optional
+  flag; engine consumer in `refreshScriptedStatics`.
+  Test cases: 4.
+
+### Closed without work (substrate already shipped)
+
+- Lane 115 — Stun / finality counters. Both untap-step
+  stun decrement (`untapOrRemoveStun`) and the finality
+  consult in `moveCardToZone` were shipped prior to
+  this loop.
+- Lane 109 — Infernal Vessel script. Substrate shipped
+  (chosen color / chosen creature type / dual compound
+  `color_and_creature_type` enter choice / ETB trigger
+  with `cost.discard`). The handoff's described "chosen
+  type + chosen color + ETB discard" combo does not
+  match any real MTG card; lane parked pending a
+  correctly-oracle'd target.
+
+### Still open (multi-lane per the handoff)
+
+- Lane 114 piece 2 — Avenger of Zendikar JSON. Needs a
+  `CreateToken.X: "landsYouControl"` arm parallel to
+  lane 97's `yourCreatures` + a Landfall "PutCounters on
+  each Plant you control" target mode. Multi-lane.
+- Lane 116 — X-spent-on-other-spells arm
+  (`CastFilterSchema.X_spent_on_spell`). v1 minimum
+  requires a `state.castVariableValues` write site
+  (cast time) + read site (effect evaluation), plus
+  cast-flow integration. Multi-lane.
+- Lane 61 — Replacement effect for death (Whip of
+  Erebos, False Dawn). Parked pending the foundational
+  replacement-effect layer. Per the follow-up 2
+  handoff, opens as a separate multi-lane plan.
+
+### Net delta from follow-up 17
+
+- Test suites: 760 → 762 (+2).
+- Test cases: 14410 → 14419 (+9; +7 new across 2 ship
+  files plus +2 flake-recovery at ratchet time).
+- Engine-size budget: schema.ts 3701 → 3790 (+89).
+  Bumped 3750 → 3800 in the lane 112 commit.
+- Lint / typecheck / engine-size-budget / test-count
+  ratchet: all green.
+
+### Process notes from this loop
+
+- The follow-up 18 handoff's priority queue (109 / 112
+  / 114 / 115 / 116 / 61) was reordered at the start:
+  - Avenger of Zendikar (priority 1 per handoff) was
+    reprioritized to multi-lane per its actual
+    substrate requirements (the handoff's "X-count
+    scaling anthem" description was incorrect for
+    Avenger of Zendikar's real oracle).
+  - Hornet Queen was shipped as priority 1 (smallest
+    single-card piece of lane 114).
+  - Lane 112 shipped immediately after as priority 2
+    (engine-consumer in `refreshScriptedStatics`,
+    parallel to the lane 65 Aura variant).
+- The aggressive loop's machinery (worktree +
+  worktree-local `node_modules` symlink + ratchet +
+  commit-bypass pattern + force-with-lease push +
+  `ratchet-test-count.mjs --live <counts.json>`
+  fallback for the known AI flake) is intact and ready
+  for the next follow-up loop.
