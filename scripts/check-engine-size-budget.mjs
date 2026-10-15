@@ -550,7 +550,19 @@ const SCOPES = [
     // X-spent cast-filter family room to land on
     // the same trajectory as the follow-up 12 / 13 /
     // 14 / 15 / 16 / 17 / 18 budget bumps.
-    budgetLines: 3825,
+    //
+    // Wave 4.8 follow-up 19 lane 114 piece 2/2
+    // (#2614 follow-up): the `X: "landsYouControl"`
+    // arm on `CreateTokenSchema.X` (parallel to the
+    // lane 97 `yourCreatures` arm). The arm adds
+    // ~8 lines (docstring extension + the
+    // `landsYouControl` enum entry) — schema.ts
+    // measured at 3833 (+8 over 3825). Bumping
+    // 3825 → 3850 to give the follow-up 19 Avenger
+    // of Zendikar half room to land on the same
+    // trajectory as the follow-up 12 / 13 / 14 /
+    // 15 / 16 / 17 / 18 / 19-lane-116 budget bumps.
+    budgetLines: 3850,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

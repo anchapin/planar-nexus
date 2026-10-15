@@ -317,12 +317,31 @@ export const CreateTokenSchema = z
      *     Goblin creature tokens where X is the number
      *     of creatures you control" — X-counts scale
      *     with the board state)
+     *   - `landsYouControl`: integer — the number of
+     *     lands the controller controls on the
+     *     battlefield (Avenger of Zendikar's
+     *     "create X 0/1 green Plant creature tokens
+     *     where X is the number of lands you control"
+     *     half — #2500 Zendikar Rising, DFC 186).
+     *     The engine reads the controller's
+     *     battlefield land count via the existing
+     *     `computeX(..., "lands")` arm in
+     *     `keyword-actions/scripted-statics.ts`
+     *     (the helper already counts lands for the
+     *     static-anthem substrate; lane 114 piece
+     *     2 promotes it into the CreateToken X
+     *     substrate).
      *
      * When `X` is set, the integer `count` is ignored;
      * the engine resolves the named count from state.
      */
     X: z
-      .enum(["cardsDrawnThisTurn", "creaturesDiedThisTurn", "yourCreatures"])
+      .enum([
+        "cardsDrawnThisTurn",
+        "creaturesDiedThisTurn",
+        "yourCreatures",
+        "landsYouControl",
+      ])
       .optional(),
   })
   .strict()

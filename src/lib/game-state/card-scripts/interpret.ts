@@ -462,6 +462,17 @@ function resolveDrawAmount(
  *     the controller controls on the battlefield
  *     (Redcap-style X-count that scales with the
  *     controller's board).
+ *   - `landsYouControl`: integer — the number of
+ *     lands the controller controls on the
+ *     battlefield (Avenger of Zendikar's
+ *     "create X 0/1 green Plant creature tokens
+ *     where X is the number of lands you control"
+ *     half — #2500 Zendikar Rising, DFC 186,
+ *     lane 114 piece 2). The engine reads the
+ *     controller's battlefield land count via the
+ *     same loop as the static-anthem
+ *     `computeX(..., "lands")` arm in
+ *     `keyword-actions/scripted-statics.ts`.
  *
  * When `X` is not set, the integer `count` is
  * returned as-is. `xCount` permits the literal "X"
@@ -471,7 +482,11 @@ function resolveCreateTokenAmount(
   state: GameState,
   effect: {
     count: number | "X";
-    X?: "cardsDrawnThisTurn" | "creaturesDiedThisTurn" | "yourCreatures";
+    X?:
+      | "cardsDrawnThisTurn"
+      | "creaturesDiedThisTurn"
+      | "yourCreatures"
+      | "landsYouControl";
   },
   controllerId?: PlayerId,
 ): number {
@@ -492,6 +507,19 @@ function resolveCreateTokenAmount(
       // type_line that includes "creature").
       const typeLine = (card.cardData.type_line ?? "").toLowerCase();
       if (!typeLine.includes("creature")) continue;
+      // Only count cards on the battlefield.
+      if (!card.currentZoneKey?.endsWith("-battlefield")) continue;
+      count += 1;
+    }
+    return count;
+  }
+  if (effect.X === "landsYouControl") {
+    if (!controllerId) return 0;
+    let count = 0;
+    for (const card of state.cards.values()) {
+      if (card.controllerId !== controllerId) continue;
+      const typeLine = (card.cardData.type_line ?? "").toLowerCase();
+      if (!typeLine.includes("land")) continue;
       // Only count cards on the battlefield.
       if (!card.currentZoneKey?.endsWith("-battlefield")) continue;
       count += 1;
