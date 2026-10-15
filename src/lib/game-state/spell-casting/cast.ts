@@ -101,30 +101,36 @@ export function canCastSpell(
   // zone as a script-level array. The cast still pays the
   // printed mana cost (the v1 minimum; the v0 `flashback.cost`
   // field still works alongside for cards that declare both).
+  //
+  // Wave 4.8 follow-up 17 lane 113 piece 2 (#2614 follow-up):
+  // iterate the castable_from array and accept the cast from
+  // the FIRST matching zone (script-declared preference order).
+  // The castableFromZone variable tracks the matched zone for
+  // the downstream stamp in `castSpell`.
   const cardScript = getCardScript(card.cardData.name);
-  const castableFrom = cardScript?.castable_from?.[0];
-  if (castableFrom) {
-    const sourceZoneKey =
-      castableFrom === "graveyard"
-        ? `${playerId}-graveyard`
-        : castableFrom === "exile"
-          ? `${playerId}-exile`
-          : castableFrom === "command"
-            ? `${playerId}-command`
-            : null;
-    if (sourceZoneKey) {
-      const sourceZone = state.zones.get(sourceZoneKey);
-      if (sourceZone?.cardIds.includes(cardId)) {
-        // The card IS in the named zone; the cast is legal
-        // from this source. Fall through to the timing
-        // checks below (instant / flash / sorcery-speed).
-        // (We skip the hand check on this path.)
-      } else {
-        return {
-          canCast: false,
-          reason: `Card must be in ${castableFrom} to cast via castable_from`,
-        };
-      }
+  const castableFromZones = cardScript?.castable_from ?? [];
+  let castableFromZone:
+    | "exile"
+    | "graveyard"
+    | "command"
+    | undefined;
+  if (castableFromZones.length > 0) {
+    const matchedZone = castableFromZones.find((z) => {
+      const zoneKey = `${playerId}-${z}`;
+      const sourceZone = state.zones.get(zoneKey);
+      return sourceZone?.cardIds.includes(cardId) ?? false;
+    });
+    if (matchedZone) {
+      castableFromZone = matchedZone;
+      // The card IS in one of the named zones; the cast is legal
+      // from this source. Fall through to the timing
+      // checks below (instant / flash / sorcery-speed).
+      // (We skip the hand check on this path.)
+    } else {
+      return {
+        canCast: false,
+        reason: `Card must be in one of [${castableFromZones.join(", ")}] to cast via castable_from`,
+      };
     }
   } else {
     // Default path: card must be in the player's hand.
@@ -411,29 +417,29 @@ export function castSpell(
       // Wave 4.8 follow-up 4 lane 68 (#2614 follow-up): the
       // generalized `castable_from` arm. When the card's script
       // declares `castable_from: ["graveyard" | "exile" | "command"]`
-      // and the card is in the named zone, accept the cast from
-      // that zone. The end-zone redirect at resolve time is
-      // handled by the `castableFromZone` field on the
-      // StackObject.
-      cardScriptForSource?.castable_from?.[0]
+      // and the card is in one of the named zones, accept the
+      // cast from the first matching zone. The end-zone redirect
+      // at resolve time is handled by the `castableFromZone` field
+      // on the StackObject.
+      //
+      // Wave 4.8 follow-up 17 lane 113 piece 2 (#2614 follow-up):
+      // iterate the array (multi-zone casting). Source-zone
+      // preference follows the script's listed order.
+      cardScriptForSource?.castable_from &&
+      cardScriptForSource.castable_from.length > 0
     ) {
-      const zone = cardScriptForSource.castable_from[0];
-      const zoneKey =
-        zone === "graveyard"
-          ? `${playerId}-graveyard`
-          : zone === "exile"
-            ? `${playerId}-exile`
-            : zone === "command"
-              ? `${playerId}-command`
-              : null;
-      const z = zoneKey ? state.zones.get(zoneKey) : null;
-      if (z && z.cardIds.includes(cardId)) {
-        sourceZone = zoneKey;
+      const matchedZone = cardScriptForSource.castable_from.find((z) => {
+        const zoneKey = `${playerId}-${z}`;
+        const zoneObj = state.zones.get(zoneKey);
+        return zoneObj?.cardIds.includes(cardId) ?? false;
+      });
+      if (matchedZone) {
+        sourceZone = `${playerId}-${matchedZone}`;
       } else {
         return {
           success: false,
           state,
-          error: `Card is not in ${zone}.`,
+          error: `Card is not in one of [${cardScriptForSource.castable_from.join(", ")}].`,
         };
       }
     } else if (!handZone || !handZone.cardIds.includes(cardId)) {
@@ -527,19 +533,22 @@ export function castSpell(
      * return-to-command is a follow-up lane).
      */
     let castableFromZone: "exile" | "graveyard" | "command" | undefined;
-    if (cardScriptForSource?.castable_from?.[0]) {
-      const zone = cardScriptForSource.castable_from[0];
-      const zoneKey =
-        zone === "graveyard"
-          ? `${playerId}-graveyard`
-          : zone === "exile"
-            ? `${playerId}-exile`
-            : zone === "command"
-              ? `${playerId}-command`
-              : null;
-      const sourceZone = zoneKey ? state.zones.get(zoneKey) : null;
-      if (sourceZone?.cardIds.includes(cardId)) {
-        castableFromZone = zone;
+    if (
+      cardScriptForSource?.castable_from &&
+      cardScriptForSource.castable_from.length > 0
+    ) {
+      // Wave 4.8 follow-up 17 lane 113 piece 2 (#2614 follow-up):
+      // iterate the array and stamp the FIRST matching zone
+      // (script-declared preference order). The
+      // `castableFromZone` field reflects the actual source
+      // zone so the resolve path routes correctly.
+      const matchedZone = cardScriptForSource.castable_from.find((z) => {
+        const zoneKey = `${playerId}-${z}`;
+        const sourceZone = state.zones.get(zoneKey);
+        return sourceZone?.cardIds.includes(cardId) ?? false;
+      });
+      if (matchedZone) {
+        castableFromZone = matchedZone;
         alternativeCostsUsed.push("castable_from");
       }
     }
