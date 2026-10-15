@@ -562,7 +562,20 @@ const SCOPES = [
     // of Zendikar half room to land on the same
     // trajectory as the follow-up 12 / 13 / 14 /
     // 15 / 16 / 17 / 18 / 19-lane-116 budget bumps.
-    budgetLines: 3850,
+    //
+    // Wave 4.8 follow-up 19 lane 114 piece 2/2
+    // second sub-piece (#2614 follow-up): the
+    // `target_each: { subtype }` mode on
+    // `PutCountersSchema` (the Landfall "each
+    // Plant" half). The arm adds ~12 lines
+    // (docstring + the target_each object +
+    // refine-list entry for '+1/+1' counter
+    // permission) — schema.ts measured at 3862
+    // (+12 over 3850). Bumping 3850 → 3875 to
+    // give the follow-up 19 Landfall-each-Plant
+    // half room to land on the same trajectory
+    // as the prior budget bumps.
+    budgetLines: 3875,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

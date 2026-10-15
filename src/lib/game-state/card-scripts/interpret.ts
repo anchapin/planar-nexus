@@ -1960,6 +1960,42 @@ function applyEffect(
       return addUntilEndOfTurnKeyword(state, cardId, CANT_BE_BLOCKED);
     }
     case "PutCounters": {
+      // Wave 4.8 follow-up 19 lane 114 piece 2/2
+      // (#2614 follow-up): the "each_creature" target
+      // mode on `PutCounters` (Avenger of Zendikar's
+      // "Landfall — you may put a +1/+1 counter on each
+      // Plant you control" half). The engine iterates
+      // the controller's battlefield creatures matching
+      // the `target_each.subtype` filter and stamps
+      // `amount` counters on each. v1 minimum: a
+      // single `subtype` filter, the `controller`
+      // field, no optional / kicker gate.
+      if (effect.target_each) {
+        const subtype = effect.target_each.subtype.toLowerCase();
+        const amount = effect.use_source_power
+          ? sourceId
+            ? Math.max(0, getEffectivePower(state.cards.get(sourceId)!))
+            : 0
+          : (effect.amount ?? 0);
+        if (amount <= 0) return state;
+        const cards = new Map(state.cards);
+        for (const card of cards.values()) {
+          if (!isOnBattlefield(state, card.id)) continue;
+          if (
+            effect.controller !== undefined &&
+            !matchesController(
+              card,
+              effect.controller,
+              ctx.controllerId,
+            )
+          )
+            continue;
+          const typeLine = (card.cardData.type_line ?? "").toLowerCase();
+          if (!typeLine.includes(subtype)) continue;
+          cards.set(card.id, addCounters(card, effect.counter, amount));
+        }
+        return { ...state, cards };
+      }
       const cardId = creatureFor(state, effect.target, ctx, effect.controller);
       const card = cardId ? state.cards.get(cardId) : undefined;
       if (!cardId || !card) return state;

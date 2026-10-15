@@ -1,0 +1,20 @@
+{
+  "name": "Avenger Landfall Each Plant",
+  "oracle": "Creature \u2014 Plant Elemental\nLandfall \u2014 Whenever a land enters the battlefield under your control, you may put a +1/+1 counter on each Plant creature you control.",
+  "triggers": [
+    {
+      "text": "Landfall \u2014 Whenever a land enters the battlefield under your control, you may put a +1/+1 counter on each Plant creature you control.",
+      "event": "landfall",
+      "effects": [
+        {
+          "op": "PutCounters",
+          "counter": "+1/+1",
+          "amount": 1,
+          "target": "creature",
+          "controller": "you",
+          "target_each": { "subtype": "Plant" }
+        }
+      ]
+    }
+  ]
+}

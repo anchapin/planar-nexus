@@ -920,6 +920,28 @@ export const PutCountersSchema = z
      * targets.
      */
     use_source_power: z.boolean().default(false),
+    /**
+     * Wave 4.8 follow-up 19 lane 114 piece 2/2
+     * (#2614 follow-up): the "each_creature" target
+     * mode on `PutCounters` (Avenger of Zendikar's
+     * "Landfall — you may put a +1/+1 counter on
+     * each Plant you control" half — DSC 186).
+     * The engine iterates the controller's
+     * battlefield creatures matching the
+     * `subtype` filter and stamps `amount` counters
+     * on each. The `subtype` and `controller` fields
+     * are mutually required (a single filter per
+     * effect); out-of-battlefield creatures are
+     * skipped. Only valid with
+     * `counter: "+1/+1"`; quest counters ride a
+     * follow-up lane.
+     */
+    target_each: z
+      .object({
+        subtype: z.string().min(1),
+      })
+      .strict()
+      .optional(),
     if_kicked: ifKicked,
     if_source_counters: ifSourceCounters,
   })
@@ -949,6 +971,13 @@ export const PutCountersSchema = z
       e.amount === "X",
     {
       message: "amount is required (>=1 or 'X') unless use_source_power is set",
+    },
+  )
+  .refine(
+    (e) => e.target_each === undefined || e.counter === "+1/+1",
+    {
+      message:
+        "target_each (each_creature mode) only supports '+1/+1' counters (lane 114 piece 2/2, #2614)",
     },
   );
 

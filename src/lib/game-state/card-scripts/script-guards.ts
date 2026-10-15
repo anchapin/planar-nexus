@@ -81,11 +81,22 @@ export function isTargetedEffect(effect: CardEffect): boolean {
         effect.target !== "defending_player"
       );
     case "Pump":
-    case "PutCounters":
     case "AttachEquipment":
     case "GrantKeyword":
     case "CantBeBlocked":
       return effect.target === "creature";
+    case "PutCounters":
+      // Lane 114 piece 2/2 (#2614 follow-up): the
+      // `target_each` mode is NOT targeted — the
+      // engine iterates the battlefield in
+      // `applyEffect`. Returning false here keeps
+      // `effectTargetCount` at 0, so the
+      // dispatch loop doesn't try to read a
+      // non-existent target slot.
+      return (
+        effect.target === "creature" &&
+        (effect as { target_each?: unknown }).target_each === undefined
+      );
     case "Destroy":
       // #2594 follow-up (lane 12): sweeper targets don't use a
       // chosen target — the engine iterates the battlefield in
