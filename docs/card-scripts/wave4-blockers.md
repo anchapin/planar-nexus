@@ -2854,7 +2854,7 @@ boundary).
 
 - **Card data** (`src/lib/game-state/types/cards.ts`):
   new `CardInstance.permanentTypeOverlay?: { cardData:
-  ScryfallCard; source: CardInstanceId }` field.
+ScryfallCard; source: CardInstanceId }` field.
   Field shape mirrors `animatedUntilEndOfTurn.cardData`
   but WITHOUT the EOT cleanup (the overlay persists
   as long as the source is on the battlefield). The
@@ -3001,6 +3001,7 @@ PATH="$PWD/node_modules/.bin:$PATH" npm test --silent
 ```
 
 ### Lane 107 scope (~50-100 LOC across schema +
+
 engine + tests + Eaten-by-Piranhas JSON)
 
 The docstring at lane 107 explicitly notes the work:
@@ -3009,7 +3010,7 @@ The docstring at lane 107 explicitly notes the work:
   variant on `CardScriptSchema.enter_choice`. The
   existing kinds on `enter_choice` are
   `"color" | "creature_type" | "chosen_name" |
-  "life_total" | "color_and_creature_type"` (the
+"life_total" | "color_and_creature_type"` (the
   last is the lane 56 dual-choice baseline already
   shipped). The lane 107 work re-uses the existing
   `"color_and_creature_type"` kind if it already
@@ -3061,9 +3062,10 @@ The docstring at lane 107 explicitly notes the work:
   regression check). Out of scope: the lose-all-
   abilities shape, the chosen-eviction-at-tombstone
   handling, and the cross-zone `change creature
-  types` op generalization.
+types` op generalization.
 
 ### Process rules to follow (from the handoff's
+
 "lane continue rule for the next session")
 
 Per the Wave 4.8 follow-up 14 handoff:
@@ -3192,13 +3194,13 @@ loop picks one at a time.
 ### Verified lane 51 baseline (this loop's exit state)
 
 - `git log --oneline -1` → `0c014286 [AI-assisted]
-  feat(card-scripts): adaptive automaton type-line
-  overlay (lane 51)`
+feat(card-scripts): adaptive automaton type-line
+overlay (lane 51)`
 - `grep "Test suites" docs/onboarding.md` →
   `**Test suites:** 757`
 - `grep "Test cases" docs/onboarding.md` →
   `**Test cases:** 14373 (14366 passed + 7
-  skipped)`
+skipped)`
 - Engine-size budget cap: `3700` (bumped from 3650
   in the lane 51 commit)
 - Branch: `main`
@@ -3207,4 +3209,114 @@ loop picks one at a time.
   is the prior follow-up's handoff file left by an
   earlier session; not lane 51's deliverable)
 
+## Wave 4.8 follow-up 15 lane 107 done summary
 
+Lane 107 (Eaten by Piranhas compound enter_choice +
+chassis-side stamps) shipped in the Wave 4.8
+follow-up 15 loop (#2614 follow-up). Lane 107's
+distinctive work is the v1 chassis-side stamps on the
+real card JSON — the schema / engine substrate
+(`"color_and_creature_type"` enter_choice writing
+BOTH `chosenColor` AND `chosenCreatureType` from one
+resolver call, plus the lane 55 `add_color: "chosen"`
+self-stamp and the lane 52 `add_creature_type:
+"chosen"` self-stamp) all already shipped in lane 56
+
+- lane 55 + lane 52 respectively.
+
+### Shipped
+
+- **JSON** (`src/lib/game-state/card-scripts/cards/eaten_by_piranhas.json`):
+  the v1 oracle — "As Eaten by Piranhas enters, choose
+  a color and a creature type. Eaten by Piranhas has
+  the chosen color and chosen creature type in addition
+  to its other colors and creature types." The lane 56
+  sample-card JSON carried the dual enter_choice + two
+  self-anthem statics (paraphrased onto "protection
+  from" + +1/+1 wording because the real Oracle wasn't
+  wired). Lane 107 swaps those two self-anthem statics
+  for the canonical lane 55 + lane 52 chassis-side
+  stamps (the `addColorToSelf` / `addCreatureTypeToSelf`
+  pair). The `index.generated.ts` is regenerated
+  automatically by the build-card-script-index script.
+  The docstring correction from the lane 56 sample is:
+  lane 56's `protection from` interpretation was a
+  multi-lane gap (real Eaten by Piranhas is an Aura,
+  not a creature); the v1 chassis-side interpretation
+  is the Wave 4.8 lane 52 / 55 canonical shape.
+
+- **Schema**: no engine arm changes. The lane 56 dual
+  enter_choice branch already stamps both fields; the
+  lane 55 `add_color: "chosen"` + `addColorToSelf`
+  arms are already shipped (Redcap Gutter-Dweller uses
+  the literal form); the lane 52 `add_creature_type:
+"chosen"` + `addCreatureTypeToSelf` arms are already
+  shipped (Adaptive Automaton uses the chosen form).
+
+- **Engine**: no changes. The lane 56 branch in
+  `resolveEnterChoice` writes BOTH `chosenColor` and
+  `chosenCreatureType` from one encoded value (e.g.
+  `"W|Soldier"`). `staticAffects` + `refreshScriptedStatics`
+  (lane 55 + 52) stamp `chosenColorAdditions` and
+  `chosenTypeAdditions` on the source after the dual
+  resolve. `getCardColors` unions `chosenColorAdditions`
+  with the printed colors so a chosen-color anthem
+  reading `getCardColors(target)` sees the added color
+  on the source. `subtypesOf` unions
+  `chosenTypeAdditions` with the printed subtypes so
+  a chosen-type anthem reading `subtypesOf(target)`
+  sees the added type on the source. Both ledgers are
+  battlefield-zone-only — natural eviction on zone
+  change.
+
+- **Tests**
+  (`src/lib/game-state/__tests__/lane107-eaten-by-piranhas-compound-enter-choice.test.ts`):
+  11 dedicated cases covering schema acceptance (the
+  full compound shape; the dual enter_choice alone; the
+  dual chassis stamps alone; Eaten by Piranhas JSON
+  ships the dual kind + dual chassis arms in the
+  registry), `resolveEnterChoice` stamping BOTH
+  `chosenColor` AND `chosenCreatureType` from one
+  resolver call (the lane 56 substrate invariant pinned
+  on Eaten by Piranhas specifically), the
+  `refreshScriptedStatics` stamping both
+  `chosenColorAdditions` AND `chosenTypeAdditions` on
+  the source after the dual resolves (the lane 107
+  distinct value: one resolve drives two stamps), the
+  "statics inert before resolve" pin, the
+  natural-eviction-on-leaving-battlefield pin for both
+  ledgers, the chosen-color anthem (lane 40 / 55)
+  regression — a Heraldic-Banner-shaped anthem reading
+  `getCardColors(target)` correctly targets Eaten by
+  Piranhas because `getCardColors` unions the chosen
+  color into the source's effective color list — and
+  the chosen-type anthem (lane 45 / 52) regression —
+  an Adaptive-Automaton-shaped anthem reading
+  `subtypesOf(target)` correctly targets Eaten by
+  Piranhas because `subtypesOf` unions the chosen type
+  into the source's effective subtype list.
+
+### Out of scope (each a follow-up lane per the docstring)
+
+- The "lose all abilities" half of Eaten by Piranhas
+  (the v0 substrate for a `losesAbilities`-equivalent
+  on an Aura is lane 54 / lane 110 territory; the
+  chosen-eviction-at-tombstone follow-up handles it).
+- Layered type-line rendering beyond `cardData.type_line`
+  reads for a fully general `change creature types`
+  op (the lane 51 follow-up handles Adaptive Automaton's
+  `becomes_chosen_creature_type` overlay).
+- The chosen-card-name eviction-at-tombstone follow-up
+  (lane 110 / etc.).
+
+### Verified lane 107 exit state (this loop's stage end)
+
+- Branch: `main`
+- Test suites / cases: `758 / 14384 (14377 passed + 7
+skipped)`
+- Engine-size budget cap: `3700` (unchanged — schema.ts
+  3661 lines, well under cap; no budget bump needed for
+  lane 107)
+- Next lane per the priority queue: **lane 108**
+  (Banner of Kinship fellowship-counter entrance,
+  `enters_with_counters_per_match: chosen_subtype`).
