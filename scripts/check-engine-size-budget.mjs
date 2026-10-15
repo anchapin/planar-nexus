@@ -483,23 +483,18 @@ const SCOPES = [
     // precedent continues; follow-up 13 lane 99
     // rides the same family).
     //
-    // Wave 4.8 follow-up 13 lane 104 (#2614 follow-up):
-    // the periodic self-replacement destinations
-    // (`"battlefield_tapped"` / `"battlefield_untapped"`
-    // / `"life_loss"`) plus the `redirect.amount`
-    // field for `life_loss`. The docstring + schema
-    // entries land at +6 lines; schema.ts measured
-    // at 3556. Bumping 3550 → 3600 to give the
-    // periodic-replacement family room to land
-    // without fragmenting the
-    // trigger-cost / you-may-cost /
-    // while-condition / replacement-effect /
-    // cards-drawn / opponent-drawn /
-    // create-token-xcount / conditional-replacement
-    // family (the historical precedent continues;
-    // follow-up 13 lane 105+ rides the same
-    // family).
-    budgetLines: 3600,
+    // Wave 4.8 follow-up 14 lane 57 (#2614 follow-up):
+    // the `counter_minimum` arm on `StaticSchema.while_condition`
+    // (parallel to lane 91's `life_minimum`) for Redcap
+    // Gutter-Dweller's "Goblins you control have menace
+    // as long as this has 3+ counters on it" half. The
+    // schema arm replaces the single-arm `z.object().strict()`
+    // with a 2-arm `z.discriminatedUnion("kind", [...])`
+    // (net +9 vs the prior single-arm shape). schema.ts
+    // measured at 3609. Bumping 3600 → 3650 to cover
+    // the while-condition / counter-ledger family on the
+    // same trajectory as follow-up 13.
+    budgetLines: 3650,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

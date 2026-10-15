@@ -207,24 +207,46 @@ function computeX(state: GameState, source: CardInstance, kind: string): number 
 /**
  * Wave 4.8 follow-up 12 lane 91 (#2614 follow-up): evaluate
  * a static's `while_condition` gate (CR 603.2 "while" clause,
- * parallel to a trigger's `whileCondition`). v1 supports a
- * single shape: `{ kind: "life_minimum", value: N }` — the gate
- * evaluates true when the source's controller's life is `>= N`
- * (Twinblade Paladin's "as long as you have 25 or more life,
- * this creature has double strike and lifelink" half). The
- * controller path mirrors `computeX` (which also reads the
+ * parallel to a trigger's `whileCondition`). v1 supports two
+ * shapes:
+ *
+ *   - `{ kind: "life_minimum", value: N }` — the gate evaluates
+ *     true when the source's controller's life is `>= N`
+ *     (Twinblade Paladin's "as long as you have 25 or more life,
+ *     this creature has double strike and lifelink" half).
+ *
+ *   - `{ kind: "counter_minimum", counter, op, n }` — the gate
+ *     evaluates true when the source's per-instance
+ *     `card.instanceCounters[counter]` matches the comparator:
+ *       - `op: "gte"` → `count >= n`
+ *       - `op: "eq"`  → `count === n`
+ *     Default count is `0` when `card.instanceCounters` is
+ *     undefined (matches the lane 59 v1 default).
+ *
+ * Wave 4.8 follow-up 14 lane 57 (#2614 follow-up): adds the
+ * `counter_minimum` arm for Redcap Gutter-Dweller's "Goblins
+ * you control have menace as long as this has three or more
+ * counters on it" half (`counter: "+1/+1", op: "gte", n: 3`).
+ *
+ * The controller path mirrors `computeX` (which also reads the
  * source's `controllerId`). The opponent-condition variant
  * ("as long as an opponent has less than X life") and the
  * threshold-style "you control [type]" variant ride future lanes.
  */
 function evaluateStaticWhileCondition(
-  cond: { kind: "life_minimum"; value: number },
+  cond:
+    | { kind: "life_minimum"; value: number }
+    | { kind: "counter_minimum"; counter: string; op: "gte" | "eq"; n: number },
   source: CardInstance,
   state: GameState,
 ): boolean {
   if (cond.kind === "life_minimum") {
     const player = state.players.get(source.controllerId);
     return player !== undefined && player.life >= cond.value;
+  }
+  if (cond.kind === "counter_minimum") {
+    const count = source.instanceCounters?.[cond.counter] ?? 0;
+    return cond.op === "gte" ? count >= cond.n : count === cond.n;
   }
   return false;
 }

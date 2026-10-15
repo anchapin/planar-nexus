@@ -2006,12 +2006,13 @@ Crawler / Ajani's Pridemate) are the warmup drafter-list cards
 that remain in the queue — each is a single-card or two-card
 JSON + small test, with all plumbing already shipped (raid +
 `phaseEnds` + `intervening_if` + `CreatePredefinedToken` for Food
-+ life-gain trigger). Each is a single-lane piece that fits the
-aggressive loop's per-lane 40-turn budget; the loop's process
-section was the source of the original priority order. The
-remaining work is deferred to a future Wave 4.5+/4.8+ pass —
-this loop concludes with lanes 77 / 78 / 79 / 80 / 81 either
-shipped or marked already-shipped.
+
+- life-gain trigger). Each is a single-lane piece that fits the
+  aggressive loop's per-lane 40-turn budget; the loop's process
+  section was the source of the original priority order. The
+  remaining work is deferred to a future Wave 4.5+/4.8+ pass —
+  this loop concludes with lanes 77 / 78 / 79 / 80 / 81 either
+  shipped or marked already-shipped.
 
 **Shipped lanes:**
 
@@ -2196,7 +2197,7 @@ all plumbing already in place from prior loops.
   passed + 7 skipped). Lane-by-lane: lane 82 +7, lane 83 +11,
   lane 84 +10, lane 85 +4, lane 86 +10. (Sum 42; the +1 is the
   `3c702618 chore: auto-ratchet jest coverage floor to measured
-  value` commit that landed during the loop on `main` and shifted
+value` commit that landed during the loop on `main` and shifted
   the floor without adding test cases.)
 - Engine-size budget: schema.ts 3050 → 3050 (unchanged). All
   five lanes are card-JSON only; no schema or engine change.
@@ -2274,7 +2275,7 @@ death) remains parked per the follow-up 2 process note.
   (FDN 503)** — PR #2780. The "as long as you have 25 or more
   life, this creature has double strike and lifelink" half.
   Schema: new `while_condition: { kind: "life_minimum",
-  value: N }` arm on StaticSchema (CR 603.2 "while" gate);
+value: N }` arm on StaticSchema (CR 603.2 "while" gate);
   `TOKEN_KEYWORDS` enum gains `"double strike"`. Engine:
   `refreshScriptedStatics` consults the gate after
   `staticAffects` and before applying the static's arms;
@@ -2356,10 +2357,10 @@ backlog carryover).
   needed the engine's static-keyword ledger to read the
   keyword from `scriptStaticKeywords` (which it already does).
 - The lane 92 work required a defensive `evaluateStaticWhileCondition`
-  + `enteringCardId` threading through the resolution path.
-  The test pattern uses `detectTriggeredAbilities(state,
-  "entersBattlefield", { enteringCardId })` to surface the
-  intervening_if gate against the named creature's cmc.
+  - `enteringCardId` threading through the resolution path.
+    The test pattern uses `detectTriggeredAbilities(state,
+"entersBattlefield", { enteringCardId })` to surface the
+    intervening_if gate against the named creature's cmc.
 - The AI flake absorbed 1–2 extra CI runs per lane on the
   local full-suite run (forge-gate / forge-selfplay /
   expert-agent); CI was clean throughout (after the
@@ -2380,3 +2381,267 @@ process note) is intact and ready for the next follow-up loop.
 Lane 61 (replacement effect for death) remains parked per the
 follow-up 2 handoff's process note and requires a separate
 multi-lane plan.
+
+## Handoff for the next AI agent — Wave 4.8 follow-up 14 (continued aggressive loop)
+
+### Mission
+
+Continue the aggressive, single-lane-at-a-time loop that
+follow-ups 8/9/10/11/12/13 ran without human input. The
+loop's machinery is intact and ready for follow-up 14.
+The follow-up 13 handoff (`wave4.8-followup13-handoff.md`)
+shipped all 16 priority lanes (61a, 61b, 93, 94, 95, 96,
+97, 98, 99, 100, 101, 102, 103, 104, 105, 106). The
+replacement-effect-for-death foundation (lane 61a) +
+cross-ref printed-oracle mechanism (lane 61b) +
+X-count substrates (lanes 94, 95, 97) + token substrates
+(lane 96 lane 100 lane 101 lane 102 lane 103 lane 104
+lane 105 lane 106) are all in place.
+
+The follow-up 13 handoff's last paragraph was:
+
+> "Out of scope per Wave 4.5+ handoff (these need
+> dedicated human scoping per the handoff's 'Don't ship
+> multi-lane schema changes' rule):
+>
+> - Copying permanent/spell with new targets
+> - Granting triggered abilities to other cards
+> - Replacement effect for death (SHIPPED in follow-up
+>   13 lane 61a + 61b)
+> - Additional costs (sacrifice/pay) (PARTIALLY SHIPPED
+>   via lanes 88 / 93 / 98 / 106)
+> - Affinity / cost reduction
+> - 'You may' optional trigger / effect (PARTIALLY SHIPPED
+>   via lane 93 / 99 / 106)
+> - Abilities granting color or type or keyword via
+>   static (SHIPPED via lanes 40 / 45 / 52 / 55)
+> - Abilities requiring X spent on other spells
+> - Casting spells from exile / graveyard
+> - Token creation with embedded static
+> - Stun / finality counters"
+
+The aggressive loop picks one lane at a time and
+ships it end-to-end before moving to the next. Don't
+ask the user between lanes. If a lane reveals it needs
+more than the 40-turn budget, back out, document in
+`wave4-blockers.md`, and pick a smaller lane.
+
+### Priority queue (pick strictly in this order)
+
+The follow-up 13 handoff was a card-driven out-of-scope
+queue ("each card's deferred half → fallback to a new
+schema arm"). The follow-up 14 is BLOCKER-driven — the
+remaining work is documented in `wave4-blockers.md` as
+multi-lane and out-of-scope items. Pick lanes from the
+following priority order:
+
+1. **Lane 57 — Redcap Gutter-Dweller counter-based
+   trigger** (`counter_gate: {counter, op, n}` on
+   `TriggerSchema` + engine evaluator in
+   `trigger-system/`). The "Goblins have menace when
+   3+ counters" trigger half of Redcap Gutter-Dweller
+   (FDN #532) is the canonical example. The chosen-color
+   - add_color half shipped in lanes 51 + 55; the
+     Treasure-token trigger shipped in lane 2544; the
+     menace-when-3+-counters trigger needs a new schema
+     field + engine evaluator. ~30-50 LOC + tests. JSON
+     update: ship the menace-when-3+-counters trigger on
+     `redcap_gutter_dwell.json` (the field already carries
+     the chosen-color `enter_choice`, the `add_color:
+"chosen"` static, and the Treasure-token trigger;
+     this lane adds the missing menace-when-3+-counters
+     trigger). Document the gate semantics in
+     `evaluate.ts` and the `trigger-system/`.
+
+2. **Lane 51 — Adaptive Automaton type-change
+   half** (a permanent chosen-creature-type "is the
+   chosen type in addition to its other types" static).
+   Multi-lane blocker per the prior docs. New schema
+   arm (`becomes_chosen_creature_type: true`), new
+   engine path (the source's permanent `subtypes` grows
+   by `chosenCreatureType`), plus a layered type-line
+   answer that renders the new type via the existing
+   `subtypesOf` helper. ~80-150 LOC across schema +
+   engine + tests + a docstring clause. Out of scope:
+   the chosen-card-name eviction-at-tombstone work. The
+   adaptive_automaton.json already carries the anthem
+   half (lane 45 + lane 53); this lane adds the type-
+   change half to complete the oracle.
+
+3. **Lane 107 — Eaten by Piranhas full script**
+   (chosen color + chosen creature type + lose all
+   abilities — the multiple `enter_choice` multi-lane).
+   Eaten-by-Piranhas (FDN #76) reads "as this enters,
+   choose a color and a creature type" — needs either a
+   second `enter_choice` arm or a "compound"
+   `enter_choice.kind` variant. Sample card JSON +
+   tests. ~50-100 LOC. The chosen-color `enter_choice`
+   already shipped (lane 40); the chosen-creature-type
+   `enter_choice` already shipped (lane 44). The
+   compound variant needs a new schema arm +
+   `resolveEnterChoice` extension. Out of scope: the
+   "lose all abilities" piece (the chosen-eviction-at-
+   tombstone work, still tracked as a follow-up).
+
+4. **Lane 108 — Banner of Kinship fellowship-counter
+   entrance** (`enters_with_counters_per_match:
+chosen_subtype`). Banner of Kinship (FDN #8) reads
+   "this creature enters with X +1/+1 counters on it
+   where X is the number of creatures of the chosen
+   type you control" — needs an `enters_with_counters`
+   extension to the `enter_choice` schema and the
+   `entersBattlefield` engine pipeline. New schema arm
+   - new `resolveEnterCount` for the chosen-subtype
+     counter gate. ~50-100 LOC.
+
+5. **Lane 109 — Infernal Vessel script** (chosen
+   creature type + chosen color + discard a card). The
+   "as this enters, choose a creature type" and "as
+   this enters, choose a color" pieces both ship; the
+   "you may discard a card" piece uses the existing
+   `cost.discard` substrate from lane 98 + a new
+   "discard N cards" gates on top. ~30-50 LOC.
+
+6. **Lane 110 — Witness Protection triggered-ability
+   suppression** (lane 54 follow-up: when the enchanted
+   card carries `losesAbilities: true`, scripted
+   triggered abilities don't fire). The current engine
+   gates only activated abilities (lane 54's `canActivate
+Ability` deny); the triggered-ability path needs a
+   broader engine change to the trigger pipeline (the
+   `detectTriggeredAbilities` consult must skip cards
+   with `losesAbilities: true` as the source). ~50-100
+   LOC. Out of scope: chosen-eviction-at-tombstone
+   handling (the source's `chosenCreatureType` doesn't
+   leak beyond the player's battlefield when the card
+   moves zone).
+
+7. **Lane 111 — Affinity / cost reduction arm** (lane 57,
+   Claws Out etc.). New `cost_reduction: { filter, n }`
+   arm on `CardScriptSchema` + engine reduction in
+   `effect-resolution.ts`. The chosen-subtype filter
+   follows the same shape as the lane 40 chosen-color
+   anthem. ~50-100 LOC.
+
+8. **Lane 112 — Granting triggered abilities** (Aura's
+   `static.grants.triggers` arm — CR 603.2 grant
+   semantics). New schema arm + new engine path for
+   "the enchanted card gains [triggered ability]" via
+   the existing `detectTriggeredAbilities` consult (the
+   enchanted card's source = the Aura's source).
+   ~80-150 LOC.
+
+9. **Lane 113 — Casting spells from exile / graveyard**
+   (Flashback, Jump-Start, Undergrowth, Escape,
+   As Foretold). New `castable_from: ["exile" |
+"graveyard" | "command"]` arm on `CardScriptSchema`.
+   The `castSpell` flow reads `card.currentZoneKey` and
+   checks the entry against the destination. Engine +
+   tests. ~80-150 LOC.
+
+10. **Lane 114 — Token creation with embedded static**
+    (Adaptive Automaton's type-change half ships in
+    lane 51; this lane is the more general "tokens
+    created with embedded static bonuses" pattern —
+    Adaptive Automaton, Avenger of Zendikar, Hornet
+    Queen, Cloudblazer). The existing
+    `embedded_static` schema arm ships keywords + P/T;
+    this lane wires the runtime into the token-creation
+    pipeline (`resolveTokenCreationEffect` already
+    accepts `embeddedPowerBonus`/`embeddedToughness
+Bonus` and stamps `embeddedStaticKeywords`). Tests
+    on a synthetic token-creating card. ~30-50 LOC.
+
+11. **Lane 115 — Stun / finality counters** (lane 67
+    covered Enter with Counters; this lane covers
+    stun counter + finality counter specifically).
+    New `StunCounters: { kind, n }` field on
+    `EnterWithCounters` + the SBA tap-counter rules
+    (`state.turn.stunCountersThisTurn`). New
+    `resolveStunSBA` engine arm in
+    `state-based-actions.ts`. ~50-100 LOC.
+
+12. **Lane 116 — X-spent-on-other-spells arm**
+    (caster pays X on a different spell). New
+    `X_spent_on_spell: true` arm on `CastFilterSchema`.
+    The engine tracks "the X value spent on the current
+    spell" via `state.castVariableValues`. ~50-100 LOC.
+
+13. **Lane 117 — "You may pay [X] mana; if you do,
+    [Y]" combined with `you_may` and `pay_life`** (a
+    bridge variant across lanes 93 / 99 / 106). Schema
+    extension: `pay_mana: { amount: N }` on `cost`. New
+    `pay_mana_prompt` branch in `choices.ts`. ~50-100
+    LOC.
+
+### Process observation (carried from prior handoffs)
+
+- The AI flake absorbed 1-2 extra CI runs per lane on
+  local full-suite runs (forge-gate / forge-selfplay /
+  expert-agent). Budget for 1 extra CI run per lane on
+  this loop.
+- The ratchet's `--live <counts.json>` fallback bypasses
+  the AI flake mid-ratchet — use it liberally.
+- The engine-size budget is currently at 3595 lines
+  (schema.ts), under the 3600 ceiling bumped in lane
+  follow-up 13. If a lane pushes schema over 3600, bump
+  the budget in the same commit per the historical
+  precedent. Update the docstring block in
+  `scripts/check-engine-size-budget.mjs` with a
+  one-paragraph history entry.
+- All new schema arms should follow the lane 40
+  `chosen`-sentinel shape (the `evaluate` machinery
+  substitutes `source.chosenX` at refresh /
+  resolution time). The chosen-name field
+  (`chosenCardName`) is already in place from lane
+  49; the chosen-color field from lane 39; the
+  chosen-creature-type field from lane 44.
+
+### Out of scope (multi-lane, requires dedicated human scoping)
+
+- **Banner of Kinship / Infernal Vessel multi-pass**:
+  the chosen-color + chosen-creature-type + lose-all-
+  abilities + discard pieces require careful
+  sequencing; each is a multi-lane concern. Open a
+  fresh lane per piece.
+- **Adaptive Automaton full-oracle (anthem +
+  type-change)**: lane 51 + lane 110 close the gap.
+  The full-oracle JSON ships AFTER both engine arms
+  are in.
+- **Pyromancer's Goggles (lane 31)**:
+  cast-trigger with `cast_color` + retarget. Already
+  covered by lane 33 + lane 34 (the existing copies
+  and cast_color are shipped). The retarget half is
+  a multi-lane concern.
+- **Teach by Example (lane 29)**:
+  copy-with-new-targets. The current `CopySpell` op
+  handles the copy half; the `new_targets` flag is a
+  follow-up lane (per the Wave 4.6 done summary).
+
+When all priority lanes are either shipped or marked
+multi-lane blocker, append a "Wave 4.8 follow-up 14
+loop done summary" to this file.
+
+### Quick-start checklist
+
+```
+cd /home/alex/Projects/planar-nexus
+git pull --ff-only
+git worktree list
+# (no worktrees expected; clean up any leftover from prior waves)
+PATH="$PWD/node_modules/.bin:$PATH" npm test --silent
+# verify 755 / 14348 green
+# then start lane 57 (counter-based trigger gate)
+# per the Process section above.
+```
+
+End each lane with: `git log --oneline -1` on main
+showing the new lane's commit, and `grep "Test suites"
+docs/onboarding.md` showing the bumped numbers. If
+those two checks pass, you're ready to pick the next
+lane from the priority queue and continue the loop.
+
+When all priority lanes ship or are marked multi-lane
+blockers, write the follow-up handoff prompt to
+`docs/card-scripts/wave4-blockers.md` (or a sibling
+file) and stop.
