@@ -126,8 +126,8 @@ describe("Hornet Queen (DSC 184): self flying+deathtouch static + ETB four 1/1 I
     expect(queen!.statics).toHaveLength(1);
     const staticAbility = queen!.statics![0];
     expect(staticAbility.keywords).toEqual(["flying", "deathtouch"]);
-    expect(staticAbility.affects.controller).toBe("you");
-    expect(staticAbility.affects.self).toBe(true);
+    expect(staticAbility.affects!.controller).toBe("you");
+    expect(staticAbility.affects!.self).toBe(true);
     // No while_condition — Hornet Queen is unconditional.
     expect(staticAbility.while_condition).toBeUndefined();
 

@@ -92,8 +92,8 @@ describe("Twinblade Paladin (FDN 503): life-condition static (lane 91)", () => {
       kind: "life_minimum",
       value: 25,
     });
-    expect(staticAbility.affects.controller).toBe("you");
-    expect(staticAbility.affects.self).toBe(true);
+    expect(staticAbility.affects!.controller).toBe("you");
+    expect(staticAbility.affects!.self).toBe(true);
   });
 
   it("static is INERT when the controller's life is below 25 (no keywords stamped)", () => {
