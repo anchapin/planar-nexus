@@ -243,6 +243,17 @@ export function resolveWaitingChoice(
     type === "corpse_offer" ||
     type === "tribute_offer" ||
     type === "attack_return_offer" ||
+    // Wave 4.8 follow-up 21 lane 61 sub-piece
+    // piece 2/N (#2614 follow-up): the
+    // `redirect.to: "any_zone"` death-replacement
+    // surfaces a zone-pick prompt on the
+    // controller. The resolver
+    // (`resolveRedirectZoneChoice` in
+    // `keyword-actions/removal.ts`) routes the
+    // dying card through
+    // `moveCardToZoneWithoutTriggers` for the
+    // picked zone.
+    type === "redirect_zone_choice" ||
     // CR 704.5j legend rule: the answer is the one legend to keep (#2614).
     type === "choose_legend"
   ) {

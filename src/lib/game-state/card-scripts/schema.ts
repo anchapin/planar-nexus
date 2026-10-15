@@ -3156,6 +3156,18 @@ export const ReplacementEffectSchema = z
             "battlefield_tapped",
             "battlefield_untapped",
             "sacrifice",
+            // Wave 4.8 follow-up 21 lane 61 sub-piece
+            // piece 2/N (#2614 follow-up): "any_zone"
+            // — the drafter writes a free-form
+            // destination ("may put it into their
+            // hand, library, graveyard, or exile
+            // instead"); the consult surfaces a
+            // `redirect_zone_choice` WaitingChoice
+            // and routes the chosen zone through
+            // `moveCardToZoneWithoutTriggers`.
+            // Valid destinations exclude
+            // `battlefield` and `command`; the
+            // consult refuses non-death redirects.
             "any_zone",
             // Wave 4.8 follow-up 13 lane 104 (#2614 follow-up):
             // "life_loss" — the replacement routes the
@@ -3178,6 +3190,19 @@ export const ReplacementEffectSchema = z
          * amount).
          */
         amount: z.number().int().min(0).optional(),
+        /**
+         * Wave 4.8 follow-up 21 lane 61 sub-piece
+         * piece 2/N (#2614 follow-up): optional marker
+         * for `redirect.to: "any_zone"` — when `true`
+         * the consult surfaces a `redirect_zone_choice`
+         * WaitingChoice on the controller. Default
+         * `true` when `to === "any_zone"`; otherwise
+         * ignored. Reserved for forward compatibility
+         * with the "any_zone with filters" sub-variant
+         * ("any zone you choose except [battlefield]")
+         * that rides a follow-up lane.
+         */
+        controller_choice: z.boolean().optional(),
       })
       .strict()
       .default({ to: "exile" }),

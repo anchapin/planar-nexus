@@ -108,7 +108,19 @@ export interface WaitingChoice {
       // through whichever standalone `cost.<arm>` shape
       // the index points at (the existing lane 88 /
       // 98 / 106 / 117 dispatch).
-      "cost_combinator_or_prompt";
+      "cost_combinator_or_prompt"
+    | // Wave 4.8 follow-up 21 lane 61 sub-piece
+      // piece 2/N (#2614 follow-up): the death-
+      // replacement `redirect.to: "any_zone"`
+      // surfaces a zone-pick prompt to the
+      // controller. The four valid zones
+      // (hand / library / graveyard / exile) are
+      // encoded as `ChoiceOption.value` strings;
+      // the resolver in `keyword-actions/removal.ts`
+      // routes the dying card through
+      // `moveCardToZoneWithoutTriggers` for the
+      // picked zone.
+      "redirect_zone_choice";
   /** ID of player who needs to make this choice */
   playerId: PlayerId;
   /** ID of the stack object this choice is for */

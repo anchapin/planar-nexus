@@ -1,0 +1,18 @@
+{
+  "name": "Redirect Any Zone On Die",
+  "oracle": "Creature — Shapeshifter\nIf this creature would die, its owner may put it into their hand, library, graveyard, or exile instead.",
+  "replacement_effects": [
+    {
+      "text": "If this creature would die, its owner may put it into their hand, library, graveyard, or exile instead.",
+      "event": "would_die",
+      "applies_to": {
+        "type": "creature",
+        "controller": "you"
+      },
+      "redirect": {
+        "to": "any_zone",
+        "controller_choice": true
+      }
+    }
+  ]
+}
