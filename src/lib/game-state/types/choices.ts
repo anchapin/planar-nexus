@@ -62,7 +62,18 @@ export interface WaitingChoice {
       // spell-casting/choices.ts (parallel to `sacrifice_self_prompt`),
       // which stamps `stackObject.cost_paid` and returns the
       // controller to the trigger resolution path.
-      "discard_prompt";
+      "discard_prompt"
+    | // Wave 4.8 follow-up 13 lane 106 (#2614 follow-up): a
+      // scripted trigger with `cost.pay_life: { amount: N }` (CR
+      // 602.2b "Pay N life:" as a trigger cost — Aether Burst /
+      // Skeleton Scarab / Necropotence-style). Surfaced by
+      // `card-scripts/interpret.ts#resolveScriptedAbility` at
+      // resolution; resolved by the `pay_life_prompt` branch
+      // in spell-casting/choices.ts (parallel to
+      // `sacrifice_self_prompt` / `discard_prompt`), which
+      // stamps `stackObject.cost_paid` and returns the
+      // controller to the trigger resolution path.
+      "pay_life_prompt";
   /** ID of player who needs to make this choice */
   playerId: PlayerId;
   /** ID of the stack object this choice is for */
