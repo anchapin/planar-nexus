@@ -624,6 +624,38 @@ export interface CardInstance {
     setByAura?: boolean;
   };
   /**
+   * Wave 4.8 follow-up 14 lane 51 (#2614 follow-up): a permanent
+   * (not end-of-turn) overlay of the card's `cardData.type_line`
+   * set by a `StaticSchema.affects.becomes_chosen_creature_type`
+   * static — Adaptive Automaton's "is the chosen type in addition
+   * to its other types" half. Field shape mirrors
+   * `animatedUntilEndOfTurn.cardData` but WITHOUT the EOT cleanup
+   * path (the overlay persists as long as the source is on the
+   * battlefield). The refresh pass rebuilds `cardData.type_line`
+   * to include the chosen creature type's subtypes alongside the
+   * printed subtypes; the original printed `cardData` (before
+   * the overlay was applied) is stashed under
+   * `permanentTypeOverlay.cardData` so a zone-change / static-
+   * removed rollback can restore it. Cleared when the source
+   * leaves the battlefield (handled by the
+   * `restorePermanentTypeOverlay` consult at the top of the
+   * refresh pass). v1 supports ONLY the chosen-creature-type
+   * overlay; the chosen-color /
+   * "gains-this-color-in-addition" generalization rides a
+   * follow-up lane.
+   */
+  permanentTypeOverlay?: {
+    cardData: ScryfallCard;
+    /**
+     * The `CardInstanceId` of the source whose static set the
+     * overlay. Used by the rollback consult to know which
+     * source caused the overlay; multiple sources stacking
+     * permanent overlays on the same target is a follow-up
+     * lane (lane 51 v1 supports a single overlay per card).
+     */
+    source: CardInstanceId;
+  };
+  /**
    * Keywords granted to this card's spell while it resolves (#2483): set
    * from the stack object's `grantedKeywords` for the duration of
    * `resolveTopOfStack`, so damage it deals sees them.

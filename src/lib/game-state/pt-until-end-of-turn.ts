@@ -189,6 +189,30 @@ export function restoreAnimatedOffBattlefield(state: GameState): GameState {
 }
 
 /**
+ * Wave 4.8 follow-up 14 lane 51 (#2614 follow-up): restore a
+ * permanent-type-overlay (Adaptive Automaton's "is the chosen
+ * type in addition to its other types" half) for cards that
+ * left the battlefield. Parallel to
+ * `restoreAnimatedOffBattlefield` but for the
+ * `permanentTypeOverlay` field (no EOT cleanup — the overlay
+ * only drops when the card itself leaves the battlefield or
+ * when the source static no longer applies). Returns the same
+ * state when nothing changed.
+ */
+export function restorePermanentTypeOverlay(state: GameState): GameState {
+  let cards: GameState["cards"] | null = null;
+  for (const [id, card] of state.cards) {
+    if (!card.permanentTypeOverlay) continue;
+    if (card.currentZoneKey?.endsWith("-battlefield")) continue;
+    cards ??= new Map(state.cards);
+    const updated = { ...card, cardData: card.permanentTypeOverlay.cardData };
+    delete updated.permanentTypeOverlay;
+    cards.set(id, updated);
+  }
+  return cards ? { ...state, cards } : state;
+}
+
+/**
  * Append keywords to a card's until-end-of-turn keyword list (CR 611.2a,
  * layer 6, #2564). Used by the scripted `Pump` op when its `keywords`
  * field is set (e.g. Divine Resilience's lifelink). The layer-6 keyword

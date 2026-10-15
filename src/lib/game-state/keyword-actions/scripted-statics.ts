@@ -14,7 +14,10 @@ import type {
   ScriptedStatic,
 } from "../card-scripts/schema";
 import type { ScryfallCard } from "../types/card-data";
-import { restoreAnimatedOffBattlefield } from "../pt-until-end-of-turn";
+import {
+  restoreAnimatedOffBattlefield,
+  restorePermanentTypeOverlay,
+} from "../pt-until-end-of-turn";
 import { returnEarthbentLands } from "./earthbend";
 import { getCardColors } from "../evergreen-keywords";
 import { buildStaticCopyChainSnapshot } from "./copy-chain";
@@ -115,6 +118,35 @@ function subtypesOf(card: CardInstance): string[] {
   const additions = card.chosenTypeAdditions ?? [];
   if (additions.length === 0) return printed;
   return [...printed, ...additions.filter((t) => !printed.includes(t))];
+}
+
+/**
+ * Wave 4.8 follow-up 14 lane 51 (#2614 follow-up): true
+ * when the source's `cardScript` carries a
+ * `becomes_chosen_creature_type: true` static AND the
+ * source's `chosenCreatureType` is resolved (a non-null
+ * value). Drives the permanent type-line overlay
+ * write-phase: when true, the refresh pass rebuilds the
+ * source's `cardData.type_line` to include the chosen
+ * creature type as a permanent subtype. The check is
+ * deliberately based on the SOURCE's state (chosen
+ * creature type resolved) rather than on
+ * `staticAffects`'s output, because the overlay write
+ * happens on the source itself rather than on a target.
+ */
+function sourceHasBecomesChosenCreatureType(
+  card: CardInstance,
+  sources: { card: CardInstance; statics: ScriptedStatic[] }[],
+): boolean {
+  for (const { card: sourceCard, statics } of sources) {
+    if (sourceCard.id !== card.id) continue;
+    for (const st of statics) {
+      if (st.affects?.becomes_chosen_creature_type === true) {
+        return sourceCard.chosenCreatureType !== null;
+      }
+    }
+  }
+  return false;
 }
 
 const CARD_TYPES = [
@@ -304,6 +336,25 @@ export function staticAffects(
     }
     return true;
   }
+  // Wave 4.8 follow-up 14 lane 51 (#2614 follow-up): the
+  // permanent type-line overlay static
+  // (`becomes_chosen_creature_type: true`). The source
+  // overlays its OWN `cardData.type_line` permanently to
+  // include its `chosenCreatureType` as a permanent
+  // subtype (Adaptive Automaton's type-change half, in
+  // addition to the lane 52 anthem-style addition). v1 is
+  // self-only (parallels `add_creature_type` +
+  // `addCreatureTypeToSelf`); the Aura-style
+  // generalization rides a follow-up lane. The static
+  // requires a resolved `chosenCreatureType`; otherwise
+  // it's inert (the player hasn't answered the enter
+  // choice yet). The actual `cardData.type_line` overlay
+  // is performed by `refreshScriptedStatics` (this branch
+  // only computes applicability).
+  if (stat.affects.becomes_chosen_creature_type === true) {
+    if (source.id !== target.id) return false;
+    return source.chosenCreatureType !== null;
+  }
   // Wave 4.8 lane 55 (#2614 follow-up): the chosen-color
   // addition static. The source adds the named color (or
   // its `chosenColor`) to its own colors while on the
@@ -415,7 +466,17 @@ export function staticAffects(
  * object when nothing changed.
  */
 export function refreshScriptedStatics(input: GameState): GameState {
-  const state = restoreAnimatedOffBattlefield(returnEarthbentLands(input));
+  // Wave 4.8 follow-up 14 lane 51 (#2614 follow-up): the
+  // permanent-type-overlay consult. Cards that left the
+  // battlefield drop their `permanentTypeOverlay` (the
+  // chosen-type addition no longer applies) and restore
+  // their printed `cardData.type_line` from the overlay
+  // snapshot. Parallel to the
+  // `restoreAnimatedOffBattlefield` consult at the top of
+  // the pass.
+  const state = restorePermanentTypeOverlay(
+    restoreAnimatedOffBattlefield(returnEarthbentLands(input)),
+  );
   // Wave 4.8 follow-up 9 lane 75e (#2614 follow-up):
   // build a snapshot of every card's "effective copy
   // target" (the leaf of its copy chain) BEFORE the
@@ -826,6 +887,24 @@ export function refreshScriptedStatics(input: GameState): GameState {
           e.event === prevDr[i]?.event &&
           e.redirect.to === prevDr[i]?.redirect.to,
       );
+    // Wave 4.8 follow-up 14 lane 51 (#2614 follow-up):
+    // the per-instance `permanentTypeOverlay` overlay
+    // and `cardData.type_line` are part of the
+    // change-detection diff so the refresh pass only
+    // re-stamps the card when the overlay actually
+    // changed. When the overlay is active the
+    // expected type_line is the rebuilt printed +
+    // chosen type; when it's inactive the expected
+    // state is `permanentTypeOverlay === undefined`.
+    const overlayActive = sourceHasBecomesChosenCreatureType(card, sources);
+    const sameTypeOverlay = overlayActive
+      ? card.cardData.type_line ===
+          rebuildTypeLineWithAddedSubtypes(
+            (card.permanentTypeOverlay?.cardData ?? card.cardData).type_line,
+            [card.chosenCreatureType as string],
+          ) &&
+        card.permanentTypeOverlay?.source === card.id
+      : card.permanentTypeOverlay === undefined;
     // When the card has a `setByAura` overlay AND no
     // static-driven `become_copy` arm, the diff is
     // considered a no-op: the Aura refresh will
@@ -842,7 +921,8 @@ export function refreshScriptedStatics(input: GameState): GameState {
       sameColors &&
       sameProtFrom &&
       sameCopyOfTarget &&
-      sameDr
+      sameDr &&
+      sameTypeOverlay
     ) {
       // Wave 4.8 follow-up 9 lane 75e (#2614 follow-up):
       // if the card has an Aura-driven overlay and no
@@ -892,6 +972,80 @@ export function refreshScriptedStatics(input: GameState): GameState {
     if (nextColors && nextColors.length > 0)
       updated.chosenColorAdditions = nextColors;
     else delete updated.chosenColorAdditions;
+    // Wave 4.8 follow-up 14 lane 51 (#2614 follow-up):
+    // the permanent type-line overlay (Adaptive
+    // Automaton's "is the chosen type in addition to its
+    // other types" half). When the source's
+    // `becomes_chosen_creature_type` static matches and
+    // `source.chosenCreatureType` is resolved, the
+    // engine rebuilds the source's
+    // `cardData.type_line` to include the chosen type
+    // alongside the printed subtypes (parallel to the
+    // lane 75c `rebuildTypeLineWithAddedSubtypes` helper
+    // but persistent — no EOT cleanup). The original
+    // printed `cardData` is stashed under
+    // `permanentTypeOverlay.cardData` so the
+    // `restorePermanentTypeOverlay` consult at the top
+    // of the refresh pass can restore it when the card
+    // leaves the battlefield. When the static is no
+    // longer active (the source left the battlefield,
+    // or `chosenCreatureType` is now null), the overlay
+    // is dropped and the original `cardData.type_line`
+    // is restored from the snapshot. The lane 51 arm
+    // is additive: it stamps a permanent subtype on
+    // top of the printed type line WITHOUT replacing
+    // any of the printed subtypes. The overlay
+    // self-corrects on the next refresh pass — the
+    // refresh computes the same overlay from
+    // `source.chosenCreatureType` and re-stamps the
+    // `cardData.type_line` via `rebuildTypeLineWithAddedSubtypes`.
+    // v1 supports a single permanent overlay per card
+    // (parallel to the lane 52 self-only semantics);
+    // the Aurora-shape generalization rides a
+    // follow-up lane.
+    if (sourceHasBecomesChosenCreatureType(card, sources)) {
+      const chosen = card.chosenCreatureType;
+      if (chosen !== null) {
+        // Source IS on the battlefield with a resolved
+        // `chosenCreatureType`: apply / refresh the
+        // permanent overlay.
+        //
+        // The snapshot that is stashed under
+        // `permanentTypeOverlay.cardData` is the
+        // printed (pre-overlay) `cardData`. The
+        // printed value must NOT be the in-flight
+        // (overlaid) `cardData.type_line` (otherwise
+        // a refresh that didn't re-derive the
+        // overlay would re-stamp the same overlaid
+        // line, and the original printed subtypes
+        // would be lost). The helper
+        // `rebuildTypeLineWithAddedSubtypes` reads
+        // the typed input and adds the chosen
+        // subtype alongside the printed subtypes.
+        const printed = card.permanentTypeOverlay?.cardData ?? card.cardData;
+        updated.cardData = {
+          ...printed,
+          type_line: rebuildTypeLineWithAddedSubtypes(
+            printed.type_line,
+            [chosen],
+          ),
+        };
+        updated.permanentTypeOverlay = {
+          cardData: printed,
+          source: card.id,
+        };
+      }
+    } else if (card.permanentTypeOverlay) {
+      // The source's `becomes_chosen_creature_type`
+      // static is no longer active (the source left
+      // the battlefield, or the chosen creature type
+      // is now null). Restore the original
+      // `cardData.type_line` from the snapshot and
+      // drop the overlay marker. Matches the
+      // natural battlefield-zone-only semantics.
+      updated.cardData = card.permanentTypeOverlay.cardData;
+      delete updated.permanentTypeOverlay;
+    }
     // Wave 4.8 follow-up 5 lane 71 (#2614 follow-up): the
     // per-instance `protectionFrom` field is part of the
     // write phase. The clear-when-source-leaves semantics

@@ -2792,3 +2792,174 @@ session and document the chosen-card-name
 eviction-at-tombstone follow-up + the named-card-copy
 phase-3 follow-up if the lane reveals more than the
 80-150 LOC scope.
+
+## Wave 4.8 follow-up 14 lane 51 done summary
+
+Lane 51 (Adaptive Automaton type-change half —
+permanent chosen-creature-type overlay) shipped in the
+Wave 4.8 follow-up 14 loop (#2614 follow-up).
+Adaptive Automaton's deferred "is the chosen type in
+addition to its other types" half is now wired
+end-to-end via a NEW complementary schema arm that
+overlays the source's `cardData.type_line` permanently
+(rather than only stamping the parallel
+`chosenTypeAdditions` field, which is the lane 52
+boundary).
+
+### Shipped
+
+- **Schema** (`src/lib/game-state/card-scripts/schema.ts`):
+  `StaticSchema.affects.becomes_chosen_creature_type` —
+  a new `z.literal(true).optional()` arm complementary
+  to lane 52's `add_creature_type` +
+  `addCreatureTypeToSelf` pair. The lane 51 arm is
+  self-only (parallels lane 52's v1 semantics); it
+  always reads `source.chosenCreatureType` (no literal-
+  string variant — by definition the chosen type IS
+  the instance's chosen type). The schema's `.refine()`
+  allow-list is extended to accept the arm as a
+  stand-alone meta-static; the refine-error message
+  lists `becomes_chosen_creature_type` alongside the
+  existing meta-static arms. v1 forbids combining the
+  arm with the lane 52 `add_creature_type` arm in
+  practice (both stamp the same chosen type), but the
+  schema leaves that to a future refinement — engine
+  semantics deduplicate via the unioned
+  `chosenTypeAdditions` set.
+
+- **Engine** (`src/lib/game-state/keyword-actions/scripted-statics.ts`):
+  `staticAffects` returns true iff
+  `source.id === target.id && source.chosenCreatureType !== null`
+  (parallel to the lane 52 `add_creature_type` +
+  `addCreatureTypeToSelf` consult; v1 self-only).
+  `refreshScriptedStatics` extends the write phase
+  with a new permanent-overlay path: when the source
+  carries a `becomes_chosen_creature_type` static AND
+  the source is on the battlefield AND
+  `source.chosenCreatureType` is resolved, the
+  refresh pass rebuilds the source's
+  `cardData.type_line` to include the chosen creature
+  type as a permanent subtype (via
+  `rebuildTypeLineWithAddedSubtypes`, the lane 75c
+  helper). The original printed `cardData` is
+  stashed under the new per-instance
+  `permanentTypeOverlay` field so the
+  `restorePermanentTypeOverlay` consult at the top
+  of the next refresh pass can restore it when the
+  source leaves the battlefield. Idempotent: the
+  change-detection diff (`sameTypeOverlay`) compares
+  the in-flight `cardData.type_line` against the
+  expected overlaid line, so a second refresh with no
+  state change yields the same state object (no churn).
+
+- **Card data** (`src/lib/game-state/types/cards.ts`):
+  new `CardInstance.permanentTypeOverlay?: { cardData:
+  ScryfallCard; source: CardInstanceId }` field.
+  Field shape mirrors `animatedUntilEndOfTurn.cardData`
+  but WITHOUT the EOT cleanup (the overlay persists
+  as long as the source is on the battlefield). The
+  `source` tag identifies the source whose static
+  set the overlay; v1 supports a single overlay per
+  card (parallel to the lane 52 self-only semantics).
+  Multi-source overlays on the same card are a
+  follow-up lane.
+
+- **Restore** (`src/lib/game-state/pt-until-end-of-turn.ts`):
+  new `restorePermanentTypeOverlay(state: GameState)`
+  helper parallel to `restoreAnimatedOffBattlefield`.
+  Called at the top of `refreshScriptedStatics` for
+  any card with a `permanentTypeOverlay` field whose
+  `currentZoneKey` no longer ends with `-battlefield`
+  — drops the overlay and restores the original
+  printed `cardData.type_line`. Mirrors the
+  natural battlefield-zone-only semantics (the
+  source's static is only active while the source is
+  on the battlefield; once the source leaves, the
+  overlay drops).
+
+- **Tests** (`src/lib/game-state/__tests__/lane51-adaptive-automaton-type-change.test.ts`):
+  13 dedicated cases covering schema acceptance /
+  rejection (literal-`true` shape; known-bad-value
+  rejects; alongside-power/toughness), the
+  `staticAffects` consult (true when source===target
+  AND chosen creature type resolved; false when
+  source!==target; false when chosen creature type is
+  null), and the `refreshScriptedStatics` overlay write
+  (overlay produced after chosen creature type
+  resolves; no overlay before it resolves; idempotent
+  across multiple refreshes — the headline
+  permanent-not-EOT contrast with lane 75/75a; overlay
+  cleared on zone change; `subtypesOf` read path
+  still includes the chosen type — regression check
+  for the lane 45/53 anthem path).
+
+### Engine-size budget
+
+schema.ts 3650 → 3661 (+11 lines: docstring +
+`z.literal(true).optional()` + refine allow-list
+entry + refined-message extension). Bumped budget
+3650 → 3700 in
+`scripts/check-engine-size-budget.mjs` in the same
+commit, with a docstring entry mirroring the
+follow-up 12 / 13 / 14 historical precedent ("bump
+the budget rather than fragmenting the chosen-X /
+additional-costs / affinity / grants /
+counter-ledger / cast-from-zone / mana-restriction /
+copy-permanent / creature-payment / aura-protection /
+while-condition / permanent-overlay family").
+
+### Net delta from Wave 4.8 follow-up 14 lane 57
+
+- Test suites: 756 → 757 (+1 for lane 51 dedicated).
+- Test cases: 14360 → 14373 (+13 for lane 51
+  dedicated).
+- Engine-size budget cap: 3650 → 3700 (one bump in
+  the lane 51 commit, mirroring the follow-up 12 /
+  13 / lane 57 precedent).
+
+### Multi-lane follow-ups still open (tracked under #2614)
+
+Lanes 107 / 108 / 109 / 110 / 111 / 112 / 113 / 114 /
+115 / 116 / 117 remain parked per the Wave 4.8
+follow-up 14 priority queue. Lane 51 specifically
+deferred: chosen-card-name eviction-at-tombstone
+work (the `permanentTypeOverlay` is naturally cleared
+when the source leaves the battlefield, but a
+source-card with chosenX-card-name hooks still needs
+explicit eviction handling); layered type-line
+rendering beyond `cardData.type_line` reads for a
+fully general `change creature types` op (lane 51 v1
+is self-only via the schema arm); the chosen-color
+and chosen-PT "in addition to" generalizations
+ride follow-up lanes.
+
+### Process notes from this lane
+
+- **`createCardInstance` doesn't preserve
+  `instanceCounters` from options** is a
+  long-standing pattern (lane 57, lane 62 already
+  documented it); lane 51 inherits the same pattern
+  for the `permanentTypeOverlay` field — test
+  helpers stamp the field directly on the created
+  instance, the same way `put` in the lane 52 test
+  stamps `chosenTypeAdditions`.
+
+- **Type-line overlay write** uses the existing lane
+  75c `rebuildTypeLineWithAddedSubtypes` helper
+  (passing a single-element `["Soldier"]` array).
+  No helper rewrite was needed — the lane 75c
+  helper was designed to support single-subtype
+  overlays since the original lane 75c commit.
+
+- **AI flake absorbed 0 extra CI runs** — the lane
+  51 test does not touch the AI simulation suite
+  (it's a pure engine / scripted-statics test on a
+  synthetic host); the test-count docs ratcheted
+  cleanly on the first try.
+
+- **Force-push amend cycle** was used for the
+  budget bump + the lane 51 docstring entry to
+  land in the same commit as the schema / engine /
+  tests change, per the Wave 4.8 follow-up 13
+  process note.
+

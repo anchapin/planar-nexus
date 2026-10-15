@@ -2004,6 +2004,47 @@ export const StaticSchema = z
          */
         addCreatureTypeToSelf: z.literal(true).optional(),
         /**
+         * Wave 4.8 follow-up 14 lane 51 (#2614 follow-up): a
+         * permanent (not end-of-turn) "this creature is the
+         * chosen type in addition to its other types" static
+         * — Adaptive Automaton's type-change half. Parallel
+         * to lane 52's `add_creature_type` + `addCreatureTypeToSelf`
+         * pair but the chosen type is **always** resolved
+         * from `source.chosenCreatureType` (no literal-string
+         * variant — by definition the chosen type IS the
+         * instance's chosen type). The engine extends the
+         * source's `cardData.type_line` permanently to include
+         * the chosen subtype alongside the printed subtypes,
+         * so call sites that read `cardData.type_line`
+         * directly (rather than the `subtypesOf` helper
+         * unioning `chosenTypeAdditions`) see the addition.
+         * The overlay is held in a per-instance
+         * `permanentTypeOverlay` field (parallel to
+         * `animatedUntilEndOfTurn.cardData` but persistent —
+         * no EOT cleanup; cleared only when the source leaves
+         * the battlefield). v1 is self-only (matches lane
+         * 52's self-only semantics); the Aura-style
+         * generalization rides a follow-up lane. The chosen
+         * type evicts naturally on zone change because the
+         * static itself is battlefield-zone-only.
+         *
+         * Used by Adaptive Automaton's "is the chosen type
+         * in addition to its other types" half. Distinct
+         * from `add_creature_type` + `addCreatureTypeToSelf`
+         * (lane 52): the lane 52 arm only stamps the
+         * `chosenTypeAdditions` field which the local
+         * `subtypesOf` helper unions with the printed type
+         * line; the lane 51 arm ALSO overlays the printed
+         * `cardData.type_line` itself. Both arms may
+         * coexist on the same card without conflict (the
+         * lane 51 arm produces the overlay; the lane 52 arm
+         * produces the parallel `chosenTypeAdditions` —
+         * both read paths see the chosen type). The lane
+         * 51 arm without a `chosenCreatureType` resolved
+         * (no enter choice) is inert.
+         */
+        becomes_chosen_creature_type: z.literal(true).optional(),
+        /**
          * Wave 4.8 lane 55 (#2614 follow-up): a
          * creature-color-changing static. The source adds
          * the named color (or its `chosenColor`) to its own
@@ -2300,6 +2341,17 @@ export const StaticSchema = z
       // with the `addColorToSelf` flag. Redcap
       // Gutter-Dweller-style self-only semantics for v1.
       (s.affects.add_color !== undefined && s.affects.addColorToSelf === true) ||
+      // Wave 4.8 follow-up 14 lane 51 (#2614 follow-up):
+      // a permanent type-line overlay meta-static —
+      // `becomes_chosen_creature_type: true` is allowed
+      // as a stand-alone arm. The engine overlays the
+      // source's `cardData.type_line` permanently to
+      // include the chosen creature type alongside the
+      // printed subtypes (Adaptive Automaton's
+      // type-change half). No P/T or keywords of its
+      // own; the static only triggers the type-line
+      // overlay.
+      s.affects.becomes_chosen_creature_type === true ||
       // Wave 4.8 follow-up 5 lane 71 (#2614 follow-up):
       // protection-from static is a meta-static — allow it
       // as a stand-alone arm. The protection is granted via
@@ -2336,7 +2388,7 @@ export const StaticSchema = z
       s.death_replacement !== undefined,
     {
       message:
-        "a static needs power/toughness, keywords, X, chosen_name_block, add_creature_type (with addCreatureTypeToSelf), add_color (with addColorToSelf), protectionFrom, become_copy, or death_replacement",
+        "a static needs power/toughness, keywords, X, chosen_name_block, add_creature_type (with addCreatureTypeToSelf), add_color (with addColorToSelf), protectionFrom, becomes_chosen_creature_type, become_copy, or death_replacement",
     },
   );
 

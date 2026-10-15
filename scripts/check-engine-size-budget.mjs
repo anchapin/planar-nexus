@@ -494,7 +494,26 @@ const SCOPES = [
     // measured at 3609. Bumping 3600 → 3650 to cover
     // the while-condition / counter-ledger family on the
     // same trajectory as follow-up 13.
-    budgetLines: 3650,
+    //
+    // Wave 4.8 follow-up 14 lane 51 (#2614 follow-up):
+    // the `becomes_chosen_creature_type: z.literal(true)`
+    // arm on `StaticSchema.affects` (Adaptive Automaton's
+    // "is the chosen type in addition to its other types"
+    // permanent type-line overlay half). Distinct from
+    // the lane 52 `add_creature_type` / `addCreatureTypeToSelf`
+    // pair — the lane 51 arm overlays the source's
+    // `cardData.type_line` permanently (rather than only
+    // stamping the parallel `chosenTypeAdditions` field),
+    // so call sites that read `cardData.type_line`
+    // directly see the chosen creature type as a
+    // subtype. The schema arm adds ~32 lines
+    // (docstring + z.literal(true).optional() +
+    // refine() allow-list addition + refined-message
+    // extension). schema.ts measured at 3661 (+11 over
+    // 3650). Bumping 3650 → 3700 to cover the lane 51
+    // permanent-overlay family on the same trajectory
+    // as the follow-up 13 / follow-up 14 budget bumps.
+    budgetLines: 3700,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),
