@@ -575,7 +575,21 @@ const SCOPES = [
     // give the follow-up 19 Landfall-each-Plant
     // half room to land on the same trajectory
     // as the prior budget bumps.
-    budgetLines: 3875,
+    //
+    // Wave 4.8 follow-up 21 lane 69 piece 1/N
+    // (#2614 follow-up): the `restriction?: string`
+    // arm on `AddManaSchema` (the per-mana
+    // restriction-tag ledger substrate — "spend
+    // this mana only on [X]" family). The arm
+    // adds ~14 lines (docstring + the optional
+    // restriction field) — schema.ts measured
+    // at 3876 (+1 over 3875 with the docstring
+    // trimmed). Bumping 3875 → 3900 to give the
+    // follow-up 21 per-mana restriction family
+    // room to land on the same trajectory as
+    // the prior follow-up 12 / 13 / 14 / 15 /
+    // 16 / 17 / 18 / 19 / 20 budget bumps.
+    budgetLines: 3900,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),
@@ -667,20 +681,19 @@ if (process.argv.includes("--report")) {
       .sort((a, b) => b.lines - a.lines)
       .slice(0, 10);
     console.log(
-      `  ${scope.name} (budget: ${scope.budgetLines} lines) — top ${inScope.length}:`
+      `  ${scope.name} (budget: ${scope.budgetLines} lines) — top ${inScope.length}:`,
     );
     for (const m of inScope) {
-      const over = Number(m.lines) > Number(m.scopeBudgetLines) ? "  ⚠ OVER" : "";
-      console.log(
-        `    ${String(m.lines).padStart(5)}  ${m.file}${over}`
-      );
+      const over =
+        Number(m.lines) > Number(m.scopeBudgetLines) ? "  ⚠ OVER" : "";
+      console.log(`    ${String(m.lines).padStart(5)}  ${m.file}${over}`);
     }
   }
   process.exit(0);
 }
 
 const offenders = modules.filter(
-  (m) => Number(m.lines) > Number(m.scopeBudgetLines)
+  (m) => Number(m.lines) > Number(m.scopeBudgetLines),
 );
 
 if (offenders.length === 0) {
@@ -693,18 +706,18 @@ if (offenders.length === 0) {
   const total = modules.length;
   console.log(
     `module-size-budget: OK — ${total} files within budget ` +
-      `(engine max: ${engineMax}, ai max: ${aiMax}).`
+      `(engine max: ${engineMax}, ai max: ${aiMax}).`,
   );
   process.exit(0);
 }
 
 console.error(
-  `module-size-budget: FAILED — ${offenders.length} file(s) exceed their scope budget (issue #1725/#1808):`
+  `module-size-budget: FAILED — ${offenders.length} file(s) exceed their scope budget (issue #1725/#1808):`,
 );
 for (const o of offenders) {
   console.error(
     `  ${o.scopeName.padEnd(8)}  ${String(o.lines).padStart(5)}  ` +
-      `${o.file} (+${o.lines - Number(o.scopeBudgetLines)} over budget ${o.scopeBudgetLines})`
+      `${o.file} (+${o.lines - Number(o.scopeBudgetLines)} over budget ${o.scopeBudgetLines})`,
   );
 }
 console.error(
@@ -713,6 +726,6 @@ console.error(
     `the established pattern in src/lib/game-state/, mirrored by\n` +
     `src/ai/decision-making/ for the AI surface) or, if the file is\n` +
     `genuinely cohesive, raise SIZE_BUDGET_LINES in\n` +
-    `scripts/check-engine-size-budget.mjs with a documented rationale.`
+    `scripts/check-engine-size-budget.mjs with a documented rationale.`,
 );
 process.exit(1);

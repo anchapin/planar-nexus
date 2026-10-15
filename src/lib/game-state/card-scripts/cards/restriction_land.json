@@ -1,0 +1,13 @@
+{
+  "name": "Restriction Land",
+  "oracle": "{T}: Add {G}. This mana can only be spent on creature spells.",
+  "activated": [
+    {
+      "text": "Add {G}. This mana can only be spent on creature spells.",
+      "cost": { "tap": true },
+      "effects": [
+        { "op": "AddMana", "amount": 1, "colors": ["G"], "restriction": "creature_spells" }
+      ]
+    }
+  ]
+}

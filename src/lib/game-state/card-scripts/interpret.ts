@@ -59,6 +59,7 @@ import {
 } from "../pt-until-end-of-turn";
 import { getCardScript } from "./registry";
 import { addMana } from "../mana/mana-pool";
+import { addRestrictedMana } from "../mana/restriction-ledger";
 import { spendMana } from "../mana/mana-payment";
 import { PREDEFINED_TOKENS } from "./predefined-tokens";
 import {
@@ -556,10 +557,7 @@ function resolveGainLifeAmount(
     if (!entering) {
       return typeof effect.amount === "number" ? effect.amount : 0;
     }
-    const toughness = parseInt(
-      entering.cardData.toughness ?? "0",
-      10,
-    );
+    const toughness = parseInt(entering.cardData.toughness ?? "0", 10);
     return Number.isFinite(toughness) ? toughness : 0;
   }
   return typeof effect.amount === "number" ? effect.amount : 0;
@@ -1050,11 +1048,7 @@ function applyEffect(
       // an `each_player` Draw, the helper falls through to the
       // global default (the helper handles the `each_player`
       // fan-out below).
-      const drawAmount = resolveDrawAmount(
-        state,
-        effect,
-        ctx.controllerId,
-      );
+      const drawAmount = resolveDrawAmount(state, effect, ctx.controllerId);
       // #2594 lane 25: each_player (Scrawling Crawler, FDN).
       if (effect.who === "each_player") {
         let next = state;
@@ -1089,12 +1083,27 @@ function applyEffect(
       // have access to the source's `chosenColor`; the activated
       // mana path handles the sentinel via
       // `substituteChosenColorInEffect` in `abilities/mana.ts`.
+      // #2614 follow-up, Wave 4.8 follow-up 21 lane 69 piece 1/N:
+      // when `effect.restriction` is set, route the produced mana
+      // into the parallel `restrictionLedger[restriction]` instead
+      // of the main pool. `"any"` colors + restriction still
+      // no-ops (the color choice would need to land on the ledger
+      // by predicate, which is the multi-lane piece 2/N).
       if (effect.colors === "any") return state;
       if (effect.colors.length !== 1) return state;
       if (effect.colors[0] === "chosen") return state;
-      return addMana(state, ctx.controllerId, {
+      const manaAmount = {
         [MANA_POOL_KEY[effect.colors[0]]]: effect.amount,
-      });
+      };
+      if (effect.restriction) {
+        return addRestrictedMana(
+          state,
+          ctx.controllerId,
+          effect.restriction,
+          manaAmount,
+        );
+      }
+      return addMana(state, ctx.controllerId, manaAmount);
     }
     case "GainLife": {
       // Wave 4.8 follow-up 12 lane 92 (#2614 follow-up): when
@@ -1129,12 +1138,7 @@ function applyEffect(
       // callers, though the schema gates "drawer" to drawCard arms).
       if (effect.who === "drawer") {
         const drawer = ctx.drawingPlayerId ?? state.turn.activePlayerId;
-        const r = resolveLifeLossEffect(
-          state,
-          sourceId,
-          effect.amount,
-          drawer,
-        );
+        const r = resolveLifeLossEffect(state, sourceId, effect.amount, drawer);
         return r.success ? r.state : state;
       }
       const player = playerFor(effect.who, ctx);
@@ -1240,10 +1244,7 @@ function applyEffect(
       // (reanimation), "copied characteristics except for
       // [X]" (Phyrexian Metamorph), and "named-copy" /
       // "choose-creature-type-copy" filters.
-      const matchTargetType = (
-        typeLine: string,
-        want: string,
-      ): boolean => {
+      const matchTargetType = (typeLine: string, want: string): boolean => {
         const lower = typeLine.toLowerCase();
         if (want === "permanent") return true;
         if (want === "creature") return lower.startsWith("creature");
@@ -1260,9 +1261,7 @@ function applyEffect(
         if (want === "land") return lower.startsWith("land");
         return true;
       };
-      const matchController = (
-        cardControllerId: PlayerId,
-      ): boolean => {
+      const matchController = (cardControllerId: PlayerId): boolean => {
         if (!effect.controller || effect.controller === "any") return true;
         const wantsYou = effect.controller === "you";
         return wantsYou
@@ -1279,7 +1278,10 @@ function applyEffect(
         if (
           !sourceCard ||
           !isOnBattlefield(state, sourceId) ||
-          !matchTargetType(sourceCard.cardData.type_line ?? "", effect.target) ||
+          !matchTargetType(
+            sourceCard.cardData.type_line ?? "",
+            effect.target,
+          ) ||
           !matchController(sourceCard.controllerId)
         ) {
           sourceId = undefined;
@@ -1322,7 +1324,8 @@ function applyEffect(
       const copiedCardData = { ...sourceCard.cardData };
       const controllerId = ctx.controllerId;
       const ownerId = controllerId;
-      const cardIdNew = `copyperm-${Date.now()}-${Math.random().toString(36).slice(2, 11)}` as CardInstanceId;
+      const cardIdNew =
+        `copyperm-${Date.now()}-${Math.random().toString(36).slice(2, 11)}` as CardInstanceId;
       // Build the new CardInstance via createCardInstance so
       // we get all the defaults (summoning sickness, counters,
       // attachedTo, etc.).
@@ -1404,7 +1407,8 @@ function applyEffect(
       const chosenPrintedCardData = chosenCard.cardData;
       const controllerId = ctx.controllerId;
       const ownerId = controllerId;
-      const cardIdNew = `copyeot-${Date.now()}-${Math.random().toString(36).slice(2, 11)}` as CardInstanceId;
+      const cardIdNew =
+        `copyeot-${Date.now()}-${Math.random().toString(36).slice(2, 11)}` as CardInstanceId;
       // Build the new CardInstance with the chosen target's
       // printed characteristics, mirroring lane 70's
       // `createCardInstance + zone push` flow so the new
@@ -1983,11 +1987,7 @@ function applyEffect(
           if (!isOnBattlefield(state, card.id)) continue;
           if (
             effect.controller !== undefined &&
-            !matchesController(
-              card,
-              effect.controller,
-              ctx.controllerId,
-            )
+            !matchesController(card, effect.controller, ctx.controllerId)
           )
             continue;
           const typeLine = (card.cardData.type_line ?? "").toLowerCase();
@@ -2491,10 +2491,8 @@ export function resolveScriptedEffects(
       wasKicked,
       x,
       triggeringStackObjectId: stackObject.triggeringStackObjectId,
-      drawingPlayerId:
-        stackObject.triggerContext?.drawingPlayerId ?? undefined,
-      enteringCardId:
-        stackObject.triggerContext?.enteringCardId ?? undefined,
+      drawingPlayerId: stackObject.triggerContext?.drawingPlayerId ?? undefined,
+      enteringCardId: stackObject.triggerContext?.enteringCardId ?? undefined,
     });
   }
   return current;
@@ -2866,9 +2864,8 @@ export function resolveScriptedAbility(
           youMayCost !== null &&
           "pay_life" in youMayCost
         ) {
-          const amount = (
-            youMayCost as { pay_life: { amount: number } }
-          ).pay_life.amount;
+          const amount = (youMayCost as { pay_life: { amount: number } })
+            .pay_life.amount;
           // Pay the cost: lose N life. The helper
           // stamps the spectator's `lastTurnLifeLost`
           // for CR 702.135 spectacle. Defensive:
@@ -2886,17 +2883,18 @@ export function resolveScriptedAbility(
     }
   }
   // Lane 88 (#2614 follow-up): sacrifice-self cost gate.
-  const hasSacrificeCost = (ability as { cost?: { sacrifice_self?: boolean } })
-    .cost?.sacrifice_self === true;
+  const hasSacrificeCost =
+    (ability as { cost?: { sacrifice_self?: boolean } }).cost
+      ?.sacrifice_self === true;
   if (hasSacrificeCost) {
     // Defensive: if the source has already been sacrificed by another
     // effect (the cost can't be paid), the trigger fizzles. CR 602.2b.
     const sourceStillPresent =
       stackObject.sourceCardId !== null &&
       state.cards.has(stackObject.sourceCardId as CardInstanceId) &&
-      state.zones.get(
-        `${stackObject.controllerId as PlayerId}-battlefield`,
-      )?.cardIds.includes(stackObject.sourceCardId);
+      state.zones
+        .get(`${stackObject.controllerId as PlayerId}-battlefield`)
+        ?.cardIds.includes(stackObject.sourceCardId);
     if (!sourceStillPresent) return state;
     // Track the cost_paid status; default undefined = awaiting answer.
     const costPaid = (stackObject as StackObject & { cost_paid?: boolean })
@@ -2923,10 +2921,7 @@ export function resolveScriptedAbility(
       stackObject.sourceCardId !== null &&
       state.cards.has(stackObject.sourceCardId as CardInstanceId)
     ) {
-      const sacrificed = sacrificeCard(
-        state,
-        stackObject.sourceCardId,
-      );
+      const sacrificed = sacrificeCard(state, stackObject.sourceCardId);
       if (sacrificed.success) state = sacrificed.state;
       else return state;
     }
@@ -2940,9 +2935,11 @@ export function resolveScriptedAbility(
   // trigger does nothing (CR 602.2b). v1 supports a
   // single-card discard (`amount: 1`); the multi-card
   // variant rides a follow-up lane.
-  const discardCost = (ability as {
-    cost?: { discard?: { amount: number } };
-  }).cost?.discard;
+  const discardCost = (
+    ability as {
+      cost?: { discard?: { amount: number } };
+    }
+  ).cost?.discard;
   if (discardCost !== undefined) {
     const stackAny = stackObject as StackObject & {
       cost_paid?: boolean;
@@ -2999,9 +2996,11 @@ export function resolveScriptedAbility(
   // (from lane 63) is spell-cast only — the
   // `cost.pay_life` arm is the lane 106 trigger-cost
   // substrate. v1 supports a single integer `amount`.
-  const payLifeCost = (ability as {
-    cost?: { pay_life?: { amount: number } };
-  }).cost?.pay_life;
+  const payLifeCost = (
+    ability as {
+      cost?: { pay_life?: { amount: number } };
+    }
+  ).cost?.pay_life;
   if (payLifeCost !== undefined) {
     const stackAny = stackObject as StackObject & {
       cost_paid?: boolean;
@@ -3063,9 +3062,11 @@ export function resolveScriptedAbility(
   // path surfaces the prompt; `cost_paid === false`
   // fizzes; `cost_paid === true` deducts mana and
   // falls through to the effects loop.
-  const payManaCost = (ability as {
-    cost?: { pay_mana?: { amount: number } };
-  }).cost?.pay_mana;
+  const payManaCost = (
+    ability as {
+      cost?: { pay_mana?: { amount: number } };
+    }
+  ).cost?.pay_mana;
   if (payManaCost !== undefined) {
     const stackAny = stackObject as StackObject & {
       cost_paid?: boolean;
@@ -3109,11 +3110,9 @@ export function resolveScriptedAbility(
     // have been able to confirm the prompt without
     // the mana, but the engine surfaces a no-op on
     // short mana as a safety net).
-    const spendResult = spendMana(
-      state,
-      stackObject.controllerId as PlayerId,
-      { generic: payManaCost.amount },
-    );
+    const spendResult = spendMana(state, stackObject.controllerId as PlayerId, {
+      generic: payManaCost.amount,
+    });
     if (spendResult.success) {
       state = spendResult.state;
     } else {
