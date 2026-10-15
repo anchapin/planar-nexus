@@ -1,13 +1,18 @@
 /**
- * Wave 4.8 follow-up 21 lane 69 piece 1/N (#2614 follow-up):
+ * Wave 4.8 follow-up 21 lane 69 (#2614 follow-up):
  * per-mana restriction-tag ledger.
  *
  * The drafter list (#2614) flags a long tail of cards with
  * the "spend this mana only on [X]" pattern (Llawan, War Tax,
- * the "spend this mana only on creature spells" family). v1
- * ships the per-tag ledger + `resolveXspentOn` consult stub;
- * the spend-side enforcement (lane 69 piece 2/N) rides a
- * follow-up lane.
+ * the "spend this mana only on creature spells" family). The
+ * module ships in two pieces:
+ *
+ * - Piece 1/N — per-tag ledger substrate (`addRestrictedMana`,
+ *   `getRestrictedMana`, `clearRestrictionLedger`) + the
+ *   `AddManaSchema.restriction?: string` schema arm.
+ * - Piece 2/N (this commit) — `resolveXspentOn` consult
+ *   predicate + single-tag cleanup helper
+ *   (`clearRestrictionTag`).
  *
  * The ledger parallels `player.manaPool`: it's keyed by
  * restriction tag (e.g. `"creature_spells"`) and the values
@@ -15,6 +20,10 @@
  * mana path reads the effect's `restriction` field (the new
  * `AddManaSchema.restriction?: string` arm) and routes the
  * produced mana into this ledger instead of the main pool.
+ * The spend-side caller consults the ledger through
+ * `resolveXspentOn`. Per-color matching, generic reduction
+ * across tags, and multi-tag routing ride later follow-up
+ * pieces.
  */
 import type { GameState, ManaPool, PlayerId } from "../types";
 
@@ -84,22 +93,91 @@ export function getRestrictedMana(
 }
 
 /**
- * STUB consult — v1 returns true unconditionally so the
- * spend-side caller is non-blocking. The piece 2/N consult
- * reads the partial pool's colored mana and matches it
- * against the spell's restriction tag predicate. `restriction
- * === "any"` is the universal-passthrough sentinel (the spend
- * side reads this as "no restriction, always OK").
+ * Wave 4.8 follow-up 21 lane 69 piece 2/N (#2614 follow-up):
+ * consult predicate for the spend-side (`spendMana`,
+ * `mana-payment.ts`). v1 is the "colored mana → restriction
+ * tag match" half of the contract — we ask "does the player's
+ * ledger under this restriction have enough tagged mana to
+ * fund `mana`?" The matching key is the restriction tag
+ * string itself: the same `AddManaSchema.restriction` value
+ * stamps the ledger on production and stamps the consult on
+ * consumption. v1 collapses to a total-quantity check on the
+ * colored mana slots, which is the smallest predicate that
+ * still gates the spend-side caller. Side lanes (per-color
+ * matching, generic reduction across tags, multi-tag) ride
+ * follow-up pieces.
+ *
+ * `restriction === "any"` is the universal-passthrough
+ * sentinel (the spend side reads this as "no restriction,
+ * always OK").
  */
 export function resolveXspentOn(
-  mana: Partial<ManaPool>,
+  state: GameState,
+  playerId: PlayerId,
   restriction: string,
+  mana: Partial<ManaPool>,
 ): boolean {
   if (restriction === "any") return true;
-  // v1 stub: the predicate (colored mana → restriction tag
-  // match) is the multi-lane piece 2/N.
-  void mana;
-  return true;
+  const player = state.players.get(playerId);
+  if (!player) return false;
+  const ledger = player.restrictionLedger ?? {};
+  const entry = ledger[restriction];
+  if (!entry) return false;
+  // Total-quantity check. The ledger entry and the queried
+  // `mana` both use the same 7-key partial-pool shape; we
+  // sum the colored slots plus generic so that a {G: 1} spend
+  // matches a ledger carrying {G: 1, color: anything}.
+  return totalPartialMana(entry) >= totalPartialMana(mana);
+}
+
+/**
+ * Sum the 7 partial-pool slots (colorless, white, blue,
+ * black, red, green, generic). Local helper — `mana-pool.ts`
+ * exports `getTotalMana(ManaPool)` but the ledger values are
+ * `Partial<ManaPool>` so the seven-slot sum is duplicated in
+ * this module rather than widening that signature. Keep in
+ * sync with `getTotalMana` when adding a new color (#1710).
+ */
+function totalPartialMana(p: Partial<ManaPool>): number {
+  return (
+    (p.colorless ?? 0) +
+    (p.white ?? 0) +
+    (p.blue ?? 0) +
+    (p.black ?? 0) +
+    (p.red ?? 0) +
+    (p.green ?? 0) +
+    (p.generic ?? 0)
+  );
+}
+
+/**
+ * Wave 4.8 follow-up 21 lane 69 piece 2/N (#2614 follow-up):
+ * remove a single restriction tag from the ledger without
+ * disturbing the main pool or sibling tags. The spend-side
+ * calls this once the tagged mana funds its target spell so
+ * the ledger stays in sync with the mana it produced.
+ */
+export function clearRestrictionTag(
+  state: GameState,
+  playerId: PlayerId,
+  restriction: string,
+): GameState {
+  const player = state.players.get(playerId);
+  if (!player) return state;
+  const ledger = player.restrictionLedger ?? {};
+  if (!(restriction in ledger)) return state;
+  const next: RestrictionLedger = { ...ledger };
+  delete next[restriction];
+  const updatedPlayers = new Map(state.players);
+  updatedPlayers.set(playerId, {
+    ...player,
+    restrictionLedger: next,
+  });
+  return {
+    ...state,
+    players: updatedPlayers,
+    lastModifiedAt: Date.now(),
+  };
 }
 
 /** Mirror `emptyAllManaPools` for end-of-turn cleanup. */

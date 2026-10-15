@@ -34,6 +34,7 @@ import type {
 import {
   addRestrictedMana,
   clearRestrictionLedger,
+  clearRestrictionTag,
   getRestrictedMana,
   resolveXspentOn,
 } from "../mana/restriction-ledger";
@@ -164,14 +165,64 @@ describe("Lane 69 piece 1/N (follow-up 21): per-mana restriction tag ledger", ()
     });
   });
 
-  describe("helper — resolveXspentOn stub", () => {
-    it("returns true for restriction === 'any' (universal passthrough)", () => {
-      expect(resolveXspentOn({ green: 1 }, "any")).toBe(true);
+  describe("helper — resolveXspentOn consult (piece 2/N)", () => {
+    it("universal passthrough: restriction === 'any' short-circuits to true (no ledger lookup)", () => {
+      // 'any' bypasses the ledger check entirely so callers
+      // that don't yet know about the consult can still
+      // resolve. No state mutation; no ledger required.
+      expect(
+        resolveXspentOn(state, alice, "any", { green: 1 }),
+      ).toBe(true);
     });
 
-    it("returns true unconditionally in v1 (stub consult; non-blocking)", () => {
-      expect(resolveXspentOn({ green: 1 }, "creature_spells")).toBe(true);
-      expect(resolveXspentOn({ green: 1 }, "instant_or_sorcery")).toBe(true);
+    it("returns false for an unknown / mismatched restriction tag", () => {
+      const seeded = addRestrictedMana(state, alice, "creature_spells", {
+        green: 2,
+      });
+      // Asking for a different tag returns false even
+      // though the ledger has mana under another key.
+      expect(
+        resolveXspentOn(seeded, alice, "instant_or_sorcery", { green: 1 }),
+      ).toBe(false);
+      // Asking for a tag that doesn't exist at all is also
+      // false — never throws.
+      expect(
+        resolveXspentOn(state, alice, "nonexistent_tag", { green: 1 }),
+      ).toBe(false);
+    });
+
+    it("returns true when the ledger entry has >= the queried mana total", () => {
+      const seeded = addRestrictedMana(state, alice, "creature_spells", {
+        green: 2,
+      });
+      // Exact match: {G:2} >= {G:2}.
+      expect(
+        resolveXspentOn(seeded, alice, "creature_spells", { green: 2 }),
+      ).toBe(true);
+      // Subset: 1 G fits in 2 G of tagged mana.
+      expect(
+        resolveXspentOn(seeded, alice, "creature_spells", { green: 1 }),
+      ).toBe(true);
+    });
+
+    it("returns false when the ledger entry is insufficient to cover the queried mana", () => {
+      const seeded = addRestrictedMana(state, alice, "creature_spells", {
+        green: 1,
+      });
+      // Asking for 2 G against a 1 G ledger is false (the
+      // spend-side caller will fall through to the main pool
+      // or fail the cost, depending on future piece 3/N+).
+      expect(
+        resolveXspentOn(seeded, alice, "creature_spells", { green: 2 }),
+      ).toBe(false);
+      // Mixed colors: ledger {G:1}, spend {G:1, W:1} = 2 vs
+      // 1 → false.
+      expect(
+        resolveXspentOn(seeded, alice, "creature_spells", {
+          green: 1,
+          white: 1,
+        }),
+      ).toBe(false);
     });
   });
 
@@ -201,10 +252,36 @@ describe("Lane 69 piece 1/N (follow-up 21): per-mana restriction tag ledger", ()
       ).toBe("creature_spells");
     });
 
-    it("rejects an empty-string restriction (v1 min length 1)", () => {
+    it("rejects restriction values outside the v1 enum (typos like 'creature_spell')", () => {
+      // piece 2/N tightened the field from a free-form
+      // z.string() to a constrained enum of well-known tags;
+      // a typo in a card script must NOT silently widen the
+      // ledger at runtime (#2614 follow-up).
       expect(() =>
         CardScriptSchema.parse({
-          name: "Test Schema Restriction Empty (lane 69 piece 1/N)",
+          name: "Test Schema Restriction Typo (lane 69 piece 2/N)",
+          oracle: "{T}: Add {G}.",
+          activated: [
+            {
+              text: "Add {G}.",
+              cost: { tap: true },
+              effects: [
+                {
+                  op: "AddMana",
+                  amount: 1,
+                  colors: ["G"],
+                  restriction: "creature_spell",
+                },
+              ],
+            },
+          ],
+        }),
+      ).toThrow();
+      // The empty-string path is also rejected (the enum has
+      // no empty-string member).
+      expect(() =>
+        CardScriptSchema.parse({
+          name: "Test Schema Restriction Empty (lane 69 piece 2/N)",
           oracle: "{T}: Add {G}.",
           activated: [
             {
@@ -317,6 +394,93 @@ describe("Lane 69 piece 1/N (follow-up 21): per-mana restriction tag ledger", ()
       expect(cleared.players.get(alice)!.restrictionLedger).toEqual({});
       // Main pool still intact after the cleanup.
       expect(cleared.players.get(alice)!.manaPool.green).toBe(1);
+    });
+  });
+
+  describe("piece 2/N — single-tag cleanup (clearRestrictionTag)", () => {
+    it("clears one restriction tag without touching sibling tags or the main pool", () => {
+      const seeded = addRestrictedMana(state, alice, "creature_spells", {
+        green: 2,
+      });
+      const seeded2 = addRestrictedMana(seeded, alice, "instant_or_sorcery", {
+        blue: 1,
+      });
+      // Sanity-check: both tags have mana.
+      expect(
+        seeded2.players.get(alice)!.restrictionLedger?.["creature_spells"]
+          ?.green,
+      ).toBe(2);
+      expect(
+        seeded2.players.get(alice)!.restrictionLedger?.["instant_or_sorcery"]
+          ?.blue,
+      ).toBe(1);
+      // Add some main-pool mana so we can confirm it survives.
+      const withMain = addMana(seeded2, alice, { black: 3 });
+      const clearedOne = clearRestrictionTag(
+        withMain,
+        alice,
+        "creature_spells",
+      );
+      // The "creature_spells" tag is gone; "instant_or_sorcery" survives.
+      expect(
+        clearedOne.players.get(alice)!.restrictionLedger?.["creature_spells"],
+      ).toBeUndefined();
+      expect(
+        clearedOne.players.get(alice)!.restrictionLedger?.["instant_or_sorcery"]
+          ?.blue,
+      ).toBe(1);
+      // Main pool intact.
+      expect(clearedOne.players.get(alice)!.manaPool.black).toBe(3);
+    });
+
+    it("is a no-op for an unknown tag (does not allocate a new ledger)", () => {
+      // Player has no ledger at all yet — clearing a tag
+      // should NOT introduce an empty {} onto the player;
+      // the immutability convention is "no field if no data".
+      const out = clearRestrictionTag(state, alice, "creature_spells");
+      expect(out.players.get(alice)!.restrictionLedger).toBeUndefined();
+    });
+  });
+
+  describe("piece 2/N — round-trip: AddMana → ledger → resolveXspentOn (positive match)", () => {
+    it("resolveScriptedAbility stamps the ledger, then resolveXspentOn matches positively against the SAME tag", () => {
+      const sourceId = putOnBattlefield(
+        state,
+        alice,
+        landCard(HOST_RESTRICTION),
+      );
+      const stackObject: StackObject = {
+        id: "stack-restriction-land-rt1" as StackObject["id"],
+        type: "ability",
+        sourceCardId: sourceId as CardInstance["id"],
+        controllerId: alice,
+        name: HOST_RESTRICTION,
+        text: "Add {G}. This mana can only be spent on creature spells.",
+        manaCost: null,
+        targets: [],
+        chosenModes: [],
+        variableValues: new Map<string, number>(),
+        isCountered: false,
+        timestamp: Date.now(),
+        activated: true,
+      };
+      const afterTap = resolveScriptedAbility(state, stackObject)!;
+      // Step 1: the ledger now carries 1 G under "creature_spells".
+      expect(
+        afterTap.players.get(alice)!.restrictionLedger?.["creature_spells"]
+          ?.green,
+      ).toBe(1);
+      // Step 2: resolveXspentOn against the matching tag and
+      // a 1 G spend returns true (the consult closes the
+      // round-trip: production → ledger → consult → match).
+      expect(
+        resolveXspentOn(afterTap, alice, "creature_spells", { green: 1 }),
+      ).toBe(true);
+      // Step 3: the consult against a MISMATCHED tag returns
+      // false (different keys do not cross-match).
+      expect(
+        resolveXspentOn(afterTap, alice, "instant_or_sorcery", { green: 1 }),
+      ).toBe(false);
     });
   });
 });

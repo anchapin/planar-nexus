@@ -1249,21 +1249,42 @@ export const AddManaSchema = z
           "AddMana.colors may only be the single 'chosen' sentinel (not mixed with literal colors or 'any')",
       }),
     /**
-     * Wave 4.8 follow-up 21 lane 69 piece 1/N (#2614 follow-up):
-     * the per-mana restriction tag ("spend this mana only on
-     * [X]"). When set, the engine routes the produced mana into
-     * `player.restrictionLedger[restriction]` (a parallel
-     * per-tag partial pool) instead of the main `manaPool`. v1
-     * supports a single tag per `AddMana`; multi-tag and
-     * multi-tag-with-generic-reduction variants ride follow-up
-     * lanes. The string is opaque to the engine (the consult
-     * helper compares it against the spell's restriction tag at
-     * spend time) but capped at 64 characters to bound log
-     * output and prevent typos from silently widening the
-     * ledger. Common v1 tags: `"creature_spells"`,
-     * `"instant_or_sorcery"`, `"dragon"`.
+     * Wave 4.8 follow-up 21 lane 69 (#2614 follow-up): the
+     * per-mana restriction tag ("spend this mana only on
+     * [X]"). When set, the engine routes the produced mana
+     * into `player.restrictionLedger[restriction]` (a parallel
+     * per-tag partial pool) instead of the main `manaPool`,
+     * and the spend-side consult (`resolveXspentOn` in
+     * `mana/restriction-ledger.ts`) reads the same tag back
+     * against the spell's restriction to gate the spend.
+     *
+     * v1 collapses to a constrained enum of well-known tags:
+     *   - `"creature_spells"` — "spend this mana only on
+     *     creature spells" (Llawan / War Tax / etc.)
+     *   - `"instant_or_sorcery"` — "spend only on instant or
+     *     sorcery spells"
+     *   - `"artifact_or_enchantment"` — "spend only on
+     *     artifact or enchantment spells"
+     *   - `"any_color"` — colored mana tagged for unrestricted
+     *     spending (used when a producer emits colored mana
+     *     that the engine should still ledger)
+     *   - `"colorless"` — colorless mana tagged for
+     *     unrestricted spending
+     *
+     * Multi-tag and per-color matching variants ride follow-up
+     * lanes; this enum is the v1 floor. Common typos like
+     * `"creature_spell"` (singular) are blocked by the schema
+     * so they don't silently widen the ledger at runtime.
      */
-    restriction: z.string().min(1).max(64).optional(),
+    restriction: z
+      .enum([
+        "creature_spells",
+        "instant_or_sorcery",
+        "artifact_or_enchantment",
+        "any_color",
+        "colorless",
+      ])
+      .optional(),
     if_kicked: ifKicked,
   })
   .strict();
