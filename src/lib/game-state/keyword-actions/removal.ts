@@ -9,6 +9,17 @@ import { isCreatureOnCurrentFace, markCreatureDiedThisTurn } from "./morbid";
 import { buildScriptedDeathReplacementEffects } from "../card-scripts/replacement-effect-bindings";
 import { tapCardAction, untapCardAction } from "./damage-tap";
 import { loseLife } from "../player-actions";
+// Wave 4.8 follow-up 20 lane 61 sub-piece (#2614
+// follow-up, follow-up 20 piece 1): the
+// library-top / library-bottom death-replacement
+// redirects thread `position` through the data
+// layer (`moveCardBetweenZones` / `addCardToZone`),
+// so the consult's new `moveCardToZoneWithPosition`
+// helper imports the primitive. The narrow-union
+// `moveCardToZone` API does NOT carry position
+// (out of scope to widen — every other call-site
+// ignores it).
+import { moveCardBetweenZones } from "../zones";
 /**
  * Zone-removal keyword actions (CR 701): destroy, exile, sacrifice, regenerate, and generic zone moves.
  *
@@ -441,6 +452,26 @@ export function moveCardToZone(
   const pendingPeriodicRedirect: {
     value: { kind: string; amount: number } | null;
   } = { value: null };
+  // Wave 4.8 follow-up 20 lane 61 sub-piece
+  // (#2614 follow-up, follow-up 20 piece 1):
+  // when the redirect is "library_top" or
+  // "library_bottom", the dying card is moved to
+  // the OWNER's library (CR 400.3 — a card put into
+  // a library goes to its owner's library, even when
+  // a different player controlled it) at a specific
+  // position (top of library = "drawn first" = the
+  // END of the `cardIds` array; bottom of library =
+  // the START of the array). The narrow `targetZoneType`
+  // union above ("... | library | ...") doesn't carry
+  // position, so the consult uses this flag to route
+  // through the new `moveCardToZoneWithPosition`
+  // helper instead of the standard
+  // `moveCardToZoneWithoutTriggers` path. Like the
+  // exile / hand redirects, dies triggers DO NOT
+  // fire (the creature didn't die — CR 614.5).
+  const pendingLibraryRedirect: {
+    value: { position: "top" | "bottom" } | null;
+  } = { value: null };
   if (targetZoneType === "graveyard") {
     const cardForConsult = state.cards.get(cardId);
     const sourceZoneKey = cardForConsult?.currentZoneKey ?? null;
@@ -517,6 +548,28 @@ export function moveCardToZone(
           // happens via `sacrificeCard` below.
           isSacrificeRedirect.value = true;
         } else if (
+          redirect === "library_top" ||
+          redirect === "library_bottom"
+        ) {
+          // Wave 4.8 follow-up 20 lane 61 sub-piece
+          // (#2614 follow-up, follow-up 20 piece 1):
+          // route the dying card to its owner's
+          // library at top ("drawn first") or bottom
+          // ("drawn last"). The post-consult path
+          // (below) consults `pendingLibraryRedirect`
+          // and uses the new
+          // `moveCardToZoneWithPosition` helper —
+          // which threads `position` through to
+          // `moveCardBetweenZones` /
+          // `addCardToZone` (data layer). Like the
+          // exile / hand redirects, dies triggers do
+          // NOT fire (the card didn't die — CR 614.5
+          // "instead" replaces the original event).
+          pendingLibraryRedirect.value = {
+            position:
+              redirect === "library_top" ? "top" : "bottom",
+          };
+        } else if (
           redirect === "battlefield_tapped" ||
           redirect === "battlefield_untapped" ||
           redirect === "life_loss"
@@ -578,6 +631,33 @@ export function moveCardToZone(
       affectedCards: [cardId],
     };
   }
+  // Wave 4.8 follow-up 20 lane 61 sub-piece (#2614
+  // follow-up, follow-up 20 piece 1): the
+  // library-top / library-bottom redirect routes
+  // the dying card to its owner's library at a
+  // specific position via the new
+  // `moveCardToZoneWithPosition` helper. Dies
+  // triggers are NOT taken — the card didn't die
+  // (CR 614.5 "instead" replaces the original
+  // event; CR 603.10a dies triggers look back at
+  // a "dying" permanent, not a "moved to library"
+  // permanent). Early-return after the move.
+  if (pendingLibraryRedirect.value !== null) {
+    const { position } = pendingLibraryRedirect.value;
+    const moved = moveCardToZoneWithPosition(
+      state,
+      cardId,
+      position,
+    );
+    if (!moved.success) {
+      return moved;
+    }
+    return {
+      ...moved,
+      description: `Death replacement moved dying card to owner's library (${position}).`,
+      affectedCards: [cardId],
+    };
+  }
   const diesTriggers =
     targetZoneType === "graveyard" && !isSacrificeRedirect.value
       ? detectDiesTriggers(state, cardId)
@@ -614,6 +694,125 @@ function hasFinalityCounter(state: GameState, cardId: CardInstanceId): boolean {
   return (
     card.counters?.some((c) => c.type === "finality" && c.count > 0) ?? false
   );
+}
+
+/**
+ * Wave 4.8 follow-up 20 lane 61 sub-piece (#2614
+ * follow-up, follow-up 20 piece 1): move a card
+ * from its current zone to its OWNER's library at
+ * the named position. CR 400.3 — a card put into
+ * a library goes to its owner's library (the
+ * controller is irrelevant; only the owner
+ * matters). The helper threads `position` through
+ * to the data layer `moveCardBetweenZones`, which
+ * delegates to `addCardToZone(zone, cardId,
+ * position)` — `position: "top"` puts the card at
+ * the END of the `cardIds` array (the top of the
+ * library = "drawn first"); `position: "bottom"`
+ * puts it at the START (drawn last).
+ *
+ * The helper is intentionally narrow: it does not
+ * re-implement `moveCardToZone`'s broad union of
+ * side-effects (CR 712.8a transform-front, CR 400.7
+ * "new object", counters reset, ETB counter
+ * initialization, etc.) — the death-replacement
+ * path is exempt from all of those (the card
+ * didn't die; it's a transient deferral). Only the
+ * minimum move + `currentZoneKey` re-stamp is
+ * applied. The helper is private to
+ * `moveCardToZone`'s consult.
+ */
+function moveCardToZoneWithPosition(
+  state: GameState,
+  cardId: CardInstanceId,
+  position: "top" | "bottom",
+): KeywordActionResult {
+  const card = state.cards.get(cardId);
+  if (!card) {
+    return {
+      success: false,
+      state,
+      description: "",
+      error: `Card ${cardId} not found`,
+    };
+  }
+  // Find the current zone the same way
+  // `moveCardToZoneWithoutTriggers` does (cached
+  // `currentZoneKey` first, fall back to
+  // scanning).
+  let currentZone: Zone | null = null;
+  let currentZoneKey: string | null = card.currentZoneKey;
+  if (currentZoneKey) {
+    currentZone = state.zones.get(currentZoneKey) ?? null;
+    if (currentZone && !currentZone.cardIds.includes(cardId)) {
+      currentZone = null;
+      currentZoneKey = null;
+    }
+  }
+  if (!currentZone || !currentZoneKey) {
+    for (const [zoneKey, zone] of state.zones) {
+      if (zone.cardIds.includes(cardId)) {
+        currentZone = zone;
+        currentZoneKey = zoneKey;
+        break;
+      }
+    }
+  }
+  if (!currentZone || !currentZoneKey) {
+    return {
+      success: false,
+      state,
+      description: "",
+      error: `Card ${cardId} is not in any zone`,
+    };
+  }
+  // CR 400.3: the owner's library, not the
+  // controller's.
+  const targetZoneKey = `${card.ownerId}-library`;
+  const targetZone = state.zones.get(targetZoneKey);
+  if (!targetZone) {
+    return {
+      success: false,
+      state,
+      description: "",
+      error: `Target zone ${targetZoneKey} not found`,
+    };
+  }
+  // Delegate the data-layer move (which honors
+  // `position`).
+  const { from, to } = moveCardBetweenZones(
+    currentZone,
+    targetZone,
+    cardId,
+    position,
+  );
+  const updatedZones = new Map(state.zones);
+  updatedZones.set(currentZoneKey, from);
+  updatedZones.set(targetZoneKey, to);
+  // Re-stamp `currentZoneKey` (CR 400.7: a card
+  // that changes zones is a new object; we keep
+  // the rest of the card identity — only the
+  // zone-key cache updates. Counts / status
+  // reset is EXEMPT for library-deferral
+  // redirects: the card is unchanged; it's
+  // deferred, not destroyed).
+  const updatedCard: CardInstance = {
+    ...card,
+    currentZoneKey: targetZoneKey,
+  };
+  const updatedCards = new Map(state.cards);
+  updatedCards.set(cardId, updatedCard);
+  return {
+    success: true,
+    state: {
+      ...state,
+      zones: updatedZones,
+      cards: updatedCards,
+      lastModifiedAt: Date.now(),
+    },
+    description: `Moved ${card.cardData.name} to owner's library at ${position}`,
+    affectedCards: [cardId],
+  };
 }
 
 function moveCardToZoneWithoutTriggers(

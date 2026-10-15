@@ -112,14 +112,31 @@ export function buildScriptedDeathReplacementEffect(
   // suppresses dies triggers — see
   // `keyword-actions/removal.ts`).
   //
-  // Out of scope: "library_top" / "library_bottom" /
-  // "any_zone" (lanes 104 partial — covered by
-  // lane 101's sacrifice-redirect as a sibling
-  // case).
+  // Wave 4.8 follow-up 20 lane 61 sub-piece
+  // (#2614 follow-up, follow-up 20 piece 1): added
+  // `redirect.to: "library_top" | "library_bottom"`.
+  // The "instead put [thing] on top/bottom of its
+  // owner's library" family (e.g. Elspeth, Sun's
+  // Champion-style "instead shuffle it into its
+  // owner's library" — the per-position variants of
+  // the deferral). The factory now stamps
+  // `redirectToZone: "library_top" | "library_bottom"`
+  // on the result; the engine consult's
+  // `moveCardToZone` consult routes the dying
+  // card through the new `moveCardToZoneWithPosition`
+  // helper (which threads `position` through to
+  // `moveCardBetweenZones` / `addCardToZone`). The
+  // pre-existing `moveCardToZone` narrow-union API
+  // stays untouched (every other call-site that
+  // doesn't care about position keeps working).
+  //
+  // Out of scope: "any_zone" (lane 104 partial).
   if (
     re.redirect.to !== "exile" &&
     re.redirect.to !== "hand" &&
     re.redirect.to !== "sacrifice" &&
+    re.redirect.to !== "library_top" &&
+    re.redirect.to !== "library_bottom" &&
     re.redirect.to !== "battlefield_tapped" &&
     re.redirect.to !== "battlefield_untapped" &&
     re.redirect.to !== "life_loss"
@@ -231,6 +248,13 @@ export function buildScriptedDeathReplacementEffect(
         // (lane 100); other destinations parse in the
         // schema but the factory returns null for them
         // (lanes 101 / 104 wire them).
+        //
+        // Wave 4.8 follow-up 20 lane 61 sub-piece
+        // (#2614 follow-up, follow-up 20 piece 1):
+        // `"library_top"` and `"library_bottom"`
+        // are now in scope — the `moveCardToZone`
+        // consult routes them through the new
+        // `moveCardToZoneWithPosition` helper.
         //
         // Wave 4.8 follow-up 13 lane 104 (#2614 follow-up):
         // the `redirect.amount` flows on
