@@ -1,0 +1,32 @@
+{
+  "name": "Hornet Queen",
+  "oracle": "Flying, deathtouch\nWhen this creature enters, create four 1/1 green Insect creature tokens with flying and deathtouch.",
+  "statics": [
+    {
+      "text": "Hornet Queen has flying and deathtouch.",
+      "affects": {
+        "controller": "you",
+        "self": true
+      },
+      "keywords": ["flying", "deathtouch"]
+    }
+  ],
+  "triggers": [
+    {
+      "text": "When this creature enters, create four 1/1 green Insect creature tokens with flying and deathtouch.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "CreateToken",
+          "count": 4,
+          "power": 1,
+          "toughness": 1,
+          "color": "green",
+          "subtypes": ["Insect"],
+          "keywords": ["flying", "deathtouch"]
+        }
+      ]
+    }
+  ]
+}
