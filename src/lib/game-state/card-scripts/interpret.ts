@@ -2916,6 +2916,72 @@ export function resolveScriptedAbility(
       return state;
     }
   }
+  // Wave 4.8 follow-up 13 lane 106 (#2614 follow-up):
+  // "you may pay [life]; if you do, [X]" alternate cost
+  // (Aether Burst / Skeleton Scarab / Necropotence
+  // style). Parallel to the lane 88 `sacrifice_self`
+  // and lane 98 `discard` substrates. When
+  // `cost.pay_life.amount: N` is set, the engine
+  // surfaces a yes/no prompt (reusing the
+  // `you_may_prompt` shape — a yes/no yes/no gate for
+  // the cost consent); on yes, the controller loses
+  // `amount` life via the existing `loseLife` helper
+  // (the `state.turn.creatureDiedThisTurn` counter is
+  // NOT bumped — life loss is not the same as dying);
+  // on no, the trigger fizzles (CR 602.2b).
+  //
+  // The `additionalCosts.pay_life` arm on `CardScript`
+  // (from lane 63) is spell-cast only — the
+  // `cost.pay_life` arm is the lane 106 trigger-cost
+  // substrate. v1 supports a single integer `amount`.
+  const payLifeCost = (ability as {
+    cost?: { pay_life?: { amount: number } };
+  }).cost?.pay_life;
+  if (payLifeCost !== undefined) {
+    const stackAny = stackObject as StackObject & {
+      cost_paid?: boolean;
+    };
+    const costPaid = stackAny.cost_paid;
+    if (costPaid === false) {
+      // Controller declined: the trigger does nothing.
+      return state;
+    }
+    if (costPaid === undefined) {
+      // Surface a `pay_life_prompt` yes/no consent
+      // gate. The `pay_life_prompt` branch in
+      // `spell-casting/choices.ts` stamps
+      // `stackObject.cost_paid` (parallel to
+      // `discard_prompt`); the engine consult runs
+      // `loseLife` on `cost_paid === true`.
+      return {
+        ...state,
+        waitingChoice: {
+          type: "pay_life_prompt",
+          playerId: stackObject.controllerId as PlayerId,
+          stackObjectId: stackObject.id,
+          prompt: `${ability.text} (pay ${payLifeCost.amount} life?)`,
+          choices: [
+            { label: "Yes", value: true, isValid: true },
+            { label: "No", value: false, isValid: true },
+          ],
+          minChoices: 1,
+          maxChoices: 1,
+          presentedAt: Date.now(),
+        },
+      };
+    }
+    // costPaid === true: lose `amount` life, then fall
+    // through to resolve effects. The life loss is
+    // its own state mutation that runs before the
+    // effects loop (CR 602.2b "the cost is paid before
+    // the spell or ability resolves"). `loseLife` returns
+    // `GameState` directly (not a `KeywordActionResult`).
+    state = loseLife(
+      state,
+      stackObject.controllerId as PlayerId,
+      payLifeCost.amount,
+    );
+  }
   const effects = getScriptedAbilityEffects(state, stackObject);
   if (!effects) return undefined;
   return resolveScriptedEffects(state, effects, stackObject);

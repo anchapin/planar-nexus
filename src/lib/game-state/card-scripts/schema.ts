@@ -1605,6 +1605,30 @@ export const TriggerSchema = z
           })
           .strict()
           .optional(),
+        /**
+         * Wave 4.8 follow-up 13 lane 106 (#2614 follow-up):
+         * the "you may pay [life]; if you do, [X]"
+         * alternate cost ("you may pay 5 life; if you do,
+         * draw a card" — the Aether Burst /
+         * Skeleton Scarab / Necropotence-style cost).
+         * The arm is parallel to the lane 88
+         * `sacrifice_self` substrate and the lane 98
+         * `discard` substrate; the engine consult's
+         * `resolveScriptedAbility` cost-dispatch block
+         * runs `loseLife(state, controllerId, amount,
+         * cardId)` on `cost_paid === true` (reusing the
+         * existing `resolveLifeLossEffect` helper).
+         *
+         * v1 supports a single integer `amount`. The
+         * "pay 0 life" / "pay any amount of life"
+         * variants ride follow-up lanes.
+         */
+        pay_life: z
+          .object({
+            amount: z.number().int().min(1),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),

@@ -27,6 +27,7 @@ import { putTriggersOnStack } from "../../trigger-system/stack-ops";
 import { getScriptedTriggeredAbilities } from "../../abilities/parse";
 import { resolveWaitingChoice } from "../../spell-casting/choices";
 import { markAttackedThisTurn } from "../../keyword-actions/raid";
+import { refreshScriptedStatics } from "../../keyword-actions/scripted-statics";
 import { createCardInstance } from "../../card-instance";
 import {
   createInitialGameState,
@@ -235,5 +236,120 @@ describe("Midnight Snack (FDN 65): sacrifice-self cost on raid end-of-turn (lane
       (t) => t.sourceCardId === id("snack"),
     );
     expect(snackTriggers).toHaveLength(0);
+  });
+
+  /**
+   * Wave 4.8 follow-up 13 lane 106 (#2614 follow-up):
+   * "you may pay [life]; if you do, [X]" alternate cost
+   * (Aether Burst / Skeleton Scarab / Necropotence-
+   * style). The synthetic card carries
+   * `cost.pay_life: { amount: 5 }`. The engine
+   * consult's `resolveScriptedAbility` cost-dispatch
+   * block runs `loseLife` on `cost_paid === true`.
+   */
+  it("lane 106: registry exposes May Pay 5 Life Draw a Card with cost.pay_life.amount: 5", () => {
+    const cardObj = getCardScript("May Pay 5 Life Draw a Card");
+    expect(cardObj).toBeDefined();
+    const trig = cardObj!.triggers![0];
+    expect(trig.event).toBe("attacks");
+    expect(trig.cost).toEqual({ pay_life: { amount: 5 } });
+  });
+
+  it("lane 106: controller accepts pay_life_prompt → cost paid, life lost, draw runs", () => {
+    let state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    const [p1] = Array.from(state.players.keys());
+    state = put(
+      state,
+      p1,
+      "spirit",
+      card("May Pay 5 Life Draw a Card", "Creature — Spirit"),
+    );
+    state = refreshScriptedStatics(state);
+
+    const lifeBefore = state.players.get(p1)!.life;
+
+    const detected = detectTriggeredAbilities(state, "attacked", {
+      attackerId: id("spirit"),
+    });
+    const spiritTriggers = detected.filter(
+      (t) => t.sourceCardId === id("spirit"),
+    );
+    expect(spiritTriggers).toHaveLength(1);
+
+    const { state: stacked } = putTriggersOnStack(state, spiritTriggers);
+    const stackObject = stacked.stack[0];
+
+    // First pass: surface the pay_life_prompt yes/no
+    // gate (the cost-consent gate for pay_life).
+    const prompted = resolveScriptedAbility(stacked, stackObject)!;
+    expect(prompted.waitingChoice).toBeDefined();
+    expect(prompted.waitingChoice!.type).toBe("pay_life_prompt");
+
+    // Controller picks yes.
+    const accepted = resolveWaitingChoice(prompted, p1, true);
+    expect(accepted.success).toBe(true);
+    const stamped = accepted.state.stack.find(
+      (s) => s.id === stackObject.id,
+    )!;
+    expect(stamped.cost_paid).toBe(true);
+
+    // Second pass: cost runs (lose 5 life) and Draw
+    // effect runs.
+    const libraryBefore = accepted.state.zones.get(`${p1}-library`)!.cardIds.length;
+    const resolved = resolveScriptedAbility(accepted.state, stamped)!;
+    const lifeAfter = resolved.players.get(p1)!.life;
+    expect(lifeAfter).toBe(lifeBefore - 5);
+    // The Draw effect ran → library decreased by 1.
+    expect(resolved.zones.get(`${p1}-library`)!.cardIds.length).toBe(
+      libraryBefore - 1,
+    );
+  });
+
+  it("lane 106: controller declines pay_life_prompt → trigger fizzles (no life loss, no draw)", () => {
+    let state = startGame(
+      createInitialGameState(["Player1", "Player2"], 20, false),
+    );
+    const [p1] = Array.from(state.players.keys());
+    state = put(
+      state,
+      p1,
+      "spirit",
+      card("May Pay 5 Life Draw a Card", "Creature — Spirit"),
+    );
+    state = refreshScriptedStatics(state);
+
+    const lifeBefore = state.players.get(p1)!.life;
+
+    const detected = detectTriggeredAbilities(state, "attacked", {
+      attackerId: id("spirit"),
+    });
+    const spiritTriggers = detected.filter(
+      (t) => t.sourceCardId === id("spirit"),
+    );
+    const { state: stacked } = putTriggersOnStack(state, spiritTriggers);
+    const stackObject = stacked.stack[0];
+
+    const prompted = resolveScriptedAbility(stacked, stackObject)!;
+    expect(prompted.waitingChoice!.type).toBe("pay_life_prompt");
+
+    // Controller declines.
+    const declined = resolveWaitingChoice(prompted, p1, false);
+    expect(declined.success).toBe(true);
+    const stamped = declined.state.stack.find(
+      (s) => s.id === stackObject.id,
+    )!;
+    expect(stamped.cost_paid).toBe(false);
+
+    // Second pass: trigger fizzles — no life loss,
+    // no draw.
+    const libraryBefore = declined.state.zones.get(`${p1}-library`)!.cardIds.length;
+    const resolved = resolveScriptedAbility(declined.state, stamped)!;
+    const lifeAfter = resolved.players.get(p1)!.life;
+    expect(lifeAfter).toBe(lifeBefore);
+    expect(resolved.zones.get(`${p1}-library`)!.cardIds.length).toBe(
+      libraryBefore,
+    );
   });
 });

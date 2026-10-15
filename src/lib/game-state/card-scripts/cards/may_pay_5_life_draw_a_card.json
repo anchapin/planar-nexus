@@ -1,0 +1,23 @@
+{
+  "name": "May Pay 5 Life Draw a Card",
+  "oracle": "Creature — Spirit\nYou may pay 5 life. If you do, draw a card.",
+  "triggers": [
+    {
+      "text": "Whenever this creature attacks, you may pay 5 life. If you do, draw a card.",
+      "event": "attacks",
+      "subject": "self",
+      "cost": {
+        "pay_life": {
+          "amount": 5
+        }
+      },
+      "effects": [
+        {
+          "op": "Draw",
+          "amount": 1,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}

@@ -418,6 +418,49 @@ export function resolveWaitingChoice(
     };
   }
 
+  // Wave 4.8 follow-up 13 lane 106 (#2614 follow-up):
+  // parallel to the discard_prompt branch above. The
+  // `pay_life_prompt` is a yes/no consent gate for the
+  // `cost.pay_life: { amount: N }` arm. The resolver
+  // stamps `stackObject.cost_paid` on the player's
+  // answer (yes → true; no → false); the engine consult
+  // runs `loseLife(state, controllerId, amount)` on
+  // `cost_paid === true` (reusing the existing
+  // `resolveLifeLossEffect` helper — see
+  // `effect-resolution.ts`).
+  if (type === "pay_life_prompt") {
+    const value = Array.isArray(selectedValue)
+      ? selectedValue[0]
+      : selectedValue;
+    const bool = value === true || value === "yes" || value === "true";
+    const wasYes = value === false || value === "no" ? false : bool;
+    if (!wasYes && value !== false && value !== "no") {
+      return {
+        success: false,
+        state,
+        error: "Expected a yes/no value for pay_life_prompt",
+      };
+    }
+    const target = state.stack.find((s) => s.id === stackObjectId);
+    if (!target) {
+      return {
+        success: false,
+        state,
+        error: "Stack object not found for pay_life_prompt",
+      };
+    }
+    return {
+      success: true,
+      state: {
+        ...state,
+        waitingChoice: null,
+        stack: state.stack.map((s) =>
+          s.id === stackObjectId ? { ...s, cost_paid: wasYes } : s,
+        ),
+      },
+    };
+  }
+
   if (type === "choose_value" && typeof selectedValue === "number") {
     const stackObj = state.stack.find((s) => s.id === stackObjectId);
 
