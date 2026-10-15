@@ -7,6 +7,8 @@ import { putTriggersOnStack } from "../trigger-system/stack-ops";
 import { applyEntersWithCounters } from "./enters-with-counters";
 import { isCreatureOnCurrentFace, markCreatureDiedThisTurn } from "./morbid";
 import { buildScriptedDeathReplacementEffects } from "../card-scripts/replacement-effect-bindings";
+import { tapCardAction, untapCardAction } from "./damage-tap";
+import { loseLife } from "../player-actions";
 /**
  * Zone-removal keyword actions (CR 701): destroy, exile, sacrifice, regenerate, and generic zone moves.
  *
@@ -428,6 +430,17 @@ export function moveCardToZone(
   // consult's inner scope) so the post-consult path
   // can read it.
   const isSacrificeRedirect = { value: false };
+  // Wave 4.8 follow-up 13 lane 104 (#2614 follow-up):
+  // when the redirect is "battlefield_tapped" /
+  // "battlefield_untapped" / "life_loss" (periodic
+  // self-replacement destinations), the card stays
+  // on the battlefield and a side-effect applies
+  // instead of a zone move. The flag carries the
+  // kind + amount through to the post-consult
+  // handler below.
+  const pendingPeriodicRedirect: {
+    value: { kind: string; amount: number } | null;
+  } = { value: null };
   if (targetZoneType === "graveyard") {
     const cardForConsult = state.cards.get(cardId);
     const sourceZoneKey = cardForConsult?.currentZoneKey ?? null;
@@ -486,9 +499,9 @@ export function moveCardToZone(
         // destination).
         //
         // Out of scope: "library_top" /
-        // "library_bottom" / "battlefield_tapped" /
-        // "battlefield_untapped" / "any_zone" /
-        // "life_loss" (lanes 104).
+        // "library_bottom" / "any_zone" (lane 104
+        // partial — covered by lane 101's
+        // sacrifice-redirect as a sibling case).
         const redirect = processed.context?.redirectToZone;
         if (redirect === "exile") {
           targetZoneType = "exile";
@@ -503,6 +516,22 @@ export function moveCardToZone(
           // CR 603.10a purposes); the move to graveyard
           // happens via `sacrificeCard` below.
           isSacrificeRedirect.value = true;
+        } else if (
+          redirect === "battlefield_tapped" ||
+          redirect === "battlefield_untapped" ||
+          redirect === "life_loss"
+        ) {
+          // Wave 4.8 follow-up 13 lane 104 (#2614
+          // follow-up): periodic self-replacement
+          // destinations. The card stays on the
+          // battlefield (no move-to-graveyard); the
+          // post-consult path applies the side effect
+          // (tap / untap / life loss) and skips the
+          // default move below.
+          pendingPeriodicRedirect.value = {
+            kind: redirect,
+            amount: (processed.context?.redirectToZoneAmount ?? 0) as number,
+          };
         }
       } finally {
         // Always clear, even when `processEvent` throws.
@@ -519,6 +548,36 @@ export function moveCardToZone(
   // when the redirect is "sacrifice" — a sacrificed creature
   // doesn't fire dies triggers (the sacrifice path replaces the
   // death path; CR 614.9 "instead" effects skip the wait).
+  //
+  // Wave 4.8 follow-up 13 lane 104 (#2614 follow-up):
+  // periodic self-replacement ("instead tap it" /
+  // "instead lose 1 life"). The card stays on the
+  // battlefield; a side-effect applies. The consult
+  // set `pendingPeriodicRedirect.value` to a non-null
+  // object; we apply the side effect and skip the
+  // default move-to-graveyard.
+  if (pendingPeriodicRedirect.value !== null) {
+    const { kind, amount } = pendingPeriodicRedirect.value;
+    if (kind === "battlefield_tapped") {
+      const tapResult = tapCardAction(state, cardId);
+      state = tapResult.success ? tapResult.state : state;
+    } else if (kind === "battlefield_untapped") {
+      const untapResult = untapCardAction(state, cardId);
+      state = untapResult.success ? untapResult.state : state;
+    } else if (kind === "life_loss") {
+      const dyingCard = state.cards.get(cardId);
+      const ownerId = dyingCard?.ownerId;
+      if (ownerId) {
+        state = loseLife(state, ownerId, amount, cardId);
+      }
+    }
+    return {
+      success: true,
+      state,
+      description: `Periodic replacement (${kind}) applied; creature stays on battlefield.`,
+      affectedCards: [cardId],
+    };
+  }
   const diesTriggers =
     targetZoneType === "graveyard" && !isSacrificeRedirect.value
       ? detectDiesTriggers(state, cardId)

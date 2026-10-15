@@ -482,7 +482,24 @@ const SCOPES = [
     // create-token-xcount family (the historical
     // precedent continues; follow-up 13 lane 99
     // rides the same family).
-    budgetLines: 3550,
+    //
+    // Wave 4.8 follow-up 13 lane 104 (#2614 follow-up):
+    // the periodic self-replacement destinations
+    // (`"battlefield_tapped"` / `"battlefield_untapped"`
+    // / `"life_loss"`) plus the `redirect.amount`
+    // field for `life_loss`. The docstring + schema
+    // entries land at +6 lines; schema.ts measured
+    // at 3556. Bumping 3550 → 3600 to give the
+    // periodic-replacement family room to land
+    // without fragmenting the
+    // trigger-cost / you-may-cost /
+    // while-condition / replacement-effect /
+    // cards-drawn / opponent-drawn /
+    // create-token-xcount / conditional-replacement
+    // family (the historical precedent continues;
+    // follow-up 13 lane 105+ rides the same
+    // family).
+    budgetLines: 3600,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),
