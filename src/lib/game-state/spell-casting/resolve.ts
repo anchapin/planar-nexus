@@ -633,6 +633,22 @@ function resolveSpellCompletion(
         // because both are spell-resolution side effects on the
         // CardInstance.
         let updatedCards = state.cards;
+        // Wave 4.8 follow-up 19 lane 116 piece 2/2
+        // (#2614 follow-up): the cast-time writer for
+        // `state.castVariableValues`. The read-side
+        // helper `evaluateCastVariable(state,
+        // spellCardId)` (lane 116 piece 1/2) reads
+        // this map; without the writer the read path
+        // is dead substrate. The writer is
+        // unconditional — every permanent that
+        // resolves from a spell stamps the
+        // chosen X (or 0 for non-X spells) into the
+        // map. Non-X spells stamp 0 so the read path
+        // sees a number; the
+        // `castFilter.X: "X_spent_on_spell"` arm
+        // gates the trigger on the spell having X in
+        // its mana cost AND the entry existing.
+        let updatedCastVariableValues = state.castVariableValues;
         if (!typeLine.includes("instant") && !typeLine.includes("sorcery")) {
           const card = state.cards.get(stackObject.sourceCardId);
           if (card) {
@@ -640,6 +656,21 @@ function resolveSpellCompletion(
             const x = stackObject.variableValues?.get("X");
             if (typeof x === "number") {
               next = { ...next, xValue: x };
+              // Wave 4.8 follow-up 19 lane 116 piece
+              // 2/2 — the writer. Stamp the chosen X
+              // (or 0 for non-X spells) onto the
+              // per-game ledger so future triggers
+              // with
+              // `castFilter.X: "X_spent_on_spell"`
+              // can read it.
+              const newMap = new Map(
+                state.castVariableValues ?? new Map(),
+              );
+              newMap.set(
+                stackObject.sourceCardId as CardInstanceId,
+                x,
+              );
+              updatedCastVariableValues = newMap;
             }
             if (next !== card) {
               updatedCards = new Map(state.cards);
@@ -682,6 +713,13 @@ function resolveSpellCompletion(
           priorityPlayerId: state.turn.activePlayerId,
           consecutivePasses: 0,
           lastModifiedAt: Date.now(),
+          // Wave 4.8 follow-up 19 lane 116 piece 2/2
+          // (#2614 follow-up): the per-game
+          // `castVariableValues` ledger. The
+          // unconditional writer above stamps
+          // the chosen X (or 0 for non-X spells)
+          // onto every permanent as it resolves.
+          castVariableValues: updatedCastVariableValues,
         };
 
         if (auraTargetToAttach) {

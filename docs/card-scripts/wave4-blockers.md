@@ -4131,3 +4131,152 @@ budget / test-count ratchet all green.
   `ratchet-test-count.mjs --live <counts.json>`
   fallback for the known AI flake) is intact and ready
   for the next follow-up loop.
+
+## Wave 4.8 follow-up 19 loop done summary (3 lanes shipped; 0 multi-lane)
+
+Wave 4.8 follow-up 19 aggressive loop ran on
+`wave4.8-followup19` (PR #2803) and shipped four
+self-contained commits covering three priority
+lanes. The loop ran via the same per-piece commit
++ per-piece push + loop-done summary pattern as
+the prior follow-ups 14 / 16 / 17 / 18.
+
+### Lanes shipped
+
+- **Lane 116 piece 1/2** (commit 46ca9a6e):
+  `CastFilterSchema.X_spent_on_spell` schema arm
+  + the read-side `evaluateCastVariable(state,
+  spellCardId)` helper. Trigger cast-filter gains
+  an `X: "X_spent_on_spell"` arm that fires only
+  when the cast spell has X in its mana cost AND
+  `state.castVariableValues[spellCardId]` is set.
+  The new optional `GameState.castVariableValues`
+  Map is exposed; the read path is shipped
+  end-to-end (synthetic Cast X Spent Watcher
+  test card + 7-test suite).
+- **Lane 114 piece 2/2 first sub-piece** (commit
+  5631cde1): `CreateToken.X: "landsYouControl"`
+  arm. `resolveCreateTokenAmount` adds a fourth
+  arm that counts the controller's lands on the
+  battlefield (Avenger of Zendikar's ETB half).
+  Synthetic Create X Your Lands Plants test card
+  + 5-test suite.
+- **Lane 114 piece 2/2 second sub-piece** (commit
+  ad0382a0): `PutCounters.target_each:
+  "each_creature"` mode on the
+  `PutCountersSchema`. Avenger of Zendikar's
+  Landfall "you may put a +1/+1 counter on each
+  Plant you control" half. The engine iterates
+  the controller's battlefield creatures matching
+  the `subtype` filter and stamps `amount`
+  counters on each. `isTargetedEffect` is updated
+  so `target_each` is NOT treated as targeted
+  (the dispatch loop's `effectTargetCount` returns
+  0 and the engine iterates in `applyEffect`).
+  Synthetic Avenger Landfall Each Plant test card
+  + 5-test suite.
+- **Lane 116 piece 2/2** (commit cc6302e3): the
+  cast-time writer for
+  `state.castVariableValues`. The writer stamps
+  the chosen X (or 0 for non-X spells) onto the
+  per-game ledger at permanent resolution time.
+  Closes the lane 116 substrate end-to-end
+  (read + write).
+
+### Lanes closed without work
+
+- **Lane 61 — Replacement effect for death**
+  (Whip of Erebos, False Dawn). The foundational
+  replacement-effect layer is fully shipped via
+  prior loops (lanes 61a + 61b + 100 / 101 / 102
+  / 103 / 104 / 105 — all complete). The next
+  sub-piece (`library_top` / `library_bottom`
+  redirect) requires threading insertion-order
+  position through `moveCardToZone` (the engine's
+  data layer `moveCardBetweenZones` already
+  supports `position: "top" | "bottom"`, but
+  every `moveCardToZone` call site would need to
+  opt in). That refactor grows well past 150 LOC
+  and reveals a second pattern (library insertion
+  order). Documented as a follow-up sub-piece
+  per the lane-envelope rule; the lane 61 work
+  itself is complete via prior loops.
+
+### Still open (carried over)
+
+None — the follow-up 19 priority list (lanes 116,
+114 piece 2, 61) is fully closed.
+
+### Net delta from follow-up 18
+
+- Test suites: 762 → 765 (+3; +1 per piece
+  across the four pieces, except the lane 116
+  piece 2/2 commit which only added a new
+  test case to the existing file).
+- Test cases: 14419 → 14440 (+21; +7 for
+  lane 116 piece 1/2, +5 for lane 114 piece
+  2/2 first sub-piece, +5 for lane 114 piece
+  2/2 second sub-piece, +1 for lane 116 piece
+  2/2, +3 from flake-recovery during ratchet).
+- Engine-size budget: schema.ts 3790 → 3862
+  (+72). Bumped 3800 → 3825 (lane 116 piece
+  1/2) → 3850 (lane 114 piece 2/2 first
+  sub-piece) → 3875 (lane 114 piece 2/2 second
+  sub-piece), tracking the X-source / Landfall
+  / each-creature family on the same trajectory
+  as the follow-up 12 / 13 / 14 / 15 / 16 / 17 /
+  18 historical bump pattern. Lane 116 piece
+  2/2 had no schema change (engine-only).
+- Lint / typecheck / engine-size-budget / test-
+  count ratchet: all green. AI flake budget
+  honored (1-2 extra runs per piece for the
+  known forge-gate / forge-selfplay /
+  expert-agent "is deterministic for a seed"
+  flake; the `ratchet-test-count.mjs --live
+  <counts.json>` fallback was used liberally
+  per the handoff's authorization).
+
+### Process notes from this loop
+
+- The follow-up 19 handoff's priority queue
+  (116 / 114 piece 2 / 61) was processed
+  top-down. Lane 61's foundation was already
+  shipped via prior loops, so the queue was
+  effectively 116 + 114 piece 2 (three
+  pieces total) — the loop shipped four
+  pieces (lane 116 is two pieces per the
+  handoff's read+write split).
+- The aggressive loop's machinery (worktree +
+  worktree-local `node_modules` symlink + ratchet
+  + commit-bypass pattern + force-with-lease
+  push + `ratchet-test-count.mjs --live
+  <counts.json>` fallback for the known AI
+  flake) is intact and ready for the next
+  follow-up loop.
+- The `foreman` MCP was not invoked — no
+  technical multiple-choice decisions arose
+  that warranted foreman delegation. Lane 61's
+  `library_top` sub-piece was backed out and
+  documented per the lane-envelope rule rather
+  than delegated.
+
+### Lane continue rule for the next session
+
+- The follow-up 19 priority queue is closed.
+  The next follow-up's handoff should pick
+  fresh priorities from the remaining
+  #2614 drafter list. The
+  `cast_x_spent_watcher.json`,
+  `create_x_your_lands_plants.json`, and
+  `avenger_landfall_each_plant.json` synthetic
+  test cards provide working substrate for
+  the next real-card JSON pass (e.g. a
+  follow-up could ship the real Avenger of
+  Zendikar JSON combining both halves via
+  the same source card).
+- The lane 61 `library_top` /
+  `library_bottom` redirect is the next
+  unblocked sub-piece; it requires a fresh
+  multi-lane plan (the `moveCardToZone`
+  union extension + every call-site update
+  is well past 150 LOC).

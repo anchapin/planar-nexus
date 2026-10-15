@@ -538,7 +538,44 @@ const SCOPES = [
     // over 3750). Bumping 3750 → 3800 to give the
     // follow-up 18 self-grant family room to land
     // without fragmenting the StaticSchema sub-family.
-    budgetLines: 3800,
+    //
+    // Wave 4.8 follow-up 19 lane 116 (#2614 follow-up):
+    // the `X: "X_spent_on_spell"` cast-filter arm on
+    // TriggerSchema (read-only path; the cast-time
+    // writer is a follow-up sub-piece). The arm
+    // adds ~14 lines (docstring + the X enum +
+    // refine-list entry for cast-only permission) —
+    // schema.ts measured at 3814 (+14 over 3800).
+    // Bumping 3800 → 3825 to give the follow-up 19
+    // X-spent cast-filter family room to land on
+    // the same trajectory as the follow-up 12 / 13 /
+    // 14 / 15 / 16 / 17 / 18 budget bumps.
+    //
+    // Wave 4.8 follow-up 19 lane 114 piece 2/2
+    // (#2614 follow-up): the `X: "landsYouControl"`
+    // arm on `CreateTokenSchema.X` (parallel to the
+    // lane 97 `yourCreatures` arm). The arm adds
+    // ~8 lines (docstring extension + the
+    // `landsYouControl` enum entry) — schema.ts
+    // measured at 3833 (+8 over 3825). Bumping
+    // 3825 → 3850 to give the follow-up 19 Avenger
+    // of Zendikar half room to land on the same
+    // trajectory as the follow-up 12 / 13 / 14 /
+    // 15 / 16 / 17 / 18 / 19-lane-116 budget bumps.
+    //
+    // Wave 4.8 follow-up 19 lane 114 piece 2/2
+    // second sub-piece (#2614 follow-up): the
+    // `target_each: { subtype }` mode on
+    // `PutCountersSchema` (the Landfall "each
+    // Plant" half). The arm adds ~12 lines
+    // (docstring + the target_each object +
+    // refine-list entry for '+1/+1' counter
+    // permission) — schema.ts measured at 3862
+    // (+12 over 3850). Bumping 3850 → 3875 to
+    // give the follow-up 19 Landfall-each-Plant
+    // half room to land on the same trajectory
+    // as the prior budget bumps.
+    budgetLines: 3875,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

@@ -317,12 +317,31 @@ export const CreateTokenSchema = z
      *     Goblin creature tokens where X is the number
      *     of creatures you control" — X-counts scale
      *     with the board state)
+     *   - `landsYouControl`: integer — the number of
+     *     lands the controller controls on the
+     *     battlefield (Avenger of Zendikar's
+     *     "create X 0/1 green Plant creature tokens
+     *     where X is the number of lands you control"
+     *     half — #2500 Zendikar Rising, DFC 186).
+     *     The engine reads the controller's
+     *     battlefield land count via the existing
+     *     `computeX(..., "lands")` arm in
+     *     `keyword-actions/scripted-statics.ts`
+     *     (the helper already counts lands for the
+     *     static-anthem substrate; lane 114 piece
+     *     2 promotes it into the CreateToken X
+     *     substrate).
      *
      * When `X` is set, the integer `count` is ignored;
      * the engine resolves the named count from state.
      */
     X: z
-      .enum(["cardsDrawnThisTurn", "creaturesDiedThisTurn", "yourCreatures"])
+      .enum([
+        "cardsDrawnThisTurn",
+        "creaturesDiedThisTurn",
+        "yourCreatures",
+        "landsYouControl",
+      ])
       .optional(),
   })
   .strict()
@@ -901,6 +920,28 @@ export const PutCountersSchema = z
      * targets.
      */
     use_source_power: z.boolean().default(false),
+    /**
+     * Wave 4.8 follow-up 19 lane 114 piece 2/2
+     * (#2614 follow-up): the "each_creature" target
+     * mode on `PutCounters` (Avenger of Zendikar's
+     * "Landfall — you may put a +1/+1 counter on
+     * each Plant you control" half — DSC 186).
+     * The engine iterates the controller's
+     * battlefield creatures matching the
+     * `subtype` filter and stamps `amount` counters
+     * on each. The `subtype` and `controller` fields
+     * are mutually required (a single filter per
+     * effect); out-of-battlefield creatures are
+     * skipped. Only valid with
+     * `counter: "+1/+1"`; quest counters ride a
+     * follow-up lane.
+     */
+    target_each: z
+      .object({
+        subtype: z.string().min(1),
+      })
+      .strict()
+      .optional(),
     if_kicked: ifKicked,
     if_source_counters: ifSourceCounters,
   })
@@ -930,6 +971,13 @@ export const PutCountersSchema = z
       e.amount === "X",
     {
       message: "amount is required (>=1 or 'X') unless use_source_power is set",
+    },
+  )
+  .refine(
+    (e) => e.target_each === undefined || e.counter === "+1/+1",
+    {
+      message:
+        "target_each (each_creature mode) only supports '+1/+1' counters (lane 114 piece 2/2, #2614)",
     },
   );
 
@@ -1466,6 +1514,29 @@ export const TriggerSchema = z
     once_per_turn: z.literal(true).optional(),
     /** cast only: "a spell with a single target" (exactly one target). */
     targets: z.literal("single").optional(),
+    /**
+     * Wave 4.8 follow-up 19 lane 116 (#2614 follow-up):
+     * "this spell's X equals the X spent on the previous
+     * spell" — a cast-only X-source filter. When set, the
+     * trigger fires only when the cast spell has X in its
+     * mana cost AND `state.castVariableValues[spellCardId]`
+     * is set (the spell that triggered this). The
+     * `interpret.ts` consumer reads
+     * `state.castVariableValues[spellCardId]` to surface
+     * the stored X as the effect's resolved X.
+     *
+     * v1 supports a single arm
+     * (`"X_spent_on_spell"`); the "X spent on any prior
+     * spell this turn" / "X spent on the most recent
+     * instant or sorcery" variants ride follow-up lanes.
+     * v1 ships a **read-only path** — the engine surfaces
+     * the helper but does NOT yet write to
+     * `state.castVariableValues` at cast time. The
+     * synthetic test pre-populates the map directly; the
+     * write step is a follow-up sub-piece (lane 116
+     * piece 2/2).
+     */
+    X: z.enum(["X_spent_on_spell"]).optional(),
     /** The chapter number of a Saga chapter ability (I = 1). */
     chapter: z.number().int().min(1).max(6).optional(),
     effects: effects.optional(),
@@ -1739,10 +1810,11 @@ export const TriggerSchema = z
       (t.caster === undefined &&
         t.spell === undefined &&
         t.targets === undefined &&
-        t.cast_color === undefined),
+        t.cast_color === undefined &&
+        t.X === undefined),
     {
       message:
-        "caster, spell, targets and cast_color are only for cast triggers",
+        "caster, spell, targets, cast_color and X are only for cast triggers (lane 116, #2614)",
     },
   )
   .refine(

@@ -1,0 +1,22 @@
+{
+  "name": "Create X Your Lands Plants",
+  "oracle": "Enchantment\nWhen this enchantment enters, create a 0/1 green Plant creature token equal to the number of lands you control.",
+  "triggers": [
+    {
+      "text": "When this enchantment enters, create a 0/1 green Plant creature token equal to the number of lands you control.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "CreateToken",
+          "count": 1,
+          "power": 0,
+          "toughness": 1,
+          "color": "green",
+          "subtypes": ["Plant"],
+          "X": "landsYouControl"
+        }
+      ]
+    }
+  ]
+}
