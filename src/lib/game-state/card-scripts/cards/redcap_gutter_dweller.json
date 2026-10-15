@@ -13,6 +13,20 @@
         "add_color": "chosen",
         "addColorToSelf": true
       }
+    },
+    {
+      "text": "Goblins you control have menace as long as Redcap Gutter-Dweller has three or more counters on it.",
+      "affects": {
+        "controller": "you",
+        "subtype": "Goblin"
+      },
+      "keywords": ["menace"],
+      "while_condition": {
+        "kind": "counter_minimum",
+        "counter": "+1/+1",
+        "op": "gte",
+        "n": 3
+      }
     }
   ],
   "triggers": [

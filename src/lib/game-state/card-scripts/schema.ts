@@ -2047,23 +2047,37 @@ export const StaticSchema = z
     X: z.enum(["treasures", "creatures", "lands"]).optional(),
     /**
      * Wave 4.8 follow-up 12 lane 91 (#2614 follow-up): a
-     * CR 603.2 "while-condition" gate on the static ability itself
+     * CR 603. "while-condition" gate on the static ability itself
      * (Twinblade Paladin's "as long as you have 25 or more life,
      * this creature has double strike and lifelink"). When the
      * gate evaluates false, the static's `keywords` / `power` /
      * `toughness` are NOT applied at refresh time; when true,
-     * the static applies normally. v1 supports a single shape:
-     * `{ kind: "life_minimum", value: N }` — the static applies
-     * when the controller's life is `>= N`. The count ledger and
-     * additional kinds (your-library-size / opponent-life-min)
-     * are follow-up lanes.
+     * the static applies normally.
+     *
+     * Wave 4.8 follow-up 14 lane 57 (#2614 follow-up): extends
+     * the discriminator with `counter_minimum` — the static
+     * applies only when the source's per-instance
+     * `card.instanceCounters[counter]` matches the comparator:
+     *   - `op: "gte"` → `count >= n`
+     *   - `op: "eq"`  → `count === n`
+     * Default behavior on absent counters is `0`. Used by
+     * Redcap Gutter-Dweller's "Goblins you control have menace
+     * as long as this has three or more counters on it" half
+     * (`counter: "+1/+1", op: "gte", n: 3`).
      */
     while_condition: z
-      .object({
-        kind: z.literal("life_minimum"),
-        value: z.number().int().min(1),
-      })
-      .strict()
+      .discriminatedUnion("kind", [
+        z.object({
+          kind: z.literal("life_minimum"),
+          value: z.number().int().min(1),
+        }).strict(),
+        z.object({
+          kind: z.literal("counter_minimum"),
+          counter: z.string().min(1),
+          op: z.enum(["gte", "eq"]),
+          n: z.number().int().min(0),
+        }).strict(),
+      ])
       .optional(),
     keywords: z.array(z.enum(TOKEN_KEYWORDS)).min(1).optional(),
     /**
