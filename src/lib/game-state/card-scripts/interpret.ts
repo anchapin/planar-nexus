@@ -59,6 +59,7 @@ import {
 } from "../pt-until-end-of-turn";
 import { getCardScript } from "./registry";
 import { addMana } from "../mana/mana-pool";
+import { spendMana } from "../mana/mana-payment";
 import { PREDEFINED_TOKENS } from "./predefined-tokens";
 import {
   matchesController,
@@ -2981,6 +2982,80 @@ export function resolveScriptedAbility(
       stackObject.controllerId as PlayerId,
       payLifeCost.amount,
     );
+  }
+  // Wave 4.8 follow-up 17 lane 117 (#2614 follow-up):
+  // parallel to the lane 106 `cost.pay_life` substrate.
+  // "Pay N mana:" as a trigger cost — Mana Echo / Selvala
+  // Heart of the Wilds style. The engine surfaces a
+  // yes/no prompt (`pay_mana_prompt` waitingChoice); on
+  // yes, the controller pays `amount` generic mana via
+  // the existing `spendMana` helper (the standard
+  // generic → colorless → colored cascade); on no, the
+  // trigger fizzles (CR 602.2b).
+  //
+  // The check runs BEFORE the effects resolution so the
+  // prompt surfaces on the first pass (before any
+  // effects are applied). The `cost_paid === undefined`
+  // path surfaces the prompt; `cost_paid === false`
+  // fizzes; `cost_paid === true` deducts mana and
+  // falls through to the effects loop.
+  const payManaCost = (ability as {
+    cost?: { pay_mana?: { amount: number } };
+  }).cost?.pay_mana;
+  if (payManaCost !== undefined) {
+    const stackAny = stackObject as StackObject & {
+      cost_paid?: boolean;
+    };
+    const costPaid = stackAny.cost_paid;
+    if (costPaid === false) {
+      // Controller declined: the trigger does nothing.
+      return state;
+    }
+    if (costPaid === undefined) {
+      // Surface a `pay_mana_prompt` yes/no consent
+      // gate. The `pay_mana_prompt` branch in
+      // `spell-casting/choices.ts` stamps
+      // `stackObject.cost_paid` (parallel to
+      // `pay_life_prompt`); the engine consult runs
+      // `spendMana` on `cost_paid === true`.
+      return {
+        ...state,
+        waitingChoice: {
+          type: "pay_mana_prompt",
+          playerId: stackObject.controllerId as PlayerId,
+          stackObjectId: stackObject.id,
+          prompt: `${ability.text} (pay ${payManaCost.amount} mana?)`,
+          choices: [
+            { label: "Yes", value: true, isValid: true },
+            { label: "No", value: false, isValid: true },
+          ],
+          minChoices: 1,
+          maxChoices: 1,
+          presentedAt: Date.now(),
+        },
+      };
+    }
+    // costPaid === true: spend `amount` generic mana,
+    // then fall through to resolve effects. The mana
+    // deduction runs before the effects loop
+    // (CR 602.2b "the cost is paid before the spell or
+    // ability resolves"). If the controller has fewer
+    // than `amount` mana in the pool, the trigger
+    // fizzles (defensive — the player should never
+    // have been able to confirm the prompt without
+    // the mana, but the engine surfaces a no-op on
+    // short mana as a safety net).
+    const spendResult = spendMana(
+      state,
+      stackObject.controllerId as PlayerId,
+      { generic: payManaCost.amount },
+    );
+    if (spendResult.success) {
+      state = spendResult.state;
+    } else {
+      // Defensive: short mana — fizzles.
+      return state;
+    }
   }
   const effects = getScriptedAbilityEffects(state, stackObject);
   if (!effects) return undefined;

@@ -461,6 +461,49 @@ export function resolveWaitingChoice(
     };
   }
 
+  // Wave 4.8 follow-up 17 lane 117 (#2614 follow-up):
+  // parallel to the `pay_life_prompt` branch above. The
+  // `pay_mana_prompt` is a yes/no consent gate for the
+  // `cost.pay_mana: { amount: N }` arm. The resolver
+  // stamps `stackObject.cost_paid` on the player's
+  // answer (yes → true; no → false); the engine consult
+  // runs `spendMana(state, controllerId, { generic:
+  // amount })` on `cost_paid === true` (reusing the
+  // existing `spendMana` helper from
+  // `mana/mana-payment.ts`).
+  if (type === "pay_mana_prompt") {
+    const value = Array.isArray(selectedValue)
+      ? selectedValue[0]
+      : selectedValue;
+    const bool = value === true || value === "yes" || value === "true";
+    const wasYes = value === false || value === "no" ? false : bool;
+    if (!wasYes && value !== false && value !== "no") {
+      return {
+        success: false,
+        state,
+        error: "Expected a yes/no value for pay_mana_prompt",
+      };
+    }
+    const target = state.stack.find((s) => s.id === stackObjectId);
+    if (!target) {
+      return {
+        success: false,
+        state,
+        error: "Stack object not found for pay_mana_prompt",
+      };
+    }
+    return {
+      success: true,
+      state: {
+        ...state,
+        waitingChoice: null,
+        stack: state.stack.map((s) =>
+          s.id === stackObjectId ? { ...s, cost_paid: wasYes } : s,
+        ),
+      },
+    };
+  }
+
   if (type === "choose_value" && typeof selectedValue === "number") {
     const stackObj = state.stack.find((s) => s.id === stackObjectId);
 
