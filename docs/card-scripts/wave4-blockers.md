@@ -3946,3 +3946,102 @@ aggressive loop's machinery (worktree + worktree-local
 `node_modules` symlink + ratchet + commit-bypass
 pattern + force-with-lease push) is intact and ready
 for the next follow-up loop.
+
+
+## Wave 4.8 follow-up 18 mid-loop progress (pieces 1-2)
+
+The Wave 4.8 follow-up 18 aggressive loop opened with
+six priority-queue lanes (109 / 112 / 114 / 115 / 116 /
+61) per `docs/card-scripts/wave4.8-followup18-handoff.md`.
+Two self-contained lanes shipped as one PR per the
+follow-up 14 / 16 / 17 precedent:
+
+### Shipped
+
+- **Lane 114 piece 1/2 — Hornet Queen (DSC 184)**
+  (commit `b0be5a5b`). Self-static `affects: { controller:
+  "you", self: true }` + `keywords: ["flying", "deathtouch"]`
+  (lane 91 pattern) plus ETB `CreateToken { count: 4,
+  power: 1, toughness: 1, color: "green", subtypes:
+  ["Insect"], keywords: ["flying", "deathtouch"] }`
+  consuming the lane 66 substrate end-to-end. Test
+  cases: 3 in `src/lib/game-state/card-scripts/
+  __tests__/hornet-queen.test.ts`.
+
+- **Lane 112 — Static self-grant triggered abilities
+  (CR 603.2 grant semantics)** (commit `a2ba9be6`).
+  Schema arm `StaticSchema.grants.triggers` parallel to
+  the lane 65 Aura variant. New `optional` flag on
+  `StaticSchema.affects` to support meta-statics.
+  Engine consumer in `refreshScriptedStatics` (collection
+  + diff + union-write). Sample card
+  `self_grant_draw_on_die.json`. Test cases: 4 in
+  `src/lib/game-state/card-scripts/__tests__/
+  lane112-self-grant-triggered-abilities.test.ts`.
+
+### Pieces in progress / closed without work
+
+- **Lane 115 — Stun / finality counters** — both pieces
+  already shipped prior to this loop (the lane 67
+  `enters_with_counters` schema arm + the existing
+  `untapOrRemoveStun` decrement in the untap step + the
+  `hasFinalityCounter` consult in `moveCardToZone`).
+  No work needed; the lane is closed via prior lanes.
+
+- **Lane 109 — Infernal Vessel script** — the handoff's
+  described "chosen type + chosen color + ETB discard"
+  combo doesn't match any real MTG card. The substrate
+  pieces (chosen color, chosen creature type, dual
+  compound `color_and_creature_type` enter choice, ETB
+  trigger with `cost.discard`) are all individually
+  shipped via lane 39/56/107/98 + Storm Fleet Spy. Real
+  card does not exist; lane parked.
+
+### Pieces still open
+
+- **Lane 114 piece 2 — Avenger of Zendikar JSON**
+  requires a `CreateToken.X: "landsYouControl"` arm
+  + a Landfall "PutCounters on each Plant you control"
+  target mode. Multi-lane substrate extensions.
+
+- **Lane 116 — X-spent-on-other-spells arm
+  (`CastFilterSchema.X_spent_on_spell`)**. v1 minimum
+  requires a `state.castVariableValues` write site
+  (cast time) + read site (effect evaluation), plus
+  cast-flow integration. Multi-lane.
+
+- **Lane 61 — Replacement effect for death
+  (Whip of Erebos, False Dawn)**. Per the follow-up 2
+  handoff's process rules, parked pending the
+  foundational replacement-effect layer. A separate
+  multi-lane plan is required.
+
+### Test-suite delta vs. follow-up 17 baseline
+
+- Test suites: 760 → 762 (+2).
+- Test cases: 14410 → 14419 (+9 across 2 new test
+  files: hornet-queen +3, lane112 +4; +2
+  flake-recovery at re-test time).
+
+### Engine-size budget delta
+
+- schema.ts: 3701 (follow-up 17 baseline) → 3790
+  (+89 across lane 114 piece 1/2 docstring + lane 112
+  `grants.triggers` + lane 112 `affects.optional` +
+  refine-list entry). Budget bumped 3750 → 3800 in the
+  lane 112 commit, mirroring the follow-up 13 / 14 /
+  17 historical precedent.
+
+### Known issues / carry-overs
+
+- The mid-loop summary trigger fires at 5 pieces per
+  the handoff's "after every 5th piece" rule; this
+  note was pre-emptively added at the 2-piece mark to
+  keep the loop's state visible to a fresh session.
+- The follow-up 18 lane 109 handoff text references
+  "Infernal Vessel" but the real card doesn't carry
+  the described "chosen type + chosen color + ETB
+  discard" combo. The substrate is shipped; the
+  closed-card JSON would be a follow-up that picks a
+  correctly-oracle'd card (or stays parked if no such
+  card exists in the lore).
