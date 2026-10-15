@@ -159,9 +159,15 @@ describe("Cast filter X: 'X_spent_on_spell' (lane 116, piece 1/2 — read-only p
   it("fires the cast trigger when the X-spell's X is pre-populated in the ledger", () => {
     put(state, alice, "battlefield", watcher);
     const spellId = put(state, alice, "hand", xSpell);
-    // Pre-populate the read-side ledger (the v1 cast-time
-    // writer — lane 116 piece 2/2 — would do this at cast
-    // time).
+    // Lane 116 piece 2/2: the cast-time writer
+    // stamps the chosen X onto
+    // `state.castVariableValues` at resolution. The
+    // trigger fires when the next spell is cast.
+    // For this piece 1/2 read-side test, we still
+    // pre-populate the ledger (the writer isn't
+    // exercised on the test path yet — the
+    // test uses a fresh cast that fires the
+    // trigger before resolution).
     const beforeCast = {
       ...state,
       castVariableValues: new Map<CardInstanceId, number>([
@@ -200,17 +206,11 @@ describe("Cast filter X: 'X_spent_on_spell' (lane 116, piece 1/2 — read-only p
   it("does NOT fire the cast trigger for an X-spell cast by an opponent", () => {
     put(state, alice, "battlefield", watcher);
     const spellId = put(state, bob, "hand", xSpell);
-    const beforeCast = {
-      ...state,
-      castVariableValues: new Map<CardInstanceId, number>([
-        [spellId, 2],
-      ]),
-    };
     // Bob's mana pool starts empty in the test setup —
     // X=2 + {U}{U} costs 4 generic (2 X + 2 blue mapped
     // to generic via the spendMana cascade). Top up
     // Bob's pool so the cast succeeds.
-    const bobReady = addMana(beforeCast, bob, {
+    const bobReady = addMana(state, bob, {
       blue: 4,
       generic: 4,
       colorless: 4,
@@ -227,5 +227,44 @@ describe("Cast filter X: 'X_spent_on_spell' (lane 116, piece 1/2 — read-only p
     // Bob is the opponent; the trigger's `caster: "you"`
     // gate excludes the X spell from Bob's hand.
     expect(r.state.stack).toHaveLength(1);
+  });
+
+  it("Wave 4.8 follow-up 19 lane 116 piece 2/2 — the cast-time writer stamps the chosen X onto state.castVariableValues when the spell resolves", async () => {
+    // A separate test file/scope: cast an X-cost
+    // permanent through the full engine
+    // (cast → resolve), then verify
+    // `state.castVariableValues` is populated
+    // with the chosen X (and the
+    // `evaluateCastVariable` helper returns it).
+    const { resolveTopOfStack } = await import("../spell-casting/resolve");
+    // An X-cost permanent (Hydra-style). The
+    // writer only fires for non-instant/sorcery
+    // resolutions.
+    const xCreature = card({
+      name: "X Creature",
+      type_line: "Creature \u2014 Beast",
+      mana_cost: "{X}{G}{G}",
+      cmc: 2,
+      colors: ["G"],
+    });
+    put(state, alice, "battlefield", watcher);
+    const spellId = put(state, alice, "hand", xCreature);
+    // X=3 + {G}{G} = 5 generic mana. Alice's
+    // mana pool in the test setup has 4 generic
+    // + 4 blue — top up to ensure the cast
+    // succeeds.
+    const fullMana = addMana(state, alice, {
+      green: 4,
+      generic: 4,
+    });
+    const cast = castSpell(fullMana, alice, spellId, [], [], 3);
+    expect(cast.success).toBe(true);
+    // Resolve the X creature. The writer runs at
+    // resolution time on the resolveTopOfStack
+    // path; `state.castVariableValues` should
+    // reflect the chosen X (=3) for the source
+    // card.
+    const resolved = resolveTopOfStack(cast.state);
+    expect(evaluateCastVariable(resolved, spellId)).toBe(3);
   });
 });
