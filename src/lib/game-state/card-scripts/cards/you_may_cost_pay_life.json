@@ -1,0 +1,24 @@
+{
+  "name": "You May Cost Pay Life",
+  "oracle": "Enchantment\nAt the beginning of your upkeep, you may pay 2 life. If you do, draw a card.",
+  "triggers": [
+    {
+      "text": "At the beginning of your upkeep, you may pay 2 life. If you do, draw a card.",
+      "event": "upkeep",
+      "subject": "self",
+      "you_may": true,
+      "cost": {
+        "pay_life": {
+          "amount": 2
+        }
+      },
+      "effects": [
+        {
+          "op": "Draw",
+          "amount": 1,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}
