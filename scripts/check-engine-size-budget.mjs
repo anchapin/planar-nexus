@@ -513,7 +513,20 @@ const SCOPES = [
     // 3650). Bumping 3650 → 3700 to cover the lane 51
     // permanent-overlay family on the same trajectory
     // as the follow-up 13 / follow-up 14 budget bumps.
-    budgetLines: 3700,
+    //
+    // Wave 4.8 follow-up 17 lane 117 (#2614 follow-up):
+    // the `cost.pay_mana: { amount: N }` arm on
+    // TriggerSchema.cost (parallel to lane 106's
+    // `cost.pay_life`). v1 ships generic mana only
+    // (the standard spendMana cascade); colored-mana
+    // payment rides a follow-up lane. The arm adds ~36
+    // lines (docstring + the pay_mana object +
+    // amount validation) — schema.ts measured at
+    // 3701 (+1 over 3700). Bumping 3700 → 3750 to
+    // cover the trigger-cost family on the same
+    // trajectory as the follow-up 13 / 14 / lane 51
+    // budget bumps.
+    budgetLines: 3750,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

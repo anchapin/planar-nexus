@@ -73,7 +73,21 @@ export interface WaitingChoice {
       // `sacrifice_self_prompt` / `discard_prompt`), which
       // stamps `stackObject.cost_paid` and returns the
       // controller to the trigger resolution path.
-      "pay_life_prompt";
+      "pay_life_prompt"
+    | // Wave 4.8 follow-up 17 lane 117 (#2614 follow-up): a
+      // scripted trigger with `cost.pay_mana: { amount: N }` (CR
+      // 602.2b "Pay N mana:" as a trigger cost — Mana Echo /
+      // Selvala-style cost). Surfaced by
+      // `card-scripts/interpret.ts#resolveScriptedAbility` at
+      // resolution; resolved by the `pay_mana_prompt` branch
+      // in spell-casting/choices.ts (parallel to
+      // `pay_life_prompt` / `discard_prompt` /
+      // `sacrifice_self_prompt`), which stamps
+      // `stackObject.cost_paid` and returns the controller
+      // to the trigger resolution path. The actual mana
+      // deduction runs in `resolveScriptedAbility` on
+      // `cost_paid === true`.
+      "pay_mana_prompt";
   /** ID of player who needs to make this choice */
   playerId: PlayerId;
   /** ID of the stack object this choice is for */

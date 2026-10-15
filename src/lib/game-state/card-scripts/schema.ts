@@ -1629,6 +1629,42 @@ export const TriggerSchema = z
           })
           .strict()
           .optional(),
+        /**
+         * Wave 4.8 follow-up 17 lane 117 (#2614 follow-up):
+         * the "pay [mana]; if you do, [X]" trigger-cost
+         * substrate (parallel to the lane 106
+         * `pay_life` arm). When set, the engine surfaces a
+         * yes/no prompt (`pay_mana_prompt` waitingChoice)
+         * at trigger resolution; on yes, the controller
+         * pays `amount` generic mana via the existing
+         * `spendMana(state, controllerId, { generic:
+         * amount })` helper; on no, the trigger does
+         * nothing (CR 602.2b).
+         *
+         * v1 supports a single integer `amount` of generic
+         * mana (the cascade pays generic first, then
+         * colorless, then colored — the standard
+         * spendMana cascade). The "pay [colored] mana"
+         * variant rides a follow-up lane; the
+         * "pay any amount" variant rides a follow-up lane.
+         *
+         * The combined `you_may + pay_life` + `pay_mana`
+         * shape (the handoff's "you_may + pay_life
+         * combined" wording) is NOT a single composite
+         * arm — the bridge is the side-by-side use of
+         * `pay_mana` and `pay_life` on the same trigger
+         * `cost` object, with `you_may: true` orchestrating
+         * the yes/no flow. A card with
+         * `cost: { pay_mana: { amount: 2 } }` is the
+         * canonical single-cost shape; the multi-cost
+         * combinator rides a future lane.
+         */
+        pay_mana: z
+          .object({
+            amount: z.number().int().min(1).max(99),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),
