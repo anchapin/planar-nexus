@@ -2645,3 +2645,150 @@ When all priority lanes ship or are marked multi-lane
 blockers, write the follow-up handoff prompt to
 `docs/card-scripts/wave4-blockers.md` (or a sibling
 file) and stop.
+
+## Wave 4.8 follow-up 14 lane 57 done summary
+
+Lane 57 (counter-condition menace static) shipped in the
+Wave 4.8 follow-up 14 loop (PR [#2799](https://github.com/anchapin/planar-nexus/pull/2799),
+#2614 follow-up). Redcap Gutter-Dweller's deferred
+"Goblins you control have menace as long as this has
+three or more counters on it" half is now wired
+end-to-end.
+
+### Shipped
+
+- **Schema** (`src/lib/game-state/card-scripts/schema.ts`):
+  `StaticSchema.while_condition` extends from a single-arm
+  `z.object()` to a `z.discriminatedUnion` with two arms:
+  `{ kind: "life_minimum", value: N }` (existing, lane 91)
+  - `{ kind: "counter_minimum", counter, op, n }` (this
+    lane). The `counter_minimum` arm reads
+    `card.instanceCounters[counter]` and matches via `op`
+    (`gte` | `eq`).
+
+- **Engine** (`src/lib/game-state/keyword-actions/scripted-statics.ts`):
+  `evaluateStaticWhileCondition` extends from the
+  `life_minimum`-only shape to the discriminated union.
+  When the gate evaluates false, the static's `keywords` /
+  `power` / `toughness` / `X` / `protectionFrom` /
+  `become_copy` / etc. arms are skipped — the static is
+  inert for that pass.
+
+- **Card JSON** (`src/lib/game-state/card-scripts/cards/redcap_gutter_dweller.json`):
+  new static entry — `affects: { controller: "you",
+subtype: "Goblin" }`, `keywords: ["menace"]`,
+  `while_condition: { kind: "counter_minimum", counter:
+"+1/+1", op: "gte", n: 3 }`. Two statics now
+  (chosen-color self-add from lane 55 + this lane's Goblin
+  menace).
+
+- **Tests**:
+  - `src/lib/game-state/__tests__/lane57-counter-condition-static.test.ts` —
+    12 dedicated cases (schema accept / reject negative-n /
+    bad-op, op:eq exact-count path, INERT below threshold,
+    APPLIES at/above threshold, opponent exclusion,
+    non-Goblin exclusion).
+  - `redcap-gutter-dweller-full.test.ts` — existing case
+    updated to read both statics (was 1 before this lane).
+
+### Engine-size budget
+
+schema.ts 3600 → 3609 (+9 lines for the new discriminated
+union arm + docstring). Bumped budget 3600 → 3650 in
+`scripts/check-engine-size-budget.mjs` in the same commit,
+with a docstring entry mirroring the follow-up 12 / 13
+historical precedent ("bump the budget rather than fragmenting
+the chosen-X / additional-costs / affinity / grants /
+counter-ledger / cast-from-zone / mana-restriction /
+copy-permanent / creature-payment / aura-protection /
+while-condition family").
+
+### Net delta from Wave 4.8 follow-up 13
+
+- Test suites: 755 → 756 (+1 for lane 57 dedicated).
+- Test cases: 14348 → 14360 (+12 for lane 57 dedicated).
+- Engine-size budget: schema.ts 3556 (follow-up 13
+  baseline) → 3609 (+53 across lane 57 — actually 9 for
+  lane 57 plus the prior bumps not reflected in the
+  follow-up 13 summary; the actual delta in this commit is
+  +9 over the 3600 measurement).
+- Engine-size budget cap: 3600 → 3650 (one bump in the
+  follow-up 14 commit, mirroring the follow-up 12 / 13
+  precedent).
+
+### Multi-lane follow-ups still open (tracked under #2614)
+
+Lanes 51 / 107 / 108 / 109 / 110 / 111 / 112 / 113 / 114 /
+115 / 116 / 117 remain parked per the Wave 4.8 follow-up 14
+priority queue. Lane 61 (replacement effect for death)
+remains parked pending the foundational replacement-effect
+layer that the engine doesn't yet have.
+
+### Process notes from this lane
+
+- **Schema refine (`z.discriminatedUnion`)** required
+  careful handling of the type narrowing in tests — the
+  `while_condition` field is now a discriminated union, and
+  any test that accesses `.op` or `.n` directly must
+  narrow on `kind === "counter_minimum"` first. The
+  `lane57-counter-condition-static.test.ts` op:eq case
+  demonstrates the pattern.
+
+- **Engine arm placement** — the
+  `evaluateStaticWhileCondition` consult happens BEFORE
+  the keyword stamp in `refreshScriptedStatics` (after
+  `staticAffects` returns true), so the gate naturally
+  suppresses the keywords / power / toughness / X /
+  protectionFrom / become_copy arms when it evaluates
+  false. This matches the lane 91 `life_minimum` pattern.
+
+- **`createCardInstance` doesn't preserve
+  `instanceCounters`** from options — test helpers must
+  stamp the field directly on the created instance. The
+  lane 62 test (counter-trigger gate) used the same
+  pattern (`stampCounters` helper); the lane 57 test
+  inlined the stamp inside `putOnBattlefield` for a
+  cleaner test surface.
+
+- **AI flake absorbed 1 extra CI run** — the
+  `forge-gate` test hit its order-determinism issue on
+  one of the full-suite runs. The `--live <counts.json>`
+  ratchet fallback wasn't needed this lane (the ratchet
+  was clean on the first try, both before and after the
+  amend).
+
+- **Force-push amend was required** for two reasons:
+  (a) the lint job caught the
+  `let state = startGame(...)` → `const` errors (the
+  test helpers mutated `state` but never reassigned it);
+  (b) the test-count-docs-guard caught that
+  `docs/TEST_VIDEO_FIXTURES.md` was stale relative to
+  `docs/onboarding.md`. Both fixes landed in a single
+  `git commit --amend --no-edit` followed by
+  `git push --force-with-lease` per the Wave 4.8
+  follow-up 13 process note ("the
+  `git commit` without the `GIT_AUTHOR_NAME` /
+  `GIT_AUTHOR_EMAIL` env vars picks up the husky global
+  git config" pattern + the amend-on-failure cycle).
+
+### Next lane continue rule
+
+Per the Wave 4.8 follow-up 14 priority queue, the next
+lane is **lane 51 — Adaptive Automaton type-change
+half**. Per the doc, it's a permanent (not set queue)
+chosen-creature-type "is the chosen type in addition to
+its other types" static — the engine today has no
+permanent type-change (`AddSubtype` is end-of-turn-only,
+`untilEndOfTurnSubtypes` cleared at end-of-turn), and the
+layer-system's type-line overrides are animated-only.
+The docstring at lane 51 explicitly notes the
+"~80-150 LOC" envelope (single self-contained change) but
+also notes that any general-purpose `change creature
+types` op needs cross-zone refactoring. The handoff's
+"if this lane grows past one self-contained change,
+back out and document why in `wave4-blockers.md`" rule
+applies — start lane 51 in a fresh follow-up loop
+session and document the chosen-card-name
+eviction-at-tombstone follow-up + the named-card-copy
+phase-3 follow-up if the lane reveals more than the
+80-150 LOC scope.
