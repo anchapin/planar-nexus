@@ -87,7 +87,28 @@ export interface WaitingChoice {
       // to the trigger resolution path. The actual mana
       // deduction runs in `resolveScriptedAbility` on
       // `cost_paid === true`.
-      "pay_mana_prompt";
+      "pay_mana_prompt"
+    | // Wave 4.8 follow-up 21 lane 99 follow-up extension
+      // (#2614 follow-up): a scripted trigger with a
+      // `cost.or: [{ ... }, { ... }]` multi-cost
+      // combinator (CR 117.3a "you may pay [A] OR pay
+      // [B]; if you do, [effects]" — Skeletonize /
+      // Oracle-shaped choices on the cost). Surfaced
+      // by `card-scripts/interpret.ts#resolveScriptedAbility`
+      // on the first pass through a trigger that carries
+      // the OR combinator (parallel to the
+      // `you_may_prompt` / `pay_life_prompt` /
+      // `pay_mana_prompt` flow); resolved by the
+      // `cost_combinator_or_prompt` branch in
+      // spell-casting/choices.ts, which stamps
+      // `stackObject.chosen_or_cost_index` (a 0-based
+      // index into the `cost.or` array) and returns
+      // the controller to the trigger resolution path.
+      // On the second resolve pass the engine routes
+      // through whichever standalone `cost.<arm>` shape
+      // the index points at (the existing lane 88 /
+      // 98 / 106 / 117 dispatch).
+      "cost_combinator_or_prompt";
   /** ID of player who needs to make this choice */
   playerId: PlayerId;
   /** ID of the stack object this choice is for */

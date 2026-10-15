@@ -1782,6 +1782,61 @@ export const TriggerSchema = z
           })
           .strict()
           .optional(),
+        /**
+         * Wave 4.8 follow-up 21 lane 99 follow-up extension
+         * (#2614 follow-up): the multi-cost OR combinator
+         * ("you may pay [A] OR pay [B]; if you do,
+         * [effects]" — Skeletonize / Oracle-shaped choices
+         * on the cost). The arm is a non-empty array of
+         * single-arm cost shapes (one of `sacrifice_self`
+         * / `discard` / `pay_life` / `pay_mana` — the same
+         * v1 substrate as the standalone `cost.<arm>`
+         * siblings). The combinator surfaces a
+         * `cost_combinator_or_prompt` waitingChoice at
+         * trigger resolution; on the first resolve pass the
+         * controller picks one (0-based index stamped on
+         * `stackObject.chosen_or_cost_index`); on the
+         * second pass the picked cost runs through the
+         * existing lane 88 / 98 / 106 / 117 dispatch as if
+         * it were the standalone `cost.<arm>` shape.
+         *
+         * The arm is mutually exclusive with the
+         * standalone `cost.<arm>` siblings (the refine
+         * rule rejects the dual shape) and requires
+         * `you_may: true` (the yes/no gate is the
+         * precondition for picking which arm to pay).
+         * v1 ships the 2-arm minimum (`min(2)`); 3+ arms
+         * ride a follow-up lane.
+         */
+        or: z
+          .array(
+            z.union([
+              z.object({ sacrifice_self: z.literal(true) }).strict(),
+              z
+                .object({
+                  discard: z
+                    .object({ amount: z.number().int().min(1).max(1) })
+                    .strict(),
+                })
+                .strict(),
+              z
+                .object({
+                  pay_life: z
+                    .object({ amount: z.number().int().min(1) })
+                    .strict(),
+                })
+                .strict(),
+              z
+                .object({
+                  pay_mana: z
+                    .object({ amount: z.number().int().min(1).max(99) })
+                    .strict(),
+                })
+                .strict(),
+            ]),
+          )
+          .min(2)
+          .optional(),
       })
       .strict()
       .optional(),
@@ -1844,6 +1899,22 @@ export const TriggerSchema = z
   })
   .refine((t) => t.event === "attacks" || t.once === undefined, {
     message: "once is only for attacks triggers",
+  })
+  .refine(
+    (t) =>
+      t.cost?.or === undefined ||
+      !(t.cost.sacrifice_self === true ||
+        t.cost.discard !== undefined ||
+        t.cost.pay_life !== undefined ||
+        t.cost.pay_mana !== undefined),
+    {
+      message:
+        "cost.or is mutually exclusive with the standalone cost arms (pay_life, pay_mana, sacrifice_self, discard) — pick one shape",
+    },
+  )
+  .refine((t) => t.cost?.or === undefined || t.you_may === true, {
+    message:
+      "cost.or requires you_may: true (the yes/no gate is the precondition for picking which cost arm to pay)",
   })
   .refine(
     (t) =>

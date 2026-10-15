@@ -589,7 +589,35 @@ const SCOPES = [
     // room to land on the same trajectory as
     // the prior follow-up 12 / 13 / 14 / 15 /
     // 16 / 17 / 18 / 19 / 20 budget bumps.
-    budgetLines: 3900,
+    //
+    // Wave 4.8 follow-up 21 lane 99 follow-up
+    // extension piece 1/N (#2614 follow-up): the
+    // `cost.or: [{ sacrifice_self | discard |
+    // pay_life | pay_mana }, ...]` arm on
+    // TriggerSchema.cost (the multi-cost OR
+    // combinator — "you may pay [A] OR pay [B];
+    // if you do, [effects]" pattern; the follow-up
+    // 20 piece 2 verified the single-cost
+    // `you_may + cost.pay_life` bridge, and the
+    // OR-combinator extends that substrate to a
+    // 2-arm choice family). The arm adds ~71
+    // lines (docstring + the union of single-arm
+    // cost shapes + the `min(2)` length gate + the
+    // mutual-exclusion refine rule + the
+    // you_may-gate refine rule) — schema.ts
+    // measured at 3971 (+71 over 3900 with the
+    // docstring trimmed to match prior-pieces'
+    // precedent; the prompt's 50-60 LOC estimate
+    // assumed a shorter docstring). Bumping 3900
+    // → 4000 to give the follow-up 21 multi-cost
+    // OR combinator family room to land on the
+    // same trajectory as the prior follow-up 12
+    // / 13 / 14 / 15 / 16 / 17 / 18 / 19 / 20
+    // budget bumps; subsequent lane 99
+    // follow-up pieces (e.g. the engine wiring
+    // + the chosen_or_cost_index stack field)
+    // ride the same family.
+    budgetLines: 4000,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

@@ -2882,8 +2882,146 @@ export function resolveScriptedAbility(
       if (stackAny.cost_paid === false) return state;
     }
   }
+  // Wave 4.8 follow-up 21 lane 99 follow-up extension
+  // (#2614 follow-up): the multi-cost OR combinator
+  // ("you may pay [A] OR pay [B]; if you do,
+  // [effects]" — Skeletonize / Oracle-shaped choices on
+  // the cost). When `cost.or: [{ ... }, { ... }]` is set,
+  // the engine surfaces a `cost_combinator_or_prompt`
+  // waitingChoice that lists the alternative cost arms
+  // (one of `sacrifice_self` / `discard` / `pay_life` /
+  // `pay_mana` — the same v1 substrate as the standalone
+  // `cost.<arm>` siblings). On the first resolve pass the
+  // controller picks an arm (the 0-based index is stamped
+  // on `stackObject.chosen_or_cost_index`); on the second
+  // pass the engine synthesizes the picked arm into a
+  // standalone `effective_cost` shape and STAMPS IT ON THE
+  // STACK OBJECT (rather than mutating the script — a
+  // script can fire multiple times; each resolution
+  // carries its own pick). The existing cost-arm
+  // dispatch reads `effective_cost` FIRST (the picked
+  // arm's shape) before falling back to the script's
+  // `cost.<arm>`.
+  //
+  // The combinator requires `you_may: true` (enforced by
+  // the schema's refine rule) — the yes/no gate is the
+  // precondition for picking which arm to pay. The
+  // combinator dispatch sits BEFORE the standalone cost
+  // arms so that `cost.or` takes priority over any
+  // coincidental single-arm cost (the schema rejects the
+  // dual shape via the refine rule, so the only entry
+  // path into the combinator is via `cost.or` being
+  // defined).
+  const orCost = (
+    ability as {
+      cost?: { or?: ReadonlyArray<Record<string, unknown>> };
+    }
+  ).cost?.or;
+  if (orCost !== undefined) {
+    const stackAny = stackObject as StackObject & {
+      chosen_or_cost_index?: number;
+      effective_cost?: {
+        sacrifice_self?: boolean;
+        discard?: { amount: number };
+        pay_life?: { amount: number };
+        pay_mana?: { amount: number };
+      };
+    };
+    if (stackAny.chosen_or_cost_index === undefined) {
+      // First resolve pass: surface the
+      // `cost_combinator_or_prompt` with a label
+      // per arm. The `cost_combinator_or_prompt`
+      // branch in spell-casting/choices.ts
+      // stamps `stackObject.chosen_or_cost_index`
+      // and returns the controller to the
+      // resolution path.
+      const labelFor = (arm: Record<string, unknown>): string => {
+        if ("sacrifice_self" in arm) return "Sacrifice this permanent";
+        if ("discard" in arm) return "Discard a card";
+        if ("pay_life" in arm) {
+          return `Pay ${(arm as { pay_life: { amount: number } }).pay_life.amount} life`;
+        }
+        if ("pay_mana" in arm) {
+          return `Pay ${(arm as { pay_mana: { amount: number } }).pay_mana.amount} mana`;
+        }
+        return "Unknown cost";
+      };
+      const choices = orCost.map((arm, idx) => ({
+        label: labelFor(arm),
+        value: idx,
+        isValid: true,
+      }));
+      return {
+        ...state,
+        waitingChoice: {
+          type: "cost_combinator_or_prompt",
+          playerId: stackObject.controllerId as PlayerId,
+          stackObjectId: stackObject.id,
+          prompt: `${ability.text} (choose which cost to pay)`,
+          choices,
+          minChoices: 1,
+          maxChoices: 1,
+          presentedAt: Date.now(),
+        },
+      };
+    }
+    // Second resolve pass: synthesize the
+    // picked arm into a standalone
+    // `effective_cost` shape on the stack
+    // object (NOT the script — a single script
+    // can fire multiple times; each
+    // resolution carries its own pick). The
+    // existing cost-arm dispatch reads
+    // `effective_cost` first, so the picked
+    // arm's standalone path runs on this and
+    // subsequent passes. Fall through to the
+    // existing dispatch.
+    const pickedArm = orCost[stackAny.chosen_or_cost_index];
+    if (pickedArm !== undefined) {
+      const synthesizedCost: {
+        sacrifice_self?: boolean;
+        discard?: { amount: number };
+        pay_life?: { amount: number };
+        pay_mana?: { amount: number };
+      } = {};
+      if ("sacrifice_self" in pickedArm) {
+        synthesizedCost.sacrifice_self = true;
+      } else if ("discard" in pickedArm) {
+        synthesizedCost.discard = (
+          pickedArm as { discard: { amount: number } }
+        ).discard;
+      } else if ("pay_life" in pickedArm) {
+        synthesizedCost.pay_life = (
+          pickedArm as { pay_life: { amount: number } }
+        ).pay_life;
+      } else if ("pay_mana" in pickedArm) {
+        synthesizedCost.pay_mana = (
+          pickedArm as { pay_mana: { amount: number } }
+        ).pay_mana;
+      }
+      stackAny.effective_cost = synthesizedCost;
+    } else {
+      // Defensive: an out-of-range index is a
+      // bug (the schema's `min(2)` rule
+      // guarantees the array is non-empty,
+      // and the resolver normalizes the
+      // selected value to a number). Fizzle
+      // silently rather than crash.
+      return state;
+    }
+  }
   // Lane 88 (#2614 follow-up): sacrifice-self cost gate.
+  // Wave 4.8 follow-up 21 lane 99 follow-up extension
+  // (#2614 follow-up): reads `effective_cost` FIRST
+  // (the OR combinator's picked-arm shape stamped on
+  // the stack object), then falls back to the
+  // script's `cost.sacrifice_self` for the standalone
+  // arm. The same fallback pattern applies to the
+  // lane 98 / 106 / 117 arms below.
   const hasSacrificeCost =
+    ((stackObject as StackObject & {
+      effective_cost?: { sacrifice_self?: boolean };
+    }).effective_cost?.sacrifice_self === true) ||
     (ability as { cost?: { sacrifice_self?: boolean } }).cost
       ?.sacrifice_self === true;
   if (hasSacrificeCost) {
@@ -2935,11 +3073,19 @@ export function resolveScriptedAbility(
   // trigger does nothing (CR 602.2b). v1 supports a
   // single-card discard (`amount: 1`); the multi-card
   // variant rides a follow-up lane.
-  const discardCost = (
-    ability as {
+  //
+  // Wave 4.8 follow-up 21 lane 99 follow-up extension
+  // (#2614 follow-up): reads `effective_cost.discard`
+  // FIRST (the OR combinator's picked arm), then falls
+  // back to the script's `cost.discard` for the
+  // standalone lane 98 substrate.
+  const discardCost =
+    (stackObject as StackObject & {
+      effective_cost?: { discard?: { amount: number } };
+    }).effective_cost?.discard ??
+    (ability as {
       cost?: { discard?: { amount: number } };
-    }
-  ).cost?.discard;
+    }).cost?.discard;
   if (discardCost !== undefined) {
     const stackAny = stackObject as StackObject & {
       cost_paid?: boolean;
@@ -2996,11 +3142,19 @@ export function resolveScriptedAbility(
   // (from lane 63) is spell-cast only — the
   // `cost.pay_life` arm is the lane 106 trigger-cost
   // substrate. v1 supports a single integer `amount`.
-  const payLifeCost = (
-    ability as {
+  //
+  // Wave 4.8 follow-up 21 lane 99 follow-up extension
+  // (#2614 follow-up): reads `effective_cost.pay_life`
+  // FIRST (the OR combinator's picked arm), then falls
+  // back to the script's `cost.pay_life` for the
+  // standalone lane 106 substrate.
+  const payLifeCost =
+    (stackObject as StackObject & {
+      effective_cost?: { pay_life?: { amount: number } };
+    }).effective_cost?.pay_life ??
+    (ability as {
       cost?: { pay_life?: { amount: number } };
-    }
-  ).cost?.pay_life;
+    }).cost?.pay_life;
   if (payLifeCost !== undefined) {
     const stackAny = stackObject as StackObject & {
       cost_paid?: boolean;
@@ -3062,11 +3216,19 @@ export function resolveScriptedAbility(
   // path surfaces the prompt; `cost_paid === false`
   // fizzes; `cost_paid === true` deducts mana and
   // falls through to the effects loop.
-  const payManaCost = (
-    ability as {
+  //
+  // Wave 4.8 follow-up 21 lane 99 follow-up extension
+  // (#2614 follow-up): reads `effective_cost.pay_mana`
+  // FIRST (the OR combinator's picked arm), then falls
+  // back to the script's `cost.pay_mana` for the
+  // standalone lane 117 substrate.
+  const payManaCost =
+    (stackObject as StackObject & {
+      effective_cost?: { pay_mana?: { amount: number } };
+    }).effective_cost?.pay_mana ??
+    (ability as {
       cost?: { pay_mana?: { amount: number } };
-    }
-  ).cost?.pay_mana;
+    }).cost?.pay_mana;
   if (payManaCost !== undefined) {
     const stackAny = stackObject as StackObject & {
       cost_paid?: boolean;

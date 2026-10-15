@@ -504,6 +504,70 @@ export function resolveWaitingChoice(
     };
   }
 
+  // Wave 4.8 follow-up 21 lane 99 follow-up extension
+  // (#2614 follow-up): the multi-cost OR combinator
+  // resolution. The trigger carries
+  // `cost.or: [{ ... }, { ... }]` (a 2-arm array of
+  // single-arm cost shapes — sacrifice_self / discard
+  // / pay_life / pay_mana). The engine surfaced the
+  // `cost_combinator_or_prompt` waitingChoice at the
+  // first resolve pass; the controller's pick is the
+  // 0-based index into that array, stamped on
+  // `stackObject.chosen_or_cost_index`. On the second
+  // resolve pass the engine reads the index and routes
+  // through whichever standalone `cost.<arm>` shape
+  // the picked arm encodes (lane 88 sacrifice-self /
+  // lane 98 discard / lane 106 pay_life / lane 117
+  // pay_mana — the existing dispatch path).
+  if (type === "cost_combinator_or_prompt") {
+    const value = Array.isArray(selectedValue)
+      ? selectedValue[0]
+      : selectedValue;
+    // The schema guarantees the array is `min(2)`
+    // and each arm is a single-arm cost shape, so the
+    // index is bounded by the array length. The branch
+    // accepts either a number (the index itself) or a
+    // stringified number (the choice value the prompt
+    // surfaces), normalizes, and validates.
+    let index: number;
+    if (typeof value === "number") {
+      index = value;
+    } else if (typeof value === "string") {
+      index = Number.parseInt(value, 10);
+      if (Number.isNaN(index)) index = -1;
+    } else {
+      index = -1;
+    }
+    if (index < 0) {
+      return {
+        success: false,
+        state,
+        error:
+          "Expected a numeric index for cost_combinator_or_prompt (the 0-based arm pick)",
+      };
+    }
+    const target = state.stack.find((s) => s.id === stackObjectId);
+    if (!target) {
+      return {
+        success: false,
+        state,
+        error: "Stack object not found for cost_combinator_or_prompt",
+      };
+    }
+    return {
+      success: true,
+      state: {
+        ...state,
+        waitingChoice: null,
+        stack: state.stack.map((s) =>
+          s.id === stackObjectId
+            ? { ...s, chosen_or_cost_index: index }
+            : s,
+        ),
+      },
+    };
+  }
+
   if (type === "choose_value" && typeof selectedValue === "number") {
     const stackObj = state.stack.find((s) => s.id === stackObjectId);
 
