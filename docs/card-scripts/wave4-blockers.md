@@ -2963,3 +2963,248 @@ ride follow-up lanes.
   tests change, per the Wave 4.8 follow-up 13
   process note.
 
+## Wave 4.8 follow-up 14 lane 51 → lane 107 handoff
+
+The next-session prompt below is the Wave 4.8
+follow-up 15 handoff. It picks up where lane 51
+stopped — at **lane 107 (Eaten by Piranhas full
+script)**, the third item in the Wave 4.8 follow-up
+14 priority queue. Lanes 51 and 57 have shipped in
+this loop; lane 107 is the smallest remaining
+schema-arm change in the queue (compound
+`enter_choice` for chosen color + chosen creature
+type, ~50-100 LOC).
+
+### Mission
+
+Pick up lane 107 from the Wave 4.8 follow-up 14
+priority queue
+(docs/card-scripts/wave4-blockers.md, the "Priority
+queue" section near the bottom). This is the
+Eaten-by-Piranhas full script — a permanent
+chosen-color + chosen-creature-type "as this enters,
+choose a color and a creature type" compound
+`enter_choice`.
+
+### Quick start
+
+```
+cd /home/alex/Projects/planar-nexus
+git pull --ff-only
+git worktree list
+# (no worktrees expected; clean up any leftover
+#  from prior waves)
+PATH="$PWD/node_modules/.bin:$PATH" npm test --silent
+# verify 757 / 14373 green (lane 51 baseline)
+# then start lane 107 per the Wave 4.8 follow-up 14
+# priority queue.
+```
+
+### Lane 107 scope (~50-100 LOC across schema +
+engine + tests + Eaten-by-Piranhas JSON)
+
+The docstring at lane 107 explicitly notes the work:
+
+- **New schema arm**: a compound `enter_choice`
+  variant on `CardScriptSchema.enter_choice`. The
+  existing kinds on `enter_choice` are
+  `"color" | "creature_type" | "chosen_name" |
+  "life_total" | "color_and_creature_type"` (the
+  last is the lane 56 dual-choice baseline already
+  shipped). The lane 107 work re-uses the existing
+  `"color_and_creature_type"` kind if it already
+  supports the dual-choice semantic, OR extends it
+  with a new discriminator variant if not. Eaten by
+  Piranhas (FDN #76) reads "as this enters, choose a
+  color and a creature type" — already shipped in
+  lane 56 as the v0 substrate. Lane 107 widens
+  the v0 substrate into the canonical
+  `Eaten by Piranhas` script with the **lose-all-
+  abilities** half opt-out (out of scope per the
+  lane 107 docstring; the chosen-eviction-at-
+  tombstone follow-up).
+
+- **New engine path**: `resolveEnterChoice` extends
+  the existing `"color_and_creature_type"` branch
+  (if already shipped in lane 56) OR adds the new
+  branch from scratch. The compound enter choice
+  stamps BOTH `card.chosenColor` AND
+  `card.chosenCreatureType` from ONE user pick (a
+  single decision: "choose color, choose type" in
+  the prompt). The chassis already supports this
+  via lane 56's dual-choice baseline; lane 107
+  re-uses it for the Eaten-by-Piranhas JSON.
+
+- **Card JSON**:
+  `src/lib/game-state/card-scripts/cards/eaten_by_piranhas.json` —
+  ship the full oracle:
+  "As Eaten by Piranhas enters, choose a color and
+  a creature type. Eaten by Piranhas has the chosen
+  color and chosen creature type. It can't have
+  abilities." (the "lose all abilities" half is out
+  of scope per the lane 107 docstring — the chosen-
+  eviction-at-tombstone follow-up handles it).
+  v1 carries just the enter_choice and the
+  chassis-side stamps; the lose-all-abilities
+  half rides a future lane.
+
+- **Tests**: a new dedicated test file
+  `lane107-eaten-by-piranhas-compound-enter-choice.test.ts`
+  covering: schema acceptance for the
+  `"color_and_creature_type"` enter_choice variant,
+  engine `resolveEnterChoice` stamping BOTH
+  `chosenColor` AND `chosenCreatureType` from a
+  single resolver call, anthem targets of the
+  chosen color (Heraldic Banner-style lane 55
+  regression check), anthem targets of the chosen
+  creature type (Adaptive Automaton-style lane 51
+  regression check). Out of scope: the lose-all-
+  abilities shape, the chosen-eviction-at-tombstone
+  handling, and the cross-zone `change creature
+  types` op generalization.
+
+### Process rules to follow (from the handoff's
+"lane continue rule for the next session")
+
+Per the Wave 4.8 follow-up 14 handoff:
+
+- Pick strictly in this priority order: lane 51 (DONE) →
+  107 → 108 → 109 → 110 → 111 → 112 → 113 → 114 →
+  115 → 116 → 117. Don't skip ahead.
+- If a lane grows past one self-contained change, back
+  out, document in wave4-blockers.md, and pick a smaller
+  lane.
+- Run `typecheck && lint && test` locally before
+  pushing.
+- The husky pre-commit hook runs `eslint --fix` →
+  `tsc --noEmit` → `prettier --write` on staged
+  `.ts`/`.tsx` files. A staged `.ts`/`.tsx` file
+  that fails typecheck blocks the commit.
+- `GIT_AUTHOR_NAME` / `GIT_AUTHOR_EMAIL` env vars
+  must be set on every commit + amend to avoid
+  the husky global git-config misattribution
+  pattern noted in the Wave 4.8 follow-up 3
+  process notes:
+  ```
+  GIT_AUTHOR_NAME="Planar Nexus Agent" \
+  GIT_AUTHOR_EMAIL="agent@planar-nexus.local" \
+  GIT_COMMITTER_NAME="Planar Nexus Agent" \
+  GIT_COMMITTER_EMAIL="agent@planar-nexus.local" \
+    git commit -m "..."
+  ```
+- The `git commit --amend --no-edit` cycle is
+  expected for ratchet + lint + test-count fixes.
+  Use `git push --force-with-lease` after the amend.
+- AI flake budget: 1-2 extra CI runs per lane for
+  the known order-dependent forge-gate /
+  forge-selfplay / expert-agent "is deterministic
+  for a seed" flake. The `--live <counts.json>`
+  ratchet fallback bypasses the flake mid-ratchet
+  — use it liberally. Lane 51 absorbed 0 extra
+  CI runs (pure engine test).
+- Engine-size budget: 3700 lines cap (bumped in
+  lane 51 commit). If a lane pushes schema.ts over
+  3700, bump the budget in the same commit with a
+  docstring entry mirroring the follow-up 12 / 13 /
+  14 / lane 51 historical precedent.
+- Update the test-count docs in the same commit as
+  any test change. The test-count-docs-guard CI
+  gate re-measures live Jest and fails on any
+  drift in `docs/onboarding.md` or
+  `docs/TEST_VIDEO_FIXTURES.md`. Use
+  `npm run ratchet:test-count` for the canonical
+  path; the `npx jest --listTests | wc -l` count
+  is the suite number, the suite+test pairs are
+  ratcheted together.
+- Multi-lane follow-ups still open: lane 61
+  (replacement effect for death) is parked
+  pending the foundational replacement-effect
+  layer the engine doesn't yet have; open it as a
+  separate multi-lane plan, NOT as the next lane
+  in this loop.
+
+### End-of-lane check
+
+Per the Wave 4.8 follow-up 14 handoff's quick-start
+checklist:
+
+```
+git log --oneline -1
+# shows the new lane's commit
+
+grep "Test suites" docs/onboarding.md
+# shows the bumped numbers
+```
+
+If both checks pass, you're ready to pick the next
+lane from the priority queue and continue the loop.
+
+When all priority lanes ship or are marked
+multi-lane blockers, append a "Wave 4.8 follow-up
+15 loop done summary" to this file and stop.
+
+### Lane 107 specific gotchas
+
+- **`enter_choice: { kind: "color_and_creature_type" }`**
+  — the v0 substrate shipped in lane 56 already
+  stamps BOTH `card.chosenColor` AND
+  `card.chosenCreatureType` from a single
+  `resolveEnterChoice` call. Lane 107's
+  distinctive work is the **JSON card** (Eaten by
+  Piranhas), not the schema extension. Check
+  `src/lib/game-state/keyword-actions/enter-choice.ts`
+  for the existing dual-choice branch; re-use it
+  rather than extending the schema.
+- **chosen-eviction-at-tombstone** — out of scope
+  per the docstring (a follow-up lane). The
+  `"color_and_creature_type"` enter_choice field
+  fires once at ETB; the resolveEnterChoice
+  contract doesn't gate re-resolution. The
+  chosenX eviction at zone change is handled
+  naturally by lane 51's `permanentTypeOverlay`
+  helper (the overlay drops when the source leaves
+  the battlefield) and lane 55's
+  `chosenColorAdditions` helper (same pattern).
+- **`createCardInstance` doesn't preserve
+  `instanceCounters` from options** — test helpers
+  must stamp the field directly on the created
+  instance (mirrors lane 57 + lane 51 + lane 62
+  patterns).
+- **`refreshScriptedStatics` already iterates
+  sources per-card** — the Eaten-by-Piranhas
+  anthem path (if any) plugs into the existing
+  collection loop between `becomes_chosen_creature_type`
+  (lane 51) and `become_copy` (lane 75) for
+  source-self-stamping.
+- **The **"lose all abilities"** half** — out of
+  scope per the lane 107 docstring. The
+  "removes_all_abilities" mechanism (parallel to
+  lane 54) is a future lane's work. Eaten by
+  Piranhas v1 carries just the enter_choice and
+  the chosenX chassis-side stamps.
+
+End each lane with the test-count ratchet, the
+engine-size budget bump if needed, the
+docs/wave4-blockers.md update, and a force-pushed
+amend. Don't ask between lanes — the aggressive
+loop picks one at a time.
+
+### Verified lane 51 baseline (this loop's exit state)
+
+- `git log --oneline -1` → `0c014286 [AI-assisted]
+  feat(card-scripts): adaptive automaton type-line
+  overlay (lane 51)`
+- `grep "Test suites" docs/onboarding.md` →
+  `**Test suites:** 757`
+- `grep "Test cases" docs/onboarding.md` →
+  `**Test cases:** 14373 (14366 passed + 7
+  skipped)`
+- Engine-size budget cap: `3700` (bumped from 3650
+  in the lane 51 commit)
+- Branch: `main`
+- Working directory: clean (untracked:
+  `docs/card-scripts/wave4.8-followup13-handoff.md`
+  is the prior follow-up's handoff file left by an
+  earlier session; not lane 51's deliverable)
+
+
