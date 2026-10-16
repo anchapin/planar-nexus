@@ -57,7 +57,7 @@ import {
   addUntilEndOfTurnKeyword,
   CANT_BE_BLOCKED,
 } from "../pt-until-end-of-turn";
-import { getCardScript } from "./registry";
+import { getCardScript, getCardDataByName } from "./registry";
 import { addMana } from "../mana/mana-pool";
 import { addRestrictedMana } from "../mana/restriction-ledger";
 import { spendMana } from "../mana/mana-payment";
@@ -1316,11 +1316,67 @@ function applyEffect(
       // a no-op (the engine cannot resolve a
       // printed card without the piece 3/4
       // consult; the stub is intentionally inert).
+      //
+      // Wave 4.8 follow-up 29 priority 2 (lane
+      // 28, piece 3/4) (#2614 follow-up): the
+      // engine consult for the `kind:
+      // "named_card"` arm. The named-card variant
+      // reads `getCardDataByName(value.name)`
+      // (the named card's printed `cardData` —
+      // parallel to the lane 75b
+      // `become_copy.named_card` shape). When
+      // set, the engine creates `count` tokens
+      // with the named card's printed `cardData`.
+      // The named card is NOT required to be on
+      // the battlefield (parallel to the lane 75b
+      // named-card substrate). Missing name is a
+      // no-op — `getCardDataByName` returns
+      // `undefined` and the engine returns state
+      // unchanged.
       if (
         isDiscriminated &&
         (targetDisc as { kind: string }).kind === "named_card"
       ) {
-        return state;
+        const namedCardName = (
+          targetDisc as { kind: "named_card"; value: { name: string } }
+        ).value.name;
+        const namedCardData = getCardDataByName(namedCardName);
+        if (!namedCardData) return state;
+        const copiedCardData = { ...namedCardData };
+        const controllerId = ctx.controllerId;
+        const ownerId = controllerId;
+        const copyCount = effect.count ?? 1;
+        const newCards = new Map(state.cards);
+        const bfKey = `${controllerId}-battlefield`;
+        const initialBf = state.zones.get(bfKey);
+        if (!initialBf) return state;
+        let bfCardIds = [...initialBf.cardIds];
+        for (let i = 0; i < copyCount; i++) {
+          const cardIdNew =
+            `copyperm-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 11)}` as CardInstanceId;
+          const newInstance = createCardInstance(
+            copiedCardData as ScryfallCard,
+            ownerId,
+            controllerId,
+            {
+              id: cardIdNew,
+              currentZoneKey: `${controllerId}-battlefield`,
+            },
+          );
+          newCards.set(cardIdNew, newInstance);
+          bfCardIds = [...bfCardIds, cardIdNew];
+        }
+        const newZones = new Map(state.zones);
+        newZones.set(bfKey, {
+          ...initialBf,
+          cardIds: bfCardIds,
+        });
+        return {
+          ...state,
+          cards: newCards,
+          zones: newZones,
+          lastModifiedAt: Date.now(),
+        };
       }
       // Wave 4.8 follow-up 29 priority 1 (lane
       // 28, piece 2/4): the `kind: "id"` arm.
