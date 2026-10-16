@@ -2626,14 +2626,44 @@ export const StaticSchema = z
      * (`["everything"]`); multi-color and
      * "choose-a-quality" protection are follow-up lanes.
      *
-     * Sample card: a synthetic anthem registered via the
-     * test harness with `protectionFrom: ["red"]` and
-     * `affects: { controller: "you" }` ("Creatures you
-     * control have protection from red"). A red creature +
-     * a red spell verify the protection is honored at cast
-     * time and combat time.
+     * Wave 4.8 follow-up 26 lane 71 piece 3/N (#2614
+     * follow-up): the `"chosen"` sentinel for
+     * `protectionFrom`. When the field is the sentinel, the
+     * engine resolves the protected quality from
+     * `source.chosenProtectionFrom` (parallel to the lane 86
+     * chosen-type anthem `affects.subtype: "chosen"` +
+     * follow-up 25 lane 32 piece 3/N `perSubtype: "chosen"`
+     * + follow-up 26 lane 32 piece 1/N `perCounter.counter:
+     * "chosen"` — the same `enter_choice: { kind:
+     * "protection_quality" }` enter-choice instance field
+     * drives the substrate). If `chosenProtectionFrom` is
+     * null (the enter choice hasn't resolved yet), the
+     * static is INERT for that pass (no qualities stamped;
+     * matches the lane 86 chosen-type anthem "null"
+     * semantics).
+     *
+     * Sample card: a chosen-quality anthem ("creatures you
+     * control have protection from the chosen color")
+     * combined with `enter_choice: { kind:
+     * "protection_quality" }`. The anthem grants protection
+     * from the chosen quality to each affected permanent
+     * (a red creature + a red-quality anthem verify the
+     * protection is honored at cast time and combat time).
+     *
+     * Out of scope (each a follow-up lane): the multi-
+     * quality sentinel (e.g. an array of mixed literal
+     * strings + the `"chosen"` sentinel at one position);
+     * the union with the per-source per-quality ledger
+     * (the follow-up 26 lane 71 piece 2/N parked out as a
+     * redundant fourth ledger); the `affects.subtype:
+     * "chosen"` interaction with `protectionFrom: "chosen"`
+     * (the sentinel resolves independently of the
+     * `chosenCreatureType` instance field — different
+     * field, same resolution pattern).
      */
-    protectionFrom: z.array(z.string().min(1)).optional(),
+    protectionFrom: z
+      .union([z.array(z.string().min(1)), z.literal("chosen")])
+      .optional(),
     /**
      * Wave 4.8 follow-up 7 lane 75 (#2614 follow-up):
      * "as long as this is in play, it's a copy of [a chosen
@@ -4187,6 +4217,28 @@ export const CardScriptSchema = z
           "player",
           "chosen_name",
           "color_and_creature_type",
+          // Wave 4.8 follow-up 26 lane 71 piece 3/N
+          // (#2614 follow-up): the protection-quality
+          // sentinel. When set, the source's
+          // `chosenProtectionFrom` instance field is
+          // resolved at ETB-time by `enter_choice` →
+          // `kind === "protection_quality"` → choice
+          // value validated against the curated
+          // protection-quality set (W/U/B/R/G plus
+          // "everything" — parallel to the lane 86
+          // chosen-type anthem curated list). The
+          // `protectionFrom: "chosen"` static then
+          // consults this instance field (parallel to
+          // `affects.subtype: "chosen"` +
+          // `perSubtype: "chosen"` +
+          // `perCounter.counter: "chosen"` reading
+          // `chosenCreatureType`). The dual kind
+          // `color_and_creature_type` is not extended
+          // — the protection-quality sentinel is
+          // resolved independently of the chosen
+          // creature type (different instance field,
+          // independent resolver call).
+          "protection_quality",
         ]),
         /**
          * Free-form text the drafter wants surfaced in the prompt and

@@ -132,6 +132,31 @@ export interface CardInstance {
    */
   chosenCreatureType: string | null;
   /**
+   * Wave 4.8 follow-up 26 lane 71 piece 3/N (#2614
+   * follow-up): the per-instance protection-quality
+   * chosen at ETB. Stamped by
+   * `resolveEnterChoice` in
+   * `keyword-actions/enter-choice.ts` for the new
+   * `enter_choice: { kind: "protection_quality" }`
+   * kind. Consulted by `refreshScriptedStatics` when
+   * the source carries `protectionFrom: "chosen"` —
+   * the static resolves the protected qualities from
+   * `[chosenProtectionFrom]` (a single-element list,
+   * parallel to the `affects.subtype: "chosen"` and
+   * `perSubtype: "chosen"` and
+   * `perCounter.counter: "chosen"` sentinels reading
+   * `chosenCreatureType`). The curation validates
+   * against W/U/B/R/G colors + the "everything"
+   * quality (matching the existing protection-from
+   * `z.string()` ledger shape). `null` until the
+   * enter choice resolves, or on permanents that
+   * don't carry an `enter_choice: { kind:
+   * "protection_quality" }` script; the static is
+   * INERT for that pass when null (parallel to the
+   * lane 86 chosen-type anthem semantics).
+   */
+  chosenProtectionFrom: string | null;
+  /**
    * Wave 4.8 lane 52 (#2614 follow-up): the per-instance
    * subtype additions granted by a
    * `StaticSchema.affects.add_creature_type` static on the

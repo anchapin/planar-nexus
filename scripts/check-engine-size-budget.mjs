@@ -692,7 +692,14 @@ const SCOPES = [
     // lane 32 piece 1/N (chosen-counter variant) Zod
     // union extension + docstring expansion.
     // schema.ts measured at 4312 (+12 over 4300).
-    budgetLines: 4320,
+    // Bumping 4320 → 4370 to capture the follow-up 26
+    // lane 71 piece 3/N (chosen-quality sentinel)
+    // `protectionFrom` Zod union extension +
+    // docstring expansion + the `enter_choice.kind`
+    // enum extension with `"protection_quality"`
+    // docstring. schema.ts measured at 4364 (+44 over
+    // 4320).
+    budgetLines: 4370,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

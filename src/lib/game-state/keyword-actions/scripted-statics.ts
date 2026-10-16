@@ -992,8 +992,45 @@ export function refreshScriptedStatics(input: GameState): GameState {
         // field. The set is deduplicated per-quality so
         // multiple statics granting the same color only
         // stamp once.
+        //
+        // Wave 4.8 follow-up 26 lane 71 piece 3/N (#2614
+        // follow-up): the `protectionFrom` field is a
+        // union of `z.array(z.string()) | z.literal("chosen")`.
+        // When the field is the `"chosen"` sentinel,
+        // resolve the qualities from
+        // `source.chosenProtectionFrom` (a single-
+        // element list, parallel to the chosen-type
+        // anthem `affects.subtype: "chosen"` sentinel).
+        // If `chosenProtectionFrom` is null (the enter
+        // choice hasn't resolved yet, or the source
+        // doesn't carry an `enter_choice: { kind:
+        // "protection_quality" }` script), the static
+        // is INERT for that pass — no qualities
+        // stamped (parallel to the lane 86 chosen-type
+        // anthem "null" semantics).
         if (stat.protectionFrom) {
-          for (const q of stat.protectionFrom) protFrom.add(q);
+          // Wave 4.8 follow-up 26 lane 71 piece 3/N:
+          // resolve the per-static qualities list
+          // ONCE — either the literal array OR the
+          // chosen sentinel (or none, when the
+          // sentinel and `chosenProtectionFrom` is
+          // null). When inert, both `protFrom.add`
+          // and the per-source ledger stamp are
+          // skipped (the static contributes zero
+          // qualities this pass).
+          let resolvedProtFromQualities: readonly string[] | null;
+          if (stat.protectionFrom === "chosen") {
+            resolvedProtFromQualities =
+              card.chosenProtectionFrom !== null &&
+              card.chosenProtectionFrom !== undefined
+                ? [card.chosenProtectionFrom]
+                : null;
+          } else {
+            resolvedProtFromQualities = stat.protectionFrom;
+          }
+          if (resolvedProtFromQualities !== null) {
+            for (const q of resolvedProtFromQualities) protFrom.add(q);
+          }
           // Wave 4.8 follow-up 25 lane 71 piece 1/N:
           // per-source ledger stamp (multi-cast enforcement).
           // Track THIS source's granted qualities in
@@ -1007,12 +1044,14 @@ export function refreshScriptedStatics(input: GameState): GameState {
           // `protFromBySource[source.id]` first; when
           // the source is present, the per-source
           // qualities are consulted (NOT the union).
-          const existing = protFromBySource[card.id] ?? [];
-          const merged = [...existing];
-          for (const q of stat.protectionFrom) {
-            if (!merged.includes(q)) merged.push(q);
+          if (resolvedProtFromQualities !== null) {
+            const existing = protFromBySource[card.id] ?? [];
+            const merged = [...existing];
+            for (const q of resolvedProtFromQualities) {
+              if (!merged.includes(q)) merged.push(q);
+            }
+            protFromBySource[card.id] = merged;
           }
-          protFromBySource[card.id] = merged;
         }
         // Wave 4.8 follow-up 7 lane 75 (#2614 follow-up):
         // record the `become_copy.target` for the source
