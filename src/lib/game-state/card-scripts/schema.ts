@@ -2402,13 +2402,13 @@ export const StaticSchema = z
      * contains "Warrior"). When unset, the count is
      * unfiltered (the v1 default).
      *
-     * Out of scope (each a follow-up lane): compound
-     * count sources ("per creature AND artifact you
-     * control"), the chosen-type variant of the
-     * `perSubtype` field ("per creature of the chosen
-     * type" — driven by a `chosenCreatureType` field on
-     * the source), and a per-counter scaling shape
-     * ("per +1/+1 counter on this creature").
+     * Out of scope (each a follow-up lane): the
+     * chosen-type variant of the `perSubtype` field
+     * ("per creature of the chosen type" — driven by a
+     * `chosenCreatureType` field on the source), and a
+     * per-counter scaling shape ("per +1/+1 counter on
+     * this creature"). The compound "AND" variant rides
+     * follow-up 25 piece 2/N.
      */
     anthemScaling: z
       .object({
@@ -2455,6 +2455,44 @@ export const StaticSchema = z
          * rides a follow-up sub-piece.
          */
         perSubtype: z.string().min(1).optional(),
+        /**
+         * Wave 4.8 follow-up 25 lane 32 piece 2/N
+         * (#2614 follow-up): an OPTIONAL secondary
+         * AND-source for the count. When set, the count
+         * is `count(per) + count(andPer.per)` (CR
+         * 613.4c-style multi-source scaling — a card
+         * granting "+1/+1 for each creature AND artifact
+         * you control" reads as the sum of both source
+         * counts). The `andPer` shares the same `per`
+         * enum + optional `perSubtype` filter as the
+         * primary source; the v1 minimum is two sources
+         * summed (a more expressive multi-arm array
+         * variant rides a later follow-up).
+         *
+         * Sample card: a synthetic anthem registered via
+         * the test harness with `per: "creatures",
+         * andPer: { per: "treasures" }` ("Creatures you
+         * control get +1/+1 for each creature AND each
+         * Treasure you control"). The count is
+         * `creatures_count + treasures_count`.
+         *
+         * Out of scope (each a follow-up lane): the
+         * exclusion variant ("per creature but NOT
+         * artifact") and the OR combinator (lane 36's
+         * `X.or`-style matrix).
+         */
+        andPer: z
+          .object({
+            per: z.enum([
+              "creatures",
+              "treasures",
+              "lands",
+              "other_creatures",
+            ]),
+            perSubtype: z.string().min(1).optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),

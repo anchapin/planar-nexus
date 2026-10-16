@@ -271,12 +271,33 @@ function computeX(state: GameState, source: CardInstance, kind: string): number 
  * only those whose type line ALSO includes the
  * chosen subtype — usually a no-op, but the v1
  * shape is parallel across `per` values).
+ *
+ * Wave 4.8 follow-up 25 lane 32 piece 2/N (#2614
+ * follow-up): the optional `andPer` secondary
+ * AND-source. When set, the count is
+ * `count(per) + count(andPer.per)` — a card granting
+ * "+1/+1 for each creature AND each artifact you
+ * control" reads as the sum of both source counts.
+ * CR 613.4c-style multi-source scaling. The
+ * `andPer` arm has the same `per` enum +
+ * `perSubtype` filter shape as the primary source;
+ * the engine iterates the battlefield twice (once
+ * for the primary count, once for the andPer count)
+ * and sums the two. v1 minimum is a single
+ * secondary AND-source; an array form
+ * (`andPer: [...]`) is a follow-up.
  */
 function computeAnthemScalingCount(
   state: GameState,
   source: CardInstance,
   per: "creatures" | "treasures" | "lands" | "other_creatures",
   perSubtype?: string,
+  andPer?:
+    | {
+        per: "creatures" | "treasures" | "lands" | "other_creatures";
+        perSubtype?: string;
+      }
+    | undefined,
 ): number {
   const subtypeLc = perSubtype?.toLowerCase();
   const matchesSubtype = (card: CardInstance): boolean => {
@@ -314,6 +335,49 @@ function computeAnthemScalingCount(
     }
     if (!matchesSubtype(card)) continue;
     n++;
+  }
+  // Wave 4.8 follow-up 25 lane 32 piece 2/N: the
+  // optional AND-source. Iterate the battlefield a
+  // second time with the AND-source's `per` arm +
+  // optional `perSubtype` filter, sum the count.
+  // The secondary iteration uses the same
+  // inline-predicate shape (no helper reuse — the
+  // arm's `per` and `perSubtype` are independent
+  // per iteration; a shared helper would have to
+  // parameterize on two pairs, which obscures the
+  // shape). v1 single secondary source; the OR
+  // combinator (lane 36 `X.or`-style matrix) is a
+  // follow-up.
+  if (andPer) {
+    const andSubtypeLc = andPer.perSubtype?.toLowerCase();
+    const matchesAndSubtype = (card: CardInstance): boolean => {
+      if (!andSubtypeLc) return true;
+      return (card.cardData.type_line ?? "")
+        .toLowerCase()
+        .includes(andSubtypeLc);
+    };
+    for (const card of battlefieldCards(state)) {
+      if (card.controllerId !== source.controllerId) continue;
+      if (andPer.per === "other_creatures" && card.id === source.id) {
+        continue;
+      }
+      if (
+        (andPer.per === "creatures" || andPer.per === "other_creatures") &&
+        !isCreature(card)
+      ) {
+        continue;
+      }
+      if (andPer.per === "treasures") {
+        const t = (card.cardData.type_line ?? "").toLowerCase();
+        if (!t.includes("treasure")) continue;
+      }
+      if (andPer.per === "lands") {
+        const t = (card.cardData.type_line ?? "").toLowerCase();
+        if (!t.includes("land")) continue;
+      }
+      if (!matchesAndSubtype(card)) continue;
+      n++;
+    }
   }
   return n;
 }
@@ -957,6 +1021,13 @@ export function refreshScriptedStatics(input: GameState): GameState {
             card,
             stat.anthemScaling.per,
             stat.anthemScaling.perSubtype,
+            // Wave 4.8 follow-up 25 lane 32 piece 2/N:
+            // the optional AND-source is forwarded
+            // through to the count consult. When unset
+            // (the v1 default), the consult ignores
+            // `andPer` and falls through to the
+            // primary-source count.
+            stat.anthemScaling.andPer,
           );
           power += count * (stat.anthemScaling.perPower ?? 0);
           toughness += count * (stat.anthemScaling.perToughness ?? 0);
