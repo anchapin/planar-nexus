@@ -47,7 +47,13 @@ import {
 import { createInitialGameState, startGame } from "../game-state";
 import { createCardInstance } from "../card-instance";
 import { refreshAuraBonuses } from "../keyword-actions/aura-bonus";
-import { hasProtectionFrom } from "../evergreen-keywords";
+import {
+  canBeEnchantedBy,
+  canBeTargetedBySource,
+  hasProtectionFrom,
+  isProtectedFromSource,
+  shouldPreventDamageToTarget,
+} from "../evergreen-keywords";
 import type {
   CardInstance,
   CardInstanceId,
@@ -283,5 +289,226 @@ describe("Wave 4.8 follow-up 6 lane 76 — Aura-shaped protection-from", () => {
     expect(targetCard).toBeDefined();
     expect(targetCard?.protectionFrom).toBeUndefined();
     expect(hasProtectionFrom(targetCard!, "red")).toBe(false);
+  });
+});
+
+// ---- Wave 4.8 follow-up 24 lane 71 piece 2b ----
+// Aura-shaped variant enforcement verification: confirm an
+// enchanted card whose `protectionFrom: ["red"]` ledger was
+// stamped by `refreshAuraBonuses` cascades through the
+// full CR 702.16 enforcement surface on the
+// `evergreen-keywords` side — the symmetric surface that
+// piece 2/N widened in follow-up 23. Lane 76 above proves
+// the substrate stamps the field + the strict
+// `hasProtectionFrom` reads it; this block proves the same
+// stamped field drives the combat-side, enchant-side, and
+// damage-prevention consults. v1 minimum is exercising
+// every `evergreen-keywords` enforcement delegate through
+// the Aura-shaped substrate — the substrate is unchanged
+// (no engine delta expected) and the test is the regression
+// guard for the consult cascade.
+describe("Lane 71 piece 2b (follow-up 24) — Aura-shaped variant enforcement surface", () => {
+  beforeAll(() => {
+    resetCardScriptsForTests();
+    registerCardScripts([SCRIPT_AURA_PROTECTION]);
+  });
+
+  afterAll(() => {
+    resetCardScriptsForTests();
+  });
+
+  // Helper: build a red source card on Bob's battlefield
+  // so the enchanted target (on Alice's battlefield, with
+  // the stamped ledger) consults a red enemy source for
+  // each enforcement surface.
+  function redSource(
+    state: GameState,
+    controllerId: PlayerId,
+    idSuffix: string,
+  ): { state: GameState; sourceId: CardInstanceId } {
+    const sourceId = `card-red-source-${idSuffix}-${Math.random()
+      .toString(36)
+      .slice(2)}` as CardInstanceId;
+    const sourceDef: ScryfallCard = {
+      id: "mock-red-source-71-2b",
+      name: "Red Bolt",
+      type_line: "Instant",
+      oracle_text: "",
+      mana_cost: "{R}",
+      cmc: 1,
+      colors: ["R"],
+      color_identity: ["R"],
+      keywords: [],
+      legalities: { standard: "legal" },
+      layout: "normal",
+    } as ScryfallCard;
+    const source = createCardInstance(sourceDef, controllerId, controllerId, {
+      id: sourceId,
+      currentZoneKey: `${controllerId}-hand`,
+    });
+    source.hasSummoningSickness = false;
+    const newCards = new Map(state.cards);
+    newCards.set(sourceId, source);
+    return {
+      state: { ...state, cards: newCards, lastModifiedAt: Date.now() },
+      sourceId,
+    };
+  }
+
+  function redAuraSource(
+    state: GameState,
+    controllerId: PlayerId,
+    idSuffix: string,
+  ): { state: GameState; sourceId: CardInstanceId } {
+    const sourceId = `card-red-aura-${idSuffix}-${Math.random()
+      .toString(36)
+      .slice(2)}` as CardInstanceId;
+    const sourceDef: ScryfallCard = {
+      id: "mock-red-aura-71-2b",
+      name: "Red Grip",
+      type_line: "Enchantment — Aura",
+      oracle_text: "",
+      mana_cost: "{R}",
+      cmc: 1,
+      colors: ["R"],
+      color_identity: ["R"],
+      keywords: [],
+      legalities: { standard: "legal" },
+      layout: "normal",
+    } as ScryfallCard;
+    const source = createCardInstance(sourceDef, controllerId, controllerId, {
+      id: sourceId,
+      currentZoneKey: `${controllerId}-hand`,
+    });
+    source.hasSummoningSickness = false;
+    const newCards = new Map(state.cards);
+    newCards.set(sourceId, source);
+    return {
+      state: { ...state, cards: newCards, lastModifiedAt: Date.now() },
+      sourceId,
+    };
+  }
+
+  it("isProtectedFromSource returns true when an Aura-stamped protectionFrom ledger matches the source's color", () => {
+    // The substrate stamps `protectionFrom: ["red"]` on
+    // the enchanted card. v1 must return true via the
+    // `evergreen-keywords.getProtectionQualities` consult
+    // (widened in follow-up 23 lane 71 piece 2/N) when
+    // matched against a red source. Pre-piece-2/N the
+    // consult missed the ledger and returned false.
+    const { state, aliceId, bobId } = setupTwoPlayerGame();
+    const auraDef = makeAuraCard({ id: "aura-71-2b-direct" });
+    const { state: withAura, targetId } = putAuraOnTarget(
+      state,
+      aliceId,
+      auraDef,
+      TARGET_CREATURE,
+    );
+    const refreshed = refreshAuraBonuses(withAura);
+    const { state: withSource, sourceId } = redSource(refreshed, bobId, "direct");
+    const target = refreshed.cards.get(targetId)!;
+    const source = withSource.cards.get(sourceId)!;
+    expect(target.protectionFrom).toEqual(["red"]);
+    expect(isProtectedFromSource(target, source)).toBe(true);
+  });
+
+  it("canBeTargetedBySource returns false for a source whose color matches the Aura-stamped ledger (CR 702.16a)", () => {
+    // CR 702.16a — the Aura's stamped protection prevents
+    // targeting by a red source.
+    const { state, aliceId, bobId } = setupTwoPlayerGame();
+    const auraDef = makeAuraCard({ id: "aura-71-2b-target" });
+    const { state: withAura, targetId } = putAuraOnTarget(
+      state,
+      aliceId,
+      auraDef,
+      TARGET_CREATURE,
+    );
+    const refreshed = refreshAuraBonuses(withAura);
+    const { state: withSource, sourceId } = redSource(refreshed, bobId, "tgt");
+    const target = refreshed.cards.get(targetId)!;
+    const source = withSource.cards.get(sourceId)!;
+    expect(canBeTargetedBySource(target, source)).toBe(false);
+  });
+
+  it("canBeEnchantedBy returns false when a red Aura tries to enchant a target whose ledger says red (CR 702.16b)", () => {
+    // CR 702.16b — protection prevents enchanting. v1
+    // returns false when the source is an Aura and its
+    // color matches the Aura-stamped ledger.
+    const { state, aliceId, bobId } = setupTwoPlayerGame();
+    const auraDef = makeAuraCard({ id: "aura-71-2b-enchant" });
+    const { state: withAura, targetId } = putAuraOnTarget(
+      state,
+      aliceId,
+      auraDef,
+      TARGET_CREATURE,
+    );
+    const refreshed = refreshAuraBonuses(withAura);
+    const { state: withAura2, sourceId } = redAuraSource(refreshed, bobId, "ench");
+    const target = refreshed.cards.get(targetId)!;
+    const auraSource = withAura2.cards.get(sourceId)!;
+    expect(canBeEnchantedBy(target, auraSource)).toBe(false);
+  });
+
+  it("shouldPreventDamageToTarget returns true for a dealer whose color matches the Aura-stamped ledger (CR 702.16c)", () => {
+    // CR 702.16c — protection prevents damage from a red
+    // source.
+    const { state, aliceId, bobId } = setupTwoPlayerGame();
+    const auraDef = makeAuraCard({ id: "aura-71-2b-damage" });
+    const { state: withAura, targetId } = putAuraOnTarget(
+      state,
+      aliceId,
+      auraDef,
+      TARGET_CREATURE,
+    );
+    const refreshed = refreshAuraBonuses(withAura);
+    const { state: withSource, sourceId } = redSource(refreshed, bobId, "dmg");
+    const target = refreshed.cards.get(targetId)!;
+    const source = withSource.cards.get(sourceId)!;
+    expect(shouldPreventDamageToTarget(target, source)).toBe(true);
+  });
+
+  it("the Aura-shaped enforcement clears when the Aura leaves the battlefield (regression guard)", () => {
+    // The Aura-stamped protection is battlefield-zone-only
+    // (parallel to lane 71 piece 1/N's per-instance ledger
+    // clear-on-leaves semantics). v1 drops the stamped
+    // ledger when the Aura leaves the battlefield and the
+    // `isProtectedFromSource` consult returns false
+    // again. The substrate did this already (lane 76
+    // follow-up 6 confirm); piece 2b adds the consult
+    // regression guard so the consult cascade stays in
+    // sync with the substrate diff.
+    const { state, aliceId, bobId } = setupTwoPlayerGame();
+    const auraDef = makeAuraCard({ id: "aura-71-2b-clear" });
+    const { state: withAura, auraId, targetId } = putAuraOnTarget(
+      state,
+      aliceId,
+      auraDef,
+      TARGET_CREATURE,
+    );
+    const refreshed = refreshAuraBonuses(withAura);
+    const targetBefore = refreshed.cards.get(targetId)!;
+    expect(targetBefore.protectionFrom).toEqual(["red"]);
+    // Remove the aura from the battlefield (move it to
+    // the graveyard via a zones-only patch — parallel to
+    // the existing "drops the bonus when the aura leaves"
+    // pattern in aura-bonus.test.ts).
+    const zones2 = new Map(refreshed.zones);
+    const bfKey = `${aliceId}-battlefield`;
+    const bf = zones2.get(bfKey)!;
+    zones2.set(bfKey, {
+      ...bf,
+      cardIds: bf.cardIds.filter((c) => c !== auraId),
+    });
+    const refreshed2 = refreshAuraBonuses({
+      ...refreshed,
+      zones: zones2,
+      lastModifiedAt: Date.now(),
+    });
+    const targetAfter = refreshed2.cards.get(targetId)!;
+    expect(targetAfter.protectionFrom).toBeUndefined();
+    const { state: withSource, sourceId } = redSource(refreshed2, bobId, "clr");
+    const source = withSource.cards.get(sourceId)!;
+    expect(isProtectedFromSource(targetAfter, source)).toBe(false);
+    expect(shouldPreventDamageToTarget(targetAfter, source)).toBe(false);
   });
 });
