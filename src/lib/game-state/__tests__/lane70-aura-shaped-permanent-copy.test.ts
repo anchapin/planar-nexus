@@ -477,6 +477,163 @@ describe("Wave 4.8 follow-up 24 lane 70 piece 2/N — Aura-shaped permanent copy
   });
 
 
+  it("applies the overlay when the chosen target is in a tracked non-battlefield zone (lane 78 cross-zones semantics for permanent arm)", () => {
+    // Wave 4.8 follow-up 24 lane 78 permanent-arm
+    // cross-zones extension (#2614 follow-up):
+    // the Aura-shaped permanent-arm path inherits
+    // the lane 78 "in a tracked zone" consult (the
+    // overlay applies when the chosen target is in
+    // any tracked zone — graveyard, exile, hand,
+    // library, command — not just the
+    // battlefield). Phantasmal Image / Clone
+    // cross-zones copies (EOT arm) ship the same
+    // semantics; this piece extends the lane-78
+    // check to the Aura-shaped permanent arm.
+    //
+    // Setup: Alice's Aura is enchanted on her
+    // Shapeshifter. Alice's 2/2 Grizzly Bears (the
+    // chosen target) is in the graveyard (a tracked
+    // zone that is NOT the battlefield). The
+    // overlay applies — the Shapeshifter's
+    // `cardData` is overlaid with the Bears'
+    // characteristics.
+    const { state, aliceId } = setupTwoPlayerGame();
+    const {
+      state: withChosen,
+      auraId,
+      enchantedId,
+      chosenId,
+    } = putAuraOnEnchanted(
+      state,
+      aliceId,
+      makeAuraCard({ id: "aura-cross-zones-70-perm" }),
+      makeEnchantedCard({ id: "enchanted-cross-zones-70-perm" }),
+      GRIZZLY_BEARS,
+    );
+    // Move the chosen target (Grizzly Bears) from
+    // the battlefield to Alice's graveyard (a
+    // tracked non-battlefield zone). The
+    // `state.zones` map retains the graveyard key,
+    // so the lane-78 consult considers the chosen
+    // target "in a tracked zone".
+    const cards2 = new Map(withChosen.cards);
+    const chosenCard = cards2.get(chosenId)!;
+    const graveyardKey = `${aliceId}-graveyard`;
+    const zones2 = new Map(withChosen.zones);
+    cards2.set(chosenId, {
+      ...chosenCard,
+      currentZoneKey: graveyardKey,
+    });
+    const bf = zones2.get(`${aliceId}-battlefield`)!;
+    zones2.set(`${aliceId}-battlefield`, {
+      ...bf,
+      cardIds: bf.cardIds.filter((c) => c !== chosenId),
+    });
+    let gyZone = zones2.get(graveyardKey);
+    if (!gyZone) {
+      gyZone = { cardIds: [], type: "graveyard" as const };
+      zones2.set(graveyardKey, gyZone);
+    }
+    zones2.set(graveyardKey, {
+      ...gyZone,
+      cardIds: [...gyZone.cardIds, chosenId],
+    });
+    const withChosenInGY: GameState = {
+      ...withChosen,
+      cards: cards2,
+      zones: zones2,
+      lastModifiedAt: Date.now(),
+    };
+    registerAuraCopyPermanentScript(chosenId);
+    const refreshed = refreshAuraBonuses(withChosenInGY);
+    const enchantedAfter = refreshed.cards.get(enchantedId)!;
+    // The overlay APPLIES — the lane-78 tracked-zone
+    // check passes (the chosen target's zone key is
+    // in `state.zones`, even though it's not a
+    // battlefield zone).
+    expect(enchantedAfter.cardData.name).toBe("Grizzly Bears");
+    expect(enchantedAfter.cardData.power).toBe("2");
+    expect(enchantedAfter.cardData.toughness).toBe("2");
+    expect(enchantedAfter.copyOfTargetIdPermanent).toBe(
+      chosenId as string,
+    );
+    expect(enchantedAfter.permanentCopyPrintedCardData?.name).toBe(
+      "Test Enchanted Shapeshifter",
+    );
+    // The Aura's own `copyOfTargetIdPermanent` is
+    // stamped (parallel to the on-battlefield case).
+    const auraAfter = refreshed.cards.get(auraId)!;
+    expect(auraAfter.copyOfTargetIdPermanent).toBe(
+      chosenId as string,
+    );
+  });
+
+  it("the overlay drops when the chosen target is in an UNTRACKED zone (lane 78 fallback rollback)", () => {
+    // Lane 78 cross-zones semantics: the overlay
+    // applies only when the chosen target's zone is
+    // in `state.zones`. An untracked zone key (a
+    // key that's NOT in `state.zones` — e.g. a
+    // non-existent zone or a limbo zone) drops the
+    // overlay via the lane-78 fallback rollback
+    // (the enchanted card's printed `cardData` is
+    // restored from `permanentCopyPrintedCardData`,
+    // and the ledgers are cleared). v1 minimum for
+    // priority #4: confirm the Aura-shaped
+    // permanent-arm path's tracked-zone check is
+    // honored in BOTH directions — applies for
+    // tracked non-BF zones, drops for untracked
+    // zones.
+    const { state, aliceId } = setupTwoPlayerGame();
+    const {
+      state: withChosen,
+      enchantedId,
+      chosenId,
+    } = putAuraOnEnchanted(
+      state,
+      aliceId,
+      makeAuraCard({ id: "aura-untracked-70-perm" }),
+      makeEnchantedCard({ id: "enchanted-untracked-70-perm" }),
+      GRIZZLY_BEARS,
+    );
+    // Move the chosen target to a zone key that is
+    // NOT in `state.zones` (the lane-78 "untracked
+    // zone" case — the key doesn't exist in the
+    // `state.zones` map).
+    const cards2 = new Map(withChosen.cards);
+    const chosenCard = cards2.get(chosenId)!;
+    cards2.set(chosenId, {
+      ...chosenCard,
+      currentZoneKey: "limbo",
+    });
+    const zones2 = new Map(withChosen.zones);
+    const bf = zones2.get(`${aliceId}-battlefield`)!;
+    zones2.set(`${aliceId}-battlefield`, {
+      ...bf,
+      cardIds: bf.cardIds.filter((c) => c !== chosenId),
+    });
+    const withChosenInLimbo: GameState = {
+      ...withChosen,
+      cards: cards2,
+      zones: zones2,
+      lastModifiedAt: Date.now(),
+    };
+    registerAuraCopyPermanentScript(chosenId);
+    const refreshed = refreshAuraBonuses(withChosenInLimbo);
+    const enchantedAfter = refreshed.cards.get(enchantedId)!;
+    // The overlay DROPS — the lane-78 fallback
+    // rollback restores the printed `cardData` and
+    // clears the substrate (the lane-70 piece 2a
+    // "target missing" rollback path is the
+    // canonical drop site when the chosen target is
+    // in an untracked zone).
+    expect(enchantedAfter.cardData.name).toBe(
+      "Test Enchanted Shapeshifter",
+    );
+    expect(enchantedAfter.cardData.power).toBe("1");
+    expect(enchantedAfter.permanentCopyPrintedCardData).toBeUndefined();
+    expect(enchantedAfter.copyOfTargetIdPermanent).toBeUndefined();
+  });
+
   it("clearPermanentCopyOf preserves the substrate snapshot but clears the ledger", () => {
     // Direct substrate helper consult: the
     // `clearPermanentCopyOf` helper from
