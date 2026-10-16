@@ -778,7 +778,26 @@ const SCOPES = [
     // / `add_toughness` / `add_type` exception
     // variants that ride follow-up 30. schema.ts
     // measured at 4749 (+39 over 4710).
-    budgetLines: 4750,
+    //
+    // Bumping 4750 → 4810 to capture the follow-up 29
+    // priority 4 (lane 32 — per-pair counter ordinal
+    // variant) — the new OPTIONAL `perPair` sub-arm on
+    // `perCounter` (`{ ordinal?: number }`) — the
+    // "Nth counter of each unique type" cross-type
+    // variant. The `perPair` arm lives alongside the
+    // existing `perCounter.ordinal?` arm; both can be
+    // set, but the `perPair` arm takes precedence
+    // when both are set (parallel to the
+    // `andPer.perCounterSummed` precedence rule from
+    // follow-up 28 priority 3) + parent `perCounter`
+    // docstring expansion explaining the cross-type
+    // per-pair semantics, the `perPair.ordinal: 1`
+    // default ("first counter per pair" read), and the
+    // future `andPer.perCounter.perPair` extension +
+    // the per-pair-with-sentinel extension that ride
+    // follow-up 30. schema.ts measured at 4803 (+53
+    // over 4750).
+    budgetLines: 4810,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

@@ -2899,8 +2899,62 @@ export const StaticSchema = z
              * a per-pair counter ordinal variant (a
              * second arm that reads "Nth counter of
              * each unique type") rides a future lane.
+             *
+             * Wave 4.8 follow-up 29 priority 4 (lane
+             * 32) (#2614 follow-up): the OPTIONAL
+             * `perPair` arm — a per-pair cross-type
+             * variant ("Nth counter of each unique
+             * type"). When set, the count is the SUM
+             * across all unique counter types of the
+             * cumulative sum of the first `ordinal`
+             * counters of each type. A source with 2
+             * +1/+1 counters + 3 -1/-1 counters with
+             * `perPair.ordinal: 2` contributes 2 +1/+1
+             * + 2 -1/-1 = 4 (NOT 2 + 3 = 5 — the
+             * cross-type summation is per-pair, not
+             * per-counter cumulative). The `perPair`
+             * arm lives alongside the existing
+             * `perCounter` arm; both can be set, but
+             * the `perPair` arm takes precedence when
+             * both are set (parallel to the
+             * `andPer.perCounterSummed` precedence
+             * rule from follow-up 28 priority 3). The
+             * `perPair.ordinal` defaults to 1
+             * (cumulative sum of the FIRST counter of
+             * each unique type — a "first counter per
+             * pair" read). v1 minimum: the `perPair`
+             * ordinal-only cross-type read (no per-pair
+             * sentinel extension; the per-pair-with-
+             * sentinel rides follow-up 30).
              */
             ordinal: z.number().int().min(1).optional(),
+            /**
+             * Wave 4.8 follow-up 29 priority 4 (lane
+             * 32) (#2614 follow-up): the OPTIONAL
+             * `perPair` arm. When set, the per-counter
+             * count is the SUM across all unique
+             * counter types of the cumulative sum of
+             * the first `perPair.ordinal` counters of
+             * each type. When unset, the existing
+             * `perCounter.ordinal?` semantic is used
+             * (cumulative sum of the first
+             * `perCounter.ordinal` counters of the
+             * resolved type). Both `perCounter` and
+             * `perPair` can be set on the same arm
+             * (they're independent Zod fields); when
+             * both are set, `perPair` takes precedence
+             * (the per-pair is the "Nth counter of
+             * each unique type" read; a separate arm
+             * from the per-counter Nth-counter read).
+             * The `andPer.perCounter perPair` parallel
+             * ordinal extension rides follow-up 30.
+             */
+            perPair: z
+              .object({
+                ordinal: z.number().int().min(1).optional(),
+              })
+              .strict()
+              .optional(),
           })
           .strict()
           .optional(),
