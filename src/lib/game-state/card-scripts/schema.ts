@@ -514,8 +514,51 @@ export const CopyPermanentSchema = z
      * copy of [target] EXCEPT it has no
      * abilities"). Each rides follow-up
      * 4 piece 2/N + 3/N + 4/N.
+     *
+     * Wave 4.8 follow-up 29 priority 3 (lane
+     * 28, piece 4/4) (#2614 follow-up): the
+     * `exceptions` arm — Phyrexian
+     * Metamorph-style "create a token that's
+     * a copy of [target] EXCEPT it has
+     * additional subtypes". The engine
+     * rebuilds each copy token's
+     * `cardData.type_line` to include the
+     * added subtypes after the source's
+     * `cardData` shallow-copy. The exceptions
+     * are PER-COPY (each token receives the
+     * same `add_subtype` list — the
+     * exceptions are NOT per-token in v1; a
+     * per-token exception array rides
+     * follow-up 30). v1 minimum:
+     * `add_subtype` only; `add_color` /
+     * `add_power` / `add_toughness` /
+     * `add_type` exception variants ride
+     * follow-up 30 (parallel to the lane
+     * 75c parked-out exception variants).
      */
     count: z.number().int().min(1).optional(),
+    /**
+     * Wave 4.8 follow-up 29 priority 3 (lane
+     * 28, piece 4/4) (#2614 follow-up):
+     * OPTIONAL `exceptions` arm. The engine
+     * consults the `add_subtype` list after
+     * the source's `cardData` shallow-copy;
+     * each copy token's `cardData.type_line`
+     * is rebuilt to include the added
+     * subtypes (the added subtypes are
+     * APPENDED to the printed subtypes; the
+     * exceptions arm is ADDITIVE — no
+     * overwrite).
+     */
+    exceptions: z
+      .object({
+        add_subtype: z
+          .array(z.string().min(1))
+          .min(1)
+          .optional(),
+      })
+      .strict()
+      .optional(),
     if_kicked: ifKicked,
   })
   .strict();

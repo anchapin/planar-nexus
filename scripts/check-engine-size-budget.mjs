@@ -763,7 +763,22 @@ const SCOPES = [
     // named-target vs named-card resolution paths,
     // and the piece 3/4 named-card stub rationale.
     // schema.ts measured at 4706 (+86 over 4620).
-    budgetLines: 4710,
+    //
+    // Bumping 4710 → 4750 to capture the follow-up 29
+    // priority 3 (lane 28 piece 4/4 —
+    // `CopyPermanent.exceptions` arm) — the OPTIONAL
+    // `exceptions: { add_subtype?: string[] }` arm
+    // (parallel to the lane 75c
+    // `become_copy.exceptions` shape — a
+    // `add_subtype` list that the engine merges onto
+    // each copy token's overlaid `cardData.type_line`)
+    // + parent `CopyPermanent` docstring expansion
+    // explaining the per-copy modifier + the additive
+    // semantic + the future `add_color` / `add_power`
+    // / `add_toughness` / `add_type` exception
+    // variants that ride follow-up 30. schema.ts
+    // measured at 4749 (+39 over 4710).
+    budgetLines: 4750,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

@@ -1294,6 +1294,60 @@ function applyEffect(
           ? cardControllerId === ctx.controllerId
           : cardControllerId !== ctx.controllerId;
       };
+      // Wave 4.8 follow-up 29 priority 3 (lane
+      // 28, piece 4/4) (#2614 follow-up): the
+      // `exceptions` arm consult. When
+      // `effect.exceptions?.add_subtype` is
+      // set, the engine rebuilds each copy
+      // token's `cardData.type_line` to
+      // APPEND the added subtypes to the
+      // printed subtypes. The exceptions arm
+      // is ADDITIVE (no overwrite of the
+      // printed subtypes). The
+      // `cardData.type_line` is the printed
+      // type line — `<types> — <subtypes>`
+      // (em-dash separator, MTG standard
+      // shape). The added subtypes are
+      // appended to the existing subtype
+      // half of the type_line (or prepended
+      // if the printed type_line has no
+      // subtype half). v1 minimum:
+      // `add_subtype` only;
+      // `add_color` / `add_power` /
+      // `add_toughness` / `add_type`
+      // exception variants ride follow-up
+      // 30.
+      const applyExceptions = (
+        cardData: ScryfallCard,
+      ): ScryfallCard => {
+        const exceptions = (
+          effect as { exceptions?: { add_subtype?: string[] } }
+        ).exceptions;
+        if (!exceptions?.add_subtype?.length) return cardData;
+        const printed = cardData.type_line ?? "";
+        const emDashIdx = printed.indexOf("—");
+        let rebuilt: string;
+        if (emDashIdx < 0) {
+          // No subtypes half — append the
+          // added subtypes after the types
+          // with the em-dash separator.
+          rebuilt = `${printed} — ${exceptions.add_subtype.join(" ")}`;
+        } else {
+          const typesHalf = printed.slice(0, emDashIdx).trimEnd();
+          const subtypesHalf = printed
+            .slice(emDashIdx + 1)
+            .trim();
+          const existingSubtypes = subtypesHalf
+            ? subtypesHalf.split(/\s+/).filter(Boolean)
+            : [];
+          const allSubtypes = [
+            ...existingSubtypes,
+            ...exceptions.add_subtype,
+          ];
+          rebuilt = `${typesHalf} — ${allSubtypes.join(" ")}`;
+        }
+        return { ...cardData, type_line: rebuilt };
+      };
       // Wave 4.8 follow-up 29 priority 1 (lane 28,
       // piece 2/4) (#2614 follow-up): consult the
       // `target` discriminator. The legacy enum
@@ -1342,7 +1396,9 @@ function applyEffect(
         ).value.name;
         const namedCardData = getCardDataByName(namedCardName);
         if (!namedCardData) return state;
-        const copiedCardData = { ...namedCardData };
+        const copiedCardData = applyExceptions({
+          ...namedCardData,
+        });
         const controllerId = ctx.controllerId;
         const ownerId = controllerId;
         const copyCount = effect.count ?? 1;
@@ -1400,7 +1456,9 @@ function applyEffect(
         ) {
           return state;
         }
-        const copiedCardData = { ...namedSource.cardData };
+        const copiedCardData = applyExceptions({
+          ...namedSource.cardData,
+        });
         const controllerId = ctx.controllerId;
         const ownerId = controllerId;
         const copyCount = effect.count ?? 1;
@@ -1496,7 +1554,9 @@ function applyEffect(
       // P/T, keywords, oracle_text, colors) which never
       // mutate. Per-instance fields (counters, attachedTo,
       // etc.) start fresh.
-      const copiedCardData = { ...sourceCard.cardData };
+      const copiedCardData = applyExceptions({
+        ...sourceCard.cardData,
+      });
       const controllerId = ctx.controllerId;
       const ownerId = controllerId;
       // Wave 4.8 follow-up 28 priority 4 (lane 28,
