@@ -316,7 +316,13 @@ function computeAnthemScalingCount(
           | undefined;
       }
     | undefined,
-  perCounter?: { counter: string; ordinal?: number } | undefined,
+  perCounter?:
+    | {
+        counter: string;
+        ordinal?: number;
+        perPair?: { ordinal?: number };
+      }
+    | undefined,
 ): number {
   // Wave 4.8 follow-up 25 lane 32 piece 4/N (#2614
   // follow-up): the optional self-referential
@@ -372,6 +378,50 @@ function computeAnthemScalingCount(
         : perCounter.counter;
     if (resolvedCounterType === null) {
       return 0;
+    }
+    // Wave 4.8 follow-up 29 priority 4 (lane 32)
+    // (#2614 follow-up): the OPTIONAL `perPair`
+    // arm — a per-pair cross-type variant
+    // ("Nth counter of each unique type"). When
+    // set, the per-pair takes precedence over
+    // the `perCounter.ordinal?` arm (the
+    // per-pair is a separate semantic from the
+    // per-counter Nth-counter read). The
+    // per-pair reads ALL unique counter types
+    // on the source, sums the cumulative sum
+    // of the first `perPair.ordinal` counters
+    // of each type. A source with 2 +1/+1 + 3
+    // -1/-1 with `perPair.ordinal: 2`
+    // contributes 2 + 2 = 4 (NOT 2 + 3 = 5).
+    // When unset, the existing
+    // `perCounter.ordinal?` semantic is used.
+    // The `perPair.ordinal` defaults to 1
+    // (cumulative sum of the FIRST counter of
+    // each unique type — a "first counter per
+    // pair" read).
+    if (perCounter.perPair) {
+      const pairOrdinal = perCounter.perPair.ordinal ?? 1;
+      const allCounters = source.counters ?? [];
+      // Group counters by type; iterate the
+      // unique types in `source.counters` array
+      // order (preserves stamping order); for
+      // each unique type, sum the first
+      // `pairOrdinal` entries of that type.
+      const seenTypes = new Set<string>();
+      let pairSum = 0;
+      for (const c of allCounters) {
+        if (seenTypes.has(c.type)) continue;
+        seenTypes.add(c.type);
+        const ofType = allCounters.filter(
+          (x) => x.type === c.type,
+        );
+        const firstN = ofType.slice(0, pairOrdinal);
+        pairSum += firstN.reduce(
+          (acc, x) => acc + x.count,
+          0,
+        );
+      }
+      return pairSum;
     }
     const ordinal = perCounter.ordinal ?? 0;
     if (ordinal === 0) {
@@ -1326,8 +1376,62 @@ export function refreshScriptedStatics(input: GameState): GameState {
                 // entries (the pair contributes each
                 // literal quality independently to
                 // the resolved list).
+                //
+                // Wave 4.8 follow-up 29 priority 5
+                // (lane 71) (#2614 follow-up): the
+                // per-pair `"chosen"` sentinel
+                // entry. The nested array now ALSO
+                // accepts a `"chosen"` sentinel
+                // entry — the engine consult
+                // FLATTENS each nested array to its
+                // literal entries AND resolves the
+                // `"chosen"` entry via
+                // `source.chosenProtectionFrom`. The
+                // resulting quality is added to the
+                // flattened list (alongside the
+                // literal entries). v1 minimum: a
+                // single `"chosen"` entry inside the
+                // nested array.
+                //
+                // Wave 4.8 follow-up 30 priority 5
+                // (lane 71) (#2614 follow-up): the
+                // per-pair-with-`"chosen"`-per-pair
+                // resolution. The
+                // `protectionFrom` schema accepts
+                // multiple per-pair `"chosen"`
+                // entries across nested arrays (e.g.
+                // `[["red", "chosen"], ["green",
+                // "chosen"]]` = "protection from
+                // red+chosen AND green+chosen"). The
+                // engine consult reads the SAME
+                // `card.chosenProtectionFrom`
+                // instance field for EACH
+                // `"chosen"` entry, even across
+                // multiple nested arrays — the
+                // resolved qualities are pushed
+                // once per `"chosen"` entry, and
+                // the `protFrom` Set dedupes at
+                // write time. The v1 minimum is the
+                // single-instance-field model
+                // (parallel to the lane 52
+                // `chosenColor` instance field);
+                // a per-pair independent
+                // sentinel-resolution map rides
+                // follow-up 31 if any future
+                // priority piece surfaces a
+                // per-pair sentinel field (e.g.
+                // `source.chosenProtectionFromPerPair`).
                 for (const q of entry) {
-                  if (typeof q === "string") resolved.push(q);
+                  if (q === "chosen") {
+                    if (
+                      card.chosenProtectionFrom !== null &&
+                      card.chosenProtectionFrom !== undefined
+                    ) {
+                      resolved.push(card.chosenProtectionFrom);
+                    }
+                  } else if (typeof q === "string") {
+                    resolved.push(q);
+                  }
                 }
               } else {
                 resolved.push(entry);

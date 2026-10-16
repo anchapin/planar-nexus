@@ -228,7 +228,7 @@ describe("Wave 4.8 follow-up 28 priority 4 piece 1/N — CopyPermanent.count mul
         spell: [
           {
             op: "CopyPermanent",
-            target: "creature",
+            target: { kind: "filter", value: "creature" },
             controller: "any",
             count: 2,
           },
@@ -254,7 +254,7 @@ describe("Wave 4.8 follow-up 28 priority 4 piece 1/N — CopyPermanent.count mul
         spell: [
           {
             op: "CopyPermanent",
-            target: "permanent",
+            target: { kind: "filter", value: "permanent" },
             controller: "any",
           },
         ],
@@ -277,7 +277,7 @@ describe("Wave 4.8 follow-up 28 priority 4 piece 1/N — CopyPermanent.count mul
           spell: [
             {
               op: "CopyPermanent",
-              target: "permanent",
+              target: { kind: "filter", value: "permanent" },
               controller: "any",
               count: 0,
             },
@@ -294,7 +294,7 @@ describe("Wave 4.8 follow-up 28 priority 4 piece 1/N — CopyPermanent.count mul
           spell: [
             {
               op: "CopyPermanent",
-              target: "permanent",
+              target: { kind: "filter", value: "permanent" },
               controller: "any",
               count: 1.5,
             },
@@ -307,7 +307,7 @@ describe("Wave 4.8 follow-up 28 priority 4 piece 1/N — CopyPermanent.count mul
   describe("engine — interpretCopyPermanent creates `count` independent tokens", () => {
     it("creates 2 new cards on the controller's battlefield when count: 2 (Rite of Replication)", () => {
       // Register a multi-copy spell:
-      // `CopyPermanent { target: "creature",
+      // `CopyPermanent { target: { kind: "filter", value: "creature" },
       // controller: "any", count: 2 }`. Place a
       // bear on the opponent's battlefield (Bob);
       // cast the spell as Alice; the engine finds
@@ -322,7 +322,7 @@ describe("Wave 4.8 follow-up 28 priority 4 piece 1/N — CopyPermanent.count mul
         spell: [
           {
             op: "CopyPermanent",
-            target: "creature",
+            target: { kind: "filter", value: "creature" },
             controller: "any",
             count: 2,
           },
@@ -392,7 +392,7 @@ describe("Wave 4.8 follow-up 28 priority 4 piece 1/N — CopyPermanent.count mul
         spell: [
           {
             op: "CopyPermanent",
-            target: "creature",
+            target: { kind: "filter", value: "creature" },
             controller: "any",
             count: 3,
           },
@@ -450,7 +450,7 @@ describe("Wave 4.8 follow-up 28 priority 4 piece 1/N — CopyPermanent.count mul
         spell: [
           {
             op: "CopyPermanent",
-            target: "creature",
+            target: { kind: "filter", value: "creature" },
             controller: "any",
             count: 5,
           },
@@ -497,7 +497,7 @@ describe("Wave 4.8 follow-up 28 priority 4 piece 1/N — CopyPermanent.count mul
         spell: [
           {
             op: "CopyPermanent",
-            target: "creature",
+            target: { kind: "filter", value: "creature" },
             controller: "any",
             count: 1,
           },

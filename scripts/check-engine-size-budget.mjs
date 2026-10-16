@@ -750,7 +750,73 @@ const SCOPES = [
     // explaining the SUMMED vs REPLACE semantic
     // distinction and the future deprecation path).
     // schema.ts measured at 4582 (+32 over 4550).
-    budgetLines: 4620,
+    //
+    // Bumping 4620 → 4710 to capture the follow-up 29
+    // priority 1 (lane 28 piece 2/4 — `CopyPermanent`
+    // target discriminator) — the `target` arm is
+    // restructured to a discriminated union (`kind:
+    // "filter"` + `kind: "id"` + `kind: "named_card"`
+    // stub) with the legacy enum filter preserved as
+    // the `kind: "filter"` arm + parent
+    // `CopyPermanent` docstring expansion explaining
+    // the discriminator shape, the auto-pick vs
+    // named-target vs named-card resolution paths,
+    // and the piece 3/4 named-card stub rationale.
+    // schema.ts measured at 4706 (+86 over 4620).
+    //
+    // Bumping 4710 → 4750 to capture the follow-up 29
+    // priority 3 (lane 28 piece 4/4 —
+    // `CopyPermanent.exceptions` arm) — the OPTIONAL
+    // `exceptions: { add_subtype?: string[] }` arm
+    // (parallel to the lane 75c
+    // `become_copy.exceptions` shape — a
+    // `add_subtype` list that the engine merges onto
+    // each copy token's overlaid `cardData.type_line`)
+    // + parent `CopyPermanent` docstring expansion
+    // explaining the per-copy modifier + the additive
+    // semantic + the future `add_color` / `add_power`
+    // / `add_toughness` / `add_type` exception
+    // variants that ride follow-up 30. schema.ts
+    // measured at 4749 (+39 over 4710).
+    //
+    // Bumping 4750 → 4810 to capture the follow-up 29
+    // priority 4 (lane 32 — per-pair counter ordinal
+    // variant) — the new OPTIONAL `perPair` sub-arm on
+    // `perCounter` (`{ ordinal?: number }`) — the
+    // "Nth counter of each unique type" cross-type
+    // variant. The `perPair` arm lives alongside the
+    // existing `perCounter.ordinal?` arm; both can be
+    // set, but the `perPair` arm takes precedence
+    // when both are set (parallel to the
+    // `andPer.perCounterSummed` precedence rule from
+    // follow-up 28 priority 3) + parent `perCounter`
+    // docstring expansion explaining the cross-type
+    // per-pair semantics, the `perPair.ordinal: 1`
+    // default ("first counter per pair" read), and the
+    // future `andPer.perCounter.perPair` extension +
+    // the per-pair-with-sentinel extension that ride
+    // follow-up 30. schema.ts measured at 4803 (+53
+    // over 4750).
+    //
+    // Bumping 4985 → 5060 to capture the follow-up 30
+    // priority 4 (lane 28, piece 4/N) —
+    // `CopyPermanent.exceptions.add_type` arm
+    // (`z.array(z.enum(CARD_TYPES)).min(1).
+    // optional()` on the existing `exceptions`
+    // shape — the seven `CARD_TYPES` enum values:
+    // `Creature | Artifact | Enchantment | Land |
+    // Planeswalker | Battle | Tribal`) + parent
+    // `exceptions` docstring expansion explaining
+    // the type-line prepend (the types-precede-
+    // printed-types rebuild), the parallel
+    // `add_subtype` arm composition (type prepend
+    // is OUTER, subtype append is INNER), the
+    // `add_supertype` extension that rides
+    // follow-up 31, and the destructive
+    // `set_type` variant that also rides
+    // follow-up 31. schema.ts measured at 5056
+    // (+71 over 4985).
+    budgetLines: 5060,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),
