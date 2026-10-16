@@ -215,7 +215,9 @@ describe("Wave 4.8 follow-up 29 priority 1 piece 2/4 — CopyPermanent.target di
           },
         ],
       });
-      const eff = parsed.spell![0] as CardEffect;
+      const eff = parsed.spell![0] as CardEffect & {
+        target: { kind: string; value: unknown };
+      };
       expect(eff.target).toEqual({ kind: "filter", value: "creature" });
     });
 
@@ -235,7 +237,9 @@ describe("Wave 4.8 follow-up 29 priority 1 piece 2/4 — CopyPermanent.target di
           },
         ],
       });
-      const eff = parsed.spell![0] as CardEffect;
+      const eff = parsed.spell![0] as CardEffect & {
+        target: { kind: string; value: unknown };
+      };
       expect(eff.target).toEqual({
         kind: "id",
         value: "card-some-source-on-battlefield",
@@ -264,7 +268,9 @@ describe("Wave 4.8 follow-up 29 priority 1 piece 2/4 — CopyPermanent.target di
           },
         ],
       });
-      const eff = parsed.spell![0] as CardEffect;
+      const eff = parsed.spell![0] as CardEffect & {
+        target: { kind: string; value: unknown };
+      };
       expect(eff.target).toEqual({
         kind: "named_card",
         value: { name: "Grizzly Bears" },
