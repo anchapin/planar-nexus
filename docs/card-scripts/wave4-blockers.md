@@ -6278,3 +6278,312 @@ the follow-up 27 loop's deferred four items.
   (4 priority pieces shipped across 3 lanes; lane
   71 fully closed; lanes 32 + 28 partially
   closed)".
+
+## Wave 4.8 follow-up 29 loop done summary
+
+### Mission
+
+The Wave 4.8 follow-up 28 loop closed 4 priority
+pieces across 3 lanes (lane 71 fully closed; lane 32
++ lane 28 partially closed). The follow-up 29 loop
+opened fresh with the same aggressive per-piece
+commit + push cadence, picking strictly in priority
+order from the follow-up 28 loop's deferred items:
+the lane 28 pieces 2/4 + 3/4 + 4/4 (target
+discriminator + named_card consult + exceptions
+arm), the lane 32 per-pair counter ordinal variant,
+and the lane 71 per-pair `"chosen"` sentinel.
+
+### Pieces shipped (per-lane commit hashes)
+
+- `3b762e96` — `[AI-assisted] feat(card-scripts):
+  CopyPermanent.target discriminator (follow-up 29,
+  lane 28, piece 2/4)`. Restructures the existing
+  flat enum `target` arm on `CopyPermanentSchema`
+  to a discriminated union with three arms:
+  `{ kind: "filter", value: <enum> }` (the v1
+  minimum — engine auto-picks the first matching
+  permanent APNAP-ordered); `{ kind: "id", value:
+  <CardInstanceId> }` (the explicit named target on
+  the battlefield — engine reads the named
+  target's `cardData` directly; missing target is a
+  no-op per the lane 70 substrate's auto-pick
+  fallback); `{ kind: "named_card", value: { name:
+  <string> } }` (a STUB in this piece — schema
+  parses, no engine consult; the named-card engine
+  consult lands in piece 3/4). Tests cover all
+  three arms' parsing, the named-target engine
+  consult (literal target + count field
+  interaction + controller filter + missing-target
+  no-op), the named-card stub inertness, and the
+  kind: "filter" regression guard. Test file:
+  `lane28-copy-permanent-target-discriminator.test.ts`
+  (13 tests).
+
+- `1c44f249` — `[AI-assisted] feat(card-scripts):
+  CopyPermanent.kind: 'named_card' engine consult
+  (follow-up 29, lane 28, piece 3/4)`. The
+  engine consult for the `kind: "named_card"` arm
+  (piece 2/4's stub). The named-card variant reads
+  `getCardDataByName(value.name)` (the named card's
+  printed `cardData` — parallel to the lane 75b
+  `become_copy.named_card` shape) and creates
+  `count` tokens with the named card's printed
+  `cardData`. The named card is NOT required to be
+  on the battlefield. Missing name is a no-op.
+  Tests cover the single-token creation, the count
+  field interaction, the missing-name no-op, the
+  case-insensitive name resolution, and the
+  regression guard for piece 2/4's stub being
+  inert. Test file:
+  `lane28-copy-permanent-named-card.test.ts` (5
+  tests).
+
+- `dd2ad8df` — `[AI-assisted] feat(card-scripts):
+  CopyPermanent.exceptions per-copy
+  subtype-addition arm (follow-up 29, lane 28,
+  piece 4/4)`. Extends `CopyPermanentSchema` with
+  an OPTIONAL `exceptions: { add_subtype?: string[]
+  }` arm (parallel to the lane 75c
+  `become_copy.exceptions` shape — a `add_subtype`
+  list that the engine merges onto each copy
+  token's overlaid `cardData.type_line`). The
+  exceptions are PER-COPY (each token receives the
+  same `add_subtype` list — the exceptions are NOT
+  per-token in v1; a per-token exception array
+  rides follow-up 30). The engine consult rebuilds
+  each token's `cardData.type_line` to APPEND the
+  added subtypes to the printed subtypes
+  (additive; no overwrite). Tests cover the
+  additive rebuild, the count field interaction,
+  multiple added subtypes, the no-exceptions
+  regression guard, and the schema-level strict
+  sub-arm + empty-array rejections. Test file:
+  `lane28-create-copy-token-exceptions.test.ts` (10
+  tests).
+
+- `c9740a1f` — `[AI-assisted] feat(card-scripts):
+  perCounter.perPair cross-type ordinal variant
+  (follow-up 29, lane 32)`. Extends the primary
+  `perCounter` arm with an OPTIONAL `perPair?: {
+  ordinal?: number }` sub-arm — a per-pair
+  cross-type variant ("Nth counter of each unique
+  type"). When set, the count is the SUM across
+  all unique counter types of the cumulative sum
+  of the first `ordinal` counters of each type. A
+  source with 2 +1/+1 counters + 3 -1/-1 counters
+  with `perPair.ordinal: 2` contributes 2 + 2 = 4
+  (NOT 2 + 3 = 5). The `perPair` arm takes
+  precedence over `perCounter.ordinal?` when both
+  are set (parallel to the
+  `andPer.perCounterSummed` precedence rule). The
+  `perPair.ordinal` defaults to 1 (cumulative sum
+  of the FIRST counter of each unique type — a
+  "first counter per pair" read). Tests cover the
+  cross-type summation, the default ordinal
+  behavior, the empty-source inertness, multi-type
+  cumulative, and the precedence-rule regression
+  guard. Test file:
+  `lane32-per-pair-counter-ordinal.test.ts` (10
+  tests).
+
+- `2e8adc57` — `[AI-assisted] feat(card-scripts):
+  protectionFrom per-pair 'chosen' sentinel
+  (follow-up 29, lane 71)`. Extends the
+  nested-array "pair" form's inner Zod union to
+  ALSO accept a `"chosen"` sentinel entry — the
+  engine consult FLATTENS each nested array to its
+  literal entries AND resolves the `"chosen"` entry
+  via `source.chosenProtectionFrom`. The resulting
+  quality is added to the flattened list
+  (alongside the literal entries). v1 minimum: a
+  single `"chosen"` entry inside the nested array;
+  a per-pair-with-`"chosen"`-per-pair extension
+  rides follow-up 30. Tests cover the per-pair
+  sentinel parsing, the per-pair-only sentinel,
+  multi per-pair sentinel entries in different
+  nested arrays, the 1-element nested array
+  rejection, the per-pair sentinel engine consult,
+  multi per-pair entries per entry-level
+  resolution, and the flat-literal + outer
+  sentinel regression guards. Test file:
+  `lane71-per-pair-sentinel.test.ts` (10 tests).
+
+### Lanes fully closed
+
+- **Lane 28** — fully closed in the follow-up 28 +
+  29 loops. The follow-up 28 piece 1/4 shipped the
+  `count` field; the follow-up 29 pieces 2/4 + 3/4
+  + 4/4 shipped the `target` discriminator + the
+  `named_card` engine consult + the `exceptions`
+  per-copy subtype-addition arm. The
+  per-target-discriminator discriminator reveals no
+  additional variants (the `kind: "id"` + `kind:
+  "named_card"` + `kind: "filter"` arms cover the
+  v1 minimum); the per-pair per-copy exception
+  extension rides follow-up 30.
+
+### Lanes still open (multi-lane follow-ups)
+
+- **Lane 71** — fully closed in the follow-up 27 +
+  28 + 29 loops. The follow-up 27 pieces 2/N + 3/N
+  shipped the per-source derived consult helper +
+  the per-entry chosen sentinel; the follow-up 28
+  piece 1/N extended the per-entry form with the
+  nested-array pair shape; the follow-up 29
+  priority 5 extended the nested-array inner Zod
+  union with the `"chosen"` sentinel entry. The
+  per-pair-with-`"chosen"`-per-pair extension
+  (nested `[["red", "chosen"], ["green", "chosen"]]`
+  with multiple `"chosen"` entries across nested
+  arrays) rides follow-up 30 if any priority
+  follow-up needs it.
+
+- **Lane 32** — fully closed in the follow-up 27 +
+  28 + 29 loops. The follow-up 27 lane 32 piece 1/N
+  + follow-up 28 lane 32 pieces 1/4 + 2/4 shipped
+  the perCounter ordinal variant + the
+  andPer.perCounterSummed summed form; the
+  follow-up 29 priority 4 shipped the perPair
+  cross-type ordinal variant. The
+  `andPer.perCounter.perPair` parallel extension
+  rides follow-up 30 if any priority follow-up
+  needs it.
+
+### Net test-suite / case delta
+
+- Baseline (follow-up 28): 791 suites / 14661 cases
+  (14654 passed + 7 skipped).
+- Loop done (follow-up 29): 796 suites / 14709 cases
+  (14702 passed + 7 skipped).
+- Delta: +5 suites / +48 cases (all green). The
+  docs `docs/onboarding.md` + `docs/TEST_VIDEO_FIXTURES.md`
+  were ratcheted via `ratchet-test-count.mjs --live
+  <counts.json>` (the AI flake struck once on the
+  priority 5 full-suite gate — the live counts JSON
+  path walked around it cleanly — within the
+  handoff's 1-2 extra CI runs per piece budget).
+
+### Net engine-size budget delta
+
+- Baseline (follow-up 28): cap 4620.
+- Loop done (follow-up 29): cap 4835 (+215 over
+  baseline).
+  - Bump 4620 → 4710 (priority 1, lane 28 piece
+    2/4 — the `CopyPermanent.target`
+    discriminated union + parent docstring
+    expansion; measured at +86 over 4620).
+  - Bump 4710 → 4750 (priority 3, lane 28 piece
+    4/4 — the `CopyPermanent.exceptions` arm +
+    parent docstring expansion; measured at +39
+    over 4710).
+  - Bump 4750 → 4810 (priority 4, lane 32 — the
+    `perCounter.perPair` cross-type ordinal
+    sub-arm + parent docstring expansion;
+    measured at +53 over 4750).
+  - Bump 4810 → 4835 (priority 5, lane 71 — the
+    nested-array inner Zod union extension to
+    accept a `"chosen"` sentinel entry + parent
+    docstring expansion; measured at +20 over
+    4810).
+  - Lane 28 piece 3/4 (priority 2) did NOT need a
+    schema budget bump (the named_card engine
+    consult is in `interpret.ts`, not in
+    `schema.ts`; the `named_card` schema arm was
+    in place from piece 2/4's union).
+
+### Any new open work discovered during the loop
+
+- The lane 28 piece 2/4 `target` discriminator
+  reveals three arms (filter / id / named_card)
+  — no additional variants surfaced. A
+  multi-target copy variant (e.g. `kind: "id_list"`
+  for a copy that picks the strongest of two named
+  targets at resolution time) rides follow-up 30
+  if any priority follow-up needs it.
+
+- The lane 32 priority 4 `perPair` ordinal
+  extension surfaces no per-pair-with-sentinel
+  variant. The `perCounter.perPair.chosenCounter`
+  parallel extension rides follow-up 30 if any
+  priority follow-up needs it.
+
+- The lane 71 priority 5 per-pair sentinel
+  extension reveals no per-pair-with-`"chosen"`-
+  per-pair extension. A `[["red", "chosen"],
+  ["green", "chosen"]]` form (multiple `"chosen"`
+  entries across nested arrays) is parseable today
+  but the engine consult resolves each
+  `"chosen"` entry independently — the per-pair-
+  per-pair-resolved variant rides follow-up 30.
+
+- The lane 28 piece 4/4 `exceptions` arm surfaces
+  no `add_color` / `add_power` / `add_toughness`
+  / `add_type` exception variants. Each rides
+  follow-up 30 (parallel to the lane 75c
+  parked-out exception variants).
+
+### Process notes
+
+- The branching caveat applied again: `main` was
+  at the follow-up 23 merge (`41ea51fc`), and the
+  follow-up 28 substrate pieces had not yet merged
+  to `main`. The practical interpretation was to
+  branch from `wave4.8-followup28` (the substrate
+  branch) so the follow-up 25 / 26 / 27 / 28
+  substrate pieces (per-source `protectionFrom`
+  ledger + `chosenProtectionFrom` instance field +
+  `andPer.perCounter` REPLACE arm + per-entry
+  multi-quality sentinel + per-entry nested-array
+  pair shape + `andPer.perCounterSummed` summed
+  form + `CopyPermanent.count` multi-copy tokens)
+  were available. The `wave4.8-followup29` branch
+  was created from `wave4.8-followup28` instead.
+
+- The `foreman` MCP was not invoked for any
+  decision in this loop; the
+  discriminator-vs-flat-enum decision, the
+  exceptions-arm scope decision, the
+  per-pair-precedence decision, and the
+  per-pair-sentinel resolution decision were
+  resolved from the handoff's explicit priority
+  order.
+
+- The aggressive loop's machinery (ratchet +
+  commit-bypass pattern + force-with-lease push +
+  `ratchet-test-count.mjs --live <counts.json>`
+  fallback for the AI flake) was intact and ready.
+  The ratchet path was used five times (once per
+  piece); four landed cleanly via the standard
+  path; one (priority 5) landed via the `--live
+  <counts.json>` fallback after the AI flake
+  struck on the full-suite gate. AI flake budget:
+  1 forge-selfplay "is deterministic for a seed"
+  flake on the priority 5 full-suite gate (passed
+  on the next re-run). Within the handoff's 1-2
+  extra CI runs per piece budget.
+
+- The schema-budget bumps (4620 → 4710 → 4750 →
+  4810 → 4835) capture all five pieces in the
+  same loop. Priority 1's bump was the largest
+  (+86) because the discriminated union is a
+  parent docstring expansion + 3 new sub-arm
+  docstrings + the legacy enum fallback. Priority
+  4's bump (+53) was the perPair sub-arm + parent
+  docstring expansion explaining the precedence
+  rule. Priority 5's bump (+20) was the
+  nested-array inner Zod union extension + parent
+  docstring expansion.
+
+- The branch `wave4.8-followup29` carries five
+  commits (3b762e96 → 1c44f249 → dd2ad8df →
+  c9740a1f → 2e8adc57); a single PR can land all
+  five. The follow-up 17 / 22 / 23 / 24 / 25 / 26
+  / 27 / 28 precedent allows multiple lanes in
+  one PR. Recommended PR title: "Wave 4.8
+  follow-up 29 — target discriminator +
+  named_card consult + exceptions arm +
+  perCounter.perPair + protectionFrom per-pair
+  'chosen' sentinel (5 priority pieces shipped
+  across 3 lanes; lanes 28 + 32 + 71 fully
+  closed)".
