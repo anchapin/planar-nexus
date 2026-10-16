@@ -4698,3 +4698,199 @@ extending the death-redirect factory).
   intermittent), but in isolation those three
   suites passed clean. The CI reruns were
   green.
+
+## Wave 4.8 follow-up 22 loop done summary (3 priority pieces shipped + 1 verified-already-shipped)
+
+Loop opened at the start of follow-up 22 per
+`docs/card-scripts/wave4.8-followup22-handoff.md`.
+Three priority pieces landed on the
+`wave4.8-followup22` branch (PR #2806 OPEN at
+handoff write time — single PR per the follow-up
+17 / 20 / 21 precedent):
+
+- **Lane 69 piece 3/N — spendMana enforcement
+  consult.** `spendMana` gains an optional 4th
+  arg `{ restriction?: string }` that consults
+  `resolveXspentOn` BEFORE touching the main
+  pool; insufficient / mismatched tag → blocked;
+  on success, the ledger tag is cleared via
+  `clearRestrictionTag`. 4 new test cases
+  on `lane69-spend-mana-only-restriction-ledger.test.ts`.
+  Lane 69 ("spend this mana only on [X]") is
+  **fully closed** as of this commit (pieces
+  1/N + 2/N shipped follow-up 21; piece 3/N
+  shipped here).
+- **Lane 70 piece 1/N — permanent-copy
+  substrate.** The "becomes a copy of [X]
+  forever" variant (Clone / Phantasmal Image
+  without the EOT suffix / Sakashima without
+  the EOT suffix). Schema `become_copy.{target
+  |named_card}.until` extended from
+  `z.literal("end_of_turn")` to
+  `z.union([literal("end_of_turn"),
+  literal("permanent")])`. New `CardInstance.
+  copyOfTargetIdPermanent?: string` field.
+  New `setPermanentCopyOf` /
+  `clearPermanentCopyOf` helpers in
+  `keyword-actions/copy-chain.ts`. 9 new test
+  cases on `lane70-permanent-copy-substrate.test.ts`.
+  Engine-size budget bumped 4000 → 4050
+  (mirror of follow-up 21 piece 3/N bump for
+  `cost.or`).
+- **Lane 71 piece 1/N — protection-from
+  static enforcement at layer 6/7.** Fixed
+  the gap where `targeting-validation.hasProtectionFromColor`
+  + `getProtectionQualities` + `canTargetCard`
+  did NOT honor the per-instance `protectionFrom`
+  ledger (the static-stamped field). v1 consults
+  the ledger first and falls through to the
+  oracle-text regex only when the ledger is
+  empty. 10 new test cases on
+  `lane71-protection-from-static-enforcement.test.ts`.
+- **Lane 99 piece 2/N — 3-arm `cost.or`
+  combinator extension — ALREADY SHIPPED.**
+  The follow-up 21 piece 3/N substrate already
+  supports 3+ arms (the Zod `.min(2)` permits
+  any array length, and the engine dispatch in
+  `card-scripts/interpret.ts` /
+  `spell-casting/choices.ts` already iterates
+  the array via `.map(...)` /
+  `orCost[stackAny.chosen_or_cost_index]`, both
+  of which scale to arbitrary length). The
+  existing test `lane99-cost-or-combinator.test.ts`
+  line 189 ("accepts cost.or with three arms of
+  different shape (multi-arm)") already covers
+  the 3-arm parse path. **No code change
+  needed** for the 3-arm priority item;
+  documented here for self-containment.
+
+### Carry-overs (next loop's priority list)
+
+The follow-up 22 loop exhausts the 4-item
+priority list but leaves four lanes open:
+
+- **Lane 70 piece 2/N — refresh-pass write +
+  cardData overlay.** The substrate (piece 1/N)
+  ships the schema arm + the per-instance
+  ledger + the helpers, but the refresh pass
+  does NOT yet write `copyOfTargetIdPermanent`
+  on the source (only the EOT `copyOfTargetId`).
+  The cardData overlay (the visual "becomes a
+  copy of X" effect — name, type_line, P/T,
+  colors, keywords) needs a parallel write
+  path that snapshots the printed cardData
+  once and overlays the target's characteristics
+  permanently. Estimated 100-150 LOC of
+  engine changes in `keyword-actions/scripted-statics.ts`
+  + the battlefield-leave cleanup path.
+  This is the largest remaining single piece
+  on the follow-up backlog; the handoff's
+  "120-180 LOC" estimate for the full lane 70
+  family remains accurate. Sub-pieces: 2a
+  refresh-pass writes the ledger (no overlay);
+  2b the cardData overlay + battlefield-leave
+  cleanup. Sub-piece 2a is the smaller pick-up.
+- **Lane 71 piece 2/N — Aura-shaped variant
+  enforcement + per-source-Quality
+  multi-cast enforcement.** The substrate
+  (piece 1/N) fixes the targeting-validation
+  consult; lane 71 follow-up extensions cover
+  the Aura-shaped variant (parallel to lane 76
+  substrate), per-source-Quality multi-cast
+  enforcement, and the combat-side
+  `evergreen-keywords.isProtectedFromSource`
+  consult (which also doesn't honor the
+  per-instance ledger today — symmetric bug
+  to the targeting-validation gap that piece
+  1/N fixed). Estimated 80-120 LOC total.
+- **Lane 32 — Scaling P/T anthems** (carry-
+  over from prior handoffs).
+- **Lane 28 / 78 — Copying a permanent across
+  zones** (Phantasmal Image / Clone with
+  cross-zone copy).
+- **Lane 80 / 81 — Cross-lane engagements**
+  (unblocks once prerequisite lanes ship).
+
+### Test-suite / case delta
+
+- Follow-up 21 baseline (post #2805 merge):
+  772 suites / 14505 cases (14498 passed + 7
+  skipped).
+- After follow-up 22 piece 1 (lane 69):
+  772 / 14509 (14502 passed + 7 skipped).
+- After follow-up 22 piece 2 (lane 70):
+  773 / 14518 (14511 passed + 7 skipped).
+- After follow-up 22 piece 3 (lane 71):
+  774 / 14528 (14521 passed + 7 skipped).
+- **Net delta: +2 suites / +23 cases.**
+
+### Engine-size budget delta
+
+- Follow-up 21 baseline cap: 4000 (held flat
+  from follow-up 21 piece 3/N bump).
+- Follow-up 22 lane 70 piece 1/N: bumped
+  4000 → 4050 (mirror of follow-up 21 piece
+  3/N bump for `cost.or`). docstring entry in
+  `scripts/check-engine-size-budget.mjs` per
+  the historical precedent.
+- Lane 69 + lane 71 pieces did NOT bump the
+  cap (their source deltas were small enough
+  to absorb).
+
+### Known issues / carry-overs
+
+- **AI flake budget** — the forge-gate /
+  forge-selfplay / expert-agent "is
+  deterministic for a seed" intermittent hit
+  on a single local full-suite run on lane 70
+  piece 1 (the documented `--live
+  <counts.json>` fallback path was used). One
+  rerun was clean. No new engine drift.
+- The **lane 71 piece 1/N** consult-shape fix
+  is a small semantic change to
+  `targeting-validation.hasProtectionFromColor`
+  + `getProtectionQualities`: the consult now
+  honors the per-instance `protectionFrom`
+  ledger BEFORE falling through to the
+  oracle-text regex. The behavior change is
+  "static-stamped protection is now honored
+  at the targeting-validation layer"; cards
+  with BOTH static-stamped protection AND
+  printed protection still resolve correctly
+  (the unioned shape is returned by
+  `getProtectionQualities`). No regression on
+  the 55 prior protection tests
+  (keyword-protection / lane 71 / lane 74 /
+  lane 76 / protection-hexproof-shroud-targeting
+  all green).
+
+### Process notes
+
+- All three pieces used the `git commit
+  --no-verify` + `git push --no-verify`
+  bypass pattern (the home `AGENTS.md` and
+  follow-up 21 precedent). The
+  `GIT_AUTHOR_NAME` /
+  `GIT_AUTHOR_EMAIL` env vars were set on
+  every commit + amend.
+- The `--live <counts.json>` ratchet-test-count
+  fallback was used once (lane 70 piece 1 mid-
+  ratchet). The canonical `npm run
+  ratchet:test-count` path is preferred; the
+  fallback exists exactly for this case
+  (forge-gate / forge-selfplay / expert-agent
+  intermittent under load).
+- The `foreman` MCP was not invoked (no
+  technical multiple-choice decisions arose).
+- The PR-title inherited the first piece's
+  title (priority 1 piece 1/N — lane 69
+  piece 3/N); PR #2806's body documents the
+  multi-piece scope across three lanes. The
+  follow-up 17 / 20 / 21 precedent allows
+  multiple priority lanes in one PR when the
+  loop spans several.
+- The handoff's "After every 5th piece,
+  append a mid-loop progress note" cadence was
+  not triggered (the loop shipped 3 pieces
+  before reaching the 5-piece threshold;
+  mid-loop cadence rides follow-up 23+).
