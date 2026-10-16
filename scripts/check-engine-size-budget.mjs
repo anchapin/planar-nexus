@@ -737,7 +737,20 @@ const SCOPES = [
     // the 1-element rejection rationale, and the
     // flattening semantics. schema.ts measured at 4523
     // (+23 over 4500).
-    budgetLines: 4550,
+    //
+    // Bumping 4550 → 4620 to capture the follow-up 28
+    // priority 3 (`andPer.perCounterSummed` summed
+    // form) — the `andPer` schema arm extension with
+    // an OPTIONAL `perCounterSummed: { counter: string
+    // | "chosen", ordinal?: number }` sub-arm
+    // (parallel to the existing REPLACE `perCounter`
+    // sub-arm; the SUM form is the natural read for
+    // "per creature AND per chosen counter" anthems
+    // + parent `andPer` docstring expansion
+    // explaining the SUMMED vs REPLACE semantic
+    // distinction and the future deprecation path).
+    // schema.ts measured at 4582 (+32 over 4550).
+    budgetLines: 4620,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

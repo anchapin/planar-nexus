@@ -2584,6 +2584,65 @@ export const StaticSchema = z
               })
               .strict()
               .optional(),
+            /**
+             * Wave 4.8 follow-up 28 priority 3
+             * (#2614 follow-up): the SUMMED
+             * per-counter arm on the `andPer`
+             * AND-source. The natural read for
+             * "per creature AND per chosen counter"
+             * anthems — the per-counter count is
+             * SUMMED with the `andPer.per`
+             * state-derived count (NOT replaced).
+             * The follow-up 27 piece 1/N
+             * `andPer.perCounter` arm REPLACES the
+             * state-derived count (parallel to the
+             * primary `perCounter` REPLACES the
+             * primary `per`); this new
+             * `andPer.perCounterSummed` arm is the
+             * SUMMED alternative for "per creature +
+             * per counter" anthems where the
+             * REPLACE semantic is wrong (the
+             * REPLACE form is a special case for
+             * self-referential count sources;
+             * the summed form is the CORRECT shape
+             * for most "per + perCounter" use
+             * cases). v1 minimum: the SUMMED arm
+             * lives alongside the REPLACE arm
+             * (both are valid). When BOTH are set,
+             * the SUM arm takes precedence
+             * (the SUM is the natural read).
+             * Future lane: deprecating the REPLACE
+             * arm (the self-referential case is
+             * rare; the summed form covers 90%+ of
+             * use cases) rides follow-up 29.
+             */
+            perCounterSummed: z
+              .object({
+                counter: z.union([
+                  z.string().min(1),
+                  z.literal("chosen"),
+                ]),
+                /**
+                 * Wave 4.8 follow-up 28 priority 3
+                 * (#2614 follow-up): an OPTIONAL
+                 * ordinal variant on the
+                 * `andPer.perCounterSummed` arm.
+                 * Mirrors the primary
+                 * `perCounter.ordinal?` field —
+                 * when set, the summed per-counter
+                 * count is the CUMULATIVE sum of the
+                 * first `ordinal` counters of the
+                 * resolved type on the source. When
+                 * unset, the summed per-counter
+                 * count is the sum of ALL counters
+                 * of the resolved type (which is
+                 * then ADDED to the
+                 * `andPer.per` state-derived count).
+                 */
+                ordinal: z.number().int().min(1).optional(),
+              })
+              .strict()
+              .optional(),
           })
           .strict()
           .optional(),

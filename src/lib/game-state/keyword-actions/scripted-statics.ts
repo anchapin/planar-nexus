@@ -311,6 +311,9 @@ function computeAnthemScalingCount(
         per: "creatures" | "treasures" | "lands" | "other_creatures";
         perSubtype?: string;
         perCounter?: { counter: string; ordinal?: number } | undefined;
+        perCounterSummed?:
+          | { counter: string; ordinal?: number }
+          | undefined;
       }
     | undefined,
   perCounter?: { counter: string; ordinal?: number } | undefined,
@@ -475,6 +478,110 @@ function computeAnthemScalingCount(
     // (early return — the per-counter contribution
     // is added to `n` and we skip the state-derived
     // count loop entirely).
+    //
+    // Wave 4.8 follow-up 28 priority 3 (#2614
+    // follow-up): the `andPer.perCounterSummed`
+    // arm — the SUMMED per-counter form on the
+    // `andPer` AND-source. Unlike the REPLACE
+    // arm, this form SUMMED the per-counter count
+    // with the `andPer.per` state-derived count
+    // (the natural read for "per creature AND per
+    // chosen counter" anthems). When
+    // `andPer.perCounterSummed` is set, the engine
+    // computes the `andPer.per` state-derived count
+    // AND the summed per-counter count, then sums
+    // them. The REPLACE arm stays as the
+    // self-referential case. When BOTH
+    // `andPer.perCounter` and
+    // `andPer.perCounterSummed` are set, the SUM
+    // arm takes precedence (the SUM is the natural
+    // read). The `"chosen"` sentinel resolution
+    // mirrors the REPLACE arm. The ordinal variant
+    // (follow-up 28 priority 1) applies to the
+    // summed form too — when set, the summed
+    // per-counter count is the cumulative sum of
+    // the first `ordinal` counters of the resolved
+    // type.
+    if (andPer.perCounterSummed) {
+      // Wave 4.8 follow-up 28 priority 3: the
+      // SUMMED per-counter arm. The per-counter
+      // count is SUMMED with the `andPer.per`
+      // state-derived count (NOT replaced). The
+      // engine iterates the battlefield for the
+      // `andPer.per` state-derived count, then
+      // adds the per-counter count. The sentinel
+      // and ordinal resolution are independent of
+      // the REPLACE arm (parallel structure).
+      // Compute the state-derived count first.
+      let resolvedAndPerSubtypeForSum:
+        | string
+        | undefined = andPer.perSubtype;
+      if (andPer.perSubtype === "chosen") {
+        resolvedAndPerSubtypeForSum =
+          source.chosenCreatureType !== null &&
+          source.chosenCreatureType !== undefined
+            ? source.chosenCreatureType
+            : undefined;
+      }
+      const andSubtypeLcSum =
+        resolvedAndPerSubtypeForSum?.toLowerCase();
+      const matchesAndSubtypeSum = (card: CardInstance): boolean => {
+        if (!andSubtypeLcSum) return true;
+        return (card.cardData.type_line ?? "")
+          .toLowerCase()
+          .includes(andSubtypeLcSum);
+      };
+      for (const card of battlefieldCards(state)) {
+        if (card.controllerId !== source.controllerId) continue;
+        if (andPer.per === "other_creatures" && card.id === source.id) {
+          continue;
+        }
+        if (
+          (andPer.per === "creatures" || andPer.per === "other_creatures") &&
+          !isCreature(card)
+        ) {
+          continue;
+        }
+        if (andPer.per === "treasures") {
+          const t = (card.cardData.type_line ?? "").toLowerCase();
+          if (!t.includes("treasure")) continue;
+        }
+        if (andPer.per === "lands") {
+          const t = (card.cardData.type_line ?? "").toLowerCase();
+          if (!t.includes("land")) continue;
+        }
+        if (!matchesAndSubtypeSum(card)) continue;
+        n++;
+      }
+      // Now add the per-counter count. Resolve
+      // the counter type first (sentinel
+      // resolution), then read the cumulative
+      // sum (ordinal variant from follow-up 28
+      // priority 1).
+      const resolvedSumCounterType =
+        andPer.perCounterSummed.counter === "chosen"
+          ? source.chosenCreatureType !== null &&
+            source.chosenCreatureType !== undefined
+            ? source.chosenCreatureType
+            : null
+          : andPer.perCounterSummed.counter;
+      if (resolvedSumCounterType !== null) {
+        const ordinalSum = andPer.perCounterSummed.ordinal ?? 0;
+        if (ordinalSum === 0) {
+          const counterEntry = source.counters?.find(
+            (c) => c.type === resolvedSumCounterType,
+          );
+          n += counterEntry?.count ?? 0;
+        } else {
+          const allOfTypeSum = (source.counters ?? []).filter(
+            (c) => c.type === resolvedSumCounterType,
+          );
+          const firstNSum = allOfTypeSum.slice(0, ordinalSum);
+          n += firstNSum.reduce((sum, c) => sum + c.count, 0);
+        }
+      }
+      return n;
+    }
     if (andPer.perCounter) {
       const resolvedAndCounterType =
         andPer.perCounter.counter === "chosen"
