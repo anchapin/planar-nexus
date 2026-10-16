@@ -299,7 +299,23 @@ function computeAnthemScalingCount(
       }
     | undefined,
 ): number {
-  const subtypeLc = perSubtype?.toLowerCase();
+  // Wave 4.8 follow-up 25 lane 32 piece 3/N (#2614
+  // follow-up): the `"chosen"` sentinel for
+  // `perSubtype`. When the field is the sentinel,
+  // substitute `source.chosenCreatureType` (parallel
+  // to `affects.subtype: "chosen"` reading the same
+  // field). If `chosenCreatureType` is null (the
+  // enter choice hasn't resolved yet), the count is
+  // 0 (the scripted anthem remains inert — matches
+  // lane 86 chosen-type anthem semantics).
+  let resolvedPerSubtype: string | undefined = perSubtype;
+  if (perSubtype === "chosen") {
+    resolvedPerSubtype =
+      source.chosenCreatureType !== null && source.chosenCreatureType !== undefined
+        ? source.chosenCreatureType
+        : undefined;
+  }
+  const subtypeLc = resolvedPerSubtype?.toLowerCase();
   const matchesSubtype = (card: CardInstance): boolean => {
     if (!subtypeLc) return true;
     return (card.cardData.type_line ?? "")
@@ -349,7 +365,20 @@ function computeAnthemScalingCount(
   // combinator (lane 36 `X.or`-style matrix) is a
   // follow-up.
   if (andPer) {
-    const andSubtypeLc = andPer.perSubtype?.toLowerCase();
+    // Wave 4.8 follow-up 25 lane 32 piece 3/N: the
+    // `"chosen"` sentinel also applies to the
+    // AND-source's `perSubtype`. Same resolution
+    // (substitute `source.chosenCreatureType`,
+    // count 0 when unset).
+    let resolvedAndPerSubtype: string | undefined = andPer.perSubtype;
+    if (andPer.perSubtype === "chosen") {
+      resolvedAndPerSubtype =
+        source.chosenCreatureType !== null &&
+        source.chosenCreatureType !== undefined
+          ? source.chosenCreatureType
+          : undefined;
+    }
+    const andSubtypeLc = resolvedAndPerSubtype?.toLowerCase();
     const matchesAndSubtype = (card: CardInstance): boolean => {
       if (!andSubtypeLc) return true;
       return (card.cardData.type_line ?? "")

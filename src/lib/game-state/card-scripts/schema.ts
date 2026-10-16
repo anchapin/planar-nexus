@@ -2448,13 +2448,33 @@ export const StaticSchema = z
          * "Land"). When unset, the count source is
          * unfiltered (the v1 default — the count
          * includes every permanent matching the `per`
-         * arm). v1 single fixed type string; the
-         * chosen-type variant ("per creature of the
-         * chosen type" — driven by a
-         * `chosenCreatureType` field on the source)
-         * rides a follow-up sub-piece.
+         * arm).
+         *
+         * Wave 4.8 follow-up 25 lane 32 piece 3/N
+         * (#2614 follow-up): the `"chosen"` sentinel.
+         * A sentinel meaning "use the source's
+         * `chosenCreatureType` instance field". Only
+         * valid when the source has `enter_choice: {
+         * kind: "creature_type" }` (the lane 44
+         * substrate); the engine
+         * (`computeAnthemScalingCount` in
+         * `keyword-actions/scripted-statics.ts`) reads
+         * `source.chosenCreatureType` and substitutes it
+         * (parallel to `affects.subtype: "chosen"` at the
+         * affects-side filter — see line ~2152). If
+         * `chosenCreatureType` is null (the enter choice
+         * hasn't resolved yet) the count is 0 — the
+         * scripted anthem remains inert until the player
+         * makes the enter choice. Used by a chosen-type
+         * anthem ("creatures you control of the chosen
+         * type get +1/+1 for each OTHER creature you
+         * control OF THE CHOSEN TYPE" — exercises both
+         * the affects-side filter AND the count-side
+         * filter in one pass).
          */
-        perSubtype: z.string().min(1).optional(),
+        perSubtype: z
+          .union([z.string().min(1), z.literal("chosen")])
+          .optional(),
         /**
          * Wave 4.8 follow-up 25 lane 32 piece 2/N
          * (#2614 follow-up): an OPTIONAL secondary
@@ -2489,7 +2509,9 @@ export const StaticSchema = z
               "lands",
               "other_creatures",
             ]),
-            perSubtype: z.string().min(1).optional(),
+            perSubtype: z
+              .union([z.string().min(1), z.literal("chosen")])
+              .optional(),
           })
           .strict()
           .optional(),

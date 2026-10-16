@@ -675,7 +675,20 @@ const SCOPES = [
     // Bumping 4150 → 4250 to give the lane 32
     // family follow-up sub-pieces (compound count
     // sources, per-counter scales) room to land.
-    budgetLines: 4250,
+    //
+    // Wave 4.8 follow-up 25 lane 32 pieces 2/N + 3/N
+    // (#2614 follow-up): the `andPer` compound count
+    // arm + the `perSubtype: "chosen"` sentinel on
+    // `anthemScaling`. Adds ~9 lines (the
+    // `andPer: { per, perSubtype? }` Zod envelope +
+    // docstring explaining the compound count source
+    // + the chosen-sentinel union extension on both
+    // `perSubtype` fields). schema.ts measured at
+    // 4259 (+9 over the 4250 cap).
+    // Bumping 4250 → 4300 to give the lane 32
+    // family further follow-up sub-pieces (per-counter
+    // scales, chosen-counter variant) room to land.
+    budgetLines: 4300,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),
