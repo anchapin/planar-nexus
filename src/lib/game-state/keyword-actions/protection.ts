@@ -177,3 +177,55 @@ export function getProtectionQualitiesForSource(
   if (!qualities || qualities.length === 0) return null;
   return [...qualities];
 }
+
+/**
+ * Wave 4.8 follow-up 27 lane 71 piece 2/N (#2614 follow-up):
+ * per-quality sources consult (DERIVED view of the
+ * per-source ledger).
+ *
+ * The lane 71 piece 1/N (follow-up 25) ledger stamps
+ * `protectionFromBySource: Record<sourceId, string[]>`
+ * onto every affected target. The ledger is the
+ * authoritative substrate — the `targeting-validation`
+ * + `evergreen-keywords` consults and the
+ * `getProtectionQualitiesForSource` per-source helper
+ * all read it directly.
+ *
+ * Some callers want the INVERTED view: "which sources
+ * grant protection from red?" / "which sources grant
+ * protection from blue?". Rather than stamp a fourth
+ * ledger shape (structurally redundant with the per-
+ * source ledger), this helper derives the per-quality
+ * view in one pass:
+ *
+ * ```
+ * { sourceA: ["red"], sourceB: ["blue"] }
+ *   → { red: ["sourceA"], blue: ["sourceB"] }
+ * ```
+ *
+ * Read-only — does NOT stamp or write any field. The
+ * existing per-source consults (per-source ledger
+ * substrate) remain the authoritative substrate. This
+ * helper is a one-shot convenience for callers that
+ * need the inverted index without iterating sources.
+ *
+ * The helper returns a fresh object on every call
+ * (no memoization); callers that need it hot should
+ * cache the result themselves. Returns an empty object
+ * when the ledger is unset (vanilla card).
+ */
+export function getProtectionSourcesByQuality(
+  target: CardInstance,
+): Record<string, string[]> {
+  const perQuality: Record<string, string[]> = {};
+  const ledger = target.protectionFromBySource;
+  if (!ledger) return perQuality;
+  for (const sourceId of Object.keys(ledger)) {
+    const qualities = ledger[sourceId];
+    if (!qualities) continue;
+    for (const quality of qualities) {
+      (perQuality[quality] ??= []).push(sourceId);
+    }
+  }
+  return perQuality;
+}
