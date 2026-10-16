@@ -2787,12 +2787,40 @@ export const StaticSchema = z
      * entry contributes 0 qualities (the static
      * still grants the literal entries — the entry-
      * level resolution is independent per entry).
+     *
+     * Wave 4.8 follow-up 28 priority 2 (#2614
+     * follow-up): the array-aware entry shape
+     * (nested-array "pair" form).
      */
     protectionFrom: z
       .union([
         z.array(z.string().min(1)),
         z.literal("chosen"),
-        z.array(z.union([z.string().min(1), z.literal("chosen")])),
+        z.array(
+          z.union([
+            z.string().min(1),
+            // Wave 4.8 follow-up 28 priority 2 (#2614
+            // follow-up): the array-aware entry shape
+            // (nested-array "pair" form). Each nested
+            // array is a list of ≥ 2 literal qualities
+            // representing a "pair" (e.g.
+            // `["red", "green"]` = "protection from the
+            // red/green pair"). A 1-element nested
+            // array is REJECTED via `.min(2)` to avoid
+            // confusion with the flat literal form.
+            // The engine consult FLATTENS each entry's
+            // nested array to its literal entries
+            // before stamping the resolved qualities
+            // list. A 0-element array is also rejected
+            // (`.min(2)` covers both bounds). The
+            // `"chosen"` sentinel resolution is
+            // independent of the pair-flattening (the
+            // `"chosen"` literal still reads
+            // `source.chosenProtectionFrom`).
+            z.array(z.string().min(1)).min(2),
+            z.literal("chosen"),
+          ]),
+        ),
       ])
       .optional(),
     /**

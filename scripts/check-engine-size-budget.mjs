@@ -726,7 +726,18 @@ const SCOPES = [
     // variant and the `"chosen"` sentinel + ordinal
     // interaction. schema.ts measured at 4495 (+45
     // over 4450).
-    budgetLines: 4500,
+    //
+    // Bumping 4500 → 4550 to capture the follow-up 28
+    // priority 2 (lane 71 array-aware entry shape) —
+    // the per-entry `protectionFrom` Zod union
+    // extension with the nested-array "pair" form
+    // (`z.array(z.string().min(1)).min(2)` as a
+    // per-entry union member) + parent `protectionFrom`
+    // docstring expansion explaining the pair form,
+    // the 1-element rejection rationale, and the
+    // flattening semantics. schema.ts measured at 4523
+    // (+23 over 4500).
+    budgetLines: 4550,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

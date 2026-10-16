@@ -1152,16 +1152,37 @@ export function refreshScriptedStatics(input: GameState): GameState {
                 : null;
           } else if (
             Array.isArray(stat.protectionFrom) &&
-            (stat.protectionFrom as readonly string[]).includes("chosen")
+            // Wave 4.8 follow-up 28 priority 2
+            // (#2614 follow-up): the array-aware
+            // entry shape (nested-array "pair" form).
+            // The per-entry branch is entered when
+            // ANY entry is the `"chosen"` sentinel OR
+            // a nested array (a "pair"). A pure
+            // literal `string[]` (e.g. `["red"]`) is
+            // handled by the `else` branch — it's a
+            // flat literal form, not a per-entry
+            // form. The detection is per-entry: if
+            // any entry is `"chosen"` or a nested
+            // array, the per-entry form is engaged
+            // (each entry is resolved independently).
+            (stat.protectionFrom as readonly (string | string[])[]).some(
+              (entry) =>
+                entry === "chosen" || Array.isArray(entry),
+            )
           ) {
-            // Per-entry mixed form: resolve each
-            // `"chosen"` entry to the source's
+            // Per-entry mixed form (follow-up 27 lane
+            // 71 piece 3/N) + array-aware form
+            // (follow-up 28 priority 2): resolve
+            // each entry independently. `"chosen"`
+            // entries resolve to the source's
             // `chosenProtectionFrom` (when set) or
-            // skip it (when null). The literal
-            // entries contribute as-is. The
-            // resulting list may have fewer entries
-            // than the input if the chosen sentinel
-            // is null (only the literal entries
+            // skip (when null). Nested-array entries
+            // ("pairs") are FLATTENED to their
+            // literal entries. Literal string entries
+            // contribute as-is. The resulting list
+            // may have fewer entries than the input
+            // when the chosen sentinel is null
+            // (only the literal + pair entries
             // contribute). If the input array
             // contains ONLY a `"chosen"` entry and
             // the sentinel is null, the resolved
@@ -1171,6 +1192,7 @@ export function refreshScriptedStatics(input: GameState): GameState {
             const resolved: string[] = [];
             for (const entry of stat.protectionFrom as readonly (
               | string
+              | string[]
             )[]) {
               if (entry === "chosen") {
                 if (
@@ -1178,6 +1200,27 @@ export function refreshScriptedStatics(input: GameState): GameState {
                   card.chosenProtectionFrom !== undefined
                 ) {
                   resolved.push(card.chosenProtectionFrom);
+                }
+              } else if (Array.isArray(entry)) {
+                // Wave 4.8 follow-up 28 priority 2
+                // (#2614 follow-up): the
+                // array-aware entry shape (nested-
+                // array "pair" form). Each nested
+                // array represents a "pair" of
+                // qualities (e.g. `["red", "green"]` =
+                // "protection from the red/green
+                // pair"). The Zod layer enforces
+                // `.min(2)` (a 1-element nested array
+                // is REJECTED to avoid confusion
+                // with the flat literal form), so
+                // every nested array here has at
+                // least 2 elements. Flatten the
+                // nested array to its literal
+                // entries (the pair contributes each
+                // literal quality independently to
+                // the resolved list).
+                for (const q of entry) {
+                  if (typeof q === "string") resolved.push(q);
                 }
               } else {
                 resolved.push(entry);
