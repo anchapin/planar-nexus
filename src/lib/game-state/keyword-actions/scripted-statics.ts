@@ -1376,8 +1376,35 @@ export function refreshScriptedStatics(input: GameState): GameState {
                 // entries (the pair contributes each
                 // literal quality independently to
                 // the resolved list).
+                //
+                // Wave 4.8 follow-up 29 priority 5
+                // (lane 71) (#2614 follow-up): the
+                // per-pair `"chosen"` sentinel
+                // entry. The nested array now ALSO
+                // accepts a `"chosen"` sentinel
+                // entry — the engine consult
+                // FLATTENS each nested array to its
+                // literal entries AND resolves the
+                // `"chosen"` entry via
+                // `source.chosenProtectionFrom`. The
+                // resulting quality is added to the
+                // flattened list (alongside the
+                // literal entries). v1 minimum: a
+                // single `"chosen"` entry inside the
+                // nested array; a
+                // per-pair-with-`"chosen"`-per-pair
+                // extension rides follow-up 30.
                 for (const q of entry) {
-                  if (typeof q === "string") resolved.push(q);
+                  if (q === "chosen") {
+                    if (
+                      card.chosenProtectionFrom !== null &&
+                      card.chosenProtectionFrom !== undefined
+                    ) {
+                      resolved.push(card.chosenProtectionFrom);
+                    }
+                  } else if (typeof q === "string") {
+                    resolved.push(q);
+                  }
                 }
               } else {
                 resolved.push(entry);

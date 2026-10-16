@@ -797,7 +797,20 @@ const SCOPES = [
     // the per-pair-with-sentinel extension that ride
     // follow-up 30. schema.ts measured at 4803 (+53
     // over 4750).
-    budgetLines: 4810,
+    //
+    // Bumping 4810 → 4835 to capture the follow-up 29
+    // priority 5 (lane 71 — per-pair `"chosen"`
+    // sentinel) — the nested-array `pair` form's
+    // inner Zod union extension to also accept a
+    // `"chosen"` sentinel entry (`z.union([z.string,
+    // z.literal("chosen")])`) + parent `protectionFrom`
+    // docstring expansion explaining the per-pair
+    // sentinel resolution, the
+    // `source.chosenProtectionFrom` consult, and the
+    // per-pair-with-`"chosen"`-per-pair extension that
+    // rides follow-up 30. schema.ts measured at 4830
+    // (+20 over 4810).
+    budgetLines: 4835,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

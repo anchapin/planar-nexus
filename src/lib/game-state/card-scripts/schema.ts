@@ -3097,7 +3097,34 @@ export const StaticSchema = z
             // independent of the pair-flattening (the
             // `"chosen"` literal still reads
             // `source.chosenProtectionFrom`).
-            z.array(z.string().min(1)).min(2),
+            //
+            // Wave 4.8 follow-up 29 priority 5 (lane
+            // 71) (#2614 follow-up): the per-pair
+            // `"chosen"` sentinel entry. The
+            // nested array now ALSO accepts a
+            // `"chosen"` sentinel entry — the
+            // engine consult FLATTENS each
+            // nested array to its literal
+            // entries AND resolves the
+            // `"chosen"` entry via
+            // `source.chosenProtectionFrom`.
+            // The resulting quality is added to
+            // the flattened list (alongside the
+            // literal entries). v1 minimum: a
+            // single `"chosen"` entry inside
+            // the nested array (the
+            // per-pair-with-sentinel extension
+            // rides follow-up 30; the
+            // per-pair-with-`"chosen"`-per-pair
+            // extension rides follow-up 30 too).
+            z
+              .array(
+                z.union([
+                  z.string().min(1),
+                  z.literal("chosen"),
+                ]),
+              )
+              .min(2),
             z.literal("chosen"),
           ]),
         ),
