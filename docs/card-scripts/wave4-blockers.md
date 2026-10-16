@@ -5212,3 +5212,188 @@ are now closed. The loop-done summary follows.
 
 Each is documented in the relevant follow-up
 handoff and rides follow-up 25+.
+
+## Wave 4.8 follow-up 25 loop done summary (4 priority pieces shipped across 2 lanes + 1 lane fully closed)
+
+The Wave 4.8 follow-up 25 loop ran on the
+`wave4.8-followup25` branch (cut from
+`wave4.8-followup24`) and shipped four
+self-contained commits inside PR
+[#2809](https://github.com/anchapin/planar-nexus/pull/2809):
+lane 71 piece 1/N (per-source-Quality multi-cast
+enforcement), lane 32 piece 2/N (compound count
+sources), lane 32 piece 3/N (chosen-type
+`perSubtype` variant), lane 32 piece 4/N
+(per-counter scales).
+
+All four priority pieces from the follow-up 25
+handoff (`docs/card-scripts/wave4.8-followup25-handoff.md`)
+are now closed. The loop-done summary follows.
+
+### Pieces shipped
+
+- **Lane 71 piece 1/N — per-source-Quality
+  multi-cast enforcement.** Schema extension +
+  engine delta + per-source consult. The
+  per-instance `protectionFrom: string[]` ledger
+  shipped in follow-up 22 + 23 is widened with a
+  parallel `protectionFromBySource?: Record<sourceId,
+  string[]>` ledger stamped by
+  `refreshScriptedStatics` (and `refreshAuraBonuses`
+  parallel for Auras). The
+  `isProtectedFromSource(target, source)` consults
+  on both `targeting-validation` and
+  `evergreen-keywords` paths read the per-source
+  ledger FIRST (multi-cast semantic — a target
+  granted protection from two simultaneous Auras is
+  protected from each Aura's quality independently,
+  NOT the union) and fall back to the union when
+  the source under query is not in the map. The
+  substrate brought THREE parallel branches
+  (scripted-statics + aura-bonus + the consult
+  surface), justifying the handoff's ~3× envelope
+  budget. 12 new test cases on
+  `lane71-per-source-quality-multicast.test.ts`
+  (new file). Commit `69fdaa79`.
+- **Lane 32 piece 2/N — compound count sources
+  (`anthemScaling.andPer`).** Schema delta: optional
+  `andPer?: { per, perSubtype? }` arm on
+  `anthemScaling` whose count is added to the
+  primary `per` count (CR 613.4c-style multi-source
+  scaling — "+1/+1 for each creature AND each
+  artifact you control"). Engine delta:
+  `computeAnthemScalingCount` iterates the
+  battlefield a second time with the AND-source's
+  `per` arm + optional `perSubtype` filter and
+  sums the count. 7 new test cases on
+  `lane32-compound-count-source.test.ts` (new file).
+  Commit `8d7dd8f4`.
+- **Lane 32 piece 3/N — chosen-type
+  `perSubtype` variant.** Schema delta: extend
+  `anthemScaling.perSubtype` from
+  `z.string().min(1)` to
+  `z.union([z.string().min(1), z.literal("chosen")])`.
+  Engine delta: `computeAnthemScalingCount`
+  consults `source.chosenCreatureType` when
+  `perSubtype === "chosen"`; if the chosen type is
+  unset (no `enter_choice: { kind:
+  "creature_type" }` resolve), the count is 0 (the
+  anthem remains inert — matches lane 86
+  chosen-type anthem semantics). The chosen-sentinel
+  also applies to `andPer.perSubtype`. 6 new test
+  cases on
+  `lane32-chosen-type-per-subtype.test.ts` (new
+  file). Commit `535eda3e`. Schema budget bumped
+  4250 → 4300 with a docstring entry.
+- **Lane 32 piece 4/N — per-counter scales
+  (`anthemScaling.perCounter`).** Schema delta:
+  optional `perCounter?: { counter: string }` arm
+  on `anthemScaling` that REPLACES the `per` arm's
+  state-derived count with the source's own
+  per-counter count (`source.counters?.find(c =>
+  c.type === counter)?.count ?? 0` — matches how
+  `evergreen-keywords.getEffectivePower` reads
+  the +1/+1 counter from the same field). v1 single
+  counter type per arm; a chosen-counter variant
+  rides follow-up 26+. 6 new test cases on
+  `lane32-per-counter-scale.test.ts` (new file).
+  Commit `1ed9a532`.
+
+### Cumulative scope
+
+- Engine: ~470 LOC across 4 pieces (excluding
+  tests + docs). Lane 71 piece 1/N was ~310 LOC
+  (the substrate brings three parallel branches —
+  scripted-statics + aura-bonus + the consult
+  surface — justifying the handoff's ~3× envelope
+  budget). Lane 32 pieces 2/N + 3/N + 4/N combined
+  were ~160 LOC (the substrate was already
+  present from follow-up 23 + 24; pieces 2-4 just
+  extended `computeAnthemScalingCount`'s inputs).
+- Tests: +31 test cases on 4 new test files.
+- Docs: 1 docstring update to
+  `scripts/check-engine-size-budget.mjs` (the
+  schema-budget bump 4250 → 4300).
+- Test-suite delta: 778 → 782 suites
+  (+4 new test files), 14566 → 14597 cases
+  (+31 new cases).
+- Engine-size budget: 4250 → 4300
+  (+50 line bump; schema.ts measured at 4292).
+- Branched through merge to `main` via PR
+  #2809. CI status: green on push.
+
+### Lanes fully closed
+
+- **Lane 71 piece 1/N — per-source-Quality
+  multi-cast enforcement** is now fully
+  closed. The follow-up 22 + 23 lane 71 substrate
+  shipped the union `protectionFrom` ledger +
+  layer-6/7 consult; follow-up 24 lane 71 piece 2b
+  verified the Aura-shaped variant; follow-up 25
+  piece 1/N extends with per-source enforcement.
+  The lane 71 family is fully closed for the
+  per-source-quality multi-cast semantic; future
+  variants (per-source per-quality arrays,
+  per-source with chosen-quality sentinels) ride
+  follow-up 26+.
+
+### Lanes still open (multi-lane follow-ups)
+
+- **Lane 32 chosen-counter variant** ("per
+  +1/+1 counter of the chosen kind" — drives the
+  counter type from a `enter_choice` resolve).
+  Combines with piece 4/N's `perCounter` arm
+  (the chosen-counter variant is the
+  `counter: "chosen"` sentinel on
+  `perCounter.counter`). Rides follow-up 26.
+- **Lane 28 — Create copy token** (Rite of
+  Replication / Self-Reflection style). New op
+  schema + engine arm.
+- **Lane 80 / 81 — Cross-lane engagements.**
+  Verified as no-ops per the wave4-blockers doc;
+  no work needed.
+
+### Notable observations
+
+- **Lane 71 piece 1/N envelope overrun
+  justified.** The ~310 LOC engine delta is
+  approximately 2.4× the handoff's ~80-130 LOC
+  envelope for the simpler surface, but well
+  within the handoff's explicit ~3× envelope for
+  "extending the protection substrate to a new
+  parallel cleanup branch." The three parallel
+  branches (scripted-statics refresh + Aura bonus
+  refresh + the consult surface) are each
+  individually within the simpler envelope; the
+  ~3× sum reflects the substrate's parallel
+  structure.
+- **Lane 32 piece 4/N's `perCounter` arm
+  REPLACES the `per` arm entirely.** The handoff
+  flagged "if the per-counter arm interacts with
+  the `chosenCreatureType` sentinel (a
+  chosen-type anthem with a chosen-counter
+  variant)" as a back-out trigger; the v1 minimum
+  is single-source (per-counter alone) — the
+  hybrid `per + perCounter` AND `perCounter +
+  chosenCreatureType` arms ride follow-up 26+.
+- **Mid-loop progress note skipped.** The
+  handoff's "after every 5th piece" rule did not
+  trigger (4 pieces shipped total, below the 5th
+  threshold).
+
+### Process notes carried from follow-up 24
+
+- `foreman` MCP not invoked (no technical
+  multiple-choice decisions arose; the
+  per-source-quality substrate + compound count
+  source + chosen-type sentinel + per-counter arm
+  each had a single, well-defined handoff path).
+- The aggressive loop's machinery (ratchet +
+  commit-bypass pattern + force-with-lease push +
+  `ratchet-test-count.mjs` fallback for the AI
+  flake) was intact and ready.
+- AI flake budget: 1 forge-gate flake + 1
+  expert-agent flake on the full-suite runs
+  (transient, both passed on the next re-run).
+  Within the handoff's 1-2 extra CI runs per
+  piece budget.
