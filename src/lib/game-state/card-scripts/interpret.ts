@@ -1330,10 +1330,33 @@ function applyEffect(
       // Color names use the engine's
       // full-name convention (`"white" |
       // "blue" | "black" | "red" | "green" |
-      // "colorless"`). `add_power` /
+      // "colorless"`).
+      //
+      // Wave 4.8 follow-up 30 priority 2
+      // (lane 28, piece 2/N) (#2614
+      // follow-up): the `add_power`
+      // additive P/T merge. When
+      // `effect.exceptions?.add_power` is
+      // set, the engine parses the printed
+      // `power` string as an integer,
+      // ADDS the `add_power` value, and
+      // rebuilds `cardData.power` as a
+      // string. Negative integers are
+      // accepted (Phyrexian Metamorph-style
+      // `-1` → "1+(-1)" = "0"). The arm
+      // is ADDITIVE — no overwrite of the
+      // printed power. Non-integer
+      // printed powers (`*` / `1+*`)
+      // resolve to 0 (the v1 minimum does
+      // not model variable-power
+      // resolution; a `*` source becomes
+      // a `0 + add_power` token — a
+      // documented limitation, not a
+      // silent bug).
+      //
       // `add_toughness` / `add_type`
       // exception variants ride follow-up
-      // 30 priorities 2 / 3 / 4.
+      // 30 priorities 3 / 4.
       const applyExceptions = (
         cardData: ScryfallCard,
       ): ScryfallCard => {
@@ -1342,6 +1365,7 @@ function applyEffect(
             exceptions?: {
               add_subtype?: string[];
               add_color?: string[];
+              add_power?: number;
             };
           }
         ).exceptions;
@@ -1435,6 +1459,30 @@ function applyEffect(
             ...rebuilt,
             colors: mergedColors,
             color_identity: mergedIdentity,
+          };
+        }
+        // Wave 4.8 follow-up 30 priority 2
+        // (lane 28, piece 2/N) (#2614
+        // follow-up): the `add_power`
+        // additive P/T merge. The engine
+        // parses the printed `power` string
+        // as an integer (default 0;
+        // non-integer printed powers like
+        // `*` or `1+*` yield 0 + the
+        // additive), ADDS the `add_power`
+        // value, and rebuilds
+        // `cardData.power` as a string. The
+        // arm is ADDITIVE — no overwrite
+        // of the printed power.
+        if (exceptions?.add_power !== undefined) {
+          const printedPower = parseInt(rebuilt.power ?? "0", 10);
+          const basePower = Number.isFinite(printedPower)
+            ? printedPower
+            : 0;
+          const nextPower = basePower + exceptions.add_power;
+          rebuilt = {
+            ...rebuilt,
+            power: String(nextPower),
           };
         }
         return rebuilt;

@@ -576,6 +576,24 @@ export const CopyPermanentSchema = z
      * `CreateToken.color` enum at line ~215
      * and the lane 75c `become_copy`
      * color conventions.
+     *
+     * Wave 4.8 follow-up 30 priority 2 (lane
+     * 28, piece 2/N) (#2614 follow-up): the
+     * `add_power` sub-arm — Phyrexian
+     * Metamorph's "it has +1/+0" half (or
+     * "it has -1/-0" with a negative
+     * integer). The engine parses the
+     * printed `power` string as an integer,
+     * ADDS the `add_power` value, and
+     * rebuilds `cardData.power` as a
+     * string. The arm is ADDITIVE — no
+     * overwrite of the printed power. v1
+     * minimum: a single integer field;
+     * non-integer printed powers (`*` or
+     * `1+*`) yield 0 + the additive. A
+     * destructive `set_power` variant rides
+     * follow-up 31 if any future priority
+     * piece surfaces a "exactly N" semantic.
      */
     exceptions: z
       .object({
@@ -608,6 +626,32 @@ export const CopyPermanentSchema = z
           )
           .min(1)
           .optional(),
+        /**
+         * Wave 4.8 follow-up 30 priority 2
+         * (lane 28, piece 2/N) (#2614
+         * follow-up): OPTIONAL `add_power`
+         * sub-arm. The engine parses the
+         * printed `power` string as an
+         * integer (default 0; non-integer
+         * printed powers like `*` or `1+*`
+         * yield 0), ADDS the `add_power`
+         * value, and rebuilds
+         * `cardData.power` as a string. The
+         * merge is ADDITIVE — no overwrite
+         * of the printed power. The
+         * `add_power` arm accepts negative
+         * integers (Phyrexian Metamorph-style
+         * "create a token that's a copy of
+         * [target] EXCEPT it has -1/-0"); a
+         * destructive `set_power` variant
+         * rides follow-up 31 if any future
+         * priority piece surfaces a
+         * "exactly N" semantic. v1 minimum:
+         * a single integer field; no
+         * `*` / `X+*` printed-power
+         * resolution.
+         */
+        add_power: z.number().int().optional(),
       })
       .strict()
       .optional(),
