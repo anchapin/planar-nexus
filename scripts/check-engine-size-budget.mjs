@@ -641,7 +641,27 @@ const SCOPES = [
     // follow-up extensions) room to land on the
     // same trajectory as the prior follow-up
     // budget bumps.
-    budgetLines: 4050,
+    //
+    // Wave 4.8 follow-up 23 lane 32 (#2614
+    // follow-up): the `anthemScaling: { per,
+    // perPower, perToughness }` arm on
+    // `StaticSchema` — the Warrior Knights /
+    // adaptive anthem family that grows with the
+    // board (e.g. "creatures you control get +1/+1
+    // for each other creature you control"). The
+    // arm adds ~75 lines (the Zod envelope +
+    // docstring explaining the per count source
+    // + the lane-32 `other_creatures` addition +
+    // the follow-up scope notes). schema.ts
+    // measured at 4103 (+53 over the 4050 cap
+    // after the lane 32 docstring trim).
+    // Bumping 4050 → 4150 to give the lane 32
+    // family and any lane 32 follow-up
+    // extensions (filtered count sources,
+    // compound count sources, per-counter
+    // scales — each a follow-up sub-piece per
+    // the handoff) room to land.
+    budgetLines: 4150,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

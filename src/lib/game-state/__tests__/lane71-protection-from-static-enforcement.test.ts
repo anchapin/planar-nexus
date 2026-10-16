@@ -1,7 +1,8 @@
 /**
- * Wave 4.8 follow-up 22 lane 71 piece 1/N (#2614 follow-up):
- * protection-from static enforcement at layer 6 / 7
- * (targeting-validation).
+ * Wave 4.8 follow-up 22 lane 71 piece 1/N + Wave 4.8 follow-up 23
+ * lane 71 piece 2/N (#2614 follow-up): protection-from static
+ * enforcement at layer 6 / 7 (targeting-validation +
+ * evergreen-keywords combat/enchant/equip/damage surfaces).
  *
  * The original lane 71 substrate shipped in follow-up 5
  * (`StaticSchema.protectionFrom: string[]` arm +
@@ -20,20 +21,42 @@
  * through to the oracle-text regex only when the ledger is
  * empty.
  *
+ * Piece 2/N extends the symmetric bug fix to
+ * `evergreen-keywords.isProtectedFromSource` (which is what
+ * the combat-side, enchant-side, equip-side, and
+ * damage-prevention consults delegate through). The
+ * `evergreen-keywords` consult is shared by
+ * `canBeTargetedBySource` (targeting-block), `canBeEnchantedBy`
+ * (aura-enchant-block), `canBeEquippedBy` (equipment-block),
+ * and `shouldPreventDamageToTarget` (damage-prevention) —
+ * CR 702.16 enforcement. Before piece 2/N the consult went
+ * through `getProtectionQualities` which missed the ledger,
+ * so a creature granted protection via a static was stamped
+ * but was NOT blocked from being targeted / enchanted /
+ * equipped / damaged by the protected source.
+ *
  * Out of scope (each a follow-up lane): per-source-quality
- * multi-cast enforcement (the consult shape currently
- * flags matching QUALITIES, not matching SOURCES), the
- * blocking-side consult (`evergreen-keywords.isProtectedFromSource`
- * for the combat path), and the Aura-shaped variant
- * (lane 76 substrate, parallel enforcement surface).
+ * multi-cast enforcement (the consult shape currently flags
+ * matching QUALITIES, not matching SOURCES), and the
+ * Aura-shaped variant (lane 76 substrate, parallel
+ * enforcement surface — the lane 71 piece 1/N docstring
+ * scopes Aura enforcement to its own follow-up sub-piece 2b).
  */
 import { describe, it, expect } from "@jest/globals";
 import { createCardInstance } from "../card-instance";
 import {
-  canTargetCard,
+  canBeEnchantedBy,
+  canBeEquippedBy,
+  canBeTargetedBySource,
   getProtectionQualities,
-  hasProtectionFromColor,
   isProtectedFromSource,
+  shouldPreventDamageToTarget,
+} from "../evergreen-keywords";
+import {
+  canTargetCard,
+  getProtectionQualities as getProtectionQualitiesTargeting,
+  hasProtectionFromColor,
+  isProtectedFromSource as isProtectedFromSourceTargeting,
 } from "../targeting-validation";
 import type { CardInstance, ScryfallCard } from "../types";
 
@@ -184,6 +207,95 @@ describe("Lane 71 piece 1/N (follow-up 22) — protection-from static enforcemen
         color_identity: ["R"],
       });
       expect(isProtectedFromSource(stamped, source)).toBe(false);
+    });
+  });
+
+  // ---- Wave 4.8 follow-up 23 lane 71 piece 2/N ----
+  // The evergreen-keywords consult path is the symmetric
+  // enforcement surface for CR 702.16's targeting-block,
+  // enchant-block, equip-block, and damage-prevention
+  // clauses (the targeting-validation path was already
+  // fixed in piece 1/N). Before piece 2/N
+  // `getProtectionQualities` in evergreen-keywords
+  // consulted only the oracle-text regex, so a creature
+  // granted protection via a static was stamped with
+  // `protectionFrom` but was NOT actually blocked at the
+  // enchant, equip, or damage surfaces. Piece 2/N widens
+  // `getProtectionQualities` to consult the ledger first,
+  // matching the targeting-validation fix shape.
+  describe("piece 2/N — evergreen-keywords.getProtectionQualities consults the per-instance ledger", () => {
+    it("returns the per-instance ledger contents when present (the static-stamped consult)", () => {
+      // Pre-piece-2/N: this consult fell through to the
+      // oracle-text regex (empty oracle_text → empty
+      // qualities). v1 consults the ledger first and
+      // returns the stamped qualities verbatim.
+      const card = makeCard({ id: "evergreen-ledger-direct" });
+      const stamped = { ...card, protectionFrom: ["red", "blue"] };
+      expect(getProtectionQualities(stamped)).toEqual(["red", "blue"]);
+    });
+
+    it("falls through to the oracle-text regex when the ledger is unset (printed-protection regression guard)", () => {
+      // Regression guard: a card whose printed
+      // `cardData.keywords` carries a `protection from X`
+      // tag (lane 76 substrate) must still resolve via
+      // the strict + oracle-text path when no
+      // `protectionFrom` ledger is stamped. v1 doesn't
+      // break lane 76's substrate.
+      const card = makeCard({
+        id: "evergreen-printed-only",
+        keywords: ["protection from red"],
+      });
+      expect(getProtectionQualities(card)).toContain("red");
+    });
+  });
+
+  describe("piece 2/N — canBeEnchantedBy / canBeEquippedBy / shouldPreventDamageToTarget honor the ledger", () => {
+    // Each test exercises a CR 702.16 consult delegate
+    // through the evergreen-keywords.isProtectedFromSource
+    // path. Pre-piece-2/N these consults went through the
+    // oracle-text-regex-only `getProtectionQualities` and
+    // missed the ledger — so a creature granted protection
+    // via a static was stamped but NOT actually blocked.
+    function redSource(): CardInstance {
+      return makeCard({
+        id: "red-source-evergreen",
+        name: "Red Bolt Evergreen",
+        colors: ["R"],
+        color_identity: ["R"],
+      });
+    }
+
+    it("canBeTargetedBySource returns false when the target's per-instance ledger matches the source's color", () => {
+      // CR 702.16a — protection prevents targeting.
+      const stamped = {
+        ...makeCard({ id: "led-blocked-target-evergreen" }),
+        protectionFrom: ["red"],
+      };
+      expect(canBeTargetedBySource(stamped, redSource())).toBe(false);
+    });
+
+    it("canBeEnchantedBy returns false when the source is an aura and the target's ledger matches the source's color", () => {
+      // CR 702.16b — protection prevents enchanting.
+      const aura = makeCard({
+        id: "led-blocked-aura-source",
+        type_line: "Enchantment — Aura",
+        colors: ["R"],
+        color_identity: ["R"],
+      });
+      const stamped = {
+        ...makeCard({ id: "led-blocked-enchant-target-evergreen" }),
+        protectionFrom: ["red"],
+      };
+      expect(canBeEnchantedBy(stamped, aura)).toBe(false);
+    });
+
+    it("shouldPreventDamageToTarget returns true when the dealer's color is in the target's ledger", () => {
+      // CR 702.16c — protection prevents damage.
+      const stamped = {
+        ...makeCard({ id: "led-damage-target-evergreen" }),
+        protectionFrom: ["red"],
+      };
+      expect(shouldPreventDamageToTarget(stamped, redSource())).toBe(true);
     });
   });
 });

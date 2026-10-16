@@ -434,16 +434,23 @@ describe("Wave 4.8 follow-up 10 lane 77 — Copy target with other layers (prote
     );
     const firstRefresh = refreshScriptedStatics(withSource);
     expect(firstRefresh.cards.get(sourceId)?.protectionFrom).toEqual(["red"]);
-    // Move the leaf off the battlefield (both
-    // `currentZoneKey` AND the battlefield zone's
-    // `cardIds` list — `battlefieldCards` iterates
-    // `state.zones`, not `card.currentZoneKey`).
+    // Move the leaf to an UNTRACKED zone (a zone key not in
+    // `state.zones`). Wave 4.8 follow-up 10 lane 78
+    // (#2614 follow-up): the target's "in a tracked zone"
+    // check — graveyard is a tracked zone (it exists in
+    // `state.zones` after `startGame`), so the overlay
+    // persists for graveyard targets and only drops when
+    // the target moves to an untracked zone (a zone key
+    // that isn't in `state.zones`, e.g. `limbo`). The
+    // pre-lane-78 expectation that the overlay drops on
+    // graveyard is now updated to an untracked-zone
+    // scenario.
     const newCards = new Map(firstRefresh.cards);
     const leaf = newCards.get(leafId);
     if (!leaf) throw new Error("leaf not found");
     newCards.set(leafId, {
       ...leaf,
-      currentZoneKey: `${aliceId}-graveyard`,
+      currentZoneKey: `${aliceId}-limbo`,
     });
     const newZones = new Map(firstRefresh.zones);
     const bfKey = `${aliceId}-battlefield`;

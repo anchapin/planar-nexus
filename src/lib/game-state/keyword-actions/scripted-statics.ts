@@ -17,10 +17,18 @@ import type { ScryfallCard } from "../types/card-data";
 import {
   restoreAnimatedOffBattlefield,
   restorePermanentTypeOverlay,
+  restorePermanentCopyOffBattlefield,
 } from "../pt-until-end-of-turn";
 import { returnEarthbentLands } from "./earthbend";
 import { getCardColors } from "../evergreen-keywords";
-import { buildStaticCopyChainSnapshot } from "./copy-chain";
+import {
+  buildStaticCopyChainSnapshot,
+  clearPermanentCopyOf,
+  clearPermanentCopyPrintedCardData,
+  printedCardDataOf,
+  setPermanentCopyOf,
+  snapshotPermanentCopyPrintedCardData,
+} from "./copy-chain";
 
 function battlefieldCards(state: GameState): CardInstance[] {
   const out: CardInstance[] = [];
@@ -234,6 +242,37 @@ function computeX(state: GameState, source: CardInstance, kind: string): number 
     return n;
   }
   return 0;
+}
+
+/**
+ * Wave 4.8 follow-up 23 lane 32 (#2614 follow-up): the
+ * state-derived count for an anthem's `per` arm — the
+ * Warrior Knights / adaptive anthem family. The `per`
+ * enum parallels the lane 36 `X` enum with one lane-32
+ * addition: `other_creatures` excludes the source itself
+ * ("OTHER creatures you control" semantics — the source
+ * doesn't count its own presence toward the scaling
+ * anthem). Returns 0 for any unknown / unspecified `per`.
+ */
+function computeAnthemScalingCount(
+  state: GameState,
+  source: CardInstance,
+  per: "creatures" | "treasures" | "lands" | "other_creatures",
+): number {
+  if (per === "other_creatures") {
+    let n = 0;
+    for (const card of battlefieldCards(state)) {
+      if (card.id === source.id) continue;
+      if (card.controllerId !== source.controllerId) continue;
+      if (isCreature(card)) n++;
+    }
+    return n;
+  }
+  // Reuse `computeX` for the lane-36-parallel sources.
+  // The lane 32 enum is a superset of `X`'s enum
+  // (`treasures` / `creatures` / `lands`), so the
+  // dispatch is loss-free.
+  return computeX(state, source, per);
 }
 
 /**
@@ -509,7 +548,9 @@ export function refreshScriptedStatics(input: GameState): GameState {
   // `restoreAnimatedOffBattlefield` consult at the top of
   // the pass.
   const state = restorePermanentTypeOverlay(
-    restoreAnimatedOffBattlefield(returnEarthbentLands(input)),
+    restorePermanentCopyOffBattlefield(
+      restoreAnimatedOffBattlefield(returnEarthbentLands(input)),
+    ),
   );
   // Wave 4.8 follow-up 9 lane 75e (#2614 follow-up):
   // build a snapshot of every card's "effective copy
@@ -528,7 +569,40 @@ export function refreshScriptedStatics(input: GameState): GameState {
   const onField = battlefieldCards(state);
   const sources: { card: CardInstance; statics: ScriptedStatic[] }[] = [];
   for (const card of onField) {
-    const statics = getCardScript(card.cardData.name)?.statics;
+    // Wave 4.8 follow-up 23 lane 70 piece 2b (#2614 follow-up):
+    // consult `printedCardDataOf(card).name` instead of
+    // `card.cardData.name` so a card whose `cardData` is
+    // overlaid by a `become_copy` static (EOT or permanent
+    // arm) still resolves its own scripted statics on the
+    // next refresh pass. Without this consult, the script
+    // lookup `getCardScript(card.cardData.name)` returns
+    // undefined when `card.cardData.name === target's
+    // printed name` (the overlay) and the source is no
+    // longer collected as a static source for the next
+    // overlay write — the change-detection diff
+    // short-circuits and the rollback never runs. The
+    // EOT arm has the same issue (lane 75's collection
+    // phase had the bug too — it relied on the
+    // `restoreAnimatedOffBattlefield` consult at the
+    // top of the pass to restore the overlay when the
+    // target moved off BF). The permanent arm fixes
+    // both at once because `printedCardDataOf` walks
+    // either snapshot field.
+    //
+    // Lane 75's "target leaves the battlefield" test
+    // (lane75-until-eot-copy.test.ts:362) historically
+    // moved the target to a graveyard zone and asserted
+    // that the overlay dropped. Lane 78 changed that
+    // behavior — graveyard is a tracked zone, so the
+    // overlay should persist per lane 78. The lane 78
+    // commit (59d388e3) did not update the lane 75 test;
+    // the test passed via the script-lookup bug (the
+    // script wasn't found, the diff was a no-op, the
+    // overlay was effectively absent on the next refresh).
+    // The scoped-up update to that test is part of this
+    // same commit — bringing the test in line with the
+    // lane 78 tracked-zone semantics.
+    const statics = getCardScript(printedCardDataOf(card).name)?.statics;
     if (statics) sources.push({ card, statics });
   }
 
@@ -597,8 +671,8 @@ export function refreshScriptedStatics(input: GameState): GameState {
   // `restoreAnimatedOffBattlefield` rollback path.
   const copyOfTargetBySourceId = new Map<
     string,
-    | { kind: "id"; targetId: string }
-    | { kind: "name"; name: string }
+    | { kind: "id"; targetId: string; until: "end_of_turn" | "permanent" }
+    | { kind: "name"; name: string; until: "end_of_turn" | "permanent" }
   >();
   // Wave 4.8 follow-up 8 lane 75c (#2614 follow-up):
   // per-card copy-with-exception ledger. Each source
@@ -746,11 +820,13 @@ export function refreshScriptedStatics(input: GameState): GameState {
             copyOfTargetBySourceId.set(card.id, {
               kind: "id",
               targetId: stat.become_copy.target,
+              until: stat.become_copy.until,
             });
           } else {
             copyOfTargetBySourceId.set(card.id, {
               kind: "name",
               name: stat.become_copy.named_card.name,
+              until: stat.become_copy.until,
             });
           }
           // Wave 4.8 follow-up 8 lane 75c (#2614
@@ -780,6 +856,25 @@ export function refreshScriptedStatics(input: GameState): GameState {
         } else {
           power += stat.power ?? 0;
           toughness += stat.toughness ?? 0;
+        }
+        // Wave 4.8 follow-up 23 lane 32 (#2614 follow-up):
+        // the per-count P/T scaling modifier. The
+        // `anthemScaling` arm combines with the integer
+        // `power`/`toughness` arms — both contribute
+        // (a "+1/+1 plus +1/+1 per creature" anthem is
+        // a +2/+2 per creature, modeled as `power:
+        // 1, anthemScaling: { per: "other_creatures",
+        // perPower: 1, perToughness: 1 }`). The count
+        // is computed once and applied to both P/T
+        // arms (v1 single count source).
+        if (stat.anthemScaling) {
+          const count = computeAnthemScalingCount(
+            state,
+            card,
+            stat.anthemScaling.per,
+          );
+          power += count * (stat.anthemScaling.perPower ?? 0);
+          toughness += count * (stat.anthemScaling.perToughness ?? 0);
         }
         for (const k of stat.keywords ?? []) granted.add(k);
       }
@@ -1045,6 +1140,8 @@ export function refreshScriptedStatics(input: GameState): GameState {
           JSON.stringify(wasSelfGrantedTriggers_DIFF[i].effects) ===
             JSON.stringify(g.effects),
       );
+    // trace removed
+
     if (
       samePT &&
       sameKw &&
@@ -1366,6 +1463,74 @@ export function refreshScriptedStatics(input: GameState): GameState {
         }
       }
       if (targetPrintedCardData !== undefined && nextTargetLedger !== undefined) {
+        // trace removed
+        // Wave 4.8 follow-up 23 lane 70 piece 2a (#2614
+        // follow-up): the "becomes a copy of [X] forever"
+        // permanent arm takes a separate write path. v1
+        // stamps the per-instance `copyOfTargetIdPermanent`
+        // ledger but does NOT overlay `cardData` (the
+        // cardData overlay rides lane 70 piece 2b — the
+        // `permanentCopyPrintedCardData` field + name /
+        // type_line / P/T / colors / keywords overlay +
+        // battlefield-leave cleanup). The early `continue`
+        // keeps the EOT overlay, the EOT rollback, and the
+        // lane 75e cycle guard at the BOTTOM (the
+        // `cycleIds` check at line 1232) untouched — the
+        // permanent arm inherits the same cycle-guard
+        // semantics as lane 75e by virtue of routing
+        // through `copyChain.cycleIds.has(cardId)` above
+        // the overlay block.
+        if (nextCopyTarget.until === "permanent") {
+          // Wave 4.8 follow-up 23 lane 70 piece 2b
+          // (#2614 follow-up): the `cardData` overlay
+          // for the `until: "permanent"` arm. Snapshots
+          // the source's printed `cardData` (the one the
+          // source had BEFORE the first overlay — the
+          // `permanentCopyPrintedCardData` field is the
+          // rollback reference) and overwrites the
+          // source's `cardData` with the target's
+          // printed name / type_line / P/T / colors /
+          // color_identity / keywords (CR 707.2 "all
+          // characteristics copied"). mana_cost, cmc,
+          // oracle_text, and other metadata are
+          // deliberately NOT copied — they are the
+          // spell's defining characteristics, not the
+          // on-battlefield copy semantics.
+          //
+          // The snapshot's "printed" reference is the
+          // current `card.cardData` (NOT
+          // `permanentCopyPrintedCardData` — the
+          // re-stamp case must NOT overwrite an existing
+          // snapshot with the overlaid cardData, or the
+          // rollback would restore the overlay). The
+          // snapshot helper is idempotent on equality so
+          // a refresh pass that re-stamps the same target
+          // returns the input object.
+          const printed = card.cardData;
+          const snapshotted = snapshotPermanentCopyPrintedCardData(
+            updated,
+            printed,
+          );
+          const overlaid = {
+            ...snapshotted,
+            cardData: {
+              ...printed,
+              name: targetPrintedCardData.name,
+              type_line: targetPrintedCardData.type_line,
+              power: targetPrintedCardData.power,
+              toughness: targetPrintedCardData.toughness,
+              colors: targetPrintedCardData.colors,
+              color_identity: targetPrintedCardData.color_identity,
+              keywords: targetPrintedCardData.keywords,
+            },
+          };
+          const stamped = setPermanentCopyOf(
+            overlaid,
+            nextTargetLedger,
+          );
+          cards.set(cardId, stamped);
+          continue;
+        }
         // Snapshot the source's printed `cardData`
         // (the one stored in `animatedUntilEndOfTurn`
         // if a copy was already in effect, else the
@@ -1467,6 +1632,37 @@ export function refreshScriptedStatics(input: GameState): GameState {
         // the source's own static-driven protection
         // is the only protection left.
         leafProtFromById.delete(cardId);
+      } else if (
+        card.copyOfTargetIdPermanent !== undefined ||
+        card.permanentCopyPrintedCardData !== undefined
+      ) {
+        // Wave 4.8 follow-up 23 lane 70 piece 2a +
+        // piece 2b (#2614 follow-up): the
+        // permanent-arm rollback. The permanent arm
+        // writes both the `copyOfTargetIdPermanent`
+        // ledger AND the `permanentCopyPrintedCardData`
+        // snapshot; the "target missing" branch
+        // restores the source's printed `cardData`
+        // from the snapshot AND clears both fields
+        // (so the source returns to its untouched
+        // printed state). The `restorePermanentCopyOff
+        // Battlefield` consult at the TOP of the
+        // refresh pass handles the source-leaves-
+        // battlefield case; this branch is for the
+        // target-leaves case (where the source is
+        // still on the battlefield with a now-stale
+        // permanent-copy ledger pointing at a missing
+        // target).
+        const restored: CardInstance = {
+          ...updated,
+          cardData:
+            card.permanentCopyPrintedCardData ?? card.cardData,
+        };
+        const cleared = clearPermanentCopyOf(
+          clearPermanentCopyPrintedCardData(restored),
+        );
+        cards.set(cardId, cleared);
+        continue;
       } else {
         // Source has never had a copy overlay; no-op.
         // (The `else if` branch below would also
@@ -1476,7 +1672,12 @@ export function refreshScriptedStatics(input: GameState): GameState {
         // Wave 4.8 follow-up 10 lane 77: no prior
         // overlay → no rolled protection to clear.
       }
-    } else if (card.copyOfTargetId !== undefined || card.animatedUntilEndOfTurn) {
+    } else if (
+      card.copyOfTargetId !== undefined ||
+      card.animatedUntilEndOfTurn ||
+      card.copyOfTargetIdPermanent !== undefined ||
+      card.permanentCopyPrintedCardData !== undefined
+    ) {
       // The source no longer carries a `become_copy`
       // static (the script changed or the source left
       // its `become_copy`-bearing state). Drop the
@@ -1485,6 +1686,33 @@ export function refreshScriptedStatics(input: GameState): GameState {
       // Wave 4.8 follow-up 10 lane 77 (#2614
       // follow-up): also drop any leaf-rolled
       // `protectionFrom` — the overlay is gone.
+      // Wave 4.8 follow-up 23 lane 70 piece 2a + piece 2b
+      // (#2614 follow-up): also drop the permanent-arm
+      // ledger (`copyOfTargetIdPermanent`) + the
+      // permanent-arm snapshot (`permanentCopyPrintedCardData`)
+      // when the static disappears. The printed
+      // `cardData` is restored from the snapshot, then
+      // both fields are cleared. The `restorePermanentCopyOff
+      // Battlefield` consult handles the source-leaves-
+      // battlefield case BEFORE this block runs, so a
+      // source already restored to printed `cardData`
+      // with no snapshot field still lands here iff the
+      // `become_copy` static is no longer active.
+      if (
+        card.copyOfTargetIdPermanent !== undefined ||
+        card.permanentCopyPrintedCardData !== undefined
+      ) {
+        const restored: CardInstance = {
+          ...updated,
+          cardData:
+            card.permanentCopyPrintedCardData ?? card.cardData,
+        };
+        const cleared = clearPermanentCopyOf(
+          clearPermanentCopyPrintedCardData(restored),
+        );
+        cards.set(cardId, cleared);
+        continue;
+      }
       leafProtFromById.delete(cardId);
       if (
         card.animatedUntilEndOfTurn &&
