@@ -2515,6 +2515,39 @@ export const StaticSchema = z
           })
           .strict()
           .optional(),
+        /**
+         * Wave 4.8 follow-up 25 lane 32 piece 4/N
+         * (#2614 follow-up): an OPTIONAL self-referential
+         * per-counter count source. When set, REPLACES
+         * the `per` arm's state-derived count with the
+         * source's own per-counter count — the count is
+         * `card.counters?.find(c => c.type ===
+         * counter)?.count ?? 0` (matches how
+         * `evergreen-keywords.getEffectivePower` reads
+         * the +1/+1 counter from the same field — see
+         * `evergreen-keywords.ts` line ~973). v1
+         * supports a single counter type per arm; a
+         * chosen-counter variant rides follow-up 26+.
+         *
+         * Sample card: a self-scaling anthem on a
+         * creature with `enter_choice: { kind:
+         * "counter_minimum" }` — the anthem's
+         * per-counter count grows with the source's
+         * own counters ("this creature gets +1/+1
+         * for each +1/+1 counter on it").
+         *
+         * Out of scope: the `andPer` / `perSubtype`
+         * combinations with `perCounter` (the
+         * per-counter arm REPLACES the `per` arm
+         * entirely; a hybrid "per creatures + per
+         * counter" arm is a follow-up lane).
+         */
+        perCounter: z
+          .object({
+            counter: z.string().min(1),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),

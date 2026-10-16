@@ -298,7 +298,25 @@ function computeAnthemScalingCount(
         perSubtype?: string;
       }
     | undefined,
+  perCounter?: { counter: string } | undefined,
 ): number {
+  // Wave 4.8 follow-up 25 lane 32 piece 4/N (#2614
+  // follow-up): the optional self-referential
+  // per-counter count source. When set, REPLACES
+  // the `per` arm's state-derived count with the
+  // source's own per-counter count. The count is
+  // `source.counters?.find(c => c.type === counter)?.count
+  // ?? 0` — matches how
+  // `evergreen-keywords.getEffectivePower` reads
+  // the +1/+1 counter from the same field. v1
+  // single counter type per anthem; a hybrid
+  // "per creatures + per counter" arm is a follow-up.
+  if (perCounter) {
+    const counterEntry = source.counters?.find(
+      (c) => c.type === perCounter.counter,
+    );
+    return counterEntry?.count ?? 0;
+  }
   // Wave 4.8 follow-up 25 lane 32 piece 3/N (#2614
   // follow-up): the `"chosen"` sentinel for
   // `perSubtype`. When the field is the sentinel,
@@ -1057,6 +1075,13 @@ export function refreshScriptedStatics(input: GameState): GameState {
             // `andPer` and falls through to the
             // primary-source count.
             stat.anthemScaling.andPer,
+            // Wave 4.8 follow-up 25 lane 32 piece 4/N:
+            // the optional self-referential per-counter
+            // arm. When set, the consult returns the
+            // source's own per-counter count
+            // (REPLACES the `per` arm entirely — the
+            // v1 minimum is single-source scaling).
+            stat.anthemScaling.perCounter,
           );
           power += count * (stat.anthemScaling.perPower ?? 0);
           toughness += count * (stat.anthemScaling.perToughness ?? 0);
