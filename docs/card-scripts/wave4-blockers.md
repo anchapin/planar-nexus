@@ -5475,3 +5475,222 @@ are now closed. The loop-done summary follows.
 - The piece 2/N back-out consumed zero
   committed LOC; only this blockers note.
   No mid-cycle revert needed.
+
+## Wave 4.8 follow-up 26 loop done summary
+(2 priority pieces shipped + 1 piece backed
+out across 2 lanes; 1 mid-loop progress
+note)
+
+### Pieces shipped
+
+- `5b56caf4` — `[AI-assisted] feat(card-scripts):
+  anthemScaling.perCounter chosen-counter
+  sentinel (follow-up 26, lane 32, piece
+  1/N)`. The `anthemScaling.perCounter.counter`
+  schema arm extended from
+  `z.string().min(1)` to a Zod union of
+  `z.string() | z.literal("chosen")`. The
+  engine's `computeAnthemScalingCount` per-
+  counter branch resolves the counter-type
+  from `source.chosenCreatureType` when
+  the sentinel is set (parallel to the
+  `perSubtype: "chosen"` sentinel from the
+  follow-up 25 piece 3/N). Null resolved
+  type returns count=0 (matches the lane 86
+  chosen-type anthem semantics). Test file:
+  `lane32-chosen-counter-variant.test.ts`
+  (7 tests).
+- `470b08b4` — `[AI-assisted] docs(card-scripts):
+  wave 4.8 follow-up 26 mid-loop — piece
+  1/N shipped + piece 2/N backed out`. Working
+  artifact documenting the piece 2/N back-out
+  and the mid-loop progress checkpoints.
+- `de574d40` — `[AI-assisted] feat(card-scripts):
+  protectionFrom chosen-quality sentinel
+  (follow-up 26, lane 71, piece 3/N)`. The
+  `StaticSchema.protectionFrom` arm extended
+  from `z.array(z.string())` to a Zod union
+  of `z.array(...) | z.literal("chosen")`.
+  The engine's `refreshScriptedStatics` consults
+  `source.chosenProtectionFrom` when the sentinel
+  is set (single-element list — parallel to the
+  chosen-type / chosen-color / chosen-counter
+  sentinels). Null resolved quality leaves the
+  static inert for that pass (matches the lane 86
+  chosen-type anthem "null" semantics). Card
+  instance schema extended with
+  `chosenProtectionFrom: string | null`. The
+  `enter_choice: { kind: "protection_quality" }`
+  resolver arm stamps the field from a curated
+  W/U/B/R/G + "everything" set. Test file:
+  `lane71-chosen-quality-sentinel.test.ts`
+  (8 tests).
+
+### Pieces backed out (mid-loop, no LOC committed)
+
+- **Lane 71 piece 2/N — per-source per-quality
+  arrays**. Backed out before any code written.
+  The handoff's spec called for a new
+  `protectionFromBySourceQuality` ledger of
+  shape `Record<quality, Array<{
+  sourceId; quality }>>`, which is structurally
+  redundant with the follow-up 25 piece 1/N
+  ledger `Record<sourceId, string[]>` — a
+  single reduce over the piece 1/N map produces
+  the per-quality view. Adding it would stamp
+  a fourth ledger shape where the third is
+  already derivable from the second. Per-quality
+  consult will ride follow-up 27 as a thin
+  derived helper (no new ledger stamp; the
+  helper reads the piece 1/N ledger and filters).
+
+### Lanes fully closed
+
+- **Lane 32** (scaling P/T anthems) is now
+  substantially extended: per + perPower +
+  perToughness + perSubtype (literal-string
+  filter from follow-up 24 piece 2/N) +
+  andPer (compound count source from
+  follow-up 25 piece 2/N) + perSubtype
+  "chosen" sentinel (follow-up 25 piece
+  3/N) + perCounter (self-referential counter
+  arm from follow-up 25 piece 4/N) +
+  perCounter.counter "chosen" sentinel
+  (follow-up 26 piece 1/N). The full chosen-
+  sentinel family (subtype, counter type) is
+  now wired through `computeAnthemScalingCount`.
+  Lane 32 carries over as fully closed for
+  the scaling-anthem surface; remaining
+  follow-ups (per-creature per-counter / per-
+  counter + per-source per-quality) ride
+  follow-up 27+.
+
+### Lanes still open (multi-lane follow-ups)
+
+- **Lane 32 chosen-counter compound** ("per
+  creature AND chosen-counter") — combines
+  lane 32 piece 1/N (perCounter.counter:
+  "chosen" reading chosenCreatureType) +
+  the per-andPer chosen-type arm into a
+  single compound source.
+- **Lane 28 — Create copy token** (Rite of
+  Replication / Self-Reflection style). New
+  op schema + engine arm.
+- **Lane 71 piece 2/N** — per-source per-quality
+  arrays (backed out as redundant; rides
+  follow-up 27 as a derived consult helper).
+- **Lane 80 / 81 cross-lane engagements.**
+  Verified as no-ops per the wave4-blockers
+  doc; no work needed.
+
+### Net test-suite / case delta (vs. follow-up 25
+baseline of 782 / 14597)
+
+- Test suites: 782 → 784 (+2)
+- Test cases: 14597 → 14612 (+15)
+- New test files:
+  - `lane32-chosen-counter-variant.test.ts` (7)
+  - `lane71-chosen-quality-sentinel.test.ts` (8)
+- Live counts (post-ratchet, locked into
+  `docs/onboarding.md` and
+  `docs/TEST_VIDEO_FIXTURES.md`):
+  - Suites: 784
+  - Cases: 14612 (14605 passed + 7 skipped)
+  - Snapshots: 3
+
+### Net engine-size budget delta
+
+- 4300 → 4370 (+70 lines budget captured in
+  this loop; schema.ts measured at 4364).
+- Schema bumps in this loop:
+  - Follow-up 26 piece 1/N: 4300 → 4320
+    (+20; `perCounter.counter` Zod union +
+    docstring).
+  - Follow-up 26 piece 3/N: 4320 → 4370
+    (+50; `protectionFrom` Zod union +
+    docstring + the `enter_choice.kind` enum
+    extension with `"protection_quality"`
+    docstring).
+- Engine modules touched (no budget delta —
+  the engine budget is at the module level,
+  not at this granularity):
+  - `keyword-actions/scripted-statics.ts`
+    (piece 1/N perCounter counter-type
+    resolution; piece 3/N protectionFrom
+    sentinel resolution).
+  - `keyword-actions/enter-choice.ts`
+    (piece 3/N `kind === "protection_quality"`
+    resolver + curated option list +
+    `hasEnterChoice` + `enterChoiceOptionsForKind`
+    + `defaultPrompt` arm extensions).
+
+### Any new open work discovered during the loop
+
+- The lane 71 piece 2/N back-out revealed
+  that the existing piece 1/N ledger
+  (`Record<sourceId, string[]>`) is
+  sufficient for both the per-source consult
+  (already shipped) AND the per-quality
+  consult (deferred to follow-up 27 as a
+  derived helper). No new ledger stamp
+  required.
+- The `perCounter.counter: "chosen"` +
+  `protectionFrom: "chosen"` +
+  `perSubtype: "chosen"` chosen-sentinel
+  family is now uniform across the engine —
+  each reads from a dedicated instance field
+  (`chosenCreatureType`,
+  `chosenProtectionFrom`) that the
+  `enter_choice` resolver populates from a
+  curated set at ETB. Future chosen-sentinel
+  work (e.g. a
+  `StaticSchema.affects.color: "chosen"`
+  reader) follows the same pattern: extend
+  the `enter_choice.kind` enum, add a
+  corresponding `chosen<X>` instance field,
+  resolve in the consult. Documented in the
+  per-piece docstrings for future reference.
+
+### Process notes
+
+- `foreman` MCP not invoked (no technical
+  multiple-choice decisions arose in this
+  loop). The piece 2/N back-out was a
+  structural-redundancy observation, not a
+  foreman-multiple-choice decision.
+- The aggressive loop's machinery (ratchet
+  + commit-bypass pattern + force-with-lease
+  push + `ratchet-test-count.mjs` fallback for
+  the AI flake) was intact and ready. The
+  ratchet path was used twice (once per piece
+  that added tests); both runs landed
+  cleanly without the AI flake striking
+  during the ratchet.
+- AI flake budget: 1 forge-gate / forge-selfplay
+  transient flake on the first piece 1/N
+  full-suite gate (passed on the next re-run);
+  1 same-shape transient flake on the piece 3/N
+  full-suite gate (passed on the next re-run).
+  Within the handoff's 1-2 extra CI runs per
+  piece budget.
+- The piece 3/N schema-budget bump (4320 →
+  4370) was larger than piece 1/N (4300 →
+  4320) because the chosen-quality sentinel
+  has a wider surface — schema union extension
+  on `protectionFrom` + `enter_choice.kind`
+  enum extension + docstring expansion on
+  both arms. The bump captures both pieces
+  in the same loop; future lane 71 follow-up
+  pieces (per-source per-quality arrays +
+  multi-quality sentinel + per-quality arrays
+  with chosen sentinel) would ride
+  follow-up 27+ and may need a further bump.
+- The branch `wave4.8-followup26` carries
+  all three commits (5b56caf4 → 470b08b4 →
+  de574d40); a single PR can land all three.
+  The follow-up 17 / 22 / 23 / 24 / 25
+  precedent allows multiple lanes in one PR.
+  Recommended PR title: "Wave 4.8 follow-up
+  26 — chosen-sentinel expansion (lane 32
+  piece 1/N + lane 71 piece 3/N shipped,
+  lane 71 piece 2/N backed out)".
