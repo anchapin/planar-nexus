@@ -2362,6 +2362,53 @@ export const StaticSchema = z
      * compound count sources ("per creature AND artifact
      * you control"), and a per_unit shape with a unit-
      * type filter ("per +1/+1 counter on this creature").
+     *
+     * Wave 4.8 follow-up 24 lane 32 piece 2/N (#2614
+     * follow-up): an OPTIONAL `perSubtype?: string`
+     * field that, when set, filters the count iteration
+     * to permanents whose `cardData.type_line` matches
+     * the given creature (or permanent) type. v1 takes a
+     * FIXED TYPE STRING — the chosen-type variant ("per
+     * creature of the chosen type" — `chosenCreatureType`
+     * field on the source) rides a follow-up sub-piece.
+     * The existing `affects.subtype` field already filters
+     * WHICH permanents the anthem AFFECTS; this field
+     * filters the COUNT SOURCE specifically. Sample:
+     *
+     *   "Other creatures you control get +1/+1 for each
+     *   other Warrior you control"
+     *   →
+     *   {
+     *     affects: {
+     *       controller: "you",
+     *       other: true,
+     *       subtype: "Creature",
+     *     },
+     *     anthemScaling: {
+     *       per: "other_creatures",
+     *       perPower: 1,
+     *       perToughness: 1,
+     *       perSubtype: "Warrior",
+     *     },
+     *   }
+     *
+     * The engine's `computeAnthemScalingCount` consults
+     * `perSubtype` when set and filters the count
+     * iteration to cards whose `type_line` includes the
+     * given subtype as a case-insensitive substring
+     * (matching how the existing `computeX` looks up
+     * "Treasure" / "Creature" / "Land" — the chosen
+     * "Warrior" type matches cards whose `type_line`
+     * contains "Warrior"). When unset, the count is
+     * unfiltered (the v1 default).
+     *
+     * Out of scope (each a follow-up lane): compound
+     * count sources ("per creature AND artifact you
+     * control"), the chosen-type variant of the
+     * `perSubtype` field ("per creature of the chosen
+     * type" — driven by a `chosenCreatureType` field on
+     * the source), and a per-counter scaling shape
+     * ("per +1/+1 counter on this creature").
      */
     anthemScaling: z
       .object({
@@ -2390,6 +2437,24 @@ export const StaticSchema = z
          * family.
          */
         perToughness: z.number().int().default(0),
+        /**
+         * Wave 4.8 follow-up 24 lane 32 piece 2/N
+         * (#2614 follow-up): an OPTIONAL subtype filter
+         * on the count source. When set, the count
+         * iteration skips permanents whose `type_line`
+         * does NOT include the given subtype as a
+         * case-insensitive substring (matching how
+         * `computeX` looks up "Treasure" / "Creature" /
+         * "Land"). When unset, the count source is
+         * unfiltered (the v1 default — the count
+         * includes every permanent matching the `per`
+         * arm). v1 single fixed type string; the
+         * chosen-type variant ("per creature of the
+         * chosen type" — driven by a
+         * `chosenCreatureType` field on the source)
+         * rides a follow-up sub-piece.
+         */
+        perSubtype: z.string().min(1).optional(),
       })
       .strict()
       .optional(),

@@ -661,7 +661,21 @@ const SCOPES = [
     // compound count sources, per-counter
     // scales — each a follow-up sub-piece per
     // the handoff) room to land.
-    budgetLines: 4150,
+    //
+    // Wave 4.8 follow-up 24 lane 32 piece 2/N
+    // (#2614 follow-up): the optional `perSubtype`
+    // field on `anthemScaling` — the "per OTHER
+    // Warrior you control" filtered-count-source
+    // variant. Adds ~65 lines (the Zod envelope +
+    // docstring explaining the perSubtype filter
+    // + the typed-creature cases + the engine's
+    // `computeAnthemScalingCount` filter consult).
+    // schema.ts measured at 4199 (+49 over the
+    // 4150 cap).
+    // Bumping 4150 → 4250 to give the lane 32
+    // family follow-up sub-pieces (compound count
+    // sources, per-counter scales) room to land.
+    budgetLines: 4250,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

@@ -253,26 +253,69 @@ function computeX(state: GameState, source: CardInstance, kind: string): number 
  * ("OTHER creatures you control" semantics — the source
  * doesn't count its own presence toward the scaling
  * anthem). Returns 0 for any unknown / unspecified `per`.
+ *
+ * Wave 4.8 follow-up 24 lane 32 piece 2/N (#2614
+ * follow-up): the optional `perSubtype` filter. When
+ * the field is set, the count iteration restricts to
+ * permanents whose `cardData.type_line` includes the
+ * given subtype as a case-insensitive substring
+ * (matching how `computeX` looks up "Treasure" /
+ * "Creature" / "Land"). Sample: `perSubtype:
+ * "Warrior"` filters to cards whose type line includes
+ * "Warrior". When unset, the count is unfiltered (the
+ * v1 default). The filter applies to every `per`
+ * branch (a "Warrior" filtered count over
+ * `other_creatures` counts other Warriors among the
+ * source's OTHER creatures; a "Treasure" filter over
+ * `treasures` filters a `treasure`-typed card to
+ * only those whose type line ALSO includes the
+ * chosen subtype — usually a no-op, but the v1
+ * shape is parallel across `per` values).
  */
 function computeAnthemScalingCount(
   state: GameState,
   source: CardInstance,
   per: "creatures" | "treasures" | "lands" | "other_creatures",
+  perSubtype?: string,
 ): number {
-  if (per === "other_creatures") {
-    let n = 0;
-    for (const card of battlefieldCards(state)) {
-      if (card.id === source.id) continue;
-      if (card.controllerId !== source.controllerId) continue;
-      if (isCreature(card)) n++;
+  const subtypeLc = perSubtype?.toLowerCase();
+  const matchesSubtype = (card: CardInstance): boolean => {
+    if (!subtypeLc) return true;
+    return (card.cardData.type_line ?? "")
+      .toLowerCase()
+      .includes(subtypeLc);
+  };
+  // The lane 32 `per` enum is a superset of the lane 36
+  // `X` enum (`creatures` / `treasures` / `lands`) with
+  // one lane-32 addition: `other_creatures` excludes
+  // the source itself. The four branches share an
+  // iteration shape: every branch filters by `per` →
+  // `controllerId` → optional `perSubtype` substring.
+  // Inline branches keep the per-arm predicate
+  // readable without re-implementing the underlying
+  // `computeX` predicate set.
+  let n = 0;
+  for (const card of battlefieldCards(state)) {
+    if (card.controllerId !== source.controllerId) continue;
+    if (per === "other_creatures" && card.id === source.id) continue;
+    if (
+      (per === "creatures" || per === "other_creatures") &&
+      !isCreature(card)
+    ) {
+      continue;
     }
-    return n;
+    if (per === "treasures") {
+      const t = (card.cardData.type_line ?? "").toLowerCase();
+      if (!t.includes("treasure")) continue;
+    }
+    if (per === "lands") {
+      const t = (card.cardData.type_line ?? "").toLowerCase();
+      if (!t.includes("land")) continue;
+    }
+    if (!matchesSubtype(card)) continue;
+    n++;
   }
-  // Reuse `computeX` for the lane-36-parallel sources.
-  // The lane 32 enum is a superset of `X`'s enum
-  // (`treasures` / `creatures` / `lands`), so the
-  // dispatch is loss-free.
-  return computeX(state, source, per);
+  return n;
 }
 
 /**
@@ -872,6 +915,7 @@ export function refreshScriptedStatics(input: GameState): GameState {
             state,
             card,
             stat.anthemScaling.per,
+            stat.anthemScaling.perSubtype,
           );
           power += count * (stat.anthemScaling.perPower ?? 0);
           toughness += count * (stat.anthemScaling.perToughness ?? 0);
