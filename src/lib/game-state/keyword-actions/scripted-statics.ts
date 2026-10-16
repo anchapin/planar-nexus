@@ -311,9 +311,36 @@ function computeAnthemScalingCount(
   // the +1/+1 counter from the same field. v1
   // single counter type per anthem; a hybrid
   // "per creatures + per counter" arm is a follow-up.
+  //
+  // Wave 4.8 follow-up 26 lane 32 piece 1/N (#2614
+  // follow-up): the `"chosen"` sentinel for
+  // `perCounter.counter`. When `perCounter.counter`
+  // is the sentinel, resolve the counter type from
+  // `source.chosenCreatureType` (parallel to the
+  // `perSubtype: "chosen"` sentinel — the same
+  // instance field drives both substrates via
+  // independent branches). If
+  // `chosenCreatureType` is null (the
+  // `enter_choice: { kind: "creature_type" }`
+  // resolve hasn't happened yet), the count is 0
+  // (matches the lane 86 chosen-type anthem
+  // semantics). The sentinel is a separate field
+  // from the source's `counters` types — the
+  // source's OWN counters are still consulted; only
+  // the type string is resolved dynamically.
   if (perCounter) {
+    const resolvedCounterType =
+      perCounter.counter === "chosen"
+        ? source.chosenCreatureType !== null &&
+          source.chosenCreatureType !== undefined
+          ? source.chosenCreatureType
+          : null
+        : perCounter.counter;
+    if (resolvedCounterType === null) {
+      return 0;
+    }
     const counterEntry = source.counters?.find(
-      (c) => c.type === perCounter.counter,
+      (c) => c.type === resolvedCounterType,
     );
     return counterEntry?.count ?? 0;
   }

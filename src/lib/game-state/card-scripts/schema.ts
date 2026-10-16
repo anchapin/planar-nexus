@@ -2529,22 +2529,42 @@ export const StaticSchema = z
          * supports a single counter type per arm; a
          * chosen-counter variant rides follow-up 26+.
          *
-         * Sample card: a self-scaling anthem on a
-         * creature with `enter_choice: { kind:
-         * "counter_minimum" }` — the anthem's
-         * per-counter count grows with the source's
-         * own counters ("this creature gets +1/+1
-         * for each +1/+1 counter on it").
+         * Wave 4.8 follow-up 26 lane 32 piece 1/N
+         * (#2614 follow-up): the `"chosen"` sentinel
+         * for `perCounter.counter`. When the field is
+         * the sentinel, the engine resolves the
+         * counter type from `source.chosenCreatureType`
+         * (parallel to the `perSubtype: "chosen"`
+         * sentinel — the same instance field drives both
+         * substrates via independent branches in
+         * `computeAnthemScalingCount`). If
+         * `chosenCreatureType` is null (the
+         * `enter_choice: { kind: "creature_type" }`
+         * resolve hasn't happened yet), the count is 0
+         * (the scripted anthem remains inert — matches
+         * the lane 86 chosen-type anthem semantics).
+         *
+         * Sample card: a chosen-counter anthem ("this
+         * creature gets +1/+1 for each [chosen counter
+         * kind] on it" — combined with `enter_choice: {
+         * kind: "creature_type" }` resolving to "Marker
+         * Counter" or similar — exercises both the
+         * sentinel substitution AND the per-counter
+         * count in one pass).
          *
          * Out of scope: the `andPer` / `perSubtype`
          * combinations with `perCounter` (the
          * per-counter arm REPLACES the `per` arm
          * entirely; a hybrid "per creatures + per
-         * counter" arm is a follow-up lane).
+         * counter" arm is a follow-up lane). The
+         * `perCounter.counter: "chosen"` interaction
+         * with `andPer` / `perSubtype` rides follow-up
+         * 27.
          */
         perCounter: z
           .object({
-            counter: z.string().min(1),
+            counter: z
+              .union([z.string().min(1), z.literal("chosen")]),
           })
           .strict()
           .optional(),
