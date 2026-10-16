@@ -2992,6 +2992,27 @@ export const AuraStaticSchema = z
      * lane 75 `animatedUntilEndOfUntil` infrastructure
      * for EOT rollback.
      *
+     * Wave 4.8 follow-up 24 lane 70 piece 2/N (#2614
+     * follow-up): `until` now also accepts
+     * `"permanent"` — the Aura-shaped permanent-arm
+     * copy variant (parallel to lane 70's `StaticSchema`
+     * `become_copy: { until: "permanent" }` arm). The
+     * engine writes the overlay onto the ENCHANTED card
+     * via `refreshAuraBonuses` using the lane 70
+     * `permanentCopyPrintedCardData` /
+     * `copyOfTargetIdPermanent` substrate (snapshot +
+     * overlay + battlefield-leave cleanup). The
+     * overlay is NOT cleared at end of turn; it persists
+     * for as long as the Aura is attached. The chosen
+     * target's "in a tracked zone" cross-zones check is
+     * inherited from lane 78 (the overlay applies for
+     * any chosen target whose zone is in `state.zones`).
+     * The Aura's own `copyOfTargetIdPermanent` ledger
+     * is stamped by the substrate (parallel to the
+     * lane 70 `setPermanentCopyOf` helper for the
+     * source-driven overlay; the helper is reused
+     * unchanged).
+     *
      * v1 supports the lane 75 `target: CardInstanceId`
      * arm only — the chosen permanent must be on the
      * battlefield at refresh time (the engine validates
@@ -3001,7 +3022,10 @@ export const AuraStaticSchema = z
      * variants are follow-up lanes. The overlay is
      * dropped at end of turn via the existing
      * `clearUntilEndOfTurnPT` /
-     * `restoreAnimatedOffBattlefield` rollback paths.
+     * `restoreAnimatedOffBattlefield` rollback paths
+     * (for the `end_of_turn` arm) or via the lane 70
+     * `restorePermanentCopyOffBattlefield` cleanup +
+     * Aura-detach rollback (for the `permanent` arm).
      *
      * Sample card: a synthetic Aura registered via
      * the test harness ("Enchanted creature is a copy
@@ -3018,13 +3042,20 @@ export const AuraStaticSchema = z
              * The chosen permanent on the
              * battlefield to copy (CR 707.2
              * "all characteristics copied"
-             * semantics, until end of turn).
-             * Validated at refresh time via
+             * semantics, until end of turn,
+             * or `permanent` — the
+             * Aura-shaped permanent arm
+             * added in follow-up 24 lane 70
+             * piece 2/N). Validated at
+             * refresh time via
              * `state.cards.has(targetId)` +
-             * zone endsWith `"-battlefield"`.
+             * the lane 78 tracked-zone check.
              */
             target: z.string().min(1),
-            until: z.literal("end_of_turn"),
+            until: z.union([
+              z.literal("end_of_turn"),
+              z.literal("permanent"),
+            ]),
           })
           .strict(),
       ])

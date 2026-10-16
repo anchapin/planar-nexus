@@ -14,7 +14,13 @@
  */
 import type { CardInstance, CardInstanceId, GameState, PlayerId } from "../types";
 import { getCardScript } from "../card-scripts/registry";
-import { buildAuraCopyChainSnapshot } from "./copy-chain";
+import {
+  buildAuraCopyChainSnapshot,
+  clearPermanentCopyOf,
+  printedCardDataOf,
+  setPermanentCopyOf,
+  snapshotPermanentCopyPrintedCardData,
+} from "./copy-chain";
 
 export interface AuraPT {
   power: number;
@@ -181,21 +187,36 @@ export function refreshAuraBonuses(state: GameState): GameState {
   // per-enchanted-card copy-target ledger for Auras with
   // a `become_copy` arm. The Aura's static carries
   // `become_copy: { target: CardInstanceId, until:
-  // "end_of_turn" }`; the engine writes the chosen
-  // target's printed characteristics onto the
-  // ENCHANTED CARD's `cardData` via the lane 75
-  // `animatedUntilEndOfTurn` infrastructure. Keyed by
-  // the ENCHANTED card id (NOT the Aura id — the lane 75
-  // `copyOfTargetBySourceId` keys by the source, but
-  // here the source IS the Aura and the overlay is
-  // applied to the enchanted card; the enchanted card's
-  // id is the right key for the per-enchanted-card
-  // overlay collection map). v1 single chosen target on
-  // the battlefield; the chosen target's `state.cards`
-  // lookup is validated at write-phase time.
+  // "end_of_turn" | "permanent" }`; the engine writes
+  // the chosen target's printed characteristics onto the
+  // ENCHANTED CARD's `cardData` via either the lane 75
+  // `animatedUntilEndOfTurn` infrastructure (for
+  // `end_of_turn` — dropped at end of turn via
+  // `restoreAnimatedOffBattlefield`) or the lane 70
+  // `permanentCopyPrintedCardData` substrate (for
+  // `permanent` — persisted for as long as the Aura is
+  // attached, restored via
+  // `restorePermanentCopyOffBattlefield` + Aura-detach
+  // rollback). Keyed by the ENCHANTED card id (NOT the
+  // Aura id — the lane 75 `copyOfTargetBySourceId` keys
+  // by the source, but here the source IS the Aura and
+  // the overlay is applied to the enchanted card; the
+  // enchanted card's id is the right key for the
+  // per-enchanted-card overlay collection map). v1
+  // single chosen target on the battlefield; the chosen
+  // target's `state.cards` lookup is validated at
+  // write-phase time. Wave 4.8 follow-up 24 lane 70
+  // piece 2/N (#2614 follow-up): `until` carries the
+  // `"permanent"` arm — the Aura-shaped permanent-arm
+  // copy variant.
   const auraCopyOfTargetByEnchantedCard = new Map<
     string,
-    { kind: "id"; targetId: string; fromAura: CardInstanceId }
+    {
+      kind: "id";
+      targetId: string;
+      fromAura: CardInstanceId;
+      until: "end_of_turn" | "permanent";
+    }
   >();
 
   for (const aura of onField) {
@@ -368,12 +389,23 @@ export function refreshAuraBonuses(state: GameState): GameState {
       // card is unlikely to carry more than one such
       // Aura in v1, but the deterministic-overwrite is
       // the safe default).
+      // Wave 4.8 follow-up 24 lane 70 piece 2/N (#2614
+      // follow-up): the Aura-shaped permanent arm —
+      // `until: "permanent"` writes the overlay onto the
+      // ENCHANTED card via the lane 70
+      // `permanentCopyPrintedCardData` substrate (instead
+      // of the lane 75 `animatedUntilEndOfTurn`
+      // infrastructure). The overlay persists for as long
+      // as the Aura is attached; cleanup runs on Aura-
+      // detach + lane 70's
+      // `restorePermanentCopyOffBattlefield`.
       if (scriptedStatic.become_copy !== undefined) {
         if ("target" in scriptedStatic.become_copy) {
           auraCopyOfTargetByEnchantedCard.set(target, {
             kind: "id",
             targetId: scriptedStatic.become_copy.target,
             fromAura: aura.id,
+            until: scriptedStatic.become_copy.until,
           });
         }
         // The lane 75d v1 minimum only supports the
@@ -459,10 +491,40 @@ export function refreshAuraBonuses(state: GameState): GameState {
     // overlay. When the next-value is undefined (no
     // Aura with `become_copy` is attached to this
     // card), the diff drops any in-flight overlay.
-    const nextAuraCopyOfTargetId =
-      auraCopyOfTargetByEnchantedCard.get(cardId)?.targetId;
+    // Wave 4.8 follow-up 24 lane 70 piece 2/N (#2614
+    // follow-up): the `until` field drives which
+    // substrate the write phase uses (the existing
+    // `end_of_turn` arm reads/writes `copyOfTargetId`;
+    // the new `permanent` arm reads/writes
+    // `copyOfTargetIdPermanent` + the
+    // `permanentCopyPrintedCardData` snapshot). The
+    // diff consults the per-`until` ledger pair so a
+    // single enchanted card carries at most one in-
+    // flight overlay (re-stamping the other arm after
+    // a refresh re-route cycles the substrate cleanly).
+    const nextAuraCopyEntry =
+      auraCopyOfTargetByEnchantedCard.get(cardId);
+    const nextAuraCopyOfTargetId = nextAuraCopyEntry?.targetId;
+    const nextAuraCopyUntil = nextAuraCopyEntry?.until;
     const sameAuraCopyOfTarget =
       nextAuraCopyOfTargetId === card.copyOfTargetId;
+    // Wave 4.8 follow-up 24 lane 70 piece 2/N: the
+    // permanent-arm copy-target ledger. The
+    // `sameAuraCopyOfTargetPermanent` consult is
+    // parallel to the EOT `sameAuraCopyOfTarget`
+    // consult above — the diff compares the next-value
+    // (when `nextAuraCopyUntil === "permanent"`,
+    // otherwise undefined) against the enchanted
+    // card's existing `copyOfTargetIdPermanent`. When
+    // the next-value is undefined and the field is
+    // absent, the diff is "no change"; when the next-
+    // value is defined and the field already matches,
+    // the diff is "no change"; otherwise the write
+    // phase drops / applies the overlay.
+    const sameAuraCopyOfTargetPermanent =
+      nextAuraCopyUntil === "permanent"
+        ? card.copyOfTargetIdPermanent === nextAuraCopyOfTargetId
+        : card.copyOfTargetIdPermanent === undefined;
     if (
       (was?.power ?? 0) === (next?.power ?? 0) &&
       (was?.toughness ?? 0) === (next?.toughness ?? 0) &&
@@ -474,7 +536,8 @@ export function refreshAuraBonuses(state: GameState): GameState {
       Boolean(card.losesAbilities) === nextLosesAbilities &&
       sameGrantedTriggers &&
       sameProtFrom &&
-      sameAuraCopyOfTarget
+      sameAuraCopyOfTarget &&
+      sameAuraCopyOfTargetPermanent
     ) {
       continue;
     }
@@ -556,6 +619,26 @@ export function refreshAuraBonuses(state: GameState): GameState {
     // owned by the Aura attachment, not by the lane 75
     // static path — this refresh is the canonical
     // drop site.
+    //
+    // Wave 4.8 follow-up 24 lane 70 piece 2/N (#2614
+    // follow-up): the `until: "permanent"` arm
+    // parallels this block on the lane 70 substrate —
+    // the enchanted card's printed `cardData` is
+    // snapshotted under `permanentCopyPrintedCardData`
+    // (instead of `animatedUntilEndOfTurn`), the live
+    // `cardData` is overlaid with the target's printed
+    // characteristics, and the
+    // `copyOfTargetIdPermanent` ledger is stamped. The
+    // AURA itself also receives `copyOfTargetIdPermanent`
+    // (via `setPermanentCopyOf`) — parallel to how the
+    // lane 70 source-driven overlay stamps
+    // `copyOfTargetIdPermanent` on the source of the
+    // `StaticSchema.become_copy: { until: "permanent" }`
+    // arm. Cleanup runs on Aura-detach
+    // (`clearPermanentCopyOf` on the Aura + restore-
+    // from-snapshot on the enchanted card) and on
+    // `restorePermanentCopyOffBattlefield` consult for
+    // either card leaving the battlefield.
     if (nextAuraCopyOfTargetId !== undefined) {
       // Wave 4.8 follow-up 9 lane 75e (#2614 follow-up):
       // cycle guard — drop the overlay for any enchanted
@@ -568,6 +651,14 @@ export function refreshAuraBonuses(state: GameState): GameState {
       // `cycleIds.has(cardId)` check catches cycles
       // whose leaves are intermediate targets the
       // enchanted card is not directly attached to.
+      // Wave 4.8 follow-up 24 lane 70 piece 2/N: the
+      // cycle case also clears both the EOT substrate
+      // (`animatedUntilEndOfTurn` + `copyOfTargetId`) and
+      // the permanent-arm substrate
+      // (`permanentCopyPrintedCardData` +
+      // `copyOfTargetIdPermanent`) — a cycle in one arm's
+      // substrate must NOT leave stale substrate state
+      // behind.
       if (auraCopyChain.cycleIds.has(cardId)) {
         if (updated.animatedUntilEndOfTurn) {
           updated.cardData = updated.animatedUntilEndOfTurn.cardData;
@@ -579,6 +670,14 @@ export function refreshAuraBonuses(state: GameState): GameState {
           // ledger is cleared.
           delete updated.copyOfTargetId;
         }
+        // Wave 4.8 follow-up 24 lane 70 piece 2/N: also
+        // clear the permanent-arm substrate in the
+        // cycle case (parallel cleanup for the
+        // `until: "permanent"` arm).
+        if (updated.permanentCopyPrintedCardData) {
+          delete updated.permanentCopyPrintedCardData;
+        }
+        delete updated.copyOfTargetIdPermanent;
         // Wave 4.8 follow-up 10 lane 77 (#2614
         // follow-up): drop any leaf-rolled
         // `protectionFrom` — the cycle case
@@ -600,13 +699,121 @@ export function refreshAuraBonuses(state: GameState): GameState {
       // (the enchanted card must be on the battlefield
       // for the Aura's static to apply), but the chosen
       // target can be in any zone the engine tracks.
+      // Wave 4.8 follow-up 24 lane 70 piece 2/N: the
+      // tracked-zone check applies to BOTH the
+      // `end_of_turn` and `permanent` arms — a
+      // permanent-arm overlay must also drop when the
+      // chosen target leaves a tracked zone (the lane
+      // 70 piece 2b substrate's source-leaves-the-
+      // battlefield rollback is parallel here).
       const chosenTargetInTrackedZone =
         chosenTarget &&
         chosenTarget.currentZoneKey !== null &&
         state.zones.has(chosenTarget.currentZoneKey);
+      // Wave 4.8 follow-up 24 lane 70 piece 2/N: the
+      // overlay substrate is selected by `nextAuraCopyUntil`.
+      // For `end_of_turn` (the legacy default), the
+      // substrate is the lane 75 `animatedUntilEndOfTurn`
+      // machinery; for `permanent`, the substrate is
+      // the lane 70 `permanentCopyPrintedCardData`
+      // machinery. The two substrates' write paths
+      // diverge only in the snapshot ledger +
+      // `copyOfTargetId*` field name — the cardData
+      // overlay itself is identical (CR 707.2).
+      const overlayIsPermanent = nextAuraCopyUntil === "permanent";
       if (chosenTarget && chosenTargetInTrackedZone) {
+        // Wave 4.8 follow-up 24 lane 70 piece 2/N: the
+        // "printed" reference is queried via
+        // `printedCardDataOf` so the re-stamp case (the
+        // Aura's target hasn't changed since the last
+        // refresh) doesn't overwrite a previously-set
+        // snapshot with the overlaid cardData. The
+        // helper is the canonical consult for
+        // "what is printed for this card at this
+        // point in the refresh" — used by
+        // `refreshScriptedStatics` AND the EOT Aura
+        // overlay.
         const printed =
-          updated.animatedUntilEndOfTurn?.cardData ?? updated.cardData;
+          overlayIsPermanent
+            ? printedCardDataOf(updated)
+            : updated.animatedUntilEndOfTurn?.cardData ??
+              updated.cardData;
+        if (overlayIsPermanent) {
+          // Wave 4.8 follow-up 24 lane 70 piece 2/N:
+          // the permanent-arm overlay on the ENCHANTED
+          // card. Snapshots the chosen target's
+          // printed `cardData` under
+          // `permanentCopyPrintedCardData` (the lane 70
+          // substrate's rollback reference for
+          // restore-from-snapshot on Aura-detach /
+          // target-leaves-a-tracked-zone) and overlays
+          // the chosen target's printed characteristics
+          // onto the enchanted card's live `cardData`.
+          // The chosen target's printed `cardData` is
+          // resolved through the snapshot's nested-
+          // copy-chain leaf consultation (parallel to
+          // the EOT arm's `leafFromSnapshot` consult).
+          const leafFromSnapshot =
+            auraCopyChain.leafCardDataByEnchantedCard.get(cardId);
+          const targetPrinted =
+            leafFromSnapshot ??
+            (chosenTarget.animatedUntilEndOfTurn?.cardData ??
+              chosenTarget.permanentCopyPrintedCardData ??
+              chosenTarget.cardData);
+          const snapped = snapshotPermanentCopyPrintedCardData(
+            updated,
+            printed,
+          );
+          const withOverlay: CardInstance = {
+            ...snapped,
+            cardData: {
+              ...printed,
+              name: targetPrinted.name,
+              type_line: targetPrinted.type_line,
+              power: targetPrinted.power,
+              toughness: targetPrinted.toughness,
+              colors: targetPrinted.colors,
+              color_identity: targetPrinted.color_identity,
+              keywords: targetPrinted.keywords,
+            },
+            copyOfTargetIdPermanent: nextAuraCopyOfTargetId,
+          };
+          // ALSO stamp `copyOfTargetIdPermanent` on
+          // the AURA itself via the lane 70
+          // `setPermanentCopyOf` helper (parallel to the
+          // `setByAura` marker on the EOT arm — the
+          // Aura carries the source-side ledger so
+          // downstream refreshes can re-find the
+          // chosen target).
+          const auraCard = state.cards.get(nextAuraCopyEntry!.fromAura);
+          if (auraCard) {
+            const stampedAura = setPermanentCopyOf(
+              auraCard,
+              nextAuraCopyOfTargetId,
+            );
+            if (stampedAura !== auraCard) {
+              cards ??= new Map(state.cards);
+              cards.set(nextAuraCopyEntry!.fromAura, stampedAura);
+            }
+          }
+          // Roll the chosen target's leaf's
+          // `protectionFrom` onto the enchanted card
+          // (parallel to lane 77's EOT-arm semantics).
+          const leafPerInstance =
+            auraCopyChain.leafPerInstanceByEnchantedCard.get(cardId);
+          if (
+            leafPerInstance?.protectionFrom &&
+            leafPerInstance.protectionFrom.length > 0
+          ) {
+            leafProtFromById.set(cardId, [
+              ...leafPerInstance.protectionFrom,
+            ]);
+          } else {
+            leafProtFromById.delete(cardId);
+          }
+          cards.set(cardId, withOverlay);
+          continue;
+        }
         // Wave 4.8 follow-up 9 lane 75e (#2614 follow-up):
         // mark the overlay as Aura-driven so
         // `refreshScriptedStatics` doesn't drop it on a
@@ -668,26 +875,106 @@ export function refreshAuraBonuses(state: GameState): GameState {
         } else {
           leafProtFromById.delete(cardId);
         }
-      } else if (updated.animatedUntilEndOfTurn) {
-        // Chosen target has left the battlefield — restore
-        // the enchanted card's printed `cardData`.
-        updated.cardData = updated.animatedUntilEndOfTurn.cardData;
+      } else if (
+        updated.animatedUntilEndOfTurn ||
+        updated.permanentCopyPrintedCardData !== undefined
+      ) {
+        // Chosen target has left a tracked zone (or no
+        // longer exists in `state.cards`) — restore the
+        // enchanted card's printed `cardData` via the
+        // appropriate substrate's snapshot. The
+        // `nextAuraCopyOfTargetId` is defined (we passed
+        // the cycle guard and the in-a-tracked-zone
+        // check), but the target isn't reachable, so
+        // drop the overlay. The substrate selection is
+        // inherited from `updated`'s existing
+        // permanent-vs-EOT state (not the
+        // refresh-cycle's `nextAuraCopyUntil`,
+        // because the absent-target path must clean up
+        // whichever substrate is currently in flight on
+        // the enchanted card).
+        if (overlayIsPermanent && updated.permanentCopyPrintedCardData) {
+          updated.cardData = updated.permanentCopyPrintedCardData;
+        } else if (
+          !overlayIsPermanent &&
+          updated.animatedUntilEndOfTurn
+        ) {
+          updated.cardData = updated.animatedUntilEndOfTurn.cardData;
+        }
         delete updated.animatedUntilEndOfTurn;
+        if (updated.permanentCopyPrintedCardData)
+          delete updated.permanentCopyPrintedCardData;
         // Wave 4.8 follow-up 10 lane 77: drop any
         // leaf-rolled `protectionFrom` — the chosen
         // target is gone.
         leafProtFromById.delete(cardId);
         delete updated.copyOfTargetId;
+        delete updated.copyOfTargetIdPermanent;
+        // Wave 4.8 follow-up 24 lane 70 piece 2/N: also
+        // clear the Aura's `copyOfTargetIdPermanent`
+        // ledger if the Aura was carrying the
+        // permanent-arm overlay's source-side stamp.
+        if (nextAuraCopyEntry?.fromAura) {
+          const auraCard = state.cards.get(
+            nextAuraCopyEntry.fromAura,
+          );
+          if (auraCard) {
+            const cleared = clearPermanentCopyOf(auraCard);
+            if (cleared !== auraCard) {
+              cards ??= new Map(state.cards);
+              cards.set(nextAuraCopyEntry.fromAura, cleared);
+            }
+          }
+        }
       }
-    } else if (updated.animatedUntilEndOfTurn) {
+    } else if (
+      updated.animatedUntilEndOfTurn ||
+      updated.permanentCopyPrintedCardData !== undefined
+    ) {
       // No Aura with `become_copy` is attached to this
       // enchanted card; drop any in-flight overlay (the
       // source Aura left the battlefield, or the Aura
       // changed to a static without the `become_copy`
-      // arm).
-      updated.cardData = updated.animatedUntilEndOfTurn.cardData;
-      delete updated.animatedUntilEndOfTurn;
+      // arm). Wave 4.8 follow-up 24 lane 70 piece 2/N:
+      // both substrates are cleared — a permanent-arm
+      // overlay that survives an Aura-detach must be
+      // rolled back to the enchanted card's printed
+      // `cardData` and the substrate snapshot must be
+      // cleared.
+      const hadPermanentSnapshot =
+        updated.permanentCopyPrintedCardData !== undefined;
+      if (updated.animatedUntilEndOfTurn) {
+        updated.cardData = updated.animatedUntilEndOfTurn.cardData;
+        delete updated.animatedUntilEndOfTurn;
+      }
+      if (hadPermanentSnapshot) {
+        // The permanent-arm substrate overrides the
+        // EOT-arm substrate's value on `cardData` (the
+        // permanent-arm overlay writes its own printed-
+        // data-onto-overlay onto the enchanted card's
+        // `cardData`); restoring the EOT-arm snapshot
+        // first then the permanent-arm snapshot keeps
+        // the substrate ordering deterministic.
+        updated.cardData =
+          updated.permanentCopyPrintedCardData ?? updated.cardData;
+        delete updated.permanentCopyPrintedCardData;
+      }
       delete updated.copyOfTargetId;
+      delete updated.copyOfTargetIdPermanent;
+      // Wave 4.8 follow-up 24 lane 70 piece 2/N: clear
+      // the source-Aura `copyOfTargetIdPermanent`
+      // ledger when the only Aura with the
+      // `permanent`-arm overlay is gone (the Aura's
+      // source-side stamp is cleared). If the Aura
+      // itself has already left the battlefield, this
+      // consult is a no-op (the Aura isn't in
+      // `state.cards`); the substrate ledger is cleared
+      // next time the Aura is re-attached or dropped.
+      // No additional cleanup is required — the
+      // permanent-arm substrate's
+      // `restorePermanentCopyOffBattlefield` consult
+      // handles the source-side ledger when the Aura
+      // leaves the battlefield.
       // Wave 4.8 follow-up 10 lane 77: drop any
       // leaf-rolled `protectionFrom` — the Aura is
       // gone, the overlay is gone, the rolled
@@ -720,6 +1007,68 @@ export function refreshAuraBonuses(state: GameState): GameState {
       delete updated.protectionFrom;
     }
     cards.set(cardId, updated);
+  }
+  // Wave 4.8 follow-up 24 lane 70 piece 2/N (#2614
+  // follow-up): the post-pass Aura-side ledger cleanup.
+  // The per-card diff loop above clears the ENCHANTED
+  // card's substrate (snapshot + ledger) when the Aura
+  // detaches or the static disappears. The Aura itself
+  // also carries `copyOfTargetIdPermanent` as a
+  // source-side stamp (set when the overlay applied —
+  // parallel to the `StaticSchema.become_copy: {
+  // until: "permanent" }` arm's ledger on the source).
+  // The Aura's stamp must be cleared when the Aura no
+  // longer drives the overlay (a refresh pass where the
+  // chosen enchanted card doesn't carry the substrate,
+  // e.g. the Aura was removed from BF between refreshes).
+  // The current Aura-side stamp is only "fresh" on a
+  // refresh where at least one enchanted card in the
+  // collect-phase loop requested a permanent-arm overlay
+  // with this Aura as `fromAura`; for Auras whose
+  // enchanted card no longer matches, the stamp is
+  // stale and must be cleared.
+  if (cards) {
+    for (const [auraId, auraCard] of cards) {
+      // The Aura-side cleanup is ONLY for Auras — a
+      // card with `copyOfTargetIdPermanent` that is
+      // NOT attached to anything else is the
+      // substrate-ledger holder (the enchanted card),
+      // and the per-card diff loop above owns its
+      // lifecycle. Identifying Auras: a card whose
+      // `attachedToId` is non-null AND whose cardScript
+      // carries an Aura static. We use the simple
+      // heuristic "is currently attached" — Auras on
+      // the battlefield have a non-null `attachedToId`;
+      // enchanted cards that are the substrate-ledger
+      // holders themselves do NOT (they're the
+      // attachment target, not the source).
+      if (auraCard.attachedToId === null) continue;
+      if (auraCard.copyOfTargetIdPermanent === undefined) continue;
+      // Is this Aura still attached to an enchanted
+      // card whose this-pass substrate is "permanent"?
+      // A fresh Aura-side stamp means the collect-phase
+      // loop found a permanent-arm overlay with this
+      // Aura as `fromAura` AND that overlay landed in
+      // the per-card write phase (i.e., `cards` was
+      // populated for the enchanted card's id). For
+      // Auras without a matching entry, the stamp is
+      // stale and must be cleared.
+      const freshEntry = (() => {
+        for (const v of auraCopyOfTargetByEnchantedCard.values()) {
+          if (v.fromAura === auraId && v.until === "permanent")
+            return v;
+        }
+        return null;
+      })();
+      if (freshEntry) continue;
+      // The stamp is stale — drop it. We don't touch
+      // any per-enchanted-card substrates here (those
+      // are owned by the per-card loop above); only the
+      // source-side ledger on the Aura itself is
+      // cleared.
+      const cleared = clearPermanentCopyOf(auraCard);
+      if (cleared !== auraCard) cards.set(auraId, cleared);
+    }
   }
   return cards ? { ...state, cards } : state;
 }
