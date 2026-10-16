@@ -798,19 +798,25 @@ const SCOPES = [
     // follow-up 30. schema.ts measured at 4803 (+53
     // over 4750).
     //
-    // Bumping 4930 → 4985 to capture the follow-up 30
-    // priority 3 (lane 28, piece 3/N) —
-    // `CopyPermanent.exceptions.add_toughness` arm
-    // (`z.number().int().optional()` on the
-    // existing `exceptions` shape) + parent
+    // Bumping 4985 → 5060 to capture the follow-up 30
+    // priority 4 (lane 28, piece 4/N) —
+    // `CopyPermanent.exceptions.add_type` arm
+    // (`z.array(z.enum(CARD_TYPES)).min(1).
+    // optional()` on the existing `exceptions`
+    // shape — the seven `CARD_TYPES` enum values:
+    // `Creature | Artifact | Enchantment | Land |
+    // Planeswalker | Battle | Tribal`) + parent
     // `exceptions` docstring expansion explaining
-    // the additive toughness merge (the
-    // `parseInt`/rebuild-as-string flow parallel to
-    // `add_power`) and the destructive
-    // `set_toughness` variant that rides follow-up
-    // 31. schema.ts measured at 4980 (+50 over
-    // 4930).
-    budgetLines: 4985,
+    // the type-line prepend (the types-precede-
+    // printed-types rebuild), the parallel
+    // `add_subtype` arm composition (type prepend
+    // is OUTER, subtype append is INNER), the
+    // `add_supertype` extension that rides
+    // follow-up 31, and the destructive
+    // `set_type` variant that also rides
+    // follow-up 31. schema.ts measured at 5056
+    // (+71 over 4985).
+    budgetLines: 5060,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

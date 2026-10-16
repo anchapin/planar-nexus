@@ -1373,6 +1373,34 @@ function applyEffect(
       //
       // `add_type` exception variant
       // rides follow-up 30 priority 4.
+      //
+      // Wave 4.8 follow-up 30 priority 4
+      // (lane 28, piece 4/N) (#2614
+      // follow-up): the `add_type`
+      // type-line prepend. When
+      // `effect.exceptions?.add_type` is
+      // set, the engine PREPENDS the
+      // listed card types to the TYPES
+      // half of `cardData.type_line`
+      // (e.g. `"Creature — Bear"` +
+      // `["Artifact"]` =
+      // `"Artifact Creature — Bear"`).
+      // The subtypes half is preserved.
+      // The arm is ADDITIVE — no overwrite
+      // of the printed types. The
+      // `add_type` consult runs AFTER the
+      // `add_subtype` consult (subtype
+      // append is the INNER consult;
+      // type prepend is the OUTER
+      // consult — the cross-arm order is
+      // documented in the handoff). v1
+      // minimum: a list of the seven
+      // `CARD_TYPES` enum values
+      // (`Creature | Artifact |
+      // Enchantment | Land | Planeswalker
+      // | Battle | Tribal`); supertypes
+      // (`Legendary` / `Snow` / `Basic`)
+      // ride follow-up 31.
       const applyExceptions = (
         cardData: ScryfallCard,
       ): ScryfallCard => {
@@ -1383,6 +1411,7 @@ function applyEffect(
               add_color?: string[];
               add_power?: number;
               add_toughness?: number;
+              add_type?: string[];
             };
           }
         ).exceptions;
@@ -1420,6 +1449,60 @@ function applyEffect(
               ...rebuilt,
               type_line: `${typesHalf} — ${allSubtypes.join(" ")}`,
             };
+          }
+        }
+        // Wave 4.8 follow-up 30 priority 4
+        // (lane 28, piece 4/N) (#2614
+        // follow-up): the `add_type`
+        // type-line prepend — PREPEND the
+        // added card types to the TYPES
+        // half of `cardData.type_line`. The
+        // types come BEFORE the printed
+        // types (e.g. `"Creature — Bear"`
+        // + `["Artifact"]` =
+        // `"Artifact Creature — Bear"`).
+        // The subtypes half is preserved
+        // (the `add_subtype` consult already
+        // runs first; this consult operates
+        // on the post-`add_subtype`
+        // type_line). The arm is ADDITIVE
+        // — no overwrite of the printed
+        // types. If no subtypes half exists
+        // (no `—` separator), the added
+        // types are prepended to the
+        // entire printed type_line (no
+        // subtypes half to preserve).
+        if (exceptions?.add_type?.length) {
+          const printed = rebuilt.type_line ?? "";
+          const emDashIdx = printed.indexOf("—");
+          const addedTypes = exceptions.add_type.join(" ");
+          if (emDashIdx < 0) {
+            // No subtypes half — prepend
+            // the added types to the
+            // printed type_line as a whole.
+            rebuilt = {
+              ...rebuilt,
+              type_line: `${addedTypes} ${printed}`.trim(),
+            };
+          } else {
+            const typesHalf = printed.slice(0, emDashIdx).trimEnd();
+            const subtypesHalf = printed
+              .slice(emDashIdx + 1)
+              .trim();
+            // Prepend the added types to
+            // the existing types half.
+            const allTypes = `${addedTypes} ${typesHalf}`.trim();
+            if (subtypesHalf) {
+              rebuilt = {
+                ...rebuilt,
+                type_line: `${allTypes} — ${subtypesHalf}`,
+              };
+            } else {
+              rebuilt = {
+                ...rebuilt,
+                type_line: allTypes,
+              };
+            }
           }
         }
         // Wave 4.8 follow-up 30 priority 1

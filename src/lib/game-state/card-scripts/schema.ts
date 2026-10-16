@@ -617,6 +617,35 @@ export const CopyPermanentSchema = z
      * priority 2 `add_power` arm (parallel
      * additive P/T merge — both arms
      * consume the printed P/T as the base).
+     *
+     * Wave 4.8 follow-up 30 priority 4 (lane
+     * 28, piece 4/N) (#2614 follow-up): the
+     * `add_type` sub-arm — Phyrexian
+     * Metamorph's "it's an Artifact in
+     * addition to its other types" half
+     * (the type-line prepend). The engine
+     * reads the printed `cardData.type_line`
+     * and PREPENDS the listed card types to
+     * the TYPES half (the types come
+     * BEFORE the printed types; e.g. a
+     * `"Creature — Bear"` with
+     * `add_type: ["Artifact"]` becomes
+     * `"Artifact Creature — Bear"`). The
+     * subtypes half is preserved. The arm
+     * is ADDITIVE — no overwrite of the
+     * printed types. v1 minimum: a list of
+     * the seven `CARD_TYPES` enum values
+     * (`Creature | Artifact | Enchantment |
+     * Land | Planeswalker | Battle |
+     * Tribal`); supertypes (`Legendary` /
+     * `Snow` / `Basic`) ride follow-up 31
+     * via the parallel `add_supertype` arm.
+     * The `add_type` arm is distinct from
+     * `add_subtype` (which appends to the
+     * SUBTYPES half). A destructive
+     * `set_type` variant rides follow-up 31
+     * if any future priority piece surfaces
+     * a "exactly [types]" semantic.
      */
     exceptions: z
       .object({
@@ -706,6 +735,53 @@ export const CopyPermanentSchema = z
          * printed P/T as the base).
          */
         add_toughness: z.number().int().optional(),
+        /**
+         * Wave 4.8 follow-up 30 priority 4
+         * (lane 28, piece 4/N) (#2614
+         * follow-up): OPTIONAL `add_type`
+         * sub-arm. The engine reads the
+         * printed `cardData.type_line` and
+         * PREPENDS the added card types to
+         * the TYPES half of the type_line
+         * (e.g. `"Creature — Bear"` +
+         * `["Artifact"]` =
+         * `"Artifact Creature — Bear"`).
+         * The added types are prepended in
+         * declared order; the subtypes half
+         * is preserved. The arm is ADDITIVE
+         * — no overwrite of the printed
+         * types. v1 minimum: a list of
+         * `CARD_TYPES` enum values (the
+         * standard seven — `Creature`,
+         * `Artifact`, `Enchantment`, `Land`,
+         * `Planeswalker`, `Battle`, and
+         * `Tribal`; `Tribal` is a legacy
+         * type that some cards still use);
+         * supertypes (`Legendary`, `Snow`,
+         * `Basic`) ride follow-up 31 via
+         * the parallel `add_supertype` arm.
+         * The `add_type` arm is distinct
+         * from `add_subtype` (which appends
+         * to the SUBTYPES half). A
+         * destructive `set_type` variant
+         * rides follow-up 31 if any future
+         * priority piece surfaces a
+         * "exactly [types]" semantic.
+         */
+        add_type: z
+          .array(
+            z.enum([
+              "Creature",
+              "Artifact",
+              "Enchantment",
+              "Land",
+              "Planeswalker",
+              "Battle",
+              "Tribal",
+            ]),
+          )
+          .min(1)
+          .optional(),
       })
       .strict()
       .optional(),
