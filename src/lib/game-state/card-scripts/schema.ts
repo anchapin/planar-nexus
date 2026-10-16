@@ -2563,6 +2563,24 @@ export const StaticSchema = z
                   z.string().min(1),
                   z.literal("chosen"),
                 ]),
+                /**
+                 * Wave 4.8 follow-up 28 priority 1
+                 * (#2614 follow-up): an OPTIONAL
+                 * ordinal variant on the
+                 * `andPer.perCounter` arm. Mirrors the
+                 * primary `perCounter.ordinal?` field
+                 * — when set, the per-counter count is
+                 * the CUMULATIVE sum of the first
+                 * `ordinal` counters of the resolved
+                 * type on the source. When unset, the
+                 * existing semantic is used (sum of
+                 * ALL counters of the resolved type).
+                 * The primary `perCounter.ordinal?` and
+                 * the `andPer.perCounter.ordinal?`
+                 * fields are INDEPENDENT (each applies
+                 * to its own arm).
+                 */
+                ordinal: z.number().int().min(1).optional(),
               })
               .strict()
               .optional(),
@@ -2614,11 +2632,49 @@ export const StaticSchema = z
          * `perCounter.counter: "chosen"` interaction
          * with `andPer` / `perSubtype` rides follow-up
          * 27.
+         *
+         * Wave 4.8 follow-up 28 priority 1 (#2614
+         * follow-up): the OPTIONAL `ordinal: number`
+         * field on `perCounter`. When set, the
+         * per-counter count is the CUMULATIVE sum of
+         * the first `ordinal` counters of the resolved
+         * type on the source (matches MTG "Nth counter"
+         * semantics — a source with 3 +1/+1 counters
+         * and `ordinal: 2` contributes 2, not 3). When
+         * unset, the existing semantic is used (sum of
+         * ALL counters of the resolved type). The
+         * `"chosen"` sentinel resolves the counter type
+         * first; the ordinal then applies to the
+         * resolved type. v1 minimum is the per-source
+         * Nth-counter read; a per-pair counter ordinal
+         * ("Nth counter of each unique type") rides a
+         * future lane.
          */
         perCounter: z
           .object({
             counter: z
               .union([z.string().min(1), z.literal("chosen")]),
+            /**
+             * Wave 4.8 follow-up 28 priority 1 (#2614
+             * follow-up): an OPTIONAL ordinal variant
+             * on the per-counter arm. When set, the
+             * count is the CUMULATIVE sum of the first
+             * `ordinal` counters of the resolved type
+             * on the source (matches MTG "Nth counter"
+             * semantics — a source with 3 +1/+1
+             * counters and `ordinal: 2` contributes 2,
+             * not 3). When unset, the existing
+             * per-counter semantic is used (sum of ALL
+             * counters of the resolved type). The
+             * `"chosen"` sentinel resolves the counter
+             * type first; the ordinal then applies to
+             * the resolved type. v1 minimum: the
+             * ordinal is a per-source Nth-counter read;
+             * a per-pair counter ordinal variant (a
+             * second arm that reads "Nth counter of
+             * each unique type") rides a future lane.
+             */
+            ordinal: z.number().int().min(1).optional(),
           })
           .strict()
           .optional(),

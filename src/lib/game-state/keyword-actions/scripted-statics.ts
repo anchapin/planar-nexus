@@ -310,10 +310,10 @@ function computeAnthemScalingCount(
     | {
         per: "creatures" | "treasures" | "lands" | "other_creatures";
         perSubtype?: string;
-        perCounter?: { counter: string } | undefined;
+        perCounter?: { counter: string; ordinal?: number } | undefined;
       }
     | undefined,
-  perCounter?: { counter: string } | undefined,
+  perCounter?: { counter: string; ordinal?: number } | undefined,
 ): number {
   // Wave 4.8 follow-up 25 lane 32 piece 4/N (#2614
   // follow-up): the optional self-referential
@@ -343,6 +343,22 @@ function computeAnthemScalingCount(
   // from the source's `counters` types — the
   // source's OWN counters are still consulted; only
   // the type string is resolved dynamically.
+  //
+  // Wave 4.8 follow-up 28 priority 1 (#2614
+  // follow-up): the OPTIONAL `ordinal: number`
+  // field on `perCounter`. When set, the count is
+  // the CUMULATIVE sum of the first `ordinal`
+  // counters of the resolved type on the source
+  // (matches MTG "Nth counter" semantics — a source
+  // with 3 +1/+1 counters and `ordinal: 2`
+  // contributes 2, not 3). When unset, the existing
+  // per-counter semantic is used (sum of ALL counters
+  // of the resolved type). The `"chosen"` sentinel
+  // resolves the counter type first; the ordinal
+  // then applies to the resolved type. The ordinal
+  // is a per-source Nth-counter read; a per-pair
+  // counter ordinal ("Nth counter of each unique
+  // type") rides a future lane.
   if (perCounter) {
     const resolvedCounterType =
       perCounter.counter === "chosen"
@@ -354,10 +370,26 @@ function computeAnthemScalingCount(
     if (resolvedCounterType === null) {
       return 0;
     }
-    const counterEntry = source.counters?.find(
+    const ordinal = perCounter.ordinal ?? 0;
+    if (ordinal === 0) {
+      // No ordinal — existing perCounter semantic
+      // (total count of all counters of this type).
+      const counterEntry = source.counters?.find(
+        (c) => c.type === resolvedCounterType,
+      );
+      return counterEntry?.count ?? 0;
+    }
+    // Ordinal set — cumulative sum of the first N
+    // counters of this type on the source. The source
+    // can carry multiple counter entries of the same
+    // type (separate stamping events); the engine
+    // reads them in `source.counters` array order
+    // and slices the first `ordinal` entries.
+    const allOfType = (source.counters ?? []).filter(
       (c) => c.type === resolvedCounterType,
     );
-    return counterEntry?.count ?? 0;
+    const firstN = allOfType.slice(0, ordinal);
+    return firstN.reduce((sum, c) => sum + c.count, 0);
   }
   // Wave 4.8 follow-up 25 lane 32 piece 3/N (#2614
   // follow-up): the `"chosen"` sentinel for
@@ -452,10 +484,32 @@ function computeAnthemScalingCount(
             : null
           : andPer.perCounter.counter;
       if (resolvedAndCounterType !== null) {
-        const counterEntry = source.counters?.find(
-          (c) => c.type === resolvedAndCounterType,
-        );
-        n += counterEntry?.count ?? 0;
+        // Wave 4.8 follow-up 28 priority 1 (#2614
+        // follow-up): the OPTIONAL `ordinal: number`
+        // field on `andPer.perCounter` mirrors the
+        // primary `perCounter.ordinal?` semantic.
+        // When set, the per-counter count is the
+        // CUMULATIVE sum of the first `ordinal`
+        // counters of the resolved type on the
+        // source. When unset, the existing semantic
+        // is used (sum of ALL counters of the
+        // resolved type). The primary
+        // `perCounter.ordinal?` and the
+        // `andPer.perCounter.ordinal?` fields are
+        // INDEPENDENT (each applies to its own arm).
+        const ordinal = andPer.perCounter.ordinal ?? 0;
+        if (ordinal === 0) {
+          const counterEntry = source.counters?.find(
+            (c) => c.type === resolvedAndCounterType,
+          );
+          n += counterEntry?.count ?? 0;
+        } else {
+          const allOfType = (source.counters ?? []).filter(
+            (c) => c.type === resolvedAndCounterType,
+          );
+          const firstN = allOfType.slice(0, ordinal);
+          n += firstN.reduce((sum, c) => sum + c.count, 0);
+        }
       }
       return n;
     }

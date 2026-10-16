@@ -714,7 +714,19 @@ const SCOPES = [
     // per-entry `Array<string | "chosen">` form +
     // docstring expansion on the `protectionFrom`
     // arm). schema.ts measured at 4439 (+9 over 4430).
-    budgetLines: 4450,
+    //
+    // Bumping 4450 → 4500 to capture the follow-up 28
+    // priority 1 (lane 32 chosen-counter ordinal) —
+    // OPTIONAL `ordinal: number` field on both the
+    // primary `perCounter` arm and the
+    // `andPer.perCounter` arm (parallel ordinal
+    // extensions; cumulative sum of first N counters
+    // of the resolved type) + parent `perCounter`
+    // docstring expansion explaining the ordinal
+    // variant and the `"chosen"` sentinel + ordinal
+    // interaction. schema.ts measured at 4495 (+45
+    // over 4450).
+    budgetLines: 4500,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),
