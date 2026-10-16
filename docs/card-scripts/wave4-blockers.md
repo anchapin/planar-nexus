@@ -5397,3 +5397,81 @@ are now closed. The loop-done summary follows.
   (transient, both passed on the next re-run).
   Within the handoff's 1-2 extra CI runs per
   piece budget.
+
+## Wave 4.8 follow-up 26 mid-loop progress (pieces
+1-N)
+
+### Pieces shipped
+
+- `5b56caf4` — `[AI-assisted] feat(card-scripts):
+  anthemScaling.perCounter chosen-counter
+  sentinel (follow-up 26, lane 32, piece 1/N)`
+  (lane 32 chosen-counter variant shipped —
+  schema `perCounter.counter` extended to a
+  Zod union of `string | "chosen"`; engine
+  consults `source.chosenCreatureType` when
+  the sentinel is set; null resolved type
+  returns count=0). Test file:
+  `lane32-chosen-counter-variant.test.ts`
+  (7 tests).
+
+### Pieces backed out (mid-loop)
+
+- **Lane 71 piece 2/N — per-source per-quality
+  arrays** was backed out at the start of the
+  piece (before any code written). The handoff's
+  priority-2 spec called for a new
+  `protectionFromBySourceQuality?` ledger of
+  shape `Record<quality, Array<{
+  sourceId; quality }>>`. On inspection, that
+  shape is **structurally redundant** with the
+  existing piece 1/N ledger
+  `protectionFromBySource?: Record<sourceId,
+  string[]>` — a single reduce over the piece
+  1/N ledger produces the per-quality view.
+  Adding it would stamp a fourth ledger shape
+  (consult: `protectionFrom`,
+  `protectionFromBySource`,
+  `protectionFromBySourceQuality`, plus the
+  union `protectedFromBySource`) where the
+  third is already derivable from the second.
+  The handoff explicitly invited backing out
+  ("If the per-quality array reveals a fourth
+  ledger shape, back out and document as
+  follow-up 27"). Per-quality consult will
+  ride follow-up 27 as a thin derived helper
+  (no new ledger stamp; the helper reads the
+  piece 1/N ledger and filters).
+
+### Lanes still open
+
+- **Lane 71 chosen-quality sentinel**
+  (priority 3) — the
+  `protectionFromBySource: "chosen"` parallel
+  to the `affects.subtype: "chosen"` /
+  `perSubtype: "chosen"` /
+  `perCounter.counter: "chosen"` sentinels.
+  Will land next in this loop.
+
+### Test-suite delta vs. follow-up 25 baseline
+
+- Suites: 782 → 783 (+1)
+- Cases: 14597 → 14604 (+7)
+
+### Engine-size budget delta
+
+- 4300 → 4320 (+20 lines headroom captured in
+  same commit as piece 1/N; schema.ts measured
+  at 4312).
+
+### Known issues / carry-overs
+
+- AI flake budget hit on the full-suite gate
+  during piece 1/N validation
+  (forge-gate / forge-selfplay transient —
+  documented per-loop pattern; not a real
+  failure). All lane32 + lane70 + lane71
+  scoped tests passed cleanly across runs.
+- The piece 2/N back-out consumed zero
+  committed LOC; only this blockers note.
+  No mid-cycle revert needed.
