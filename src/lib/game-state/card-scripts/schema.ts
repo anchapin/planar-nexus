@@ -594,6 +594,29 @@ export const CopyPermanentSchema = z
      * destructive `set_power` variant rides
      * follow-up 31 if any future priority
      * piece surfaces a "exactly N" semantic.
+     *
+     * Wave 4.8 follow-up 30 priority 3 (lane
+     * 28, piece 3/N) (#2614 follow-up): the
+     * `add_toughness` sub-arm — Phyrexian
+     * Metamorph's "it has 0/-1" half (or
+     * "it has +0/+1" with a positive
+     * integer). The engine parses the
+     * printed `toughness` string as an
+     * integer, ADDS the `add_toughness`
+     * value, and rebuilds
+     * `cardData.toughness` as a string. The
+     * arm is ADDITIVE — no overwrite of the
+     * printed toughness. v1 minimum: a
+     * single integer field; non-integer
+     * printed toughnesses (`*` / `1+*`)
+     * yield 0. A destructive `set_toughness`
+     * variant rides follow-up 31 if any
+     * future priority piece surfaces a
+     * "exactly N" semantic. The
+     * `add_toughness` arm composes with the
+     * priority 2 `add_power` arm (parallel
+     * additive P/T merge — both arms
+     * consume the printed P/T as the base).
      */
     exceptions: z
       .object({
@@ -652,6 +675,37 @@ export const CopyPermanentSchema = z
          * resolution.
          */
         add_power: z.number().int().optional(),
+        /**
+         * Wave 4.8 follow-up 30 priority 3
+         * (lane 28, piece 3/N) (#2614
+         * follow-up): OPTIONAL `add_toughness`
+         * sub-arm. The engine parses the
+         * printed `toughness` string as an
+         * integer (default 0; non-integer
+         * printed toughnesses like `*` or
+         * `1+*` yield 0), ADDS the
+         * `add_toughness` value, and rebuilds
+         * `cardData.toughness` as a string.
+         * The merge is ADDITIVE — no
+         * overwrite of the printed toughness.
+         * The `add_toughness` arm accepts
+         * negative integers
+         * (Phyrexian Metamorph-style
+         * "create a token that's a copy of
+         * [target] EXCEPT it has 0/-1"); a
+         * destructive `set_toughness` variant
+         * rides follow-up 31 if any future
+         * priority piece surfaces a
+         * "exactly N" semantic. v1 minimum:
+         * a single integer field; no
+         * `*` / `X+*` printed-toughness
+         * resolution. The `add_toughness`
+         * arm composes with the priority 2
+         * `add_power` arm (parallel additive
+         * P/T merge — both arms consume the
+         * printed P/T as the base).
+         */
+        add_toughness: z.number().int().optional(),
       })
       .strict()
       .optional(),

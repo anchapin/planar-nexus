@@ -798,18 +798,19 @@ const SCOPES = [
     // follow-up 30. schema.ts measured at 4803 (+53
     // over 4750).
     //
-    // Bumping 4885 → 4930 to capture the follow-up 30
-    // priority 2 (lane 28, piece 2/N) —
-    // `CopyPermanent.exceptions.add_power` arm
+    // Bumping 4930 → 4985 to capture the follow-up 30
+    // priority 3 (lane 28, piece 3/N) —
+    // `CopyPermanent.exceptions.add_toughness` arm
     // (`z.number().int().optional()` on the
     // existing `exceptions` shape) + parent
     // `exceptions` docstring expansion explaining
-    // the additive P/T merge (the
-    // `parseInt`/rebuild-as-string flow) and the
-    // destructive `set_power` variant that rides
-    // follow-up 31. schema.ts measured at 4926
-    // (+41 over 4885).
-    budgetLines: 4930,
+    // the additive toughness merge (the
+    // `parseInt`/rebuild-as-string flow parallel to
+    // `add_power`) and the destructive
+    // `set_toughness` variant that rides follow-up
+    // 31. schema.ts measured at 4980 (+50 over
+    // 4930).
+    budgetLines: 4985,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

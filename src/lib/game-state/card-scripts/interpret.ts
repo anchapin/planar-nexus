@@ -1354,9 +1354,25 @@ function applyEffect(
       // documented limitation, not a
       // silent bug).
       //
-      // `add_toughness` / `add_type`
-      // exception variants ride follow-up
-      // 30 priorities 3 / 4.
+      // Wave 4.8 follow-up 30 priority 3
+      // (lane 28, piece 3/N) (#2614
+      // follow-up): the `add_toughness`
+      // additive merge — symmetric to the
+      // `add_power` arm. When
+      // `effect.exceptions?.add_toughness`
+      // is set, the engine parses the
+      // printed `toughness` string as an
+      // integer, ADDS the value, and
+      // rebuilds `cardData.toughness` as a
+      // string. Negative integers are
+      // accepted. The arm is ADDITIVE —
+      // no overwrite of the printed
+      // toughness. Composes with
+      // `add_power` for parallel P/T
+      // additive merges.
+      //
+      // `add_type` exception variant
+      // rides follow-up 30 priority 4.
       const applyExceptions = (
         cardData: ScryfallCard,
       ): ScryfallCard => {
@@ -1366,6 +1382,7 @@ function applyEffect(
               add_subtype?: string[];
               add_color?: string[];
               add_power?: number;
+              add_toughness?: number;
             };
           }
         ).exceptions;
@@ -1483,6 +1500,38 @@ function applyEffect(
           rebuilt = {
             ...rebuilt,
             power: String(nextPower),
+          };
+        }
+        // Wave 4.8 follow-up 30 priority 3
+        // (lane 28, piece 3/N) (#2614
+        // follow-up): the `add_toughness`
+        // additive toughness merge. The
+        // engine parses the printed
+        // `toughness` string as an integer
+        // (default 0; non-integer printed
+        // toughnesses like `*` or `1+*`
+        // yield 0 + the additive), ADDS
+        // the `add_toughness` value, and
+        // rebuilds `cardData.toughness` as
+        // a string. The arm is ADDITIVE —
+        // no overwrite of the printed
+        // toughness. The `add_toughness`
+        // arm composes with the priority 2
+        // `add_power` arm (parallel
+        // additive P/T merge — both arms
+        // consume the printed P/T as the
+        // base; each arm runs independently
+        // against the printed value).
+        if (exceptions?.add_toughness !== undefined) {
+          const printedToughness = parseInt(rebuilt.toughness ?? "0", 10);
+          const baseToughness = Number.isFinite(printedToughness)
+            ? printedToughness
+            : 0;
+          const nextToughness =
+            baseToughness + exceptions.add_toughness;
+          rebuilt = {
+            ...rebuilt,
+            toughness: String(nextToughness),
           };
         }
         return rebuilt;
