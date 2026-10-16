@@ -26,7 +26,7 @@ import { moveCardBetweenZones } from "../zones";
  * Mechanically extracted from keyword-actions.ts (issue #1725);
  * behavior pinned by the existing engine suites.
  */
-import type { GameState, CardInstance, CardInstanceId, Zone } from "../types";
+import type { GameState, CardInstance, CardInstanceId, Zone, WaitingChoice } from "../types";
 import {
   addCounters,
   removeCounters,
@@ -36,6 +36,48 @@ import {
 import { hasIndestructibleKeyword } from "./indestructible";
 import { KeywordActionResult } from "./shared";
 import { getCardScript } from "../card-scripts/registry";
+// Wave 4.8 follow-up 21 lane 61 sub-piece
+// piece 2/N (#2614 follow-up): the
+// `redirect_zone_choice` WaitingChoice type
+// (controller picks a destination zone for
+// the dying card under `redirect.to:
+// "any_zone"`). The resolver is registered
+// via `registerOfferResolver` so the
+// `resolveWaitingChoice` dispatcher in
+// spell-casting/choices.ts can route the
+// answer back here.
+import { registerOfferResolver } from "../spell-casting/choices";
+
+/** Waiting-choice discriminator for `redirect.to: "any_zone"` death-replacement redirects. */
+export const REDIRECT_ZONE_CHOICE_TYPE = "redirect_zone_choice" as const;
+
+/**
+ * Wave 4.8 follow-up 21 lane 61 sub-piece
+ * piece 2/N (#2614 follow-up): the four
+ * valid destinations surfaced to the
+ * controller when `redirect.to: "any_zone"`
+ * fires. `battlefield` (the card would
+ * die — no redirect) and `command` (out of
+ * scope for v1) are intentionally
+ * excluded. The order is the resolver's
+ * canonical enumeration; tests assert
+ * against this exact list.
+ */
+const ANY_ZONE_CHOICES = [
+  "library",
+  "graveyard",
+  "exile",
+  "hand",
+] as const;
+
+/**
+ * Narrow type for the four valid any-zone destinations. The consult's
+ * `any_zone` branch and the resolver agree on this set — adding a new
+ * arm requires touching both. `moveCardToZoneWithoutTriggers`'s
+ * `targetZoneType` union is the canonical move-side enum; this type is
+ * a structural subset.
+ */
+type AnyZoneDestination = (typeof ANY_ZONE_CHOICES)[number];
 
 /**
  * Check if a card has indestructible
@@ -569,6 +611,48 @@ export function moveCardToZone(
             position:
               redirect === "library_top" ? "top" : "bottom",
           };
+        } else if (redirect === "any_zone") {
+          // Wave 4.8 follow-up 21 lane 61 sub-piece
+          // piece 2/N (#2614 follow-up):
+          // "redirect.to: any_zone" — the
+          // controller picks the destination at
+          // resolve time. Surface a
+          // `redirect_zone_choice` WaitingChoice
+          // on the controller; the resolver
+          // (registered via `registerOfferResolver`
+          // below) routes the dying card to the
+          // picked zone via
+          // `moveCardToZoneWithoutTriggers`. The
+          // choice's value encodes the dying
+          // card ID so the resolver is self-
+          // contained. Dies triggers do NOT fire
+          // — the card didn't die (CR 614.5
+          // "instead" replaces the original
+          // event).
+          const choice: WaitingChoice = {
+            type: REDIRECT_ZONE_CHOICE_TYPE,
+            playerId: cardForConsult.controllerId,
+            stackObjectId: null,
+            prompt: `Death replacement (any_zone): choose a destination for ${cardForConsult.cardData?.name ?? cardId}.`,
+            choices: ANY_ZONE_CHOICES.map((z) => ({
+              label: `Move to ${z}`,
+              value: `${z}:${cardId}`,
+              isValid: true,
+            })),
+            minChoices: 1,
+            maxChoices: 1,
+            presentedAt: Date.now(),
+          };
+          return {
+            success: true,
+            state: {
+              ...state,
+              waitingChoice: choice,
+              lastModifiedAt: Date.now(),
+            },
+            description: `Awaiting zone choice for any_zone death-replacement on ${cardForConsult.cardData?.name ?? cardId}.`,
+            affectedCards: [cardId],
+          };
         } else if (
           redirect === "battlefield_tapped" ||
           redirect === "battlefield_untapped" ||
@@ -814,6 +898,113 @@ function moveCardToZoneWithPosition(
     affectedCards: [cardId],
   };
 }
+
+/**
+ * Wave 4.8 follow-up 21 lane 61 sub-piece
+ * piece 2/N (#2614 follow-up): resolve a
+ * pending `redirect_zone_choice` WaitingChoice
+ * (surfaced by `moveCardToZone`'s consult when
+ * the redirect destination is `"any_zone"`).
+ *
+ * `chosenValue` is one of the option values
+ * produced by the consult: a string of the form
+ * `<zone>:<cardId>` (e.g. `"hand:creature-1"`).
+ * The resolver:
+ *   1. Parses the zone + cardId off the value.
+ *   2. Routes the dying card through
+ *      `moveCardToZoneWithoutTriggers` for the
+ *      chosen zone. Dies triggers do NOT fire
+ *      (the card didn't die — CR 614.5
+ *      "instead" replaces the original event);
+ *      the move is a straight zone transfer
+ *      with no ETB / landfall / saga side
+ *      effects (the card isn't entering).
+ *   3. Clears the `waitingChoice` and stamps
+ *      `lastModifiedAt`.
+ *
+ * Like `tribute_offer` / `corpse_offer`, the
+ * resolver is self-contained — no external
+ * queue is needed. The dying card's
+ * `controllerId` (the one prompted) is read
+ * from the existing WaitingChoice; the
+ * `playerId` argument is checked against it
+ * for safety.
+ */
+export function resolveRedirectZoneChoice(
+  state: GameState,
+  playerId: string,
+  chosenValue: string,
+): { success: boolean; state: GameState; description?: string } {
+  const choice = state.waitingChoice;
+  if (!choice || choice.type !== REDIRECT_ZONE_CHOICE_TYPE) {
+    return {
+      success: false,
+      state,
+      description: "No pending redirect_zone_choice to resolve",
+    };
+  }
+  if (choice.playerId !== playerId) {
+    return {
+      success: false,
+      state,
+      description: "Not this player's turn to make a redirect_zone_choice",
+    };
+  }
+  // Parse `<zone>:<cardId>` off the value. The
+  // consult's ChoiceOption values are stable
+  // (built from `ANY_ZONE_CHOICES` × `cardId`),
+  // so the format is invariant.
+  const sep = chosenValue.indexOf(":");
+  if (sep <= 0 || sep >= chosenValue.length - 1) {
+    return {
+      success: false,
+      state,
+      description: `Malformed redirect_zone_choice value: ${chosenValue}`,
+    };
+  }
+  const zone = chosenValue.slice(0, sep) as AnyZoneDestination;
+  const cardId = chosenValue.slice(sep + 1) as CardInstanceId;
+  if (!ANY_ZONE_CHOICES.includes(zone)) {
+    return {
+      success: false,
+      state,
+      description: `Unknown redirect_zone_choice destination: ${zone}`,
+    };
+  }
+  // Run the move through the standard helper.
+  // `moveCardToZoneWithoutTriggers` is
+  // self-contained (the dying card didn't die
+  // — CR 614.5; dies triggers do NOT fire; the
+  // move is a zone transfer with no ETB /
+  // landfall / saga side-effects).
+  const moved = moveCardToZoneWithoutTriggers(state, cardId, zone);
+  if (!moved.success) {
+    return {
+      success: false,
+      state,
+      description: moved.error ?? `Move to ${zone} failed`,
+    };
+  }
+  return {
+    success: true,
+    state: {
+      ...moved.state,
+      waitingChoice: null,
+      lastModifiedAt: Date.now(),
+    },
+    description: `Death replacement moved dying card to owner's ${zone}.`,
+  };
+}
+
+// Register the resolver with the generic
+// `resolveWaitingChoice` dispatcher (parallel
+// to the `tribute_offer` / `corpse_offer` /
+// `attack_return_offer` registrations in their
+// own modules). The dispatcher routes the
+// chosen option value to this resolver when
+// the WaitingChoice's `type` matches
+// `REDIRECT_ZONE_CHOICE_TYPE`.
+registerOfferResolver(REDIRECT_ZONE_CHOICE_TYPE, resolveRedirectZoneChoice);
 
 function moveCardToZoneWithoutTriggers(
   state: GameState,

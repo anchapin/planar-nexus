@@ -973,13 +973,10 @@ export const PutCountersSchema = z
       message: "amount is required (>=1 or 'X') unless use_source_power is set",
     },
   )
-  .refine(
-    (e) => e.target_each === undefined || e.counter === "+1/+1",
-    {
-      message:
-        "target_each (each_creature mode) only supports '+1/+1' counters (lane 114 piece 2/2, #2614)",
-    },
-  );
+  .refine((e) => e.target_each === undefined || e.counter === "+1/+1", {
+    message:
+      "target_each (each_creature mode) only supports '+1/+1' counters (lane 114 piece 2/2, #2614)",
+  });
 
 /**
  * Put the top N cards of a library into its owner's graveyard (#2534).
@@ -1207,9 +1204,21 @@ export const SearchLibrarySchema = z
  * ability path adds the mana (with a color choice when there is more
  * than one option). There is no flag for this in the script.
  *
- * Out of scope for now: "spend this mana only on ..." restrictions, mana
- * that depends on a count ("for each creature you control"), and mixed
- * symbols like "{R}{G}". Cards with those wait for a follow-up.
+ * The optional `restriction` field (#2614 follow-up, Wave 4.8
+ * follow-up 21 lane 69 piece 1/N) is a free-form string tag
+ * identifying the per-mana restriction (e.g. `"creature_spells"`
+ * for "spend this mana only on creature spells", or
+ * `"instant_or_sorcery"`). The engine stashes the produced mana
+ * into the player's parallel `restrictionLedger[restriction]`
+ * (a per-tag partial pool) instead of the main `manaPool`. The
+ * spend-side consult is the multi-lane piece 2/N — v1 ships
+ * the ledger + the schema arm only. Mixed-color restrictions,
+ * per-restriction generic reductions, and multi-tag (a single
+ * mana tagged with two restrictions) ride follow-up lanes.
+ *
+ * Out of scope for now: mana that depends on a count ("for each
+ * creature you control"), and mixed symbols like "{R}{G}". Cards
+ * with those wait for a follow-up.
  */
 export const MANA_SYMBOLS = ["W", "U", "B", "R", "G", "C"] as const;
 
@@ -1239,6 +1248,43 @@ export const AddManaSchema = z
         message:
           "AddMana.colors may only be the single 'chosen' sentinel (not mixed with literal colors or 'any')",
       }),
+    /**
+     * Wave 4.8 follow-up 21 lane 69 (#2614 follow-up): the
+     * per-mana restriction tag ("spend this mana only on
+     * [X]"). When set, the engine routes the produced mana
+     * into `player.restrictionLedger[restriction]` (a parallel
+     * per-tag partial pool) instead of the main `manaPool`,
+     * and the spend-side consult (`resolveXspentOn` in
+     * `mana/restriction-ledger.ts`) reads the same tag back
+     * against the spell's restriction to gate the spend.
+     *
+     * v1 collapses to a constrained enum of well-known tags:
+     *   - `"creature_spells"` — "spend this mana only on
+     *     creature spells" (Llawan / War Tax / etc.)
+     *   - `"instant_or_sorcery"` — "spend only on instant or
+     *     sorcery spells"
+     *   - `"artifact_or_enchantment"` — "spend only on
+     *     artifact or enchantment spells"
+     *   - `"any_color"` — colored mana tagged for unrestricted
+     *     spending (used when a producer emits colored mana
+     *     that the engine should still ledger)
+     *   - `"colorless"` — colorless mana tagged for
+     *     unrestricted spending
+     *
+     * Multi-tag and per-color matching variants ride follow-up
+     * lanes; this enum is the v1 floor. Common typos like
+     * `"creature_spell"` (singular) are blocked by the schema
+     * so they don't silently widen the ledger at runtime.
+     */
+    restriction: z
+      .enum([
+        "creature_spells",
+        "instant_or_sorcery",
+        "artifact_or_enchantment",
+        "any_color",
+        "colorless",
+      ])
+      .optional(),
     if_kicked: ifKicked,
   })
   .strict();
@@ -1736,6 +1782,61 @@ export const TriggerSchema = z
           })
           .strict()
           .optional(),
+        /**
+         * Wave 4.8 follow-up 21 lane 99 follow-up extension
+         * (#2614 follow-up): the multi-cost OR combinator
+         * ("you may pay [A] OR pay [B]; if you do,
+         * [effects]" — Skeletonize / Oracle-shaped choices
+         * on the cost). The arm is a non-empty array of
+         * single-arm cost shapes (one of `sacrifice_self`
+         * / `discard` / `pay_life` / `pay_mana` — the same
+         * v1 substrate as the standalone `cost.<arm>`
+         * siblings). The combinator surfaces a
+         * `cost_combinator_or_prompt` waitingChoice at
+         * trigger resolution; on the first resolve pass the
+         * controller picks one (0-based index stamped on
+         * `stackObject.chosen_or_cost_index`); on the
+         * second pass the picked cost runs through the
+         * existing lane 88 / 98 / 106 / 117 dispatch as if
+         * it were the standalone `cost.<arm>` shape.
+         *
+         * The arm is mutually exclusive with the
+         * standalone `cost.<arm>` siblings (the refine
+         * rule rejects the dual shape) and requires
+         * `you_may: true` (the yes/no gate is the
+         * precondition for picking which arm to pay).
+         * v1 ships the 2-arm minimum (`min(2)`); 3+ arms
+         * ride a follow-up lane.
+         */
+        or: z
+          .array(
+            z.union([
+              z.object({ sacrifice_self: z.literal(true) }).strict(),
+              z
+                .object({
+                  discard: z
+                    .object({ amount: z.number().int().min(1).max(1) })
+                    .strict(),
+                })
+                .strict(),
+              z
+                .object({
+                  pay_life: z
+                    .object({ amount: z.number().int().min(1) })
+                    .strict(),
+                })
+                .strict(),
+              z
+                .object({
+                  pay_mana: z
+                    .object({ amount: z.number().int().min(1).max(99) })
+                    .strict(),
+                })
+                .strict(),
+            ]),
+          )
+          .min(2)
+          .optional(),
       })
       .strict()
       .optional(),
@@ -1774,24 +1875,19 @@ export const TriggerSchema = z
       "you_may and modes are mutually exclusive on a trigger (lane 60, #2614)",
   })
   .refine((t) => t.you_may_cost === undefined || t.you_may === true, {
-    message:
-      "you_may_cost requires you_may: true (lane 93, #2614)",
+    message: "you_may_cost requires you_may: true (lane 93, #2614)",
   })
   .refine(
-    (t) =>
-      !(t.you_may_cost !== undefined && t.cost?.sacrifice_self === true),
+    (t) => !(t.you_may_cost !== undefined && t.cost?.sacrifice_self === true),
     {
       message:
         "you_may_cost and cost.sacrifice_self are mutually exclusive on a trigger (lane 93, #2614) — the cost substrate's sacrifice-self gate subsumes the lane 88 / 93 paths",
     },
   )
-  .refine(
-    (t) => !(t.cost?.sacrifice_self === true && t.modes !== undefined),
-    {
-      message:
-        "cost.sacrifice_self and modes are mutually exclusive on a trigger (lane 88, #2614)",
-    },
-  )
+  .refine((t) => !(t.cost?.sacrifice_self === true && t.modes !== undefined), {
+    message:
+      "cost.sacrifice_self and modes are mutually exclusive on a trigger (lane 88, #2614)",
+  })
   .refine((t) => (t.event === "chapter") === (t.chapter !== undefined), {
     message: "chapter is required on, and only for, chapter triggers",
   })
@@ -1803,6 +1899,22 @@ export const TriggerSchema = z
   })
   .refine((t) => t.event === "attacks" || t.once === undefined, {
     message: "once is only for attacks triggers",
+  })
+  .refine(
+    (t) =>
+      t.cost?.or === undefined ||
+      !(t.cost.sacrifice_self === true ||
+        t.cost.discard !== undefined ||
+        t.cost.pay_life !== undefined ||
+        t.cost.pay_mana !== undefined),
+    {
+      message:
+        "cost.or is mutually exclusive with the standalone cost arms (pay_life, pay_mana, sacrifice_self, discard) — pick one shape",
+    },
+  )
+  .refine((t) => t.cost?.or === undefined || t.you_may === true, {
+    message:
+      "cost.or requires you_may: true (the yes/no gate is the precondition for picking which cost arm to pay)",
   })
   .refine(
     (t) =>
@@ -2236,16 +2348,20 @@ export const StaticSchema = z
      */
     while_condition: z
       .discriminatedUnion("kind", [
-        z.object({
-          kind: z.literal("life_minimum"),
-          value: z.number().int().min(1),
-        }).strict(),
-        z.object({
-          kind: z.literal("counter_minimum"),
-          counter: z.string().min(1),
-          op: z.enum(["gte", "eq"]),
-          n: z.number().int().min(0),
-        }).strict(),
+        z
+          .object({
+            kind: z.literal("life_minimum"),
+            value: z.number().int().min(1),
+          })
+          .strict(),
+        z
+          .object({
+            kind: z.literal("counter_minimum"),
+            counter: z.string().min(1),
+            op: z.enum(["gte", "eq"]),
+            n: z.number().int().min(0),
+          })
+          .strict(),
       ])
       .optional(),
     keywords: z.array(z.enum(TOKEN_KEYWORDS)).min(1).optional(),
@@ -2366,10 +2482,7 @@ export const StaticSchema = z
              */
             exceptions: z
               .object({
-                add_subtype: z
-                  .array(z.string().min(1))
-                  .min(1)
-                  .optional(),
+                add_subtype: z.array(z.string().min(1)).min(1).optional(),
               })
               .strict()
               .optional(),
@@ -2431,10 +2544,7 @@ export const StaticSchema = z
              */
             exceptions: z
               .object({
-                add_subtype: z
-                  .array(z.string().min(1))
-                  .min(1)
-                  .optional(),
+                add_subtype: z.array(z.string().min(1)).min(1).optional(),
               })
               .strict()
               .optional(),
@@ -2522,7 +2632,8 @@ export const StaticSchema = z
       // meta-static shape, allowed as a stand-alone arm
       // with the `addColorToSelf` flag. Redcap
       // Gutter-Dweller-style self-only semantics for v1.
-      (s.affects?.add_color !== undefined && s.affects?.addColorToSelf === true) ||
+      (s.affects?.add_color !== undefined &&
+        s.affects?.addColorToSelf === true) ||
       // Wave 4.8 follow-up 14 lane 51 (#2614 follow-up):
       // a permanent type-line overlay meta-static —
       // `becomes_chosen_creature_type: true` is allowed
@@ -3045,6 +3156,18 @@ export const ReplacementEffectSchema = z
             "battlefield_tapped",
             "battlefield_untapped",
             "sacrifice",
+            // Wave 4.8 follow-up 21 lane 61 sub-piece
+            // piece 2/N (#2614 follow-up): "any_zone"
+            // — the drafter writes a free-form
+            // destination ("may put it into their
+            // hand, library, graveyard, or exile
+            // instead"); the consult surfaces a
+            // `redirect_zone_choice` WaitingChoice
+            // and routes the chosen zone through
+            // `moveCardToZoneWithoutTriggers`.
+            // Valid destinations exclude
+            // `battlefield` and `command`; the
+            // consult refuses non-death redirects.
             "any_zone",
             // Wave 4.8 follow-up 13 lane 104 (#2614 follow-up):
             // "life_loss" — the replacement routes the
@@ -3067,6 +3190,19 @@ export const ReplacementEffectSchema = z
          * amount).
          */
         amount: z.number().int().min(0).optional(),
+        /**
+         * Wave 4.8 follow-up 21 lane 61 sub-piece
+         * piece 2/N (#2614 follow-up): optional marker
+         * for `redirect.to: "any_zone"` — when `true`
+         * the consult surfaces a `redirect_zone_choice`
+         * WaitingChoice on the controller. Default
+         * `true` when `to === "any_zone"`; otherwise
+         * ignored. Reserved for forward compatibility
+         * with the "any_zone with filters" sub-variant
+         * ("any zone you choose except [battlefield]")
+         * that rides a follow-up lane.
+         */
+        controller_choice: z.boolean().optional(),
       })
       .strict()
       .default({ to: "exile" }),
@@ -3606,9 +3742,7 @@ export const CardScriptSchema = z
              * Restriction colors. v1 enforces exactly one entry;
              * multi-color restrictions are a follow-up lane.
              */
-            colors: z
-              .array(z.enum(["W", "U", "B", "R", "G"]))
-              .length(1),
+            colors: z.array(z.enum(["W", "U", "B", "R", "G"])).length(1),
             /**
              * Amount of generic mana the player may pay using only
              * the named color(s). v1 minimum: 1 (matches a single

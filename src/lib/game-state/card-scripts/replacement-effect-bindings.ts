@@ -130,7 +130,22 @@ export function buildScriptedDeathReplacementEffect(
   // stays untouched (every other call-site that
   // doesn't care about position keeps working).
   //
-  // Out of scope: "any_zone" (lane 104 partial).
+  // Wave 4.8 follow-up 21 lane 61 sub-piece
+  // piece 2/N (#2614 follow-up): added
+  // `redirect.to: "any_zone"`. The "instead put
+  // [thing] into owner's hand, library, graveyard,
+  // or exile" family — the controller picks a
+  // destination at resolve time. The factory
+  // accepts `any_zone` in the accept-list and
+  // stamps `redirectToZone: "any_zone"` on the
+  // event's context (same shape as the other
+  // destinations); the engine consult surfaces a
+  // `redirect_zone_choice` WaitingChoice on the
+  // controller and routes the chosen zone
+  // through `moveCardToZoneWithoutTriggers`. The
+  // `from` zone must be `battlefield` (a
+  // death-replacement context) — non-death
+  // redirects are refused at the consult.
   if (
     re.redirect.to !== "exile" &&
     re.redirect.to !== "hand" &&
@@ -139,7 +154,8 @@ export function buildScriptedDeathReplacementEffect(
     re.redirect.to !== "library_bottom" &&
     re.redirect.to !== "battlefield_tapped" &&
     re.redirect.to !== "battlefield_untapped" &&
-    re.redirect.to !== "life_loss"
+    re.redirect.to !== "life_loss" &&
+    re.redirect.to !== "any_zone"
   ) {
     return null;
   }
@@ -255,6 +271,15 @@ export function buildScriptedDeathReplacementEffect(
         // are now in scope — the `moveCardToZone`
         // consult routes them through the new
         // `moveCardToZoneWithPosition` helper.
+        //
+        // Wave 4.8 follow-up 21 lane 61 sub-piece
+        // piece 2/N (#2614 follow-up):
+        // `"any_zone"` is now in scope — the
+        // `moveCardToZone` consult surfaces a
+        // `redirect_zone_choice` WaitingChoice
+        // on the controller and routes the
+        // chosen zone through
+        // `moveCardToZoneWithoutTriggers`.
         //
         // Wave 4.8 follow-up 13 lane 104 (#2614 follow-up):
         // the `redirect.amount` flows on

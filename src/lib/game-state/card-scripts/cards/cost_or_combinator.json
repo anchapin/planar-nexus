@@ -1,0 +1,21 @@
+{
+  "name": "Cost Or Combinator",
+  "oracle": "Whenever this creature attacks, you may pay {2} or pay 3 life. If you do, this creature gets +1/+0 until end of turn.",
+  "triggers": [
+    {
+      "text": "Whenever this creature attacks, you may pay {2} or pay 3 life. If you do, this creature gets +1/+0 until end of turn.",
+      "event": "attacks",
+      "subject": "self",
+      "you_may": true,
+      "cost": {
+        "or": [
+          { "pay_mana": { "amount": 2 } },
+          { "pay_life": { "amount": 3 } }
+        ]
+      },
+      "effects": [
+        { "op": "Pump", "power": 1, "toughness": 0, "target": "self" }
+      ]
+    }
+  ]
+}

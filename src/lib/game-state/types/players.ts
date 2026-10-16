@@ -100,6 +100,19 @@ export interface Player {
   // Mana pool (internally tracked, displayed as "energy" to users)
   /** Available mana in each color */
   manaPool: ManaPool;
+  /**
+   * Wave 4.8 follow-up 21 lane 69 piece 1/N (#2614 follow-up):
+   * per-mana restriction-tag ledger. A parallel pool keyed by
+   * the restriction tag string (e.g. `"creature_spells"` for
+   * "spend this mana only on creature spells"). The values
+   * carry the same partial mana shape as `manaPool`; the engine
+   * routes tagged mana into this ledger instead of the main
+   * pool, and the spend-side consult (lane 69 piece 2/N) reads
+   * it back when funding a spell whose restriction matches.
+   * Optional so legacy Player literals default to "no tagged
+   * mana" (read with `?? {}`).
+   */
+  restrictionLedger?: Record<string, Partial<ManaPool>>;
 
   // Commander-specific
   /** Whether this player is in the command zone (for commander format) */
