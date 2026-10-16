@@ -245,6 +245,37 @@ function computeX(state: GameState, source: CardInstance, kind: string): number 
 }
 
 /**
+ * Wave 4.8 follow-up 23 lane 32 (#2614 follow-up): the
+ * state-derived count for an anthem's `per` arm — the
+ * Warrior Knights / adaptive anthem family. The `per`
+ * enum parallels the lane 36 `X` enum with one lane-32
+ * addition: `other_creatures` excludes the source itself
+ * ("OTHER creatures you control" semantics — the source
+ * doesn't count its own presence toward the scaling
+ * anthem). Returns 0 for any unknown / unspecified `per`.
+ */
+function computeAnthemScalingCount(
+  state: GameState,
+  source: CardInstance,
+  per: "creatures" | "treasures" | "lands" | "other_creatures",
+): number {
+  if (per === "other_creatures") {
+    let n = 0;
+    for (const card of battlefieldCards(state)) {
+      if (card.id === source.id) continue;
+      if (card.controllerId !== source.controllerId) continue;
+      if (isCreature(card)) n++;
+    }
+    return n;
+  }
+  // Reuse `computeX` for the lane-36-parallel sources.
+  // The lane 32 enum is a superset of `X`'s enum
+  // (`treasures` / `creatures` / `lands`), so the
+  // dispatch is loss-free.
+  return computeX(state, source, per);
+}
+
+/**
  * Wave 4.8 follow-up 12 lane 91 (#2614 follow-up): evaluate
  * a static's `while_condition` gate (CR 603.2 "while" clause,
  * parallel to a trigger's `whileCondition`). v1 supports two
@@ -826,6 +857,25 @@ export function refreshScriptedStatics(input: GameState): GameState {
           power += stat.power ?? 0;
           toughness += stat.toughness ?? 0;
         }
+        // Wave 4.8 follow-up 23 lane 32 (#2614 follow-up):
+        // the per-count P/T scaling modifier. The
+        // `anthemScaling` arm combines with the integer
+        // `power`/`toughness` arms — both contribute
+        // (a "+1/+1 plus +1/+1 per creature" anthem is
+        // a +2/+2 per creature, modeled as `power:
+        // 1, anthemScaling: { per: "other_creatures",
+        // perPower: 1, perToughness: 1 }`). The count
+        // is computed once and applied to both P/T
+        // arms (v1 single count source).
+        if (stat.anthemScaling) {
+          const count = computeAnthemScalingCount(
+            state,
+            card,
+            stat.anthemScaling.per,
+          );
+          power += count * (stat.anthemScaling.perPower ?? 0);
+          toughness += count * (stat.anthemScaling.perToughness ?? 0);
+        }
         for (const k of stat.keywords ?? []) granted.add(k);
       }
     }
@@ -1103,8 +1153,6 @@ export function refreshScriptedStatics(input: GameState): GameState {
       sameTypeOverlay &&
       sameSelfGrantedTriggers
     ) {
-      // eslint-disable-next-line no-console
-      console.log("[trace-diff] all same, continuing for", cardId);
       // Wave 4.8 follow-up 9 lane 75e (#2614 follow-up):
       // if the card has an Aura-driven overlay and no
       // static-driven `become_copy` arm, skip the

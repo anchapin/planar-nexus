@@ -2327,6 +2327,73 @@ export const StaticSchema = z
      */
     X: z.enum(["treasures", "creatures", "lands"]).optional(),
     /**
+     * Wave 4.8 follow-up 23 lane 32 (#2614 follow-up): the
+     * "per count" P/T scaling modifier — the Warrior
+     * Knights / adaptive anthem family that grows with the
+     * board. Combines with `power` / `toughness` to model
+     * "creatures you control get +1/+1 for each creature
+     * you control" patterns without a redundant integer
+     * pair. v1 single shape: a count source + a per-unit
+     * power contribution + a per-unit toughness
+     * contribution. Standard sample:
+     *
+     *   {
+     *     anthemScaling: {
+     *       per: "other_creatures",
+     *       perPower: 1,
+     *       perToughness: 1,
+     *     },
+     *   }
+     *
+     * ...with `affects: { controller: "you", other: true }`
+     * gives "Other creatures you control get +1/+1 for
+     * each other creature you control."
+     *
+     * The count sources parallel the lane 36 `X` enum —
+     * `other_creatures` is the lane 32 addition that
+     * excludes the source (the "OTHER creatures you
+     * control" semantics — the source doesn't count
+     * itself). v1 supports a single count source; multi-
+     * source scaling (e.g. "for each creature OR artifact
+     * you control") is a follow-up sub-piece.
+     *
+     * Out of scope (each a follow-up lane): filtered
+     * count sources ("per creature of the chosen type"),
+     * compound count sources ("per creature AND artifact
+     * you control"), and a per_unit shape with a unit-
+     * type filter ("per +1/+1 counter on this creature").
+     */
+    anthemScaling: z
+      .object({
+        /**
+         * The state-derived count source. v1 single shape
+         * — the per-unit P/T contribution is multiplied by
+         * the count of this source on the source's
+         * controller's battlefield.
+         */
+        per: z.enum([
+          "creatures",
+          "treasures",
+          "lands",
+          "other_creatures",
+        ]),
+        /**
+         * The power contribution per unit. Default 0
+         * (matches the integer `power: 0` no-P/T pattern);
+         * +1 for the "+1/+1 per creature" family.
+         */
+        perPower: z.number().int().default(0),
+        /**
+         * The toughness contribution per unit. Default 0
+         * (matches the integer `toughness: 0` no-P/T
+         * pattern); +1 for the "+1/+1 per creature"
+         * family.
+         */
+        perToughness: z.number().int().default(0),
+      })
+      .strict()
+      .optional(),
+    /**
      * Wave 4.8 follow-up 12 lane 91 (#2614 follow-up): a
      * CR 603. "while-condition" gate on the static ability itself
      * (Twinblade Paladin's "as long as you have 25 or more life,
@@ -2646,6 +2713,16 @@ export const StaticSchema = z
       s.power !== undefined ||
       s.keywords ||
       s.X !== undefined ||
+      // Wave 4.8 follow-up 23 lane 32 (#2614 follow-up):
+      // the scaling-anthem arm — the per-count P/T
+      // modifier. Combines with the integer `power` /
+      // `toughness` arms but is allowed as a stand-alone
+      // arm for the "+1/+1 per [type]" family that has no
+      // integer component (e.g.
+      // `affects: { controller: "you", other: true }` +
+      // `anthemScaling: { per: "other_creatures", perPower:
+      // 1, perToughness: 1 }`).
+      s.anthemScaling !== undefined ||
       // Wave 4.7 phase 2 lane 50 (#2708 phase 2b): the
       // chosen-name block is a meta-static — allow it as a
       // stand-alone arm. See lane 50's `chosen_name_block`
@@ -2726,7 +2803,7 @@ export const StaticSchema = z
       (s.grants?.triggers?.length ?? 0) > 0,
     {
       message:
-        "a static needs power/toughness, keywords, X, chosen_name_block, add_creature_type (with addCreatureTypeToSelf), add_color (with addColorToSelf), protectionFrom, becomes_chosen_creature_type, become_copy, death_replacement, or grants.triggers",
+        "a static needs power/toughness, keywords, X, chosen_name_block, add_creature_type (with addCreatureTypeToSelf), add_color (with addColorToSelf), protectionFrom, becomes_chosen_creature_type, become_copy, death_replacement, anthemScaling, or grants.triggers",
     },
   );
 
@@ -2999,7 +3076,7 @@ export const AuraStaticSchema = z
       s.become_copy !== undefined,
     {
       message:
-        "an aura static needs power/toughness, keywords, a restriction, maxBlockers, removesAllAbilities, grants, protectionFrom, or become_copy",
+        "an aura static needs power/toughness, keywords, a restriction, maxBlockers, removesAllAbilities, grants, protectionFrom, become_copy, or anthemScaling",
     },
   );
 
