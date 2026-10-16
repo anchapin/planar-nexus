@@ -303,6 +303,39 @@ function printedCardDataOf(card: CardInstance): ScryfallCard {
 }
 
 /**
+ * Wave 4.8 follow-up 22 lane 70 piece 1/N (#2614 follow-up):
+ * set the per-instance `copyOfTargetIdPermanent` ledger on a
+ * card. The refresh pass (a follow-up piece) will consult
+ * this ledger and apply the permanent overlay
+ * (CR 707.2 "all characteristics copied" semantics) to the
+ * source's `cardData`. v1 ships the helper + the field only
+ * — no write-side refresh wiring yet. Idempotent (re-stamping
+ * with the same targetId returns the input).
+ */
+export function setPermanentCopyOf(
+  card: CardInstance,
+  targetId: string,
+): CardInstance {
+  if (card.copyOfTargetIdPermanent === targetId) return card;
+  return { ...card, copyOfTargetIdPermanent: targetId };
+}
+
+/**
+ * Wave 4.8 follow-up 22 lane 70 piece 1/N (#2614 follow-up):
+ * clear the per-instance `copyOfTargetIdPermanent` ledger
+ * (the rollback path when the source or target leaves the
+ * battlefield). No-op when the field is already unset
+ * (preserves the immutability convention "no field if no
+ * data").
+ */
+export function clearPermanentCopyOf(card: CardInstance): CardInstance {
+  if (!card.copyOfTargetIdPermanent) return card;
+  const next: CardInstance = { ...card };
+  delete next.copyOfTargetIdPermanent;
+  return next;
+}
+
+/**
  * The lane 75 / 75b / 75c static form: a `become_copy`
  * arm on `StaticSchema` points the source at a target.
  * The leaf of the chain is determined by walking each

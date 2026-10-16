@@ -2442,9 +2442,26 @@ export const StaticSchema = z
              * must be on the battlefield for the
              * overlay to take effect (the refresh
              * pass checks `state.cards.has(targetId)`).
+             *
+             * Wave 4.8 follow-up 22 lane 70 piece 1/N
+             * (#2614 follow-up): `until` now also
+             * accepts `"permanent"` — the "becomes a
+             * copy of [X] forever" variant (Clone,
+             * Phantasmal Image without the EOT
+             * suffix). v1 ships the schema arm + the
+             * substrate only; the refresh-pass write
+             * that honours the permanent overlay
+             * rides a follow-up piece (the field is
+             * parseable and the substrate stamps
+             * `copyOfTargetIdPermanent` onto the
+             * source, but the overlay itself is not
+             * yet applied).
              */
             target: z.string().min(1),
-            until: z.literal("end_of_turn"),
+            until: z.union([
+              z.literal("end_of_turn"),
+              z.literal("permanent"),
+            ]),
             /**
              * Wave 4.8 follow-up 8 lane 75c
              * (#2614 follow-up): copy with
@@ -2531,7 +2548,20 @@ export const StaticSchema = z
                 name: z.string().min(1),
               })
               .strict(),
-            until: z.literal("end_of_turn"),
+            /**
+             * Wave 4.8 follow-up 22 lane 70 piece 1/N
+             * (#2614 follow-up): `until` now also
+             * accepts `"permanent"` for the named-card
+             * copy variant. Same substrate / engine
+             * split as the `target` arm — v1 ships the
+             * schema + the `copyOfTargetIdPermanent`
+             * field; the refresh-pass write rides a
+             * follow-up piece.
+             */
+            until: z.union([
+              z.literal("end_of_turn"),
+              z.literal("permanent"),
+            ]),
             /**
              * Wave 4.8 follow-up 8 lane 75c
              * (#2614 follow-up): copy-with-exception
