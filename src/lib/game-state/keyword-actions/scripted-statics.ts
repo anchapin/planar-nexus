@@ -1391,9 +1391,36 @@ export function refreshScriptedStatics(input: GameState): GameState {
                 // flattened list (alongside the
                 // literal entries). v1 minimum: a
                 // single `"chosen"` entry inside the
-                // nested array; a
+                // nested array.
+                //
+                // Wave 4.8 follow-up 30 priority 5
+                // (lane 71) (#2614 follow-up): the
                 // per-pair-with-`"chosen"`-per-pair
-                // extension rides follow-up 30.
+                // resolution. The
+                // `protectionFrom` schema accepts
+                // multiple per-pair `"chosen"`
+                // entries across nested arrays (e.g.
+                // `[["red", "chosen"], ["green",
+                // "chosen"]]` = "protection from
+                // red+chosen AND green+chosen"). The
+                // engine consult reads the SAME
+                // `card.chosenProtectionFrom`
+                // instance field for EACH
+                // `"chosen"` entry, even across
+                // multiple nested arrays — the
+                // resolved qualities are pushed
+                // once per `"chosen"` entry, and
+                // the `protFrom` Set dedupes at
+                // write time. The v1 minimum is the
+                // single-instance-field model
+                // (parallel to the lane 52
+                // `chosenColor` instance field);
+                // a per-pair independent
+                // sentinel-resolution map rides
+                // follow-up 31 if any future
+                // priority piece surfaces a
+                // per-pair sentinel field (e.g.
+                // `source.chosenProtectionFromPerPair`).
                 for (const q of entry) {
                   if (q === "chosen") {
                     if (
