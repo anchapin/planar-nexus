@@ -376,22 +376,415 @@ export const CopyPermanentSchema = z
   .object({
     op: z.literal("CopyPermanent"),
     /**
-     * v1: `target: "permanent"` — any permanent on the
-     * battlefield. The schema's `controller` arm mirrors the
-     * lane 17 `cost.sacrifice_permanents.type` enum and the
-     * lane 63 `additionalCosts.sacrifice.target` enum.
-     * "creature" / "artifact" / "enchantment" / "land" are
-     * follow-up lanes (each adds a narrower filter).
+     * Wave 4.8 follow-up 29 priority 1 (lane 28,
+     * piece 2/4) (#2614 follow-up): the
+     * discriminated-union target selector. The
+     * existing enum filter (`"permanent"` /
+     * `"creature"` / `"artifact"` /
+     * `"enchantment"` / `"land"`) is preserved as
+     * the `kind: "filter"` arm — the v1 minimum
+     * (the engine auto-picks the first matching
+     * permanent APNAP-ordered). The new
+     * `kind: "id"` arm accepts a literal
+     * `CardInstanceId` (the named target on the
+     * battlefield — the engine reads the named
+     * target's `cardData` directly without the
+     * filter consult). The new `kind: "named_card"`
+     * arm is a STUB in this piece (parses, no
+     * engine consult — the engine consult lands
+     * in piece 3/4). Exactly one arm is set per
+     * effect (the `kind` discriminator enforces
+     * this); `if_kicked` is at the top level
+     * (independent of the discriminator).
+     *
+     * The v1 lane 70 substrate used
+     * `target: z.enum([...])` (a single enum
+     * value). The lane 28 piece 1/4 (follow-up
+     * 28 priority 4) preserved the v1 enum.
+     * Piece 2/4 (this piece) extends the schema
+     * with the discriminated union; the engine
+     * consult consults the `kind` discriminator
+     * for resolution.
      */
-    target: z.enum([
-      "permanent",
-      "creature",
-      "artifact",
-      "enchantment",
-      "land",
-    ]),
+    target: z
+      .union([
+        /**
+         * The existing enum filter — the v1 lane
+         * 70 substrate. The engine finds the
+         * first matching permanent on the
+         * battlefield (APNAP-ordered) whose
+         * `cardData.type_line` matches the enum
+         * value. Mirrors the lane 17
+         * `cost.sacrifice_permanents.type` enum
+         * and the lane 63
+         * `additionalCosts.sacrifice.target`
+         * enum.
+         */
+        z
+          .object({
+            kind: z.literal("filter"),
+            value: z.enum([
+              "permanent",
+              "creature",
+              "artifact",
+              "enchantment",
+              "land",
+            ]),
+          })
+          .strict(),
+        /**
+         * The explicit named target — a
+         * `CardInstanceId` on the battlefield.
+         * The engine reads the named target's
+         * `cardData` directly from
+         * `state.cards.get(value)` (validates the
+         * target is on the battlefield; a missing
+         * target is a no-op per the lane 70
+         * substrate's auto-pick fallback).
+         * Parallel to the lane 75a
+         * `CopyUntilEndOfTurn.chosen_permanent`
+         * shape (a literal `CardInstanceId` named
+         * target).
+         */
+        z
+          .object({
+            kind: z.literal("id"),
+            value: z.string().min(1),
+          })
+          .strict(),
+        /**
+         * The named-card variant (Self-Reflection
+         * style — "create a token that's a copy
+         * of [card name]"). This is a STUB in
+         * piece 2/4 (parses, no engine consult
+         * — the engine consult lands in piece
+         * 3/4). The schema union has all three
+         * arms; the engine consults two (filter
+         * + id) in piece 2/4. The named-card arm
+         * is included here so the discriminator
+         * is in place when piece 3/4 lands (no
+         * second schema bump needed). The
+         * `getCardDataByName(value.name)` lookup
+         * is the named card's printed `cardData`;
+         * missing-name is a no-op (see piece
+         * 3/4).
+         */
+        z
+          .object({
+            kind: z.literal("named_card"),
+            value: z
+              .object({ name: z.string().min(1) })
+              .strict(),
+          })
+          .strict(),
+      ]),
     /** Restrict to the controller's own permanents. */
     controller: z.enum(["you", "opponent", "any"]).optional(),
+    /**
+     * Wave 4.8 follow-up 28 priority 4 (lane 28,
+     * piece 1/N) (#2614 follow-up): the `count`
+     * field for multi-copy tokens (Rite of
+     * Replication's "create X tokens that are
+     * copies of target creature"; Extravagant
+     * Replication's "create three tokens that
+     * are copies"). Default is 1 (the v1
+     * minimum — a single copy; the engine
+     * creates a single new CardInstance as in
+     * the lane 70 substrate). When `count >= 2`,
+     * the engine creates `count` independent
+     * tokens in sequence (each with its own
+     * `cardId`, `cardData`, and battlefield
+     * entry — the tokens are NEW CardInstances,
+     * not the existing copy-substrate's overlay
+     * mechanism). v1 minimum: count=1 (default)
+     * + count=N (integer >= 1). CR 707.2
+     * reference for "all characteristics
+     * copied" semantics on each token.
+     *
+     * Out of scope (each a follow-up lane):
+     * explicit `target: CardInstanceId` (a
+     * named target on the battlefield — the
+     * current `target` enum auto-picks the
+     * first matching permanent); the named-card
+     * variant `named_card: { name: string }`
+     * (Self-Reflection-style "create a token
+     * that's a copy of [card name]"); the
+     * copy-with-exception variant (Phyrexian
+     * Metamorph-style "create a token that's a
+     * copy of [target] EXCEPT it has no
+     * abilities"). Each rides follow-up
+     * 4 piece 2/N + 3/N + 4/N.
+     *
+     * Wave 4.8 follow-up 29 priority 3 (lane
+     * 28, piece 4/4) (#2614 follow-up): the
+     * `exceptions` arm — Phyrexian
+     * Metamorph-style "create a token that's
+     * a copy of [target] EXCEPT it has
+     * additional subtypes". The engine
+     * rebuilds each copy token's
+     * `cardData.type_line` to include the
+     * added subtypes after the source's
+     * `cardData` shallow-copy. The exceptions
+     * are PER-COPY (each token receives the
+     * same `add_subtype` list — the
+     * exceptions are NOT per-token in v1; a
+     * per-token exception array rides
+     * follow-up 30). v1 minimum:
+     * `add_subtype` only; `add_color` /
+     * `add_power` / `add_toughness` /
+     * `add_type` exception variants ride
+     * follow-up 30 (parallel to the lane
+     * 75c parked-out exception variants).
+     */
+    count: z.number().int().min(1).optional(),
+    /**
+     * Wave 4.8 follow-up 29 priority 3 (lane
+     * 28, piece 4/4) (#2614 follow-up):
+     * OPTIONAL `exceptions` arm. The engine
+     * consults the `add_subtype` list after
+     * the source's `cardData` shallow-copy;
+     * each copy token's `cardData.type_line`
+     * is rebuilt to include the added
+     * subtypes (the added subtypes are
+     * APPENDED to the printed subtypes; the
+     * exceptions arm is ADDITIVE — no
+     * overwrite).
+     *
+     * Wave 4.8 follow-up 30 priority 1 (lane
+     * 28, piece 1/N) (#2614 follow-up): the
+     * `add_color` sub-arm — Phyrexian
+     * Metamorph's "it's red in addition to
+     * its other colors" half. The engine
+     * reads the printed `colors` array (CR
+     * 707.2 — "all characteristics copied")
+     * and APPENDS the added color names (in
+     * declared order, deduplicated by the
+     * engine's Set pass). The matching
+     * `color_identity` array is rebuilt to
+     * the union of printed + added colors
+     * (a one-pass transform — no overwrite
+     * of the printed colors). The `add_color`
+     * arm is ADDITIVE (no overwrite of the
+     * printed colors); a destructive
+     * `set_color` variant rides follow-up
+     * 31 if any future priority piece
+     * surfaces a "only [colors]" semantic.
+     * The color names use the engine's
+     * full-name convention (`"white" |
+     * "blue" | "black" | "red" | "green" |
+     * "colorless"`) — parallel to the
+     * `CreateToken.color` enum at line ~215
+     * and the lane 75c `become_copy`
+     * color conventions.
+     *
+     * Wave 4.8 follow-up 30 priority 2 (lane
+     * 28, piece 2/N) (#2614 follow-up): the
+     * `add_power` sub-arm — Phyrexian
+     * Metamorph's "it has +1/+0" half (or
+     * "it has -1/-0" with a negative
+     * integer). The engine parses the
+     * printed `power` string as an integer,
+     * ADDS the `add_power` value, and
+     * rebuilds `cardData.power` as a
+     * string. The arm is ADDITIVE — no
+     * overwrite of the printed power. v1
+     * minimum: a single integer field;
+     * non-integer printed powers (`*` or
+     * `1+*`) yield 0 + the additive. A
+     * destructive `set_power` variant rides
+     * follow-up 31 if any future priority
+     * piece surfaces a "exactly N" semantic.
+     *
+     * Wave 4.8 follow-up 30 priority 3 (lane
+     * 28, piece 3/N) (#2614 follow-up): the
+     * `add_toughness` sub-arm — Phyrexian
+     * Metamorph's "it has 0/-1" half (or
+     * "it has +0/+1" with a positive
+     * integer). The engine parses the
+     * printed `toughness` string as an
+     * integer, ADDS the `add_toughness`
+     * value, and rebuilds
+     * `cardData.toughness` as a string. The
+     * arm is ADDITIVE — no overwrite of the
+     * printed toughness. v1 minimum: a
+     * single integer field; non-integer
+     * printed toughnesses (`*` / `1+*`)
+     * yield 0. A destructive `set_toughness`
+     * variant rides follow-up 31 if any
+     * future priority piece surfaces a
+     * "exactly N" semantic. The
+     * `add_toughness` arm composes with the
+     * priority 2 `add_power` arm (parallel
+     * additive P/T merge — both arms
+     * consume the printed P/T as the base).
+     *
+     * Wave 4.8 follow-up 30 priority 4 (lane
+     * 28, piece 4/N) (#2614 follow-up): the
+     * `add_type` sub-arm — Phyrexian
+     * Metamorph's "it's an Artifact in
+     * addition to its other types" half
+     * (the type-line prepend). The engine
+     * reads the printed `cardData.type_line`
+     * and PREPENDS the listed card types to
+     * the TYPES half (the types come
+     * BEFORE the printed types; e.g. a
+     * `"Creature — Bear"` with
+     * `add_type: ["Artifact"]` becomes
+     * `"Artifact Creature — Bear"`). The
+     * subtypes half is preserved. The arm
+     * is ADDITIVE — no overwrite of the
+     * printed types. v1 minimum: a list of
+     * the seven `CARD_TYPES` enum values
+     * (`Creature | Artifact | Enchantment |
+     * Land | Planeswalker | Battle |
+     * Tribal`); supertypes (`Legendary` /
+     * `Snow` / `Basic`) ride follow-up 31
+     * via the parallel `add_supertype` arm.
+     * The `add_type` arm is distinct from
+     * `add_subtype` (which appends to the
+     * SUBTYPES half). A destructive
+     * `set_type` variant rides follow-up 31
+     * if any future priority piece surfaces
+     * a "exactly [types]" semantic.
+     */
+    exceptions: z
+      .object({
+        add_subtype: z
+          .array(z.string().min(1))
+          .min(1)
+          .optional(),
+        /**
+         * Wave 4.8 follow-up 30 priority 1
+         * (lane 28, piece 1/N) (#2614
+         * follow-up): OPTIONAL `add_color`
+         * sub-arm. The engine merges the
+         * listed color names into each copy
+         * token's `colors` array AND rebuilds
+         * the matching `color_identity` array
+         * to include them (the union is
+         * deduplicated; declared order is
+         * preserved).
+         */
+        add_color: z
+          .array(
+            z.enum([
+              "white",
+              "blue",
+              "black",
+              "red",
+              "green",
+              "colorless",
+            ]),
+          )
+          .min(1)
+          .optional(),
+        /**
+         * Wave 4.8 follow-up 30 priority 2
+         * (lane 28, piece 2/N) (#2614
+         * follow-up): OPTIONAL `add_power`
+         * sub-arm. The engine parses the
+         * printed `power` string as an
+         * integer (default 0; non-integer
+         * printed powers like `*` or `1+*`
+         * yield 0), ADDS the `add_power`
+         * value, and rebuilds
+         * `cardData.power` as a string. The
+         * merge is ADDITIVE — no overwrite
+         * of the printed power. The
+         * `add_power` arm accepts negative
+         * integers (Phyrexian Metamorph-style
+         * "create a token that's a copy of
+         * [target] EXCEPT it has -1/-0"); a
+         * destructive `set_power` variant
+         * rides follow-up 31 if any future
+         * priority piece surfaces a
+         * "exactly N" semantic. v1 minimum:
+         * a single integer field; no
+         * `*` / `X+*` printed-power
+         * resolution.
+         */
+        add_power: z.number().int().optional(),
+        /**
+         * Wave 4.8 follow-up 30 priority 3
+         * (lane 28, piece 3/N) (#2614
+         * follow-up): OPTIONAL `add_toughness`
+         * sub-arm. The engine parses the
+         * printed `toughness` string as an
+         * integer (default 0; non-integer
+         * printed toughnesses like `*` or
+         * `1+*` yield 0), ADDS the
+         * `add_toughness` value, and rebuilds
+         * `cardData.toughness` as a string.
+         * The merge is ADDITIVE — no
+         * overwrite of the printed toughness.
+         * The `add_toughness` arm accepts
+         * negative integers
+         * (Phyrexian Metamorph-style
+         * "create a token that's a copy of
+         * [target] EXCEPT it has 0/-1"); a
+         * destructive `set_toughness` variant
+         * rides follow-up 31 if any future
+         * priority piece surfaces a
+         * "exactly N" semantic. v1 minimum:
+         * a single integer field; no
+         * `*` / `X+*` printed-toughness
+         * resolution. The `add_toughness`
+         * arm composes with the priority 2
+         * `add_power` arm (parallel additive
+         * P/T merge — both arms consume the
+         * printed P/T as the base).
+         */
+        add_toughness: z.number().int().optional(),
+        /**
+         * Wave 4.8 follow-up 30 priority 4
+         * (lane 28, piece 4/N) (#2614
+         * follow-up): OPTIONAL `add_type`
+         * sub-arm. The engine reads the
+         * printed `cardData.type_line` and
+         * PREPENDS the added card types to
+         * the TYPES half of the type_line
+         * (e.g. `"Creature — Bear"` +
+         * `["Artifact"]` =
+         * `"Artifact Creature — Bear"`).
+         * The added types are prepended in
+         * declared order; the subtypes half
+         * is preserved. The arm is ADDITIVE
+         * — no overwrite of the printed
+         * types. v1 minimum: a list of
+         * `CARD_TYPES` enum values (the
+         * standard seven — `Creature`,
+         * `Artifact`, `Enchantment`, `Land`,
+         * `Planeswalker`, `Battle`, and
+         * `Tribal`; `Tribal` is a legacy
+         * type that some cards still use);
+         * supertypes (`Legendary`, `Snow`,
+         * `Basic`) ride follow-up 31 via
+         * the parallel `add_supertype` arm.
+         * The `add_type` arm is distinct
+         * from `add_subtype` (which appends
+         * to the SUBTYPES half). A
+         * destructive `set_type` variant
+         * rides follow-up 31 if any future
+         * priority piece surfaces a
+         * "exactly [types]" semantic.
+         */
+        add_type: z
+          .array(
+            z.enum([
+              "Creature",
+              "Artifact",
+              "Enchantment",
+              "Land",
+              "Planeswalker",
+              "Battle",
+              "Tribal",
+            ]),
+          )
+          .min(1)
+          .optional(),
+      })
+      .strict()
+      .optional(),
     if_kicked: ifKicked,
   })
   .strict();
@@ -2362,6 +2755,53 @@ export const StaticSchema = z
      * compound count sources ("per creature AND artifact
      * you control"), and a per_unit shape with a unit-
      * type filter ("per +1/+1 counter on this creature").
+     *
+     * Wave 4.8 follow-up 24 lane 32 piece 2/N (#2614
+     * follow-up): an OPTIONAL `perSubtype?: string`
+     * field that, when set, filters the count iteration
+     * to permanents whose `cardData.type_line` matches
+     * the given creature (or permanent) type. v1 takes a
+     * FIXED TYPE STRING — the chosen-type variant ("per
+     * creature of the chosen type" — `chosenCreatureType`
+     * field on the source) rides a follow-up sub-piece.
+     * The existing `affects.subtype` field already filters
+     * WHICH permanents the anthem AFFECTS; this field
+     * filters the COUNT SOURCE specifically. Sample:
+     *
+     *   "Other creatures you control get +1/+1 for each
+     *   other Warrior you control"
+     *   →
+     *   {
+     *     affects: {
+     *       controller: "you",
+     *       other: true,
+     *       subtype: "Creature",
+     *     },
+     *     anthemScaling: {
+     *       per: "other_creatures",
+     *       perPower: 1,
+     *       perToughness: 1,
+     *       perSubtype: "Warrior",
+     *     },
+     *   }
+     *
+     * The engine's `computeAnthemScalingCount` consults
+     * `perSubtype` when set and filters the count
+     * iteration to cards whose `type_line` includes the
+     * given subtype as a case-insensitive substring
+     * (matching how the existing `computeX` looks up
+     * "Treasure" / "Creature" / "Land" — the chosen
+     * "Warrior" type matches cards whose `type_line`
+     * contains "Warrior"). When unset, the count is
+     * unfiltered (the v1 default).
+     *
+     * Out of scope (each a follow-up lane): the
+     * chosen-type variant of the `perSubtype` field
+     * ("per creature of the chosen type" — driven by a
+     * `chosenCreatureType` field on the source), and a
+     * per-counter scaling shape ("per +1/+1 counter on
+     * this creature"). The compound "AND" variant rides
+     * follow-up 25 piece 2/N.
      */
     anthemScaling: z
       .object({
@@ -2390,6 +2830,360 @@ export const StaticSchema = z
          * family.
          */
         perToughness: z.number().int().default(0),
+        /**
+         * Wave 4.8 follow-up 24 lane 32 piece 2/N
+         * (#2614 follow-up): an OPTIONAL subtype filter
+         * on the count source. When set, the count
+         * iteration skips permanents whose `type_line`
+         * does NOT include the given subtype as a
+         * case-insensitive substring (matching how
+         * `computeX` looks up "Treasure" / "Creature" /
+         * "Land"). When unset, the count source is
+         * unfiltered (the v1 default — the count
+         * includes every permanent matching the `per`
+         * arm).
+         *
+         * Wave 4.8 follow-up 25 lane 32 piece 3/N
+         * (#2614 follow-up): the `"chosen"` sentinel.
+         * A sentinel meaning "use the source's
+         * `chosenCreatureType` instance field". Only
+         * valid when the source has `enter_choice: {
+         * kind: "creature_type" }` (the lane 44
+         * substrate); the engine
+         * (`computeAnthemScalingCount` in
+         * `keyword-actions/scripted-statics.ts`) reads
+         * `source.chosenCreatureType` and substitutes it
+         * (parallel to `affects.subtype: "chosen"` at the
+         * affects-side filter — see line ~2152). If
+         * `chosenCreatureType` is null (the enter choice
+         * hasn't resolved yet) the count is 0 — the
+         * scripted anthem remains inert until the player
+         * makes the enter choice. Used by a chosen-type
+         * anthem ("creatures you control of the chosen
+         * type get +1/+1 for each OTHER creature you
+         * control OF THE CHOSEN TYPE" — exercises both
+         * the affects-side filter AND the count-side
+         * filter in one pass).
+         */
+        perSubtype: z
+          .union([z.string().min(1), z.literal("chosen")])
+          .optional(),
+        /**
+         * Wave 4.8 follow-up 25 lane 32 piece 2/N
+         * (#2614 follow-up): an OPTIONAL secondary
+         * AND-source for the count. When set, the count
+         * is `count(per) + count(andPer.per)` (CR
+         * 613.4c-style multi-source scaling — a card
+         * granting "+1/+1 for each creature AND artifact
+         * you control" reads as the sum of both source
+         * counts). The `andPer` shares the same `per`
+         * enum + optional `perSubtype` filter as the
+         * primary source; the v1 minimum is two sources
+         * summed (a more expressive multi-arm array
+         * variant rides a later follow-up).
+         *
+         * Sample card: a synthetic anthem registered via
+         * the test harness with `per: "creatures",
+         * andPer: { per: "treasures" }` ("Creatures you
+         * control get +1/+1 for each creature AND each
+         * Treasure you control"). The count is
+         * `creatures_count + treasures_count`.
+         *
+         * Wave 4.8 follow-up 27 lane 32 piece 1/N
+         * (#2614 follow-up): the `andPer.perCounter`
+         * OPTIONAL self-referential per-counter arm
+         * (parallel to the primary `perCounter` arm).
+         * When set on the `andPer` arm, REPLACES the
+         * `andPer.per` state-derived count with the
+         * SOURCE's own per-counter count — the compound
+         * count is `count(per) + count(andPer.perCounter)`
+         * (matches how the primary `perCounter` REPLACES
+         * the primary `per` entirely). The
+         * `andPer.perCounter.counter` accepts the
+         * `"chosen"` sentinel — the engine resolves the
+         * counter type from `source.chosenCreatureType`
+         * (parallel to the primary `perCounter` sentinel
+         * and the `perSubtype: "chosen"` sentinel — the
+         * same instance field drives all three
+         * substrates via independent branches in
+         * `computeAnthemScalingCount`).
+         *
+         * The `andPer.perCounter` arm is INDEPENDENT
+         * from the `andPer.per` enum + `andPer.perSubtype`
+         * filter — they are not both consulted in the
+         * same pass. When `andPer.perCounter` is set,
+         * the `andPer.per` and `andPer.perSubtype`
+         * fields are ignored (the per-counter count
+         * replaces them). This matches the primary
+         * `perCounter` arm's "REPLACES the `per` arm
+         * entirely" semantic.
+         *
+         * Out of scope (each a follow-up lane): the
+         * exclusion variant ("per creature but NOT
+         * artifact") and the OR combinator (lane 36's
+         * `X.or`-style matrix).
+         */
+        andPer: z
+          .object({
+            per: z.enum([
+              "creatures",
+              "treasures",
+              "lands",
+              "other_creatures",
+            ]),
+            perSubtype: z
+              .union([z.string().min(1), z.literal("chosen")])
+              .optional(),
+            /**
+             * Wave 4.8 follow-up 27 lane 32 piece 1/N
+             * (#2614 follow-up): an OPTIONAL self-
+             * referential per-counter arm on the
+             * `andPer` AND-source. When set, the
+             * `andPer` contribution to the compound
+             * count becomes the SOURCE's own
+             * per-counter count (REPLACES the
+             * `andPer.per` state-derived count). The
+             * `counter` field accepts the `"chosen"`
+             * sentinel — the engine resolves the
+             * counter type from
+             * `source.chosenCreatureType` (parallel
+             * to the primary `perCounter` sentinel
+             * from follow-up 26 piece 1/N).
+             */
+            perCounter: z
+              .object({
+                counter: z.union([
+                  z.string().min(1),
+                  z.literal("chosen"),
+                ]),
+                /**
+                 * Wave 4.8 follow-up 28 priority 1
+                 * (#2614 follow-up): an OPTIONAL
+                 * ordinal variant on the
+                 * `andPer.perCounter` arm. Mirrors the
+                 * primary `perCounter.ordinal?` field
+                 * — when set, the per-counter count is
+                 * the CUMULATIVE sum of the first
+                 * `ordinal` counters of the resolved
+                 * type on the source. When unset, the
+                 * existing semantic is used (sum of
+                 * ALL counters of the resolved type).
+                 * The primary `perCounter.ordinal?` and
+                 * the `andPer.perCounter.ordinal?`
+                 * fields are INDEPENDENT (each applies
+                 * to its own arm).
+                 */
+                ordinal: z.number().int().min(1).optional(),
+              })
+              .strict()
+              .optional(),
+            /**
+             * Wave 4.8 follow-up 28 priority 3
+             * (#2614 follow-up): the SUMMED
+             * per-counter arm on the `andPer`
+             * AND-source. The natural read for
+             * "per creature AND per chosen counter"
+             * anthems — the per-counter count is
+             * SUMMED with the `andPer.per`
+             * state-derived count (NOT replaced).
+             * The follow-up 27 piece 1/N
+             * `andPer.perCounter` arm REPLACES the
+             * state-derived count (parallel to the
+             * primary `perCounter` REPLACES the
+             * primary `per`); this new
+             * `andPer.perCounterSummed` arm is the
+             * SUMMED alternative for "per creature +
+             * per counter" anthems where the
+             * REPLACE semantic is wrong (the
+             * REPLACE form is a special case for
+             * self-referential count sources;
+             * the summed form is the CORRECT shape
+             * for most "per + perCounter" use
+             * cases). v1 minimum: the SUMMED arm
+             * lives alongside the REPLACE arm
+             * (both are valid). When BOTH are set,
+             * the SUM arm takes precedence
+             * (the SUM is the natural read).
+             * Future lane: deprecating the REPLACE
+             * arm (the self-referential case is
+             * rare; the summed form covers 90%+ of
+             * use cases) rides follow-up 29.
+             */
+            perCounterSummed: z
+              .object({
+                counter: z.union([
+                  z.string().min(1),
+                  z.literal("chosen"),
+                ]),
+                /**
+                 * Wave 4.8 follow-up 28 priority 3
+                 * (#2614 follow-up): an OPTIONAL
+                 * ordinal variant on the
+                 * `andPer.perCounterSummed` arm.
+                 * Mirrors the primary
+                 * `perCounter.ordinal?` field —
+                 * when set, the summed per-counter
+                 * count is the CUMULATIVE sum of the
+                 * first `ordinal` counters of the
+                 * resolved type on the source. When
+                 * unset, the summed per-counter
+                 * count is the sum of ALL counters
+                 * of the resolved type (which is
+                 * then ADDED to the
+                 * `andPer.per` state-derived count).
+                 */
+                ordinal: z.number().int().min(1).optional(),
+              })
+              .strict()
+              .optional(),
+          })
+          .strict()
+          .optional(),
+        /**
+         * Wave 4.8 follow-up 25 lane 32 piece 4/N
+         * (#2614 follow-up): an OPTIONAL self-referential
+         * per-counter count source. When set, REPLACES
+         * the `per` arm's state-derived count with the
+         * source's own per-counter count — the count is
+         * `card.counters?.find(c => c.type ===
+         * counter)?.count ?? 0` (matches how
+         * `evergreen-keywords.getEffectivePower` reads
+         * the +1/+1 counter from the same field — see
+         * `evergreen-keywords.ts` line ~973). v1
+         * supports a single counter type per arm; a
+         * chosen-counter variant rides follow-up 26+.
+         *
+         * Wave 4.8 follow-up 26 lane 32 piece 1/N
+         * (#2614 follow-up): the `"chosen"` sentinel
+         * for `perCounter.counter`. When the field is
+         * the sentinel, the engine resolves the
+         * counter type from `source.chosenCreatureType`
+         * (parallel to the `perSubtype: "chosen"`
+         * sentinel — the same instance field drives both
+         * substrates via independent branches in
+         * `computeAnthemScalingCount`). If
+         * `chosenCreatureType` is null (the
+         * `enter_choice: { kind: "creature_type" }`
+         * resolve hasn't happened yet), the count is 0
+         * (the scripted anthem remains inert — matches
+         * the lane 86 chosen-type anthem semantics).
+         *
+         * Sample card: a chosen-counter anthem ("this
+         * creature gets +1/+1 for each [chosen counter
+         * kind] on it" — combined with `enter_choice: {
+         * kind: "creature_type" }` resolving to "Marker
+         * Counter" or similar — exercises both the
+         * sentinel substitution AND the per-counter
+         * count in one pass).
+         *
+         * Out of scope: the `andPer` / `perSubtype`
+         * combinations with `perCounter` (the
+         * per-counter arm REPLACES the `per` arm
+         * entirely; a hybrid "per creatures + per
+         * counter" arm is a follow-up lane). The
+         * `perCounter.counter: "chosen"` interaction
+         * with `andPer` / `perSubtype` rides follow-up
+         * 27.
+         *
+         * Wave 4.8 follow-up 28 priority 1 (#2614
+         * follow-up): the OPTIONAL `ordinal: number`
+         * field on `perCounter`. When set, the
+         * per-counter count is the CUMULATIVE sum of
+         * the first `ordinal` counters of the resolved
+         * type on the source (matches MTG "Nth counter"
+         * semantics — a source with 3 +1/+1 counters
+         * and `ordinal: 2` contributes 2, not 3). When
+         * unset, the existing semantic is used (sum of
+         * ALL counters of the resolved type). The
+         * `"chosen"` sentinel resolves the counter type
+         * first; the ordinal then applies to the
+         * resolved type. v1 minimum is the per-source
+         * Nth-counter read; a per-pair counter ordinal
+         * ("Nth counter of each unique type") rides a
+         * future lane.
+         */
+        perCounter: z
+          .object({
+            counter: z
+              .union([z.string().min(1), z.literal("chosen")]),
+            /**
+             * Wave 4.8 follow-up 28 priority 1 (#2614
+             * follow-up): an OPTIONAL ordinal variant
+             * on the per-counter arm. When set, the
+             * count is the CUMULATIVE sum of the first
+             * `ordinal` counters of the resolved type
+             * on the source (matches MTG "Nth counter"
+             * semantics — a source with 3 +1/+1
+             * counters and `ordinal: 2` contributes 2,
+             * not 3). When unset, the existing
+             * per-counter semantic is used (sum of ALL
+             * counters of the resolved type). The
+             * `"chosen"` sentinel resolves the counter
+             * type first; the ordinal then applies to
+             * the resolved type. v1 minimum: the
+             * ordinal is a per-source Nth-counter read;
+             * a per-pair counter ordinal variant (a
+             * second arm that reads "Nth counter of
+             * each unique type") rides a future lane.
+             *
+             * Wave 4.8 follow-up 29 priority 4 (lane
+             * 32) (#2614 follow-up): the OPTIONAL
+             * `perPair` arm — a per-pair cross-type
+             * variant ("Nth counter of each unique
+             * type"). When set, the count is the SUM
+             * across all unique counter types of the
+             * cumulative sum of the first `ordinal`
+             * counters of each type. A source with 2
+             * +1/+1 counters + 3 -1/-1 counters with
+             * `perPair.ordinal: 2` contributes 2 +1/+1
+             * + 2 -1/-1 = 4 (NOT 2 + 3 = 5 — the
+             * cross-type summation is per-pair, not
+             * per-counter cumulative). The `perPair`
+             * arm lives alongside the existing
+             * `perCounter` arm; both can be set, but
+             * the `perPair` arm takes precedence when
+             * both are set (parallel to the
+             * `andPer.perCounterSummed` precedence
+             * rule from follow-up 28 priority 3). The
+             * `perPair.ordinal` defaults to 1
+             * (cumulative sum of the FIRST counter of
+             * each unique type — a "first counter per
+             * pair" read). v1 minimum: the `perPair`
+             * ordinal-only cross-type read (no per-pair
+             * sentinel extension; the per-pair-with-
+             * sentinel rides follow-up 30).
+             */
+            ordinal: z.number().int().min(1).optional(),
+            /**
+             * Wave 4.8 follow-up 29 priority 4 (lane
+             * 32) (#2614 follow-up): the OPTIONAL
+             * `perPair` arm. When set, the per-counter
+             * count is the SUM across all unique
+             * counter types of the cumulative sum of
+             * the first `perPair.ordinal` counters of
+             * each type. When unset, the existing
+             * `perCounter.ordinal?` semantic is used
+             * (cumulative sum of the first
+             * `perCounter.ordinal` counters of the
+             * resolved type). Both `perCounter` and
+             * `perPair` can be set on the same arm
+             * (they're independent Zod fields); when
+             * both are set, `perPair` takes precedence
+             * (the per-pair is the "Nth counter of
+             * each unique type" read; a separate arm
+             * from the per-counter Nth-counter read).
+             * The `andPer.perCounter perPair` parallel
+             * ordinal extension rides follow-up 30.
+             */
+            perPair: z
+              .object({
+                ordinal: z.number().int().min(1).optional(),
+              })
+              .strict()
+              .optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),
@@ -2448,14 +3242,120 @@ export const StaticSchema = z
      * (`["everything"]`); multi-color and
      * "choose-a-quality" protection are follow-up lanes.
      *
-     * Sample card: a synthetic anthem registered via the
-     * test harness with `protectionFrom: ["red"]` and
-     * `affects: { controller: "you" }` ("Creatures you
-     * control have protection from red"). A red creature +
-     * a red spell verify the protection is honored at cast
-     * time and combat time.
+     * Wave 4.8 follow-up 26 lane 71 piece 3/N (#2614
+     * follow-up): the `"chosen"` sentinel for
+     * `protectionFrom`. When the field is the sentinel, the
+     * engine resolves the protected quality from
+     * `source.chosenProtectionFrom` (parallel to the lane 86
+     * chosen-type anthem `affects.subtype: "chosen"` +
+     * follow-up 25 lane 32 piece 3/N `perSubtype: "chosen"`
+     * + follow-up 26 lane 32 piece 1/N `perCounter.counter:
+     * "chosen"` — the same `enter_choice: { kind:
+     * "protection_quality" }` enter-choice instance field
+     * drives the substrate). If `chosenProtectionFrom` is
+     * null (the enter choice hasn't resolved yet), the
+     * static is INERT for that pass (no qualities stamped;
+     * matches the lane 86 chosen-type anthem "null"
+     * semantics).
+     *
+     * Sample card: a chosen-quality anthem ("creatures you
+     * control have protection from the chosen color")
+     * combined with `enter_choice: { kind:
+     * "protection_quality" }`. The anthem grants protection
+     * from the chosen quality to each affected permanent
+     * (a red creature + a red-quality anthem verify the
+     * protection is honored at cast time and combat time).
+     *
+     * Out of scope (each a follow-up lane): the
+     * union with the per-source per-quality ledger
+     * (the follow-up 26 lane 71 piece 2/N parked out as
+     * a redundant fourth ledger); the `affects.subtype:
+     * "chosen"` interaction with `protectionFrom: "chosen"`
+     * (the sentinel resolves independently of the
+     * `chosenCreatureType` instance field — different
+     * field, same resolution pattern).
+     *
+     * Wave 4.8 follow-up 27 lane 71 piece 3/N (#2614
+     * follow-up): the per-entry `"chosen"` sentinel
+     * (multi-quality sentinel). The protectionFrom
+     * field accepts a per-entry union form
+     * `z.array(z.union([z.string().min(1),
+     * z.literal("chosen")]))` so a multi-quality
+     * anthem can grant protection from a list of
+     * literal qualities AND the chosen quality in the
+     * same arm (e.g. `["red", "chosen"]` = "protection
+     * from red AND the chosen quality"). The
+     * `"chosen"` entry is resolved from
+     * `source.chosenProtectionFrom` (the same
+     * `enter_choice: { kind: "protection_quality" }`
+     * instance field as the standalone sentinel). When
+     * `chosenProtectionFrom` is null, the `"chosen"`
+     * entry contributes 0 qualities (the static
+     * still grants the literal entries — the entry-
+     * level resolution is independent per entry).
+     *
+     * Wave 4.8 follow-up 28 priority 2 (#2614
+     * follow-up): the array-aware entry shape
+     * (nested-array "pair" form).
      */
-    protectionFrom: z.array(z.string().min(1)).optional(),
+    protectionFrom: z
+      .union([
+        z.array(z.string().min(1)),
+        z.literal("chosen"),
+        z.array(
+          z.union([
+            z.string().min(1),
+            // Wave 4.8 follow-up 28 priority 2 (#2614
+            // follow-up): the array-aware entry shape
+            // (nested-array "pair" form). Each nested
+            // array is a list of ≥ 2 literal qualities
+            // representing a "pair" (e.g.
+            // `["red", "green"]` = "protection from the
+            // red/green pair"). A 1-element nested
+            // array is REJECTED via `.min(2)` to avoid
+            // confusion with the flat literal form.
+            // The engine consult FLATTENS each entry's
+            // nested array to its literal entries
+            // before stamping the resolved qualities
+            // list. A 0-element array is also rejected
+            // (`.min(2)` covers both bounds). The
+            // `"chosen"` sentinel resolution is
+            // independent of the pair-flattening (the
+            // `"chosen"` literal still reads
+            // `source.chosenProtectionFrom`).
+            //
+            // Wave 4.8 follow-up 29 priority 5 (lane
+            // 71) (#2614 follow-up): the per-pair
+            // `"chosen"` sentinel entry. The
+            // nested array now ALSO accepts a
+            // `"chosen"` sentinel entry — the
+            // engine consult FLATTENS each
+            // nested array to its literal
+            // entries AND resolves the
+            // `"chosen"` entry via
+            // `source.chosenProtectionFrom`.
+            // The resulting quality is added to
+            // the flattened list (alongside the
+            // literal entries). v1 minimum: a
+            // single `"chosen"` entry inside
+            // the nested array (the
+            // per-pair-with-sentinel extension
+            // rides follow-up 30; the
+            // per-pair-with-`"chosen"`-per-pair
+            // extension rides follow-up 30 too).
+            z
+              .array(
+                z.union([
+                  z.string().min(1),
+                  z.literal("chosen"),
+                ]),
+              )
+              .min(2),
+            z.literal("chosen"),
+          ]),
+        ),
+      ])
+      .optional(),
     /**
      * Wave 4.8 follow-up 7 lane 75 (#2614 follow-up):
      * "as long as this is in play, it's a copy of [a chosen
@@ -2992,6 +3892,27 @@ export const AuraStaticSchema = z
      * lane 75 `animatedUntilEndOfUntil` infrastructure
      * for EOT rollback.
      *
+     * Wave 4.8 follow-up 24 lane 70 piece 2/N (#2614
+     * follow-up): `until` now also accepts
+     * `"permanent"` — the Aura-shaped permanent-arm
+     * copy variant (parallel to lane 70's `StaticSchema`
+     * `become_copy: { until: "permanent" }` arm). The
+     * engine writes the overlay onto the ENCHANTED card
+     * via `refreshAuraBonuses` using the lane 70
+     * `permanentCopyPrintedCardData` /
+     * `copyOfTargetIdPermanent` substrate (snapshot +
+     * overlay + battlefield-leave cleanup). The
+     * overlay is NOT cleared at end of turn; it persists
+     * for as long as the Aura is attached. The chosen
+     * target's "in a tracked zone" cross-zones check is
+     * inherited from lane 78 (the overlay applies for
+     * any chosen target whose zone is in `state.zones`).
+     * The Aura's own `copyOfTargetIdPermanent` ledger
+     * is stamped by the substrate (parallel to the
+     * lane 70 `setPermanentCopyOf` helper for the
+     * source-driven overlay; the helper is reused
+     * unchanged).
+     *
      * v1 supports the lane 75 `target: CardInstanceId`
      * arm only — the chosen permanent must be on the
      * battlefield at refresh time (the engine validates
@@ -3001,7 +3922,10 @@ export const AuraStaticSchema = z
      * variants are follow-up lanes. The overlay is
      * dropped at end of turn via the existing
      * `clearUntilEndOfTurnPT` /
-     * `restoreAnimatedOffBattlefield` rollback paths.
+     * `restoreAnimatedOffBattlefield` rollback paths
+     * (for the `end_of_turn` arm) or via the lane 70
+     * `restorePermanentCopyOffBattlefield` cleanup +
+     * Aura-detach rollback (for the `permanent` arm).
      *
      * Sample card: a synthetic Aura registered via
      * the test harness ("Enchanted creature is a copy
@@ -3018,13 +3942,20 @@ export const AuraStaticSchema = z
              * The chosen permanent on the
              * battlefield to copy (CR 707.2
              * "all characteristics copied"
-             * semantics, until end of turn).
-             * Validated at refresh time via
+             * semantics, until end of turn,
+             * or `permanent` — the
+             * Aura-shaped permanent arm
+             * added in follow-up 24 lane 70
+             * piece 2/N). Validated at
+             * refresh time via
              * `state.cards.has(targetId)` +
-             * zone endsWith `"-battlefield"`.
+             * the lane 78 tracked-zone check.
              */
             target: z.string().min(1),
-            until: z.literal("end_of_turn"),
+            until: z.union([
+              z.literal("end_of_turn"),
+              z.literal("permanent"),
+            ]),
           })
           .strict(),
       ])
@@ -3978,6 +4909,28 @@ export const CardScriptSchema = z
           "player",
           "chosen_name",
           "color_and_creature_type",
+          // Wave 4.8 follow-up 26 lane 71 piece 3/N
+          // (#2614 follow-up): the protection-quality
+          // sentinel. When set, the source's
+          // `chosenProtectionFrom` instance field is
+          // resolved at ETB-time by `enter_choice` →
+          // `kind === "protection_quality"` → choice
+          // value validated against the curated
+          // protection-quality set (W/U/B/R/G plus
+          // "everything" — parallel to the lane 86
+          // chosen-type anthem curated list). The
+          // `protectionFrom: "chosen"` static then
+          // consults this instance field (parallel to
+          // `affects.subtype: "chosen"` +
+          // `perSubtype: "chosen"` +
+          // `perCounter.counter: "chosen"` reading
+          // `chosenCreatureType`). The dual kind
+          // `color_and_creature_type` is not extended
+          // — the protection-quality sentinel is
+          // resolved independently of the chosen
+          // creature type (different instance field,
+          // independent resolver call).
+          "protection_quality",
         ]),
         /**
          * Free-form text the drafter wants surfaced in the prompt and

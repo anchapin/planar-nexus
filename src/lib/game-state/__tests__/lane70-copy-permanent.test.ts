@@ -65,7 +65,7 @@ const HOST_NAME = "Test Copy Permanent (lane 70)";
 
 const COPY_PERMANENT_EFFECT: CardEffect = {
   op: "CopyPermanent",
-  target: "permanent",
+  target: { kind: "filter", value: "permanent" },
   controller: "any",
 };
 
@@ -227,7 +227,7 @@ describe("Wave 4.8 follow-up 5 lane 70 — copying a permanent", () => {
         spell: [
           {
             op: "CopyPermanent",
-            target: "permanent",
+            target: { kind: "filter", value: "permanent" },
             controller: "everyone",
           },
         ],
@@ -242,7 +242,7 @@ describe("Wave 4.8 follow-up 5 lane 70 — copying a permanent", () => {
     expect(parsed.spell?.[0]?.op).toBe("CopyPermanent");
     expect(parsed.spell?.[0]).toMatchObject({
       op: "CopyPermanent",
-      target: "permanent",
+      target: { kind: "filter", value: "permanent" },
       controller: "any",
     });
   });

@@ -26,6 +26,7 @@ import { hasHexproofStrict } from "./keyword-actions/hexproof";
 import {
   hasProtectionFromColorStrict,
   getProtectionQualitiesStrict,
+  getProtectionQualitiesForSource,
 } from "./keyword-actions/protection";
 import { hasFlyingStrict } from "./keyword-actions/flying";
 import { getCardScript } from "./card-scripts/registry";
@@ -639,12 +640,33 @@ export function hasProtectionFrom(card: CardInstance, color: string): boolean {
 /**
  * Check if a card is protected from any quality of a source card
  * Used for targeting, enchanting, and equipping restrictions
+ *
+ * Wave 4.8 follow-up 25 lane 71 piece 1/N (#2614 follow-up):
+ * consults the per-source `protectionFromBySource` ledger
+ * FIRST (multi-cast enforcement — a target granted
+ * protection from TWO simultaneous Auras is protected from
+ * each Aura's quality independently, NOT the union). When
+ * the per-source ledger has an entry for the source under
+ * consult, only that source's qualities are evaluated;
+ * otherwise the union `protectionFrom` field is consulted
+ * (the symmetric surface to `targeting-validation.isProtectedFromSource`).
  */
 export function isProtectedFromSource(
   target: CardInstance,
   source: CardInstance,
 ): boolean {
-  const targetQualities = getProtectionQualities(target);
+  // Wave 4.8 follow-up 25 lane 71 piece 1/N: per-source
+  // consult first (see targeting-validation mirror).
+  const sourceSpecificQualities = getProtectionQualitiesForSource(
+    target,
+    source.id,
+  );
+  let targetQualities: string[];
+  if (sourceSpecificQualities !== null) {
+    targetQualities = sourceSpecificQualities;
+  } else {
+    targetQualities = getProtectionQualities(target);
+  }
   if (targetQualities.length === 0) return false;
 
   const sourceColors = getCardColors(source);
