@@ -1312,41 +1312,132 @@ function applyEffect(
       // half of the type_line (or prepended
       // if the printed type_line has no
       // subtype half). v1 minimum:
-      // `add_subtype` only;
-      // `add_color` / `add_power` /
+      // `add_subtype` only.
+      //
+      // Wave 4.8 follow-up 30 priority 1
+      // (lane 28, piece 1/N) (#2614
+      // follow-up): the `add_color`
+      // additive merge consult. When
+      // `effect.exceptions?.add_color` is
+      // set, the engine APPENDS the listed
+      // color names to each copy token's
+      // `cardData.colors` (deduped; declared
+      // order preserved) and rebuilds
+      // `cardData.color_identity` to the
+      // union of printed + added. The
+      // `add_color` arm is ADDITIVE (no
+      // overwrite of the printed colors).
+      // Color names use the engine's
+      // full-name convention (`"white" |
+      // "blue" | "black" | "red" | "green" |
+      // "colorless"`). `add_power` /
       // `add_toughness` / `add_type`
       // exception variants ride follow-up
-      // 30.
+      // 30 priorities 2 / 3 / 4.
       const applyExceptions = (
         cardData: ScryfallCard,
       ): ScryfallCard => {
         const exceptions = (
-          effect as { exceptions?: { add_subtype?: string[] } }
+          effect as {
+            exceptions?: {
+              add_subtype?: string[];
+              add_color?: string[];
+            };
+          }
         ).exceptions;
-        if (!exceptions?.add_subtype?.length) return cardData;
-        const printed = cardData.type_line ?? "";
-        const emDashIdx = printed.indexOf("—");
-        let rebuilt: string;
-        if (emDashIdx < 0) {
-          // No subtypes half — append the
-          // added subtypes after the types
-          // with the em-dash separator.
-          rebuilt = `${printed} — ${exceptions.add_subtype.join(" ")}`;
-        } else {
-          const typesHalf = printed.slice(0, emDashIdx).trimEnd();
-          const subtypesHalf = printed
-            .slice(emDashIdx + 1)
-            .trim();
-          const existingSubtypes = subtypesHalf
-            ? subtypesHalf.split(/\s+/).filter(Boolean)
-            : [];
-          const allSubtypes = [
-            ...existingSubtypes,
-            ...exceptions.add_subtype,
-          ];
-          rebuilt = `${typesHalf} — ${allSubtypes.join(" ")}`;
+        let rebuilt: ScryfallCard = { ...cardData };
+        // Wave 4.8 follow-up 29 priority 3
+        // (lane 28, piece 4/4) (#2614
+        // follow-up): the `add_subtype`
+        // append-consult — append the
+        // added subtypes to the printed
+        // subtypes half of `cardData.type_line`.
+        if (exceptions?.add_subtype?.length) {
+          const printed = rebuilt.type_line ?? "";
+          const emDashIdx = printed.indexOf("—");
+          if (emDashIdx < 0) {
+            // No subtypes half — append the
+            // added subtypes after the types
+            // with the em-dash separator.
+            rebuilt = {
+              ...rebuilt,
+              type_line: `${printed} — ${exceptions.add_subtype.join(" ")}`,
+            };
+          } else {
+            const typesHalf = printed.slice(0, emDashIdx).trimEnd();
+            const subtypesHalf = printed
+              .slice(emDashIdx + 1)
+              .trim();
+            const existingSubtypes = subtypesHalf
+              ? subtypesHalf.split(/\s+/).filter(Boolean)
+              : [];
+            const allSubtypes = [
+              ...existingSubtypes,
+              ...exceptions.add_subtype,
+            ];
+            rebuilt = {
+              ...rebuilt,
+              type_line: `${typesHalf} — ${allSubtypes.join(" ")}`,
+            };
+          }
         }
-        return { ...cardData, type_line: rebuilt };
+        // Wave 4.8 follow-up 30 priority 1
+        // (lane 28, piece 1/N) (#2614
+        // follow-up): the `add_color`
+        // additive merge — APPEND the added
+        // color names to the printed
+        // `colors` array (deduped; declared
+        // order preserved), and rebuild
+        // `color_identity` to the union of
+        // printed + added (one-pass Set
+        // transform). The arm is ADDITIVE
+        // — no overwrite of the printed
+        // colors.
+        if (exceptions?.add_color?.length) {
+          const printedColors = Array.isArray(rebuilt.colors)
+            ? rebuilt.colors
+            : [];
+          const seen = new Set<string>();
+          const mergedColors: string[] = [];
+          for (const c of printedColors) {
+            if (!seen.has(c)) {
+              seen.add(c);
+              mergedColors.push(c);
+            }
+          }
+          for (const c of exceptions.add_color) {
+            if (!seen.has(c)) {
+              seen.add(c);
+              mergedColors.push(c);
+            }
+          }
+          // color_identity is the union
+          // mirror — same dedup logic, same
+          // order as the merged colors.
+          const printedIdentity = Array.isArray(rebuilt.color_identity)
+            ? rebuilt.color_identity
+            : [];
+          const idSeen = new Set<string>();
+          const mergedIdentity: string[] = [];
+          for (const c of printedIdentity) {
+            if (!idSeen.has(c)) {
+              idSeen.add(c);
+              mergedIdentity.push(c);
+            }
+          }
+          for (const c of exceptions.add_color) {
+            if (!idSeen.has(c)) {
+              idSeen.add(c);
+              mergedIdentity.push(c);
+            }
+          }
+          rebuilt = {
+            ...rebuilt,
+            colors: mergedColors,
+            color_identity: mergedIdentity,
+          };
+        }
+        return rebuilt;
       };
       // Wave 4.8 follow-up 29 priority 1 (lane 28,
       // piece 2/4) (#2614 follow-up): consult the

@@ -302,9 +302,10 @@ describe("Wave 4.8 follow-up 29 priority 3 piece 4/4 — CopyPermanent.exception
     it("rejects an unknown sub-arm key (the exceptions object is `.strict()`)", () => {
       // `.strict()` on the `exceptions` object
       // rejects unknown sub-arm keys.
-      // `add_color` / `add_power` /
+      // `add_color` shipped in follow-up 30
+      // priority 1; `add_power` /
       // `add_toughness` / `add_type` ride
-      // follow-up 30.
+      // follow-up 30 priorities 2 / 3 / 4.
       expect(() =>
         CardScriptSchema.parse({
           name: HOST_NAME,
@@ -314,7 +315,7 @@ describe("Wave 4.8 follow-up 29 priority 3 piece 4/4 — CopyPermanent.exception
               op: "CopyPermanent",
               target: { kind: "filter", value: "creature" },
               controller: "any",
-              exceptions: { add_color: "red" },
+              exceptions: { add_power: 1 },
             },
           ],
         }),

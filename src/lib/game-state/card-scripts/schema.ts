@@ -549,11 +549,63 @@ export const CopyPermanentSchema = z
      * APPENDED to the printed subtypes; the
      * exceptions arm is ADDITIVE — no
      * overwrite).
+     *
+     * Wave 4.8 follow-up 30 priority 1 (lane
+     * 28, piece 1/N) (#2614 follow-up): the
+     * `add_color` sub-arm — Phyrexian
+     * Metamorph's "it's red in addition to
+     * its other colors" half. The engine
+     * reads the printed `colors` array (CR
+     * 707.2 — "all characteristics copied")
+     * and APPENDS the added color names (in
+     * declared order, deduplicated by the
+     * engine's Set pass). The matching
+     * `color_identity` array is rebuilt to
+     * the union of printed + added colors
+     * (a one-pass transform — no overwrite
+     * of the printed colors). The `add_color`
+     * arm is ADDITIVE (no overwrite of the
+     * printed colors); a destructive
+     * `set_color` variant rides follow-up
+     * 31 if any future priority piece
+     * surfaces a "only [colors]" semantic.
+     * The color names use the engine's
+     * full-name convention (`"white" |
+     * "blue" | "black" | "red" | "green" |
+     * "colorless"`) — parallel to the
+     * `CreateToken.color` enum at line ~215
+     * and the lane 75c `become_copy`
+     * color conventions.
      */
     exceptions: z
       .object({
         add_subtype: z
           .array(z.string().min(1))
+          .min(1)
+          .optional(),
+        /**
+         * Wave 4.8 follow-up 30 priority 1
+         * (lane 28, piece 1/N) (#2614
+         * follow-up): OPTIONAL `add_color`
+         * sub-arm. The engine merges the
+         * listed color names into each copy
+         * token's `colors` array AND rebuilds
+         * the matching `color_identity` array
+         * to include them (the union is
+         * deduplicated; declared order is
+         * preserved).
+         */
+        add_color: z
+          .array(
+            z.enum([
+              "white",
+              "blue",
+              "black",
+              "red",
+              "green",
+              "colorless",
+            ]),
+          )
           .min(1)
           .optional(),
       })
