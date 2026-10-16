@@ -6,13 +6,27 @@ import { detectDiesTriggers } from "./dies";
 import { putTriggersOnStack } from "../trigger-system/stack-ops";
 import { applyEntersWithCounters } from "./enters-with-counters";
 import { isCreatureOnCurrentFace, markCreatureDiedThisTurn } from "./morbid";
+import { buildScriptedDeathReplacementEffects } from "../card-scripts/replacement-effect-bindings";
+import { tapCardAction, untapCardAction } from "./damage-tap";
+import { loseLife } from "../player-actions";
+// Wave 4.8 follow-up 20 lane 61 sub-piece (#2614
+// follow-up, follow-up 20 piece 1): the
+// library-top / library-bottom death-replacement
+// redirects thread `position` through the data
+// layer (`moveCardBetweenZones` / `addCardToZone`),
+// so the consult's new `moveCardToZoneWithPosition`
+// helper imports the primitive. The narrow-union
+// `moveCardToZone` API does NOT carry position
+// (out of scope to widen — every other call-site
+// ignores it).
+import { moveCardBetweenZones } from "../zones";
 /**
  * Zone-removal keyword actions (CR 701): destroy, exile, sacrifice, regenerate, and generic zone moves.
  *
  * Mechanically extracted from keyword-actions.ts (issue #1725);
  * behavior pinned by the existing engine suites.
  */
-import type { GameState, CardInstance, CardInstanceId, Zone } from "../types";
+import type { GameState, CardInstance, CardInstanceId, Zone, WaitingChoice } from "../types";
 import {
   addCounters,
   removeCounters,
@@ -22,6 +36,48 @@ import {
 import { hasIndestructibleKeyword } from "./indestructible";
 import { KeywordActionResult } from "./shared";
 import { getCardScript } from "../card-scripts/registry";
+// Wave 4.8 follow-up 21 lane 61 sub-piece
+// piece 2/N (#2614 follow-up): the
+// `redirect_zone_choice` WaitingChoice type
+// (controller picks a destination zone for
+// the dying card under `redirect.to:
+// "any_zone"`). The resolver is registered
+// via `registerOfferResolver` so the
+// `resolveWaitingChoice` dispatcher in
+// spell-casting/choices.ts can route the
+// answer back here.
+import { registerOfferResolver } from "../spell-casting/choices";
+
+/** Waiting-choice discriminator for `redirect.to: "any_zone"` death-replacement redirects. */
+export const REDIRECT_ZONE_CHOICE_TYPE = "redirect_zone_choice" as const;
+
+/**
+ * Wave 4.8 follow-up 21 lane 61 sub-piece
+ * piece 2/N (#2614 follow-up): the four
+ * valid destinations surfaced to the
+ * controller when `redirect.to: "any_zone"`
+ * fires. `battlefield` (the card would
+ * die — no redirect) and `command` (out of
+ * scope for v1) are intentionally
+ * excluded. The order is the resolver's
+ * canonical enumeration; tests assert
+ * against this exact list.
+ */
+const ANY_ZONE_CHOICES = [
+  "library",
+  "graveyard",
+  "exile",
+  "hand",
+] as const;
+
+/**
+ * Narrow type for the four valid any-zone destinations. The consult's
+ * `any_zone` branch and the resolver agree on this set — adding a new
+ * arm requires touching both. `moveCardToZoneWithoutTriggers`'s
+ * `targetZoneType` union is the canonical move-side enum; this type is
+ * a structural subset.
+ */
+type AnyZoneDestination = (typeof ANY_ZONE_CHOICES)[number];
 
 /**
  * Check if a card has indestructible
@@ -388,9 +444,308 @@ export function moveCardToZone(
   if (targetZoneType === "graveyard" && hasFinalityCounter(state, cardId)) {
     targetZoneType = "exile";
   }
+  // Wave 4.8 follow-up 13 lane 61a (#2614 follow-up): the
+  // foundational death-replacement consult. When a creature
+  // would move from the battlefield to the graveyard, ask
+  // `state.replacementEffectManager` whether any registered
+  // `death_replacement` arm wants to redirect the dying
+  // permanent (CR 614.1). v1 supports `redirect.to: "exile"`
+  // (Whip of Erebos); other destinations ride follow-up lanes
+  // (100 / 101 / 104).
+  //
+  // The consult runs BEFORE the move and BEFORE the dies-trigger
+  // snapshot so the replacement effect runs on the "would die"
+  // event with the battlefield still intact (CR 603.10a — the
+  // dies triggers look back at the battlefield the permanent
+  // left; the replacement consult decides whether it leaves
+  // at all). The `processEvent` APNAP ordering handles
+  // multi-player ties; the per-effect `canApply` filters
+  // implement the "if a creature you control would die"
+  // controller filter.
+  //
+  // The consult builds a fresh set of `ReplacementAbility`
+  // entries from every battlefield card's
+  // `CardScript.replacement_effects` arm, registers them
+  // on the manager, runs `processEvent`, then clears the
+  // just-registered entries via `removeEffectsFromSource`
+  // before returning. This keeps the manager stateless
+  // w.r.t. death-replacement — the consult is the single
+  // owner of the effect list (parallel to how
+  // `refreshScriptedStatics` rebuilds the static layer
+  // every refresh pass instead of maintaining a permanent
+  // registration).
+  // Wave 4.8 follow-up 13 lane 101 (#2614 follow-up):
+  // when the redirect is "sacrifice", the dying
+  // creature doesn't actually die (it's sacrificed
+  // instead — CR 614.9) so dies triggers don't fire
+  // post-consult. The flag is declared in the outer
+  // scope (moveCardToZone's outer scope, NOT the
+  // consult's inner scope) so the post-consult path
+  // can read it.
+  const isSacrificeRedirect = { value: false };
+  // Wave 4.8 follow-up 13 lane 104 (#2614 follow-up):
+  // when the redirect is "battlefield_tapped" /
+  // "battlefield_untapped" / "life_loss" (periodic
+  // self-replacement destinations), the card stays
+  // on the battlefield and a side-effect applies
+  // instead of a zone move. The flag carries the
+  // kind + amount through to the post-consult
+  // handler below.
+  const pendingPeriodicRedirect: {
+    value: { kind: string; amount: number } | null;
+  } = { value: null };
+  // Wave 4.8 follow-up 20 lane 61 sub-piece
+  // (#2614 follow-up, follow-up 20 piece 1):
+  // when the redirect is "library_top" or
+  // "library_bottom", the dying card is moved to
+  // the OWNER's library (CR 400.3 — a card put into
+  // a library goes to its owner's library, even when
+  // a different player controlled it) at a specific
+  // position (top of library = "drawn first" = the
+  // END of the `cardIds` array; bottom of library =
+  // the START of the array). The narrow `targetZoneType`
+  // union above ("... | library | ...") doesn't carry
+  // position, so the consult uses this flag to route
+  // through the new `moveCardToZoneWithPosition`
+  // helper instead of the standard
+  // `moveCardToZoneWithoutTriggers` path. Like the
+  // exile / hand redirects, dies triggers DO NOT
+  // fire (the creature didn't die — CR 614.5).
+  const pendingLibraryRedirect: {
+    value: { position: "top" | "bottom" } | null;
+  } = { value: null };
+  if (targetZoneType === "graveyard") {
+    const cardForConsult = state.cards.get(cardId);
+    const sourceZoneKey = cardForConsult?.currentZoneKey ?? null;
+    const onBattlefield = sourceZoneKey?.endsWith("-battlefield") ?? false;
+    if (onBattlefield && cardForConsult) {
+      const consultEvent = {
+        type: "would_die" as const,
+        timestamp: Date.now(),
+        targetId: cardId,
+        sourceId: cardId,
+        controllerId: cardForConsult.controllerId,
+        amount: 0,
+      };
+      const effects =
+        buildScriptedDeathReplacementEffects(state, cardId);
+      for (const eff of effects) {
+        state.replacementEffectManager.registerEffect(eff);
+      }
+      try {
+        const apnapOrder =
+          state.replacementEffectManager.createAPNAPOrder(
+            state.turn.activePlayerId,
+            Array.from(state.players.keys()),
+          );
+        const processed = state.replacementEffectManager.processEvent(
+          consultEvent,
+          apnapOrder,
+        );
+        // `processEvent` returns the resulting
+        // `ReplacementEvent` (not the `ReplacementResult`),
+        // so the redirect destination rides on the event's
+        // `context` side-channel. The lane 61a
+        // `apply` function stamps `redirectToZone`
+        // there when the death-replacement fires.
+        //
+        // Wave 4.8 follow-up 13 lane 100 (#2614 follow-up):
+        // added `redirect === "hand"` (Whip of Erebos's
+        // deferred hand-redirect — "if [thing] would die,
+        // instead return it to its owner's hand"). The
+        // lane 61a schema arm already accepts "hand" in
+        // the enum; this branch wires the engine consult
+        // to route the dying card to the owner's hand.
+        //
+        // Wave 4.8 follow-up 13 lane 101 (#2614 follow-up):
+        // added `redirect === "sacrifice"` (False Dawn's
+        // deferred sacrifice-redirect — "if [thing]
+        // would die, instead sacrifice it"). The
+        // semantics: route the dying card to the owner's
+        // graveyard via the `sacrificeCard` path (which
+        // bumps the `state.turn.creatureDiedThisTurn`
+        // counter via `markCreatureDiedThisTurn` and
+        // routes through the dedicated sacrifice
+        // keyword path). This is structurally different
+        // from a plain `moveCardToZone` to graveyard
+        // (which would just be the death's normal
+        // destination).
+        //
+        // Out of scope: "library_top" /
+        // "library_bottom" / "any_zone" (lane 104
+        // partial — covered by lane 101's
+        // sacrifice-redirect as a sibling case).
+        const redirect = processed.context?.redirectToZone;
+        if (redirect === "exile") {
+          targetZoneType = "exile";
+        } else if (redirect === "hand") {
+          targetZoneType = "hand";
+        } else if (redirect === "sacrifice") {
+          // Wave 4.8 follow-up 13 lane 101 (#2614
+          // follow-up): the dying creature doesn't die
+          // — it's sacrificed instead (CR 614.9). The
+          // flag suppresses dies triggers below (a
+          // sacrificed creature is not "dying" for
+          // CR 603.10a purposes); the move to graveyard
+          // happens via `sacrificeCard` below.
+          isSacrificeRedirect.value = true;
+        } else if (
+          redirect === "library_top" ||
+          redirect === "library_bottom"
+        ) {
+          // Wave 4.8 follow-up 20 lane 61 sub-piece
+          // (#2614 follow-up, follow-up 20 piece 1):
+          // route the dying card to its owner's
+          // library at top ("drawn first") or bottom
+          // ("drawn last"). The post-consult path
+          // (below) consults `pendingLibraryRedirect`
+          // and uses the new
+          // `moveCardToZoneWithPosition` helper —
+          // which threads `position` through to
+          // `moveCardBetweenZones` /
+          // `addCardToZone` (data layer). Like the
+          // exile / hand redirects, dies triggers do
+          // NOT fire (the card didn't die — CR 614.5
+          // "instead" replaces the original event).
+          pendingLibraryRedirect.value = {
+            position:
+              redirect === "library_top" ? "top" : "bottom",
+          };
+        } else if (redirect === "any_zone") {
+          // Wave 4.8 follow-up 21 lane 61 sub-piece
+          // piece 2/N (#2614 follow-up):
+          // "redirect.to: any_zone" — the
+          // controller picks the destination at
+          // resolve time. Surface a
+          // `redirect_zone_choice` WaitingChoice
+          // on the controller; the resolver
+          // (registered via `registerOfferResolver`
+          // below) routes the dying card to the
+          // picked zone via
+          // `moveCardToZoneWithoutTriggers`. The
+          // choice's value encodes the dying
+          // card ID so the resolver is self-
+          // contained. Dies triggers do NOT fire
+          // — the card didn't die (CR 614.5
+          // "instead" replaces the original
+          // event).
+          const choice: WaitingChoice = {
+            type: REDIRECT_ZONE_CHOICE_TYPE,
+            playerId: cardForConsult.controllerId,
+            stackObjectId: null,
+            prompt: `Death replacement (any_zone): choose a destination for ${cardForConsult.cardData?.name ?? cardId}.`,
+            choices: ANY_ZONE_CHOICES.map((z) => ({
+              label: `Move to ${z}`,
+              value: `${z}:${cardId}`,
+              isValid: true,
+            })),
+            minChoices: 1,
+            maxChoices: 1,
+            presentedAt: Date.now(),
+          };
+          return {
+            success: true,
+            state: {
+              ...state,
+              waitingChoice: choice,
+              lastModifiedAt: Date.now(),
+            },
+            description: `Awaiting zone choice for any_zone death-replacement on ${cardForConsult.cardData?.name ?? cardId}.`,
+            affectedCards: [cardId],
+          };
+        } else if (
+          redirect === "battlefield_tapped" ||
+          redirect === "battlefield_untapped" ||
+          redirect === "life_loss"
+        ) {
+          // Wave 4.8 follow-up 13 lane 104 (#2614
+          // follow-up): periodic self-replacement
+          // destinations. The card stays on the
+          // battlefield (no move-to-graveyard); the
+          // post-consult path applies the side effect
+          // (tap / untap / life loss) and skips the
+          // default move below.
+          pendingPeriodicRedirect.value = {
+            kind: redirect,
+            amount: (processed.context?.redirectToZoneAmount ?? 0) as number,
+          };
+        }
+      } finally {
+        // Always clear, even when `processEvent` throws.
+        for (const eff of effects) {
+          state.replacementEffectManager.removeEffectsFromSource(
+            eff.sourceCardId,
+          );
+        }
+      }
+    }
+  }
   // CR 603.10a: dies triggers look back at the battlefield before the move.
+  // The lane 101 sacrifice-redirect sets `isSacrificeRedirect.value`
+  // when the redirect is "sacrifice" — a sacrificed creature
+  // doesn't fire dies triggers (the sacrifice path replaces the
+  // death path; CR 614.9 "instead" effects skip the wait).
+  //
+  // Wave 4.8 follow-up 13 lane 104 (#2614 follow-up):
+  // periodic self-replacement ("instead tap it" /
+  // "instead lose 1 life"). The card stays on the
+  // battlefield; a side-effect applies. The consult
+  // set `pendingPeriodicRedirect.value` to a non-null
+  // object; we apply the side effect and skip the
+  // default move-to-graveyard.
+  if (pendingPeriodicRedirect.value !== null) {
+    const { kind, amount } = pendingPeriodicRedirect.value;
+    if (kind === "battlefield_tapped") {
+      const tapResult = tapCardAction(state, cardId);
+      state = tapResult.success ? tapResult.state : state;
+    } else if (kind === "battlefield_untapped") {
+      const untapResult = untapCardAction(state, cardId);
+      state = untapResult.success ? untapResult.state : state;
+    } else if (kind === "life_loss") {
+      const dyingCard = state.cards.get(cardId);
+      const ownerId = dyingCard?.ownerId;
+      if (ownerId) {
+        state = loseLife(state, ownerId, amount, cardId);
+      }
+    }
+    return {
+      success: true,
+      state,
+      description: `Periodic replacement (${kind}) applied; creature stays on battlefield.`,
+      affectedCards: [cardId],
+    };
+  }
+  // Wave 4.8 follow-up 20 lane 61 sub-piece (#2614
+  // follow-up, follow-up 20 piece 1): the
+  // library-top / library-bottom redirect routes
+  // the dying card to its owner's library at a
+  // specific position via the new
+  // `moveCardToZoneWithPosition` helper. Dies
+  // triggers are NOT taken — the card didn't die
+  // (CR 614.5 "instead" replaces the original
+  // event; CR 603.10a dies triggers look back at
+  // a "dying" permanent, not a "moved to library"
+  // permanent). Early-return after the move.
+  if (pendingLibraryRedirect.value !== null) {
+    const { position } = pendingLibraryRedirect.value;
+    const moved = moveCardToZoneWithPosition(
+      state,
+      cardId,
+      position,
+    );
+    if (!moved.success) {
+      return moved;
+    }
+    return {
+      ...moved,
+      description: `Death replacement moved dying card to owner's library (${position}).`,
+      affectedCards: [cardId],
+    };
+  }
   const diesTriggers =
-    targetZoneType === "graveyard" ? detectDiesTriggers(state, cardId) : [];
+    targetZoneType === "graveyard" && !isSacrificeRedirect.value
+      ? detectDiesTriggers(state, cardId)
+      : [];
   const result = moveCardToZoneWithoutTriggers(state, cardId, targetZoneType);
   if (result.success && diesTriggers.length > 0) {
     return {
@@ -424,6 +779,232 @@ function hasFinalityCounter(state: GameState, cardId: CardInstanceId): boolean {
     card.counters?.some((c) => c.type === "finality" && c.count > 0) ?? false
   );
 }
+
+/**
+ * Wave 4.8 follow-up 20 lane 61 sub-piece (#2614
+ * follow-up, follow-up 20 piece 1): move a card
+ * from its current zone to its OWNER's library at
+ * the named position. CR 400.3 — a card put into
+ * a library goes to its owner's library (the
+ * controller is irrelevant; only the owner
+ * matters). The helper threads `position` through
+ * to the data layer `moveCardBetweenZones`, which
+ * delegates to `addCardToZone(zone, cardId,
+ * position)` — `position: "top"` puts the card at
+ * the END of the `cardIds` array (the top of the
+ * library = "drawn first"); `position: "bottom"`
+ * puts it at the START (drawn last).
+ *
+ * The helper is intentionally narrow: it does not
+ * re-implement `moveCardToZone`'s broad union of
+ * side-effects (CR 712.8a transform-front, CR 400.7
+ * "new object", counters reset, ETB counter
+ * initialization, etc.) — the death-replacement
+ * path is exempt from all of those (the card
+ * didn't die; it's a transient deferral). Only the
+ * minimum move + `currentZoneKey` re-stamp is
+ * applied. The helper is private to
+ * `moveCardToZone`'s consult.
+ */
+function moveCardToZoneWithPosition(
+  state: GameState,
+  cardId: CardInstanceId,
+  position: "top" | "bottom",
+): KeywordActionResult {
+  const card = state.cards.get(cardId);
+  if (!card) {
+    return {
+      success: false,
+      state,
+      description: "",
+      error: `Card ${cardId} not found`,
+    };
+  }
+  // Find the current zone the same way
+  // `moveCardToZoneWithoutTriggers` does (cached
+  // `currentZoneKey` first, fall back to
+  // scanning).
+  let currentZone: Zone | null = null;
+  let currentZoneKey: string | null = card.currentZoneKey;
+  if (currentZoneKey) {
+    currentZone = state.zones.get(currentZoneKey) ?? null;
+    if (currentZone && !currentZone.cardIds.includes(cardId)) {
+      currentZone = null;
+      currentZoneKey = null;
+    }
+  }
+  if (!currentZone || !currentZoneKey) {
+    for (const [zoneKey, zone] of state.zones) {
+      if (zone.cardIds.includes(cardId)) {
+        currentZone = zone;
+        currentZoneKey = zoneKey;
+        break;
+      }
+    }
+  }
+  if (!currentZone || !currentZoneKey) {
+    return {
+      success: false,
+      state,
+      description: "",
+      error: `Card ${cardId} is not in any zone`,
+    };
+  }
+  // CR 400.3: the owner's library, not the
+  // controller's.
+  const targetZoneKey = `${card.ownerId}-library`;
+  const targetZone = state.zones.get(targetZoneKey);
+  if (!targetZone) {
+    return {
+      success: false,
+      state,
+      description: "",
+      error: `Target zone ${targetZoneKey} not found`,
+    };
+  }
+  // Delegate the data-layer move (which honors
+  // `position`).
+  const { from, to } = moveCardBetweenZones(
+    currentZone,
+    targetZone,
+    cardId,
+    position,
+  );
+  const updatedZones = new Map(state.zones);
+  updatedZones.set(currentZoneKey, from);
+  updatedZones.set(targetZoneKey, to);
+  // Re-stamp `currentZoneKey` (CR 400.7: a card
+  // that changes zones is a new object; we keep
+  // the rest of the card identity — only the
+  // zone-key cache updates. Counts / status
+  // reset is EXEMPT for library-deferral
+  // redirects: the card is unchanged; it's
+  // deferred, not destroyed).
+  const updatedCard: CardInstance = {
+    ...card,
+    currentZoneKey: targetZoneKey,
+  };
+  const updatedCards = new Map(state.cards);
+  updatedCards.set(cardId, updatedCard);
+  return {
+    success: true,
+    state: {
+      ...state,
+      zones: updatedZones,
+      cards: updatedCards,
+      lastModifiedAt: Date.now(),
+    },
+    description: `Moved ${card.cardData.name} to owner's library at ${position}`,
+    affectedCards: [cardId],
+  };
+}
+
+/**
+ * Wave 4.8 follow-up 21 lane 61 sub-piece
+ * piece 2/N (#2614 follow-up): resolve a
+ * pending `redirect_zone_choice` WaitingChoice
+ * (surfaced by `moveCardToZone`'s consult when
+ * the redirect destination is `"any_zone"`).
+ *
+ * `chosenValue` is one of the option values
+ * produced by the consult: a string of the form
+ * `<zone>:<cardId>` (e.g. `"hand:creature-1"`).
+ * The resolver:
+ *   1. Parses the zone + cardId off the value.
+ *   2. Routes the dying card through
+ *      `moveCardToZoneWithoutTriggers` for the
+ *      chosen zone. Dies triggers do NOT fire
+ *      (the card didn't die — CR 614.5
+ *      "instead" replaces the original event);
+ *      the move is a straight zone transfer
+ *      with no ETB / landfall / saga side
+ *      effects (the card isn't entering).
+ *   3. Clears the `waitingChoice` and stamps
+ *      `lastModifiedAt`.
+ *
+ * Like `tribute_offer` / `corpse_offer`, the
+ * resolver is self-contained — no external
+ * queue is needed. The dying card's
+ * `controllerId` (the one prompted) is read
+ * from the existing WaitingChoice; the
+ * `playerId` argument is checked against it
+ * for safety.
+ */
+export function resolveRedirectZoneChoice(
+  state: GameState,
+  playerId: string,
+  chosenValue: string,
+): { success: boolean; state: GameState; description?: string } {
+  const choice = state.waitingChoice;
+  if (!choice || choice.type !== REDIRECT_ZONE_CHOICE_TYPE) {
+    return {
+      success: false,
+      state,
+      description: "No pending redirect_zone_choice to resolve",
+    };
+  }
+  if (choice.playerId !== playerId) {
+    return {
+      success: false,
+      state,
+      description: "Not this player's turn to make a redirect_zone_choice",
+    };
+  }
+  // Parse `<zone>:<cardId>` off the value. The
+  // consult's ChoiceOption values are stable
+  // (built from `ANY_ZONE_CHOICES` × `cardId`),
+  // so the format is invariant.
+  const sep = chosenValue.indexOf(":");
+  if (sep <= 0 || sep >= chosenValue.length - 1) {
+    return {
+      success: false,
+      state,
+      description: `Malformed redirect_zone_choice value: ${chosenValue}`,
+    };
+  }
+  const zone = chosenValue.slice(0, sep) as AnyZoneDestination;
+  const cardId = chosenValue.slice(sep + 1) as CardInstanceId;
+  if (!ANY_ZONE_CHOICES.includes(zone)) {
+    return {
+      success: false,
+      state,
+      description: `Unknown redirect_zone_choice destination: ${zone}`,
+    };
+  }
+  // Run the move through the standard helper.
+  // `moveCardToZoneWithoutTriggers` is
+  // self-contained (the dying card didn't die
+  // — CR 614.5; dies triggers do NOT fire; the
+  // move is a zone transfer with no ETB /
+  // landfall / saga side-effects).
+  const moved = moveCardToZoneWithoutTriggers(state, cardId, zone);
+  if (!moved.success) {
+    return {
+      success: false,
+      state,
+      description: moved.error ?? `Move to ${zone} failed`,
+    };
+  }
+  return {
+    success: true,
+    state: {
+      ...moved.state,
+      waitingChoice: null,
+      lastModifiedAt: Date.now(),
+    },
+    description: `Death replacement moved dying card to owner's ${zone}.`,
+  };
+}
+
+// Register the resolver with the generic
+// `resolveWaitingChoice` dispatcher (parallel
+// to the `tribute_offer` / `corpse_offer` /
+// `attack_return_offer` registrations in their
+// own modules). The dispatcher routes the
+// chosen option value to this resolver when
+// the WaitingChoice's `type` matches
+// `REDIRECT_ZONE_CHOICE_TYPE`.
+registerOfferResolver(REDIRECT_ZONE_CHOICE_TYPE, resolveRedirectZoneChoice);
 
 function moveCardToZoneWithoutTriggers(
   state: GameState,

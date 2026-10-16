@@ -1,0 +1,18 @@
+{
+  "name": "Whip of Erebos",
+  "oracle": "Creatures you control have lifelink.\nWhenever a creature you control would die, exile it instead.",
+  "statics": [
+    {
+      "text": "Creatures you control have lifelink.",
+      "affects": { "controller": "you", "self": false },
+      "keywords": ["lifelink"]
+    },
+    {
+      "text": "Whenever a creature you control would die, exile it instead.",
+      "affects": { "controller": "you", "self": false },
+      "death_replacement": {
+        "description": "Whenever a creature you control would die, exile it instead."
+      }
+    }
+  ]
+}

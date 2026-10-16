@@ -306,7 +306,7 @@ function chosenNameActivationIsBlocked(
       const script = getCardScript(source.cardData.name);
       if (!script?.statics) continue;
       for (const stat of script.statics) {
-        if (stat.affects.chosen_name_block !== true) continue;
+        if (stat.affects?.chosen_name_block !== true) continue;
         if (!source.chosenCardName) continue;
         if (source.chosenCardName === targetName) return true;
       }

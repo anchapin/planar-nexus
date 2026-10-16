@@ -243,6 +243,17 @@ export function resolveWaitingChoice(
     type === "corpse_offer" ||
     type === "tribute_offer" ||
     type === "attack_return_offer" ||
+    // Wave 4.8 follow-up 21 lane 61 sub-piece
+    // piece 2/N (#2614 follow-up): the
+    // `redirect.to: "any_zone"` death-replacement
+    // surfaces a zone-pick prompt on the
+    // controller. The resolver
+    // (`resolveRedirectZoneChoice` in
+    // `keyword-actions/removal.ts`) routes the
+    // dying card through
+    // `moveCardToZoneWithoutTriggers` for the
+    // picked zone.
+    type === "redirect_zone_choice" ||
     // CR 704.5j legend rule: the answer is the one legend to keep (#2614).
     type === "choose_legend"
   ) {
@@ -329,6 +340,240 @@ export function resolveWaitingChoice(
         waitingChoice: null,
         stack: state.stack.map((s) =>
           s.id === stackObjectId ? { ...s, you_may_resolved: wasYes } : s,
+        ),
+      },
+    };
+  }
+
+  // Wave 4.8 follow-up 12 lane 88 (#2614 follow-up): a trigger's
+  // `cost.sacrifice_self: true` (CR 602.2b "Sacrifice this
+  // [permanent]:" as a trigger cost) surfaces a yes/no prompt
+  // (created by `createSacrificeSelfPromptWaitingChoice` in
+  // card-scripts/interpret.ts). The controller's answer is
+  // normalized to a strict boolean, stamped on
+  // `stackObject.cost_paid`, and the choice is cleared. The
+  // resolution path resumes: on `true` the engine sacrifices the
+  // source THEN runs the trigger's effects; on `false` the
+  // trigger fizzles silently.
+  if (type === "sacrifice_self_prompt") {
+    const value = Array.isArray(selectedValue)
+      ? selectedValue[0]
+      : selectedValue;
+    const bool = value === true || value === "yes" || value === "true";
+    const wasYes = value === false || value === "no" ? false : bool;
+    if (!wasYes && value !== false && value !== "no") {
+      return {
+        success: false,
+        state,
+        error: "Expected a yes/no value for sacrifice_self_prompt",
+      };
+    }
+    const target = state.stack.find((s) => s.id === stackObjectId);
+    if (!target) {
+      return {
+        success: false,
+        state,
+        error: "Stack object not found for sacrifice_self_prompt",
+      };
+    }
+    return {
+      success: true,
+      state: {
+        ...state,
+        waitingChoice: null,
+        stack: state.stack.map((s) =>
+          s.id === stackObjectId ? { ...s, cost_paid: wasYes } : s,
+        ),
+      },
+    };
+  }
+
+  // Wave 4.8 follow-up 13 lane 98 (#2614 follow-up):
+  // parallel to the `sacrifice_self_prompt` branch
+  // above — the `discard_prompt` branch stamps
+  // `stackObject.cost_paid`. The actual discard happens
+  // in `resolveScriptedAbility` (the schema's
+  // `cost.discard.amount` flows through the engine
+  // path) — this prompt is just the yes/no consent
+  // gate.
+  if (type === "discard_prompt") {
+    const value = Array.isArray(selectedValue)
+      ? selectedValue[0]
+      : selectedValue;
+    const bool = value === true || value === "yes" || value === "true";
+    const wasYes = value === false || value === "no" ? false : bool;
+    if (!wasYes && value !== false && value !== "no") {
+      return {
+        success: false,
+        state,
+        error: "Expected a yes/no value for discard_prompt",
+      };
+    }
+    const target = state.stack.find((s) => s.id === stackObjectId);
+    if (!target) {
+      return {
+        success: false,
+        state,
+        error: "Stack object not found for discard_prompt",
+      };
+    }
+    return {
+      success: true,
+      state: {
+        ...state,
+        waitingChoice: null,
+        stack: state.stack.map((s) =>
+          s.id === stackObjectId ? { ...s, cost_paid: wasYes } : s,
+        ),
+      },
+    };
+  }
+
+  // Wave 4.8 follow-up 13 lane 106 (#2614 follow-up):
+  // parallel to the discard_prompt branch above. The
+  // `pay_life_prompt` is a yes/no consent gate for the
+  // `cost.pay_life: { amount: N }` arm. The resolver
+  // stamps `stackObject.cost_paid` on the player's
+  // answer (yes → true; no → false); the engine consult
+  // runs `loseLife(state, controllerId, amount)` on
+  // `cost_paid === true` (reusing the existing
+  // `resolveLifeLossEffect` helper — see
+  // `effect-resolution.ts`).
+  if (type === "pay_life_prompt") {
+    const value = Array.isArray(selectedValue)
+      ? selectedValue[0]
+      : selectedValue;
+    const bool = value === true || value === "yes" || value === "true";
+    const wasYes = value === false || value === "no" ? false : bool;
+    if (!wasYes && value !== false && value !== "no") {
+      return {
+        success: false,
+        state,
+        error: "Expected a yes/no value for pay_life_prompt",
+      };
+    }
+    const target = state.stack.find((s) => s.id === stackObjectId);
+    if (!target) {
+      return {
+        success: false,
+        state,
+        error: "Stack object not found for pay_life_prompt",
+      };
+    }
+    return {
+      success: true,
+      state: {
+        ...state,
+        waitingChoice: null,
+        stack: state.stack.map((s) =>
+          s.id === stackObjectId ? { ...s, cost_paid: wasYes } : s,
+        ),
+      },
+    };
+  }
+
+  // Wave 4.8 follow-up 17 lane 117 (#2614 follow-up):
+  // parallel to the `pay_life_prompt` branch above. The
+  // `pay_mana_prompt` is a yes/no consent gate for the
+  // `cost.pay_mana: { amount: N }` arm. The resolver
+  // stamps `stackObject.cost_paid` on the player's
+  // answer (yes → true; no → false); the engine consult
+  // runs `spendMana(state, controllerId, { generic:
+  // amount })` on `cost_paid === true` (reusing the
+  // existing `spendMana` helper from
+  // `mana/mana-payment.ts`).
+  if (type === "pay_mana_prompt") {
+    const value = Array.isArray(selectedValue)
+      ? selectedValue[0]
+      : selectedValue;
+    const bool = value === true || value === "yes" || value === "true";
+    const wasYes = value === false || value === "no" ? false : bool;
+    if (!wasYes && value !== false && value !== "no") {
+      return {
+        success: false,
+        state,
+        error: "Expected a yes/no value for pay_mana_prompt",
+      };
+    }
+    const target = state.stack.find((s) => s.id === stackObjectId);
+    if (!target) {
+      return {
+        success: false,
+        state,
+        error: "Stack object not found for pay_mana_prompt",
+      };
+    }
+    return {
+      success: true,
+      state: {
+        ...state,
+        waitingChoice: null,
+        stack: state.stack.map((s) =>
+          s.id === stackObjectId ? { ...s, cost_paid: wasYes } : s,
+        ),
+      },
+    };
+  }
+
+  // Wave 4.8 follow-up 21 lane 99 follow-up extension
+  // (#2614 follow-up): the multi-cost OR combinator
+  // resolution. The trigger carries
+  // `cost.or: [{ ... }, { ... }]` (a 2-arm array of
+  // single-arm cost shapes — sacrifice_self / discard
+  // / pay_life / pay_mana). The engine surfaced the
+  // `cost_combinator_or_prompt` waitingChoice at the
+  // first resolve pass; the controller's pick is the
+  // 0-based index into that array, stamped on
+  // `stackObject.chosen_or_cost_index`. On the second
+  // resolve pass the engine reads the index and routes
+  // through whichever standalone `cost.<arm>` shape
+  // the picked arm encodes (lane 88 sacrifice-self /
+  // lane 98 discard / lane 106 pay_life / lane 117
+  // pay_mana — the existing dispatch path).
+  if (type === "cost_combinator_or_prompt") {
+    const value = Array.isArray(selectedValue)
+      ? selectedValue[0]
+      : selectedValue;
+    // The schema guarantees the array is `min(2)`
+    // and each arm is a single-arm cost shape, so the
+    // index is bounded by the array length. The branch
+    // accepts either a number (the index itself) or a
+    // stringified number (the choice value the prompt
+    // surfaces), normalizes, and validates.
+    let index: number;
+    if (typeof value === "number") {
+      index = value;
+    } else if (typeof value === "string") {
+      index = Number.parseInt(value, 10);
+      if (Number.isNaN(index)) index = -1;
+    } else {
+      index = -1;
+    }
+    if (index < 0) {
+      return {
+        success: false,
+        state,
+        error:
+          "Expected a numeric index for cost_combinator_or_prompt (the 0-based arm pick)",
+      };
+    }
+    const target = state.stack.find((s) => s.id === stackObjectId);
+    if (!target) {
+      return {
+        success: false,
+        state,
+        error: "Stack object not found for cost_combinator_or_prompt",
+      };
+    }
+    return {
+      success: true,
+      state: {
+        ...state,
+        waitingChoice: null,
+        stack: state.stack.map((s) =>
+          s.id === stackObjectId
+            ? { ...s, chosen_or_cost_index: index }
+            : s,
         ),
       },
     };

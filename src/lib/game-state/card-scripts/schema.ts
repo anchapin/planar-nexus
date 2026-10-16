@@ -121,22 +121,70 @@ export const DealDamageSchema = z
     },
   );
 
-/** #2594 lane 25: each_player draws a card for every player. */
+/**
+ * #2594 lane 25: each_player draws a card for every player.
+ *
+ * Wave 4.8 follow-up 12 lane 90 (#2614 follow-up): the
+ * `X: "creaturesDiedThisTurn"` arm adds a state-derived draw count
+ * (Needletooth Pack's "draw cards equal to the number of creatures
+ * that died this turn" — lane 90 v1 minimum reads the boolean
+ * `state.turn.creatureDiedThisTurn` for 0 or 1; the COUNT ledger
+ * is a follow-up lane). When `X` is set, the integer `amount` is
+ * ignored; the engine reads the named count from state and passes
+ * it as the resolved draw amount to `resolveCardDrawEffect`.
+ *
+ * Wave 4.8 follow-up 13 lane 94 (#2614 follow-up): the
+ * `X: "cardsDrawnThisTurn"` arm reads the integer
+ * `state.players[controllerId].cardsDrawnThisTurn` counter
+ * (Proft's Eidetic Memory's "you draw cards equal to the number
+ * of cards you've drawn this turn" — the lane 87
+ * `recordCardsDrawn` helper already maintains the
+ * per-player counter; lane 94 just reads it). When `X` is
+ * set, the integer `amount` is ignored.
+ *
+ * Wave 4.8 follow-up 13 lane 95 (#2614 follow-up): the
+ * `X: "cardsDrawnThisTurnByOpponents"` arm sums the
+ * per-opponent counters — every player EXCEPT the
+ * controller — for "draw N where N = cards drawn by
+ * opponents this turn" (Rhystic Study's deferred half).
+ * The sum is taken across all opponents in
+ * `state.players` (a 3-player game has 2 opponents;
+ * the lane 95 read sums both).
+ */
 export const DrawSchema = z
   .object({
     op: z.literal("Draw"),
     amount: xAmount,
     who: z.enum(["you", "target_player", "each_player"]).default("you"),
     if_kicked: ifKicked,
+    X: z
+      .enum([
+        "creaturesDiedThisTurn",
+        "cardsDrawnThisTurn",
+        "cardsDrawnThisTurnByOpponents",
+      ])
+      .optional(),
   })
   .strict();
 
+/**
+ * Wave 4.8 follow-up 12 lane 92 (#2614 follow-up): the
+ * `X: "toughness"` arm reads the entering creature's
+ * `cardData.toughness` (Drogskol Reaver's "you gain life equal
+ * to its toughness"). The integer `amount` is ignored when
+ * `X` is set; the engine reads the named creature's toughness
+ * from state and passes it as the resolved life-gain amount
+ * to `resolveLifeGainEffect`. v1 supports a single shape; the
+ * `X: "power"`, `X: "mana_value"`, and `X: "creatures"` variants
+ * ride future lanes.
+ */
 export const GainLifeSchema = z
   .object({
     op: z.literal("GainLife"),
     amount: xAmount,
     who: z.enum(["you", "target_player"]).default("you"),
     if_kicked: ifKicked,
+    X: z.enum(["toughness"]).optional(),
   })
   .strict();
 
@@ -176,6 +224,14 @@ export const TOKEN_KEYWORDS = [
   "deathtouch",
   "reach",
   "first strike",
+  // Wave 4.8 follow-up 12 lane 91 (#2614 follow-up): Twinblade
+  // Paladin's "as long as you have 25 or more life, this creature
+  // has double strike and lifelink" static. The
+  // `double strike` arm is stamped onto the source via the
+  // existing `scriptStaticKeywords` ledger (parallel to the
+  // lane 65 `grantedTriggers` pattern), read by `hasKeyword`
+  // alongside the printed keyword list.
+  "double strike",
   "menace",
   "defender",
 ] as const;
@@ -242,6 +298,51 @@ export const CreateTokenSchema = z
       .strict()
       .optional(),
     if_kicked: ifKicked,
+    /**
+     * Wave 4.8 follow-up 13 lane 97 (#2614 follow-up):
+     * `CreateToken.X` — the X-count substrate for
+     * `count`. Parallel to `GainLifeSchema.X: "toughness"`
+     * (lane 92), `DrawSchema.X: "creaturesDiedThisTurn"`
+     * (lane 90), `DrawSchema.X: "cardsDrawnThisTurn"`
+     * (lane 94), and `DrawSchema.X:
+     * "cardsDrawnThisTurnByOpponents"` (lane 95). The
+     * v1 minimum supports three arms:
+     *   - `cardsDrawnThisTurn`: integer
+     *     `state.players[controllerId].cardsDrawnThisTurn`
+     *   - `creaturesDiedThisTurn`: boolean
+     *     `state.turn.creatureDiedThisTurn` (0 or 1)
+     *   - `yourCreatures`: integer — the number of
+     *     creatures the controller controls on the
+     *     battlefield (Redcap-style "create X 1/1 red
+     *     Goblin creature tokens where X is the number
+     *     of creatures you control" — X-counts scale
+     *     with the board state)
+     *   - `landsYouControl`: integer — the number of
+     *     lands the controller controls on the
+     *     battlefield (Avenger of Zendikar's
+     *     "create X 0/1 green Plant creature tokens
+     *     where X is the number of lands you control"
+     *     half — #2500 Zendikar Rising, DFC 186).
+     *     The engine reads the controller's
+     *     battlefield land count via the existing
+     *     `computeX(..., "lands")` arm in
+     *     `keyword-actions/scripted-statics.ts`
+     *     (the helper already counts lands for the
+     *     static-anthem substrate; lane 114 piece
+     *     2 promotes it into the CreateToken X
+     *     substrate).
+     *
+     * When `X` is set, the integer `count` is ignored;
+     * the engine resolves the named count from state.
+     */
+    X: z
+      .enum([
+        "cardsDrawnThisTurn",
+        "creaturesDiedThisTurn",
+        "yourCreatures",
+        "landsYouControl",
+      ])
+      .optional(),
   })
   .strict()
   .refine((t) => (t.color === undefined) !== (t.colors === undefined), {
@@ -275,22 +376,415 @@ export const CopyPermanentSchema = z
   .object({
     op: z.literal("CopyPermanent"),
     /**
-     * v1: `target: "permanent"` — any permanent on the
-     * battlefield. The schema's `controller` arm mirrors the
-     * lane 17 `cost.sacrifice_permanents.type` enum and the
-     * lane 63 `additionalCosts.sacrifice.target` enum.
-     * "creature" / "artifact" / "enchantment" / "land" are
-     * follow-up lanes (each adds a narrower filter).
+     * Wave 4.8 follow-up 29 priority 1 (lane 28,
+     * piece 2/4) (#2614 follow-up): the
+     * discriminated-union target selector. The
+     * existing enum filter (`"permanent"` /
+     * `"creature"` / `"artifact"` /
+     * `"enchantment"` / `"land"`) is preserved as
+     * the `kind: "filter"` arm — the v1 minimum
+     * (the engine auto-picks the first matching
+     * permanent APNAP-ordered). The new
+     * `kind: "id"` arm accepts a literal
+     * `CardInstanceId` (the named target on the
+     * battlefield — the engine reads the named
+     * target's `cardData` directly without the
+     * filter consult). The new `kind: "named_card"`
+     * arm is a STUB in this piece (parses, no
+     * engine consult — the engine consult lands
+     * in piece 3/4). Exactly one arm is set per
+     * effect (the `kind` discriminator enforces
+     * this); `if_kicked` is at the top level
+     * (independent of the discriminator).
+     *
+     * The v1 lane 70 substrate used
+     * `target: z.enum([...])` (a single enum
+     * value). The lane 28 piece 1/4 (follow-up
+     * 28 priority 4) preserved the v1 enum.
+     * Piece 2/4 (this piece) extends the schema
+     * with the discriminated union; the engine
+     * consult consults the `kind` discriminator
+     * for resolution.
      */
-    target: z.enum([
-      "permanent",
-      "creature",
-      "artifact",
-      "enchantment",
-      "land",
-    ]),
+    target: z
+      .union([
+        /**
+         * The existing enum filter — the v1 lane
+         * 70 substrate. The engine finds the
+         * first matching permanent on the
+         * battlefield (APNAP-ordered) whose
+         * `cardData.type_line` matches the enum
+         * value. Mirrors the lane 17
+         * `cost.sacrifice_permanents.type` enum
+         * and the lane 63
+         * `additionalCosts.sacrifice.target`
+         * enum.
+         */
+        z
+          .object({
+            kind: z.literal("filter"),
+            value: z.enum([
+              "permanent",
+              "creature",
+              "artifact",
+              "enchantment",
+              "land",
+            ]),
+          })
+          .strict(),
+        /**
+         * The explicit named target — a
+         * `CardInstanceId` on the battlefield.
+         * The engine reads the named target's
+         * `cardData` directly from
+         * `state.cards.get(value)` (validates the
+         * target is on the battlefield; a missing
+         * target is a no-op per the lane 70
+         * substrate's auto-pick fallback).
+         * Parallel to the lane 75a
+         * `CopyUntilEndOfTurn.chosen_permanent`
+         * shape (a literal `CardInstanceId` named
+         * target).
+         */
+        z
+          .object({
+            kind: z.literal("id"),
+            value: z.string().min(1),
+          })
+          .strict(),
+        /**
+         * The named-card variant (Self-Reflection
+         * style — "create a token that's a copy
+         * of [card name]"). This is a STUB in
+         * piece 2/4 (parses, no engine consult
+         * — the engine consult lands in piece
+         * 3/4). The schema union has all three
+         * arms; the engine consults two (filter
+         * + id) in piece 2/4. The named-card arm
+         * is included here so the discriminator
+         * is in place when piece 3/4 lands (no
+         * second schema bump needed). The
+         * `getCardDataByName(value.name)` lookup
+         * is the named card's printed `cardData`;
+         * missing-name is a no-op (see piece
+         * 3/4).
+         */
+        z
+          .object({
+            kind: z.literal("named_card"),
+            value: z
+              .object({ name: z.string().min(1) })
+              .strict(),
+          })
+          .strict(),
+      ]),
     /** Restrict to the controller's own permanents. */
     controller: z.enum(["you", "opponent", "any"]).optional(),
+    /**
+     * Wave 4.8 follow-up 28 priority 4 (lane 28,
+     * piece 1/N) (#2614 follow-up): the `count`
+     * field for multi-copy tokens (Rite of
+     * Replication's "create X tokens that are
+     * copies of target creature"; Extravagant
+     * Replication's "create three tokens that
+     * are copies"). Default is 1 (the v1
+     * minimum — a single copy; the engine
+     * creates a single new CardInstance as in
+     * the lane 70 substrate). When `count >= 2`,
+     * the engine creates `count` independent
+     * tokens in sequence (each with its own
+     * `cardId`, `cardData`, and battlefield
+     * entry — the tokens are NEW CardInstances,
+     * not the existing copy-substrate's overlay
+     * mechanism). v1 minimum: count=1 (default)
+     * + count=N (integer >= 1). CR 707.2
+     * reference for "all characteristics
+     * copied" semantics on each token.
+     *
+     * Out of scope (each a follow-up lane):
+     * explicit `target: CardInstanceId` (a
+     * named target on the battlefield — the
+     * current `target` enum auto-picks the
+     * first matching permanent); the named-card
+     * variant `named_card: { name: string }`
+     * (Self-Reflection-style "create a token
+     * that's a copy of [card name]"); the
+     * copy-with-exception variant (Phyrexian
+     * Metamorph-style "create a token that's a
+     * copy of [target] EXCEPT it has no
+     * abilities"). Each rides follow-up
+     * 4 piece 2/N + 3/N + 4/N.
+     *
+     * Wave 4.8 follow-up 29 priority 3 (lane
+     * 28, piece 4/4) (#2614 follow-up): the
+     * `exceptions` arm — Phyrexian
+     * Metamorph-style "create a token that's
+     * a copy of [target] EXCEPT it has
+     * additional subtypes". The engine
+     * rebuilds each copy token's
+     * `cardData.type_line` to include the
+     * added subtypes after the source's
+     * `cardData` shallow-copy. The exceptions
+     * are PER-COPY (each token receives the
+     * same `add_subtype` list — the
+     * exceptions are NOT per-token in v1; a
+     * per-token exception array rides
+     * follow-up 30). v1 minimum:
+     * `add_subtype` only; `add_color` /
+     * `add_power` / `add_toughness` /
+     * `add_type` exception variants ride
+     * follow-up 30 (parallel to the lane
+     * 75c parked-out exception variants).
+     */
+    count: z.number().int().min(1).optional(),
+    /**
+     * Wave 4.8 follow-up 29 priority 3 (lane
+     * 28, piece 4/4) (#2614 follow-up):
+     * OPTIONAL `exceptions` arm. The engine
+     * consults the `add_subtype` list after
+     * the source's `cardData` shallow-copy;
+     * each copy token's `cardData.type_line`
+     * is rebuilt to include the added
+     * subtypes (the added subtypes are
+     * APPENDED to the printed subtypes; the
+     * exceptions arm is ADDITIVE — no
+     * overwrite).
+     *
+     * Wave 4.8 follow-up 30 priority 1 (lane
+     * 28, piece 1/N) (#2614 follow-up): the
+     * `add_color` sub-arm — Phyrexian
+     * Metamorph's "it's red in addition to
+     * its other colors" half. The engine
+     * reads the printed `colors` array (CR
+     * 707.2 — "all characteristics copied")
+     * and APPENDS the added color names (in
+     * declared order, deduplicated by the
+     * engine's Set pass). The matching
+     * `color_identity` array is rebuilt to
+     * the union of printed + added colors
+     * (a one-pass transform — no overwrite
+     * of the printed colors). The `add_color`
+     * arm is ADDITIVE (no overwrite of the
+     * printed colors); a destructive
+     * `set_color` variant rides follow-up
+     * 31 if any future priority piece
+     * surfaces a "only [colors]" semantic.
+     * The color names use the engine's
+     * full-name convention (`"white" |
+     * "blue" | "black" | "red" | "green" |
+     * "colorless"`) — parallel to the
+     * `CreateToken.color` enum at line ~215
+     * and the lane 75c `become_copy`
+     * color conventions.
+     *
+     * Wave 4.8 follow-up 30 priority 2 (lane
+     * 28, piece 2/N) (#2614 follow-up): the
+     * `add_power` sub-arm — Phyrexian
+     * Metamorph's "it has +1/+0" half (or
+     * "it has -1/-0" with a negative
+     * integer). The engine parses the
+     * printed `power` string as an integer,
+     * ADDS the `add_power` value, and
+     * rebuilds `cardData.power` as a
+     * string. The arm is ADDITIVE — no
+     * overwrite of the printed power. v1
+     * minimum: a single integer field;
+     * non-integer printed powers (`*` or
+     * `1+*`) yield 0 + the additive. A
+     * destructive `set_power` variant rides
+     * follow-up 31 if any future priority
+     * piece surfaces a "exactly N" semantic.
+     *
+     * Wave 4.8 follow-up 30 priority 3 (lane
+     * 28, piece 3/N) (#2614 follow-up): the
+     * `add_toughness` sub-arm — Phyrexian
+     * Metamorph's "it has 0/-1" half (or
+     * "it has +0/+1" with a positive
+     * integer). The engine parses the
+     * printed `toughness` string as an
+     * integer, ADDS the `add_toughness`
+     * value, and rebuilds
+     * `cardData.toughness` as a string. The
+     * arm is ADDITIVE — no overwrite of the
+     * printed toughness. v1 minimum: a
+     * single integer field; non-integer
+     * printed toughnesses (`*` / `1+*`)
+     * yield 0. A destructive `set_toughness`
+     * variant rides follow-up 31 if any
+     * future priority piece surfaces a
+     * "exactly N" semantic. The
+     * `add_toughness` arm composes with the
+     * priority 2 `add_power` arm (parallel
+     * additive P/T merge — both arms
+     * consume the printed P/T as the base).
+     *
+     * Wave 4.8 follow-up 30 priority 4 (lane
+     * 28, piece 4/N) (#2614 follow-up): the
+     * `add_type` sub-arm — Phyrexian
+     * Metamorph's "it's an Artifact in
+     * addition to its other types" half
+     * (the type-line prepend). The engine
+     * reads the printed `cardData.type_line`
+     * and PREPENDS the listed card types to
+     * the TYPES half (the types come
+     * BEFORE the printed types; e.g. a
+     * `"Creature — Bear"` with
+     * `add_type: ["Artifact"]` becomes
+     * `"Artifact Creature — Bear"`). The
+     * subtypes half is preserved. The arm
+     * is ADDITIVE — no overwrite of the
+     * printed types. v1 minimum: a list of
+     * the seven `CARD_TYPES` enum values
+     * (`Creature | Artifact | Enchantment |
+     * Land | Planeswalker | Battle |
+     * Tribal`); supertypes (`Legendary` /
+     * `Snow` / `Basic`) ride follow-up 31
+     * via the parallel `add_supertype` arm.
+     * The `add_type` arm is distinct from
+     * `add_subtype` (which appends to the
+     * SUBTYPES half). A destructive
+     * `set_type` variant rides follow-up 31
+     * if any future priority piece surfaces
+     * a "exactly [types]" semantic.
+     */
+    exceptions: z
+      .object({
+        add_subtype: z
+          .array(z.string().min(1))
+          .min(1)
+          .optional(),
+        /**
+         * Wave 4.8 follow-up 30 priority 1
+         * (lane 28, piece 1/N) (#2614
+         * follow-up): OPTIONAL `add_color`
+         * sub-arm. The engine merges the
+         * listed color names into each copy
+         * token's `colors` array AND rebuilds
+         * the matching `color_identity` array
+         * to include them (the union is
+         * deduplicated; declared order is
+         * preserved).
+         */
+        add_color: z
+          .array(
+            z.enum([
+              "white",
+              "blue",
+              "black",
+              "red",
+              "green",
+              "colorless",
+            ]),
+          )
+          .min(1)
+          .optional(),
+        /**
+         * Wave 4.8 follow-up 30 priority 2
+         * (lane 28, piece 2/N) (#2614
+         * follow-up): OPTIONAL `add_power`
+         * sub-arm. The engine parses the
+         * printed `power` string as an
+         * integer (default 0; non-integer
+         * printed powers like `*` or `1+*`
+         * yield 0), ADDS the `add_power`
+         * value, and rebuilds
+         * `cardData.power` as a string. The
+         * merge is ADDITIVE — no overwrite
+         * of the printed power. The
+         * `add_power` arm accepts negative
+         * integers (Phyrexian Metamorph-style
+         * "create a token that's a copy of
+         * [target] EXCEPT it has -1/-0"); a
+         * destructive `set_power` variant
+         * rides follow-up 31 if any future
+         * priority piece surfaces a
+         * "exactly N" semantic. v1 minimum:
+         * a single integer field; no
+         * `*` / `X+*` printed-power
+         * resolution.
+         */
+        add_power: z.number().int().optional(),
+        /**
+         * Wave 4.8 follow-up 30 priority 3
+         * (lane 28, piece 3/N) (#2614
+         * follow-up): OPTIONAL `add_toughness`
+         * sub-arm. The engine parses the
+         * printed `toughness` string as an
+         * integer (default 0; non-integer
+         * printed toughnesses like `*` or
+         * `1+*` yield 0), ADDS the
+         * `add_toughness` value, and rebuilds
+         * `cardData.toughness` as a string.
+         * The merge is ADDITIVE — no
+         * overwrite of the printed toughness.
+         * The `add_toughness` arm accepts
+         * negative integers
+         * (Phyrexian Metamorph-style
+         * "create a token that's a copy of
+         * [target] EXCEPT it has 0/-1"); a
+         * destructive `set_toughness` variant
+         * rides follow-up 31 if any future
+         * priority piece surfaces a
+         * "exactly N" semantic. v1 minimum:
+         * a single integer field; no
+         * `*` / `X+*` printed-toughness
+         * resolution. The `add_toughness`
+         * arm composes with the priority 2
+         * `add_power` arm (parallel additive
+         * P/T merge — both arms consume the
+         * printed P/T as the base).
+         */
+        add_toughness: z.number().int().optional(),
+        /**
+         * Wave 4.8 follow-up 30 priority 4
+         * (lane 28, piece 4/N) (#2614
+         * follow-up): OPTIONAL `add_type`
+         * sub-arm. The engine reads the
+         * printed `cardData.type_line` and
+         * PREPENDS the added card types to
+         * the TYPES half of the type_line
+         * (e.g. `"Creature — Bear"` +
+         * `["Artifact"]` =
+         * `"Artifact Creature — Bear"`).
+         * The added types are prepended in
+         * declared order; the subtypes half
+         * is preserved. The arm is ADDITIVE
+         * — no overwrite of the printed
+         * types. v1 minimum: a list of
+         * `CARD_TYPES` enum values (the
+         * standard seven — `Creature`,
+         * `Artifact`, `Enchantment`, `Land`,
+         * `Planeswalker`, `Battle`, and
+         * `Tribal`; `Tribal` is a legacy
+         * type that some cards still use);
+         * supertypes (`Legendary`, `Snow`,
+         * `Basic`) ride follow-up 31 via
+         * the parallel `add_supertype` arm.
+         * The `add_type` arm is distinct
+         * from `add_subtype` (which appends
+         * to the SUBTYPES half). A
+         * destructive `set_type` variant
+         * rides follow-up 31 if any future
+         * priority piece surfaces a
+         * "exactly [types]" semantic.
+         */
+        add_type: z
+          .array(
+            z.enum([
+              "Creature",
+              "Artifact",
+              "Enchantment",
+              "Land",
+              "Planeswalker",
+              "Battle",
+              "Tribal",
+            ]),
+          )
+          .min(1)
+          .optional(),
+      })
+      .strict()
+      .optional(),
     if_kicked: ifKicked,
   })
   .strict();
@@ -819,6 +1313,28 @@ export const PutCountersSchema = z
      * targets.
      */
     use_source_power: z.boolean().default(false),
+    /**
+     * Wave 4.8 follow-up 19 lane 114 piece 2/2
+     * (#2614 follow-up): the "each_creature" target
+     * mode on `PutCounters` (Avenger of Zendikar's
+     * "Landfall — you may put a +1/+1 counter on
+     * each Plant you control" half — DSC 186).
+     * The engine iterates the controller's
+     * battlefield creatures matching the
+     * `subtype` filter and stamps `amount` counters
+     * on each. The `subtype` and `controller` fields
+     * are mutually required (a single filter per
+     * effect); out-of-battlefield creatures are
+     * skipped. Only valid with
+     * `counter: "+1/+1"`; quest counters ride a
+     * follow-up lane.
+     */
+    target_each: z
+      .object({
+        subtype: z.string().min(1),
+      })
+      .strict()
+      .optional(),
     if_kicked: ifKicked,
     if_source_counters: ifSourceCounters,
   })
@@ -849,7 +1365,11 @@ export const PutCountersSchema = z
     {
       message: "amount is required (>=1 or 'X') unless use_source_power is set",
     },
-  );
+  )
+  .refine((e) => e.target_each === undefined || e.counter === "+1/+1", {
+    message:
+      "target_each (each_creature mode) only supports '+1/+1' counters (lane 114 piece 2/2, #2614)",
+  });
 
 /**
  * Put the top N cards of a library into its owner's graveyard (#2534).
@@ -1077,9 +1597,21 @@ export const SearchLibrarySchema = z
  * ability path adds the mana (with a color choice when there is more
  * than one option). There is no flag for this in the script.
  *
- * Out of scope for now: "spend this mana only on ..." restrictions, mana
- * that depends on a count ("for each creature you control"), and mixed
- * symbols like "{R}{G}". Cards with those wait for a follow-up.
+ * The optional `restriction` field (#2614 follow-up, Wave 4.8
+ * follow-up 21 lane 69 piece 1/N) is a free-form string tag
+ * identifying the per-mana restriction (e.g. `"creature_spells"`
+ * for "spend this mana only on creature spells", or
+ * `"instant_or_sorcery"`). The engine stashes the produced mana
+ * into the player's parallel `restrictionLedger[restriction]`
+ * (a per-tag partial pool) instead of the main `manaPool`. The
+ * spend-side consult is the multi-lane piece 2/N — v1 ships
+ * the ledger + the schema arm only. Mixed-color restrictions,
+ * per-restriction generic reductions, and multi-tag (a single
+ * mana tagged with two restrictions) ride follow-up lanes.
+ *
+ * Out of scope for now: mana that depends on a count ("for each
+ * creature you control"), and mixed symbols like "{R}{G}". Cards
+ * with those wait for a follow-up.
  */
 export const MANA_SYMBOLS = ["W", "U", "B", "R", "G", "C"] as const;
 
@@ -1109,6 +1641,43 @@ export const AddManaSchema = z
         message:
           "AddMana.colors may only be the single 'chosen' sentinel (not mixed with literal colors or 'any')",
       }),
+    /**
+     * Wave 4.8 follow-up 21 lane 69 (#2614 follow-up): the
+     * per-mana restriction tag ("spend this mana only on
+     * [X]"). When set, the engine routes the produced mana
+     * into `player.restrictionLedger[restriction]` (a parallel
+     * per-tag partial pool) instead of the main `manaPool`,
+     * and the spend-side consult (`resolveXspentOn` in
+     * `mana/restriction-ledger.ts`) reads the same tag back
+     * against the spell's restriction to gate the spend.
+     *
+     * v1 collapses to a constrained enum of well-known tags:
+     *   - `"creature_spells"` — "spend this mana only on
+     *     creature spells" (Llawan / War Tax / etc.)
+     *   - `"instant_or_sorcery"` — "spend only on instant or
+     *     sorcery spells"
+     *   - `"artifact_or_enchantment"` — "spend only on
+     *     artifact or enchantment spells"
+     *   - `"any_color"` — colored mana tagged for unrestricted
+     *     spending (used when a producer emits colored mana
+     *     that the engine should still ledger)
+     *   - `"colorless"` — colorless mana tagged for
+     *     unrestricted spending
+     *
+     * Multi-tag and per-color matching variants ride follow-up
+     * lanes; this enum is the v1 floor. Common typos like
+     * `"creature_spell"` (singular) are blocked by the schema
+     * so they don't silently widen the ledger at runtime.
+     */
+    restriction: z
+      .enum([
+        "creature_spells",
+        "instant_or_sorcery",
+        "artifact_or_enchantment",
+        "any_color",
+        "colorless",
+      ])
+      .optional(),
     if_kicked: ifKicked,
   })
   .strict();
@@ -1384,6 +1953,29 @@ export const TriggerSchema = z
     once_per_turn: z.literal(true).optional(),
     /** cast only: "a spell with a single target" (exactly one target). */
     targets: z.literal("single").optional(),
+    /**
+     * Wave 4.8 follow-up 19 lane 116 (#2614 follow-up):
+     * "this spell's X equals the X spent on the previous
+     * spell" — a cast-only X-source filter. When set, the
+     * trigger fires only when the cast spell has X in its
+     * mana cost AND `state.castVariableValues[spellCardId]`
+     * is set (the spell that triggered this). The
+     * `interpret.ts` consumer reads
+     * `state.castVariableValues[spellCardId]` to surface
+     * the stored X as the effect's resolved X.
+     *
+     * v1 supports a single arm
+     * (`"X_spent_on_spell"`); the "X spent on any prior
+     * spell this turn" / "X spent on the most recent
+     * instant or sorcery" variants ride follow-up lanes.
+     * v1 ships a **read-only path** — the engine surfaces
+     * the helper but does NOT yet write to
+     * `state.castVariableValues` at cast time. The
+     * synthetic test pre-populates the map directly; the
+     * write step is a follow-up sub-piece (lane 116
+     * piece 2/2).
+     */
+    X: z.enum(["X_spent_on_spell"]).optional(),
     /** The chapter number of a Saga chapter ability (I = 1). */
     chapter: z.number().int().min(1).max(6).optional(),
     effects: effects.optional(),
@@ -1420,6 +2012,228 @@ export const TriggerSchema = z
      */
     you_may: z.boolean().optional(),
     /**
+     * Wave 4.8 follow-up 13 lane 93 (#2614 follow-up):
+     * `you_may_cost` — a "you may pay [cost]; if you do,
+     * [effects]" gate. Combines the lane 60 `you_may`
+     * yes/no prompt with a cost-on-yes path (CR 117.3a
+     * "you may pay N life; if you do, ..." pattern;
+     * Skyship Buccaneer (FDN 76) is the canonical
+     * example: "you may pay 2 life; if you do, draw a
+     * card").
+     *
+     * The v1 minimum supports two cost shapes
+     * (parallel to the lane 88 `cost` substrate):
+     *   - `sacrifice_self: true` — sacrifice the source
+     *     permanent (midrange variant: "you may sacrifice
+     *     [this]; if you do, [effects]"). The cost
+     *     mechanism reuses the lane 88 sacrifice-card
+     *     path.
+     *   - `pay_life: { amount: N }` — pay N life. The
+     *     cost mechanism reuses the lane 63
+     *     `additionalCosts.pay_life` arm's
+     *     `resolveLifeLossEffect` helper.
+     *
+     * The engine's gate flow:
+     *   1. `you_may: true` is required alongside
+     *      `you_may_cost` (the yes/no gate is the
+     *      precondition for paying the cost).
+     *   2. On the first resolve pass, surface a
+     *      `you_may_prompt` waitingChoice (the lane 60
+     *      shape).
+     *   3. On `you_may_resolved === true`, evaluate the
+     *      cost: if it can be paid (sacrifice_self:
+     *      source still on battlefield; pay_life:
+     *      controller's life ≥ amount), stamp
+     *      `cost_paid: true` and run effects; if it
+     *      can't be paid, stamp `cost_paid: false` and
+     *      the trigger fizzles.
+     *   4. On `you_may_resolved === false`, skip the
+     *      trigger entirely (no cost, no effects).
+     *
+     * Out of scope for lane 93 (each a follow-up lane):
+     * the `you_may_cost.discard` arm (lane 98), the
+     * "you may pay [cost]; if you don't, [alt
+     * effects]" alternate (lane 99), the
+     * `you_may_cost.pay_mana` arm (some shapes use
+     * mana instead of life; out of scope), and the
+     * multi-cost combinations.
+     */
+    you_may_cost: z
+      .union([
+        z
+          .object({
+            sacrifice_self: z.literal(true),
+          })
+          .strict(),
+        z
+          .object({
+            pay_life: z.object({ amount: z.number().int().min(1) }).strict(),
+          })
+          .strict(),
+      ])
+      .optional(),
+    /**
+     * Wave 4.8 follow-up 12 lane 88 (#2614 follow-up): a "Sacrifice
+     * this [permanent]:" cost on a triggered ability (Midnight Snack,
+     * FDN 65's deferred half — "Sacrifice this artifact: create a
+     * Food token"). When `true`, the engine surfaces a yes/no prompt
+     * (`sacrifice_self_prompt` waitingChoice) at trigger resolution;
+     * on yes, the source permanent is sacrificed BEFORE the trigger's
+     * effects resolve; on no, the trigger does nothing (CR 602.2b).
+     *
+     * The v1 supports only `sacrifice_self: true` (a self-sacrifice
+     * cost). Multi-target sacrifice costs, hybrid mana costs combined
+     * with sacrifice, and "sacrifice this OR pay X life" alternates
+     * are follow-up lanes. Mutual exclusion with `modes`: a single
+     * trigger is either modal OR has a sacrifice cost, not both.
+     */
+    cost: z
+      .object({
+        sacrifice_self: z.literal(true).optional(),
+        /**
+         * Wave 4.8 follow-up 13 lane 98 (#2614 follow-up):
+         * the "you may discard a card as cost" arm
+         * (Storm Fleet Spy variant — parallel to the lane
+         * 88 sacrifice-self substrate). When set, the
+         * engine surfaces a yes/no prompt
+         * (`discard_prompt` WaitingChoice) at trigger
+         * resolution; on yes, the controller discards
+         * `amount` cards (the lane 87 `startDiscard` helper
+         * surfaces a target-card choice — v1 minimum uses
+         * a simple "discard a random card" path; multi-card
+         * discard with explicit targeting is a follow-up
+         * lane); on no, the trigger does nothing
+         * (CR 602.2b).
+         *
+         * v1 supports `amount: 1` only (single-card
+         * discard). The "discard 2 cards" variant rides
+         * a follow-up lane.
+         */
+        discard: z
+          .object({
+            amount: z.number().int().min(1).max(1),
+          })
+          .strict()
+          .optional(),
+        /**
+         * Wave 4.8 follow-up 13 lane 106 (#2614 follow-up):
+         * the "you may pay [life]; if you do, [X]"
+         * alternate cost ("you may pay 5 life; if you do,
+         * draw a card" — the Aether Burst /
+         * Skeleton Scarab / Necropotence-style cost).
+         * The arm is parallel to the lane 88
+         * `sacrifice_self` substrate and the lane 98
+         * `discard` substrate; the engine consult's
+         * `resolveScriptedAbility` cost-dispatch block
+         * runs `loseLife(state, controllerId, amount,
+         * cardId)` on `cost_paid === true` (reusing the
+         * existing `resolveLifeLossEffect` helper).
+         *
+         * v1 supports a single integer `amount`. The
+         * "pay 0 life" / "pay any amount of life"
+         * variants ride follow-up lanes.
+         */
+        pay_life: z
+          .object({
+            amount: z.number().int().min(1),
+          })
+          .strict()
+          .optional(),
+        /**
+         * Wave 4.8 follow-up 17 lane 117 (#2614 follow-up):
+         * the "pay [mana]; if you do, [X]" trigger-cost
+         * substrate (parallel to the lane 106
+         * `pay_life` arm). When set, the engine surfaces a
+         * yes/no prompt (`pay_mana_prompt` waitingChoice)
+         * at trigger resolution; on yes, the controller
+         * pays `amount` generic mana via the existing
+         * `spendMana(state, controllerId, { generic:
+         * amount })` helper; on no, the trigger does
+         * nothing (CR 602.2b).
+         *
+         * v1 supports a single integer `amount` of generic
+         * mana (the cascade pays generic first, then
+         * colorless, then colored — the standard
+         * spendMana cascade). The "pay [colored] mana"
+         * variant rides a follow-up lane; the
+         * "pay any amount" variant rides a follow-up lane.
+         *
+         * The combined `you_may + pay_life` + `pay_mana`
+         * shape (the handoff's "you_may + pay_life
+         * combined" wording) is NOT a single composite
+         * arm — the bridge is the side-by-side use of
+         * `pay_mana` and `pay_life` on the same trigger
+         * `cost` object, with `you_may: true` orchestrating
+         * the yes/no flow. A card with
+         * `cost: { pay_mana: { amount: 2 } }` is the
+         * canonical single-cost shape; the multi-cost
+         * combinator rides a future lane.
+         */
+        pay_mana: z
+          .object({
+            amount: z.number().int().min(1).max(99),
+          })
+          .strict()
+          .optional(),
+        /**
+         * Wave 4.8 follow-up 21 lane 99 follow-up extension
+         * (#2614 follow-up): the multi-cost OR combinator
+         * ("you may pay [A] OR pay [B]; if you do,
+         * [effects]" — Skeletonize / Oracle-shaped choices
+         * on the cost). The arm is a non-empty array of
+         * single-arm cost shapes (one of `sacrifice_self`
+         * / `discard` / `pay_life` / `pay_mana` — the same
+         * v1 substrate as the standalone `cost.<arm>`
+         * siblings). The combinator surfaces a
+         * `cost_combinator_or_prompt` waitingChoice at
+         * trigger resolution; on the first resolve pass the
+         * controller picks one (0-based index stamped on
+         * `stackObject.chosen_or_cost_index`); on the
+         * second pass the picked cost runs through the
+         * existing lane 88 / 98 / 106 / 117 dispatch as if
+         * it were the standalone `cost.<arm>` shape.
+         *
+         * The arm is mutually exclusive with the
+         * standalone `cost.<arm>` siblings (the refine
+         * rule rejects the dual shape) and requires
+         * `you_may: true` (the yes/no gate is the
+         * precondition for picking which arm to pay).
+         * v1 ships the 2-arm minimum (`min(2)`); 3+ arms
+         * ride a follow-up lane.
+         */
+        or: z
+          .array(
+            z.union([
+              z.object({ sacrifice_self: z.literal(true) }).strict(),
+              z
+                .object({
+                  discard: z
+                    .object({ amount: z.number().int().min(1).max(1) })
+                    .strict(),
+                })
+                .strict(),
+              z
+                .object({
+                  pay_life: z
+                    .object({ amount: z.number().int().min(1) })
+                    .strict(),
+                })
+                .strict(),
+              z
+                .object({
+                  pay_mana: z
+                    .object({ amount: z.number().int().min(1).max(99) })
+                    .strict(),
+                })
+                .strict(),
+            ]),
+          )
+          .min(2)
+          .optional(),
+      })
+      .strict()
+      .optional(),
+    /**
      * Wave 4.8 follow-up 2 lane 62 (#2614 follow-up): a counter
      * gate on the trigger event itself (CR 603.2 — a "while-
      * condition"-style gate, NOT an intervening-if CR 603.4).
@@ -1453,6 +2267,20 @@ export const TriggerSchema = z
     message:
       "you_may and modes are mutually exclusive on a trigger (lane 60, #2614)",
   })
+  .refine((t) => t.you_may_cost === undefined || t.you_may === true, {
+    message: "you_may_cost requires you_may: true (lane 93, #2614)",
+  })
+  .refine(
+    (t) => !(t.you_may_cost !== undefined && t.cost?.sacrifice_self === true),
+    {
+      message:
+        "you_may_cost and cost.sacrifice_self are mutually exclusive on a trigger (lane 93, #2614) — the cost substrate's sacrifice-self gate subsumes the lane 88 / 93 paths",
+    },
+  )
+  .refine((t) => !(t.cost?.sacrifice_self === true && t.modes !== undefined), {
+    message:
+      "cost.sacrifice_self and modes are mutually exclusive on a trigger (lane 88, #2614)",
+  })
   .refine((t) => (t.event === "chapter") === (t.chapter !== undefined), {
     message: "chapter is required on, and only for, chapter triggers",
   })
@@ -1467,14 +2295,31 @@ export const TriggerSchema = z
   })
   .refine(
     (t) =>
+      t.cost?.or === undefined ||
+      !(t.cost.sacrifice_self === true ||
+        t.cost.discard !== undefined ||
+        t.cost.pay_life !== undefined ||
+        t.cost.pay_mana !== undefined),
+    {
+      message:
+        "cost.or is mutually exclusive with the standalone cost arms (pay_life, pay_mana, sacrifice_self, discard) — pick one shape",
+    },
+  )
+  .refine((t) => t.cost?.or === undefined || t.you_may === true, {
+    message:
+      "cost.or requires you_may: true (the yes/no gate is the precondition for picking which cost arm to pay)",
+  })
+  .refine(
+    (t) =>
       t.event === "cast" ||
       (t.caster === undefined &&
         t.spell === undefined &&
         t.targets === undefined &&
-        t.cast_color === undefined),
+        t.cast_color === undefined &&
+        t.X === undefined),
     {
       message:
-        "caster, spell, targets and cast_color are only for cast triggers",
+        "caster, spell, targets, cast_color and X are only for cast triggers (lane 116, #2614)",
     },
   )
   .refine(
@@ -1610,6 +2455,63 @@ export const StaticSchema = z
   .object({
     /** The static ability's line of oracle text. */
     text: z.string().min(1),
+    /**
+     * Wave 4.8 follow-up 13 lane 61b (#2614 follow-up):
+     * `death_replacement` — a printed-card mechanism for
+     * the "if a creature you control would die, instead
+     * exile it" replacement effect. The structured form
+     * lives in `ReplacementEffectSchema` (lane 61a); this
+     * static arm is the LEGACY / printed-oracle bridge —
+     * the engine reads the source's printed
+     * `cardData.oracle_text` at refresh time and builds a
+     * `deathReplacement` per-instance ledger for any
+     * "would die, instead [destination]" clauses it parses.
+     * The replacement consult in `moveCardToZone`
+     * (lane 61a) reads both the lane 61a schema arm AND
+     * this ledger, so a card whose only mechanism is the
+     * printed `static` (Whip of Erebos's actual oracle —
+     * "Creatures you control have lifelink. Whenever a
+     * creature you control would die, exile it instead.")
+     * works end-to-end via `refreshScriptedStatics`.
+     *
+     * v1 supports a single shape: the source declares
+     * `"if a creature you control would die, instead
+     * exile it"` in its `cardData.oracle_text`, and the
+     * static's `text` field mirrors that line for the
+     * drafter's reference. The engine builds a
+     * `replacement_effects` entry on the source's
+     * per-instance `deathReplacement` field via
+     * `refreshScriptedStatics`, and the consult picks it
+     * up. Multi-target / conditional targets / etc. ride
+     * follow-up lanes (100 / 102 / 103 / 104 / 105).
+     *
+     * The `parser` arm lets the drafter bypass the
+     * default oracle-text parser by listing known
+     * substrings to match (avoids brittleness on
+     * in-game phrases). Default: the parser reads the
+     * source's `cardData.oracle_text` for "would die,
+     * instead exile it" / "you'd die, exile instead"
+     * substrings.
+     */
+    death_replacement: z
+      .object({
+        /**
+         * Free-form description for the drafter. The
+         * engine doesn't read this — it's metadata.
+         */
+        description: z.string().min(1).optional(),
+        /**
+         * Whether the printed effect is mandatory or
+         * optional. Lane 61b defaults to mandatory
+         * (Whip of Erebos's "if [thing] would die,
+         * instead exile it" has no "you may"). Out of
+         * scope: the `optional: true` engine arm
+         * (lane 100).
+         */
+        optional: z.literal(false).default(false),
+      })
+      .strict()
+      .optional(),
     affects: z
       .object({
         controller: z.enum(["you", "opponents"]),
@@ -1715,6 +2617,47 @@ export const StaticSchema = z
          */
         addCreatureTypeToSelf: z.literal(true).optional(),
         /**
+         * Wave 4.8 follow-up 14 lane 51 (#2614 follow-up): a
+         * permanent (not end-of-turn) "this creature is the
+         * chosen type in addition to its other types" static
+         * — Adaptive Automaton's type-change half. Parallel
+         * to lane 52's `add_creature_type` + `addCreatureTypeToSelf`
+         * pair but the chosen type is **always** resolved
+         * from `source.chosenCreatureType` (no literal-string
+         * variant — by definition the chosen type IS the
+         * instance's chosen type). The engine extends the
+         * source's `cardData.type_line` permanently to include
+         * the chosen subtype alongside the printed subtypes,
+         * so call sites that read `cardData.type_line`
+         * directly (rather than the `subtypesOf` helper
+         * unioning `chosenTypeAdditions`) see the addition.
+         * The overlay is held in a per-instance
+         * `permanentTypeOverlay` field (parallel to
+         * `animatedUntilEndOfTurn.cardData` but persistent —
+         * no EOT cleanup; cleared only when the source leaves
+         * the battlefield). v1 is self-only (matches lane
+         * 52's self-only semantics); the Aura-style
+         * generalization rides a follow-up lane. The chosen
+         * type evicts naturally on zone change because the
+         * static itself is battlefield-zone-only.
+         *
+         * Used by Adaptive Automaton's "is the chosen type
+         * in addition to its other types" half. Distinct
+         * from `add_creature_type` + `addCreatureTypeToSelf`
+         * (lane 52): the lane 52 arm only stamps the
+         * `chosenTypeAdditions` field which the local
+         * `subtypesOf` helper unions with the printed type
+         * line; the lane 51 arm ALSO overlays the printed
+         * `cardData.type_line` itself. Both arms may
+         * coexist on the same card without conflict (the
+         * lane 51 arm produces the overlay; the lane 52 arm
+         * produces the parallel `chosenTypeAdditions` —
+         * both read paths see the chosen type). The lane
+         * 51 arm without a `chosenCreatureType` resolved
+         * (no enter choice) is inert.
+         */
+        becomes_chosen_creature_type: z.literal(true).optional(),
+        /**
          * Wave 4.8 lane 55 (#2614 follow-up): a
          * creature-color-changing static. The source adds
          * the named color (or its `chosenColor`) to its own
@@ -1744,7 +2687,27 @@ export const StaticSchema = z
          */
         addColorToSelf: z.literal(true).optional(),
       })
-      .strict(),
+      .strict()
+      // Wave 4.8 follow-up 18 lane 112 (#2614 follow-up):
+      // the `affects` slot is now optional. v1 statics
+      // that have at least one of `affects`,
+      // `power`, `toughness`, etc. use `affects` for
+      // per-target filtering. Lane 61b's pure
+      // `death_replacement` meta-static
+      // (Whip of Erebos-style replacement effects)
+      // also carries `affects` in v1 — the consult
+      // reads `source.controllerId` rather than the
+      // static's `affects.controller` for the
+      // replacement-applies-to set, but the schema
+      // requires the field for symmetry. The lane 112
+      // self-grant arm — and any future
+      // meta-static arms — may legitimately omit
+      // `affects` because the meta-static doesn't
+      // apply per-target (it stamps the source's own
+      // `grantedTriggers` field via a side channel).
+      // Without the `.optional()`, such meta-statics
+      // would fail schema validation.
+      .optional(),
     power: z.number().int().optional(),
     toughness: z.number().int().optional(),
     /**
@@ -1756,6 +2719,512 @@ export const StaticSchema = z
      * standard shape, but a card with "+1/+1 plus X" can stack both.
      */
     X: z.enum(["treasures", "creatures", "lands"]).optional(),
+    /**
+     * Wave 4.8 follow-up 23 lane 32 (#2614 follow-up): the
+     * "per count" P/T scaling modifier — the Warrior
+     * Knights / adaptive anthem family that grows with the
+     * board. Combines with `power` / `toughness` to model
+     * "creatures you control get +1/+1 for each creature
+     * you control" patterns without a redundant integer
+     * pair. v1 single shape: a count source + a per-unit
+     * power contribution + a per-unit toughness
+     * contribution. Standard sample:
+     *
+     *   {
+     *     anthemScaling: {
+     *       per: "other_creatures",
+     *       perPower: 1,
+     *       perToughness: 1,
+     *     },
+     *   }
+     *
+     * ...with `affects: { controller: "you", other: true }`
+     * gives "Other creatures you control get +1/+1 for
+     * each other creature you control."
+     *
+     * The count sources parallel the lane 36 `X` enum —
+     * `other_creatures` is the lane 32 addition that
+     * excludes the source (the "OTHER creatures you
+     * control" semantics — the source doesn't count
+     * itself). v1 supports a single count source; multi-
+     * source scaling (e.g. "for each creature OR artifact
+     * you control") is a follow-up sub-piece.
+     *
+     * Out of scope (each a follow-up lane): filtered
+     * count sources ("per creature of the chosen type"),
+     * compound count sources ("per creature AND artifact
+     * you control"), and a per_unit shape with a unit-
+     * type filter ("per +1/+1 counter on this creature").
+     *
+     * Wave 4.8 follow-up 24 lane 32 piece 2/N (#2614
+     * follow-up): an OPTIONAL `perSubtype?: string`
+     * field that, when set, filters the count iteration
+     * to permanents whose `cardData.type_line` matches
+     * the given creature (or permanent) type. v1 takes a
+     * FIXED TYPE STRING — the chosen-type variant ("per
+     * creature of the chosen type" — `chosenCreatureType`
+     * field on the source) rides a follow-up sub-piece.
+     * The existing `affects.subtype` field already filters
+     * WHICH permanents the anthem AFFECTS; this field
+     * filters the COUNT SOURCE specifically. Sample:
+     *
+     *   "Other creatures you control get +1/+1 for each
+     *   other Warrior you control"
+     *   →
+     *   {
+     *     affects: {
+     *       controller: "you",
+     *       other: true,
+     *       subtype: "Creature",
+     *     },
+     *     anthemScaling: {
+     *       per: "other_creatures",
+     *       perPower: 1,
+     *       perToughness: 1,
+     *       perSubtype: "Warrior",
+     *     },
+     *   }
+     *
+     * The engine's `computeAnthemScalingCount` consults
+     * `perSubtype` when set and filters the count
+     * iteration to cards whose `type_line` includes the
+     * given subtype as a case-insensitive substring
+     * (matching how the existing `computeX` looks up
+     * "Treasure" / "Creature" / "Land" — the chosen
+     * "Warrior" type matches cards whose `type_line`
+     * contains "Warrior"). When unset, the count is
+     * unfiltered (the v1 default).
+     *
+     * Out of scope (each a follow-up lane): the
+     * chosen-type variant of the `perSubtype` field
+     * ("per creature of the chosen type" — driven by a
+     * `chosenCreatureType` field on the source), and a
+     * per-counter scaling shape ("per +1/+1 counter on
+     * this creature"). The compound "AND" variant rides
+     * follow-up 25 piece 2/N.
+     */
+    anthemScaling: z
+      .object({
+        /**
+         * The state-derived count source. v1 single shape
+         * — the per-unit P/T contribution is multiplied by
+         * the count of this source on the source's
+         * controller's battlefield.
+         */
+        per: z.enum([
+          "creatures",
+          "treasures",
+          "lands",
+          "other_creatures",
+        ]),
+        /**
+         * The power contribution per unit. Default 0
+         * (matches the integer `power: 0` no-P/T pattern);
+         * +1 for the "+1/+1 per creature" family.
+         */
+        perPower: z.number().int().default(0),
+        /**
+         * The toughness contribution per unit. Default 0
+         * (matches the integer `toughness: 0` no-P/T
+         * pattern); +1 for the "+1/+1 per creature"
+         * family.
+         */
+        perToughness: z.number().int().default(0),
+        /**
+         * Wave 4.8 follow-up 24 lane 32 piece 2/N
+         * (#2614 follow-up): an OPTIONAL subtype filter
+         * on the count source. When set, the count
+         * iteration skips permanents whose `type_line`
+         * does NOT include the given subtype as a
+         * case-insensitive substring (matching how
+         * `computeX` looks up "Treasure" / "Creature" /
+         * "Land"). When unset, the count source is
+         * unfiltered (the v1 default — the count
+         * includes every permanent matching the `per`
+         * arm).
+         *
+         * Wave 4.8 follow-up 25 lane 32 piece 3/N
+         * (#2614 follow-up): the `"chosen"` sentinel.
+         * A sentinel meaning "use the source's
+         * `chosenCreatureType` instance field". Only
+         * valid when the source has `enter_choice: {
+         * kind: "creature_type" }` (the lane 44
+         * substrate); the engine
+         * (`computeAnthemScalingCount` in
+         * `keyword-actions/scripted-statics.ts`) reads
+         * `source.chosenCreatureType` and substitutes it
+         * (parallel to `affects.subtype: "chosen"` at the
+         * affects-side filter — see line ~2152). If
+         * `chosenCreatureType` is null (the enter choice
+         * hasn't resolved yet) the count is 0 — the
+         * scripted anthem remains inert until the player
+         * makes the enter choice. Used by a chosen-type
+         * anthem ("creatures you control of the chosen
+         * type get +1/+1 for each OTHER creature you
+         * control OF THE CHOSEN TYPE" — exercises both
+         * the affects-side filter AND the count-side
+         * filter in one pass).
+         */
+        perSubtype: z
+          .union([z.string().min(1), z.literal("chosen")])
+          .optional(),
+        /**
+         * Wave 4.8 follow-up 25 lane 32 piece 2/N
+         * (#2614 follow-up): an OPTIONAL secondary
+         * AND-source for the count. When set, the count
+         * is `count(per) + count(andPer.per)` (CR
+         * 613.4c-style multi-source scaling — a card
+         * granting "+1/+1 for each creature AND artifact
+         * you control" reads as the sum of both source
+         * counts). The `andPer` shares the same `per`
+         * enum + optional `perSubtype` filter as the
+         * primary source; the v1 minimum is two sources
+         * summed (a more expressive multi-arm array
+         * variant rides a later follow-up).
+         *
+         * Sample card: a synthetic anthem registered via
+         * the test harness with `per: "creatures",
+         * andPer: { per: "treasures" }` ("Creatures you
+         * control get +1/+1 for each creature AND each
+         * Treasure you control"). The count is
+         * `creatures_count + treasures_count`.
+         *
+         * Wave 4.8 follow-up 27 lane 32 piece 1/N
+         * (#2614 follow-up): the `andPer.perCounter`
+         * OPTIONAL self-referential per-counter arm
+         * (parallel to the primary `perCounter` arm).
+         * When set on the `andPer` arm, REPLACES the
+         * `andPer.per` state-derived count with the
+         * SOURCE's own per-counter count — the compound
+         * count is `count(per) + count(andPer.perCounter)`
+         * (matches how the primary `perCounter` REPLACES
+         * the primary `per` entirely). The
+         * `andPer.perCounter.counter` accepts the
+         * `"chosen"` sentinel — the engine resolves the
+         * counter type from `source.chosenCreatureType`
+         * (parallel to the primary `perCounter` sentinel
+         * and the `perSubtype: "chosen"` sentinel — the
+         * same instance field drives all three
+         * substrates via independent branches in
+         * `computeAnthemScalingCount`).
+         *
+         * The `andPer.perCounter` arm is INDEPENDENT
+         * from the `andPer.per` enum + `andPer.perSubtype`
+         * filter — they are not both consulted in the
+         * same pass. When `andPer.perCounter` is set,
+         * the `andPer.per` and `andPer.perSubtype`
+         * fields are ignored (the per-counter count
+         * replaces them). This matches the primary
+         * `perCounter` arm's "REPLACES the `per` arm
+         * entirely" semantic.
+         *
+         * Out of scope (each a follow-up lane): the
+         * exclusion variant ("per creature but NOT
+         * artifact") and the OR combinator (lane 36's
+         * `X.or`-style matrix).
+         */
+        andPer: z
+          .object({
+            per: z.enum([
+              "creatures",
+              "treasures",
+              "lands",
+              "other_creatures",
+            ]),
+            perSubtype: z
+              .union([z.string().min(1), z.literal("chosen")])
+              .optional(),
+            /**
+             * Wave 4.8 follow-up 27 lane 32 piece 1/N
+             * (#2614 follow-up): an OPTIONAL self-
+             * referential per-counter arm on the
+             * `andPer` AND-source. When set, the
+             * `andPer` contribution to the compound
+             * count becomes the SOURCE's own
+             * per-counter count (REPLACES the
+             * `andPer.per` state-derived count). The
+             * `counter` field accepts the `"chosen"`
+             * sentinel — the engine resolves the
+             * counter type from
+             * `source.chosenCreatureType` (parallel
+             * to the primary `perCounter` sentinel
+             * from follow-up 26 piece 1/N).
+             */
+            perCounter: z
+              .object({
+                counter: z.union([
+                  z.string().min(1),
+                  z.literal("chosen"),
+                ]),
+                /**
+                 * Wave 4.8 follow-up 28 priority 1
+                 * (#2614 follow-up): an OPTIONAL
+                 * ordinal variant on the
+                 * `andPer.perCounter` arm. Mirrors the
+                 * primary `perCounter.ordinal?` field
+                 * — when set, the per-counter count is
+                 * the CUMULATIVE sum of the first
+                 * `ordinal` counters of the resolved
+                 * type on the source. When unset, the
+                 * existing semantic is used (sum of
+                 * ALL counters of the resolved type).
+                 * The primary `perCounter.ordinal?` and
+                 * the `andPer.perCounter.ordinal?`
+                 * fields are INDEPENDENT (each applies
+                 * to its own arm).
+                 */
+                ordinal: z.number().int().min(1).optional(),
+              })
+              .strict()
+              .optional(),
+            /**
+             * Wave 4.8 follow-up 28 priority 3
+             * (#2614 follow-up): the SUMMED
+             * per-counter arm on the `andPer`
+             * AND-source. The natural read for
+             * "per creature AND per chosen counter"
+             * anthems — the per-counter count is
+             * SUMMED with the `andPer.per`
+             * state-derived count (NOT replaced).
+             * The follow-up 27 piece 1/N
+             * `andPer.perCounter` arm REPLACES the
+             * state-derived count (parallel to the
+             * primary `perCounter` REPLACES the
+             * primary `per`); this new
+             * `andPer.perCounterSummed` arm is the
+             * SUMMED alternative for "per creature +
+             * per counter" anthems where the
+             * REPLACE semantic is wrong (the
+             * REPLACE form is a special case for
+             * self-referential count sources;
+             * the summed form is the CORRECT shape
+             * for most "per + perCounter" use
+             * cases). v1 minimum: the SUMMED arm
+             * lives alongside the REPLACE arm
+             * (both are valid). When BOTH are set,
+             * the SUM arm takes precedence
+             * (the SUM is the natural read).
+             * Future lane: deprecating the REPLACE
+             * arm (the self-referential case is
+             * rare; the summed form covers 90%+ of
+             * use cases) rides follow-up 29.
+             */
+            perCounterSummed: z
+              .object({
+                counter: z.union([
+                  z.string().min(1),
+                  z.literal("chosen"),
+                ]),
+                /**
+                 * Wave 4.8 follow-up 28 priority 3
+                 * (#2614 follow-up): an OPTIONAL
+                 * ordinal variant on the
+                 * `andPer.perCounterSummed` arm.
+                 * Mirrors the primary
+                 * `perCounter.ordinal?` field —
+                 * when set, the summed per-counter
+                 * count is the CUMULATIVE sum of the
+                 * first `ordinal` counters of the
+                 * resolved type on the source. When
+                 * unset, the summed per-counter
+                 * count is the sum of ALL counters
+                 * of the resolved type (which is
+                 * then ADDED to the
+                 * `andPer.per` state-derived count).
+                 */
+                ordinal: z.number().int().min(1).optional(),
+              })
+              .strict()
+              .optional(),
+          })
+          .strict()
+          .optional(),
+        /**
+         * Wave 4.8 follow-up 25 lane 32 piece 4/N
+         * (#2614 follow-up): an OPTIONAL self-referential
+         * per-counter count source. When set, REPLACES
+         * the `per` arm's state-derived count with the
+         * source's own per-counter count — the count is
+         * `card.counters?.find(c => c.type ===
+         * counter)?.count ?? 0` (matches how
+         * `evergreen-keywords.getEffectivePower` reads
+         * the +1/+1 counter from the same field — see
+         * `evergreen-keywords.ts` line ~973). v1
+         * supports a single counter type per arm; a
+         * chosen-counter variant rides follow-up 26+.
+         *
+         * Wave 4.8 follow-up 26 lane 32 piece 1/N
+         * (#2614 follow-up): the `"chosen"` sentinel
+         * for `perCounter.counter`. When the field is
+         * the sentinel, the engine resolves the
+         * counter type from `source.chosenCreatureType`
+         * (parallel to the `perSubtype: "chosen"`
+         * sentinel — the same instance field drives both
+         * substrates via independent branches in
+         * `computeAnthemScalingCount`). If
+         * `chosenCreatureType` is null (the
+         * `enter_choice: { kind: "creature_type" }`
+         * resolve hasn't happened yet), the count is 0
+         * (the scripted anthem remains inert — matches
+         * the lane 86 chosen-type anthem semantics).
+         *
+         * Sample card: a chosen-counter anthem ("this
+         * creature gets +1/+1 for each [chosen counter
+         * kind] on it" — combined with `enter_choice: {
+         * kind: "creature_type" }` resolving to "Marker
+         * Counter" or similar — exercises both the
+         * sentinel substitution AND the per-counter
+         * count in one pass).
+         *
+         * Out of scope: the `andPer` / `perSubtype`
+         * combinations with `perCounter` (the
+         * per-counter arm REPLACES the `per` arm
+         * entirely; a hybrid "per creatures + per
+         * counter" arm is a follow-up lane). The
+         * `perCounter.counter: "chosen"` interaction
+         * with `andPer` / `perSubtype` rides follow-up
+         * 27.
+         *
+         * Wave 4.8 follow-up 28 priority 1 (#2614
+         * follow-up): the OPTIONAL `ordinal: number`
+         * field on `perCounter`. When set, the
+         * per-counter count is the CUMULATIVE sum of
+         * the first `ordinal` counters of the resolved
+         * type on the source (matches MTG "Nth counter"
+         * semantics — a source with 3 +1/+1 counters
+         * and `ordinal: 2` contributes 2, not 3). When
+         * unset, the existing semantic is used (sum of
+         * ALL counters of the resolved type). The
+         * `"chosen"` sentinel resolves the counter type
+         * first; the ordinal then applies to the
+         * resolved type. v1 minimum is the per-source
+         * Nth-counter read; a per-pair counter ordinal
+         * ("Nth counter of each unique type") rides a
+         * future lane.
+         */
+        perCounter: z
+          .object({
+            counter: z
+              .union([z.string().min(1), z.literal("chosen")]),
+            /**
+             * Wave 4.8 follow-up 28 priority 1 (#2614
+             * follow-up): an OPTIONAL ordinal variant
+             * on the per-counter arm. When set, the
+             * count is the CUMULATIVE sum of the first
+             * `ordinal` counters of the resolved type
+             * on the source (matches MTG "Nth counter"
+             * semantics — a source with 3 +1/+1
+             * counters and `ordinal: 2` contributes 2,
+             * not 3). When unset, the existing
+             * per-counter semantic is used (sum of ALL
+             * counters of the resolved type). The
+             * `"chosen"` sentinel resolves the counter
+             * type first; the ordinal then applies to
+             * the resolved type. v1 minimum: the
+             * ordinal is a per-source Nth-counter read;
+             * a per-pair counter ordinal variant (a
+             * second arm that reads "Nth counter of
+             * each unique type") rides a future lane.
+             *
+             * Wave 4.8 follow-up 29 priority 4 (lane
+             * 32) (#2614 follow-up): the OPTIONAL
+             * `perPair` arm — a per-pair cross-type
+             * variant ("Nth counter of each unique
+             * type"). When set, the count is the SUM
+             * across all unique counter types of the
+             * cumulative sum of the first `ordinal`
+             * counters of each type. A source with 2
+             * +1/+1 counters + 3 -1/-1 counters with
+             * `perPair.ordinal: 2` contributes 2 +1/+1
+             * + 2 -1/-1 = 4 (NOT 2 + 3 = 5 — the
+             * cross-type summation is per-pair, not
+             * per-counter cumulative). The `perPair`
+             * arm lives alongside the existing
+             * `perCounter` arm; both can be set, but
+             * the `perPair` arm takes precedence when
+             * both are set (parallel to the
+             * `andPer.perCounterSummed` precedence
+             * rule from follow-up 28 priority 3). The
+             * `perPair.ordinal` defaults to 1
+             * (cumulative sum of the FIRST counter of
+             * each unique type — a "first counter per
+             * pair" read). v1 minimum: the `perPair`
+             * ordinal-only cross-type read (no per-pair
+             * sentinel extension; the per-pair-with-
+             * sentinel rides follow-up 30).
+             */
+            ordinal: z.number().int().min(1).optional(),
+            /**
+             * Wave 4.8 follow-up 29 priority 4 (lane
+             * 32) (#2614 follow-up): the OPTIONAL
+             * `perPair` arm. When set, the per-counter
+             * count is the SUM across all unique
+             * counter types of the cumulative sum of
+             * the first `perPair.ordinal` counters of
+             * each type. When unset, the existing
+             * `perCounter.ordinal?` semantic is used
+             * (cumulative sum of the first
+             * `perCounter.ordinal` counters of the
+             * resolved type). Both `perCounter` and
+             * `perPair` can be set on the same arm
+             * (they're independent Zod fields); when
+             * both are set, `perPair` takes precedence
+             * (the per-pair is the "Nth counter of
+             * each unique type" read; a separate arm
+             * from the per-counter Nth-counter read).
+             * The `andPer.perCounter perPair` parallel
+             * ordinal extension rides follow-up 30.
+             */
+            perPair: z
+              .object({
+                ordinal: z.number().int().min(1).optional(),
+              })
+              .strict()
+              .optional(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict()
+      .optional(),
+    /**
+     * Wave 4.8 follow-up 12 lane 91 (#2614 follow-up): a
+     * CR 603. "while-condition" gate on the static ability itself
+     * (Twinblade Paladin's "as long as you have 25 or more life,
+     * this creature has double strike and lifelink"). When the
+     * gate evaluates false, the static's `keywords` / `power` /
+     * `toughness` are NOT applied at refresh time; when true,
+     * the static applies normally.
+     *
+     * Wave 4.8 follow-up 14 lane 57 (#2614 follow-up): extends
+     * the discriminator with `counter_minimum` — the static
+     * applies only when the source's per-instance
+     * `card.instanceCounters[counter]` matches the comparator:
+     *   - `op: "gte"` → `count >= n`
+     *   - `op: "eq"`  → `count === n`
+     * Default behavior on absent counters is `0`. Used by
+     * Redcap Gutter-Dweller's "Goblins you control have menace
+     * as long as this has three or more counters on it" half
+     * (`counter: "+1/+1", op: "gte", n: 3`).
+     */
+    while_condition: z
+      .discriminatedUnion("kind", [
+        z
+          .object({
+            kind: z.literal("life_minimum"),
+            value: z.number().int().min(1),
+          })
+          .strict(),
+        z
+          .object({
+            kind: z.literal("counter_minimum"),
+            counter: z.string().min(1),
+            op: z.enum(["gte", "eq"]),
+            n: z.number().int().min(0),
+          })
+          .strict(),
+      ])
+      .optional(),
     keywords: z.array(z.enum(TOKEN_KEYWORDS)).min(1).optional(),
     /**
      * Wave 4.8 follow-up 5 lane 71 (#2614 follow-up): the
@@ -1773,14 +3242,120 @@ export const StaticSchema = z
      * (`["everything"]`); multi-color and
      * "choose-a-quality" protection are follow-up lanes.
      *
-     * Sample card: a synthetic anthem registered via the
-     * test harness with `protectionFrom: ["red"]` and
-     * `affects: { controller: "you" }` ("Creatures you
-     * control have protection from red"). A red creature +
-     * a red spell verify the protection is honored at cast
-     * time and combat time.
+     * Wave 4.8 follow-up 26 lane 71 piece 3/N (#2614
+     * follow-up): the `"chosen"` sentinel for
+     * `protectionFrom`. When the field is the sentinel, the
+     * engine resolves the protected quality from
+     * `source.chosenProtectionFrom` (parallel to the lane 86
+     * chosen-type anthem `affects.subtype: "chosen"` +
+     * follow-up 25 lane 32 piece 3/N `perSubtype: "chosen"`
+     * + follow-up 26 lane 32 piece 1/N `perCounter.counter:
+     * "chosen"` — the same `enter_choice: { kind:
+     * "protection_quality" }` enter-choice instance field
+     * drives the substrate). If `chosenProtectionFrom` is
+     * null (the enter choice hasn't resolved yet), the
+     * static is INERT for that pass (no qualities stamped;
+     * matches the lane 86 chosen-type anthem "null"
+     * semantics).
+     *
+     * Sample card: a chosen-quality anthem ("creatures you
+     * control have protection from the chosen color")
+     * combined with `enter_choice: { kind:
+     * "protection_quality" }`. The anthem grants protection
+     * from the chosen quality to each affected permanent
+     * (a red creature + a red-quality anthem verify the
+     * protection is honored at cast time and combat time).
+     *
+     * Out of scope (each a follow-up lane): the
+     * union with the per-source per-quality ledger
+     * (the follow-up 26 lane 71 piece 2/N parked out as
+     * a redundant fourth ledger); the `affects.subtype:
+     * "chosen"` interaction with `protectionFrom: "chosen"`
+     * (the sentinel resolves independently of the
+     * `chosenCreatureType` instance field — different
+     * field, same resolution pattern).
+     *
+     * Wave 4.8 follow-up 27 lane 71 piece 3/N (#2614
+     * follow-up): the per-entry `"chosen"` sentinel
+     * (multi-quality sentinel). The protectionFrom
+     * field accepts a per-entry union form
+     * `z.array(z.union([z.string().min(1),
+     * z.literal("chosen")]))` so a multi-quality
+     * anthem can grant protection from a list of
+     * literal qualities AND the chosen quality in the
+     * same arm (e.g. `["red", "chosen"]` = "protection
+     * from red AND the chosen quality"). The
+     * `"chosen"` entry is resolved from
+     * `source.chosenProtectionFrom` (the same
+     * `enter_choice: { kind: "protection_quality" }`
+     * instance field as the standalone sentinel). When
+     * `chosenProtectionFrom` is null, the `"chosen"`
+     * entry contributes 0 qualities (the static
+     * still grants the literal entries — the entry-
+     * level resolution is independent per entry).
+     *
+     * Wave 4.8 follow-up 28 priority 2 (#2614
+     * follow-up): the array-aware entry shape
+     * (nested-array "pair" form).
      */
-    protectionFrom: z.array(z.string().min(1)).optional(),
+    protectionFrom: z
+      .union([
+        z.array(z.string().min(1)),
+        z.literal("chosen"),
+        z.array(
+          z.union([
+            z.string().min(1),
+            // Wave 4.8 follow-up 28 priority 2 (#2614
+            // follow-up): the array-aware entry shape
+            // (nested-array "pair" form). Each nested
+            // array is a list of ≥ 2 literal qualities
+            // representing a "pair" (e.g.
+            // `["red", "green"]` = "protection from the
+            // red/green pair"). A 1-element nested
+            // array is REJECTED via `.min(2)` to avoid
+            // confusion with the flat literal form.
+            // The engine consult FLATTENS each entry's
+            // nested array to its literal entries
+            // before stamping the resolved qualities
+            // list. A 0-element array is also rejected
+            // (`.min(2)` covers both bounds). The
+            // `"chosen"` sentinel resolution is
+            // independent of the pair-flattening (the
+            // `"chosen"` literal still reads
+            // `source.chosenProtectionFrom`).
+            //
+            // Wave 4.8 follow-up 29 priority 5 (lane
+            // 71) (#2614 follow-up): the per-pair
+            // `"chosen"` sentinel entry. The
+            // nested array now ALSO accepts a
+            // `"chosen"` sentinel entry — the
+            // engine consult FLATTENS each
+            // nested array to its literal
+            // entries AND resolves the
+            // `"chosen"` entry via
+            // `source.chosenProtectionFrom`.
+            // The resulting quality is added to
+            // the flattened list (alongside the
+            // literal entries). v1 minimum: a
+            // single `"chosen"` entry inside
+            // the nested array (the
+            // per-pair-with-sentinel extension
+            // rides follow-up 30; the
+            // per-pair-with-`"chosen"`-per-pair
+            // extension rides follow-up 30 too).
+            z
+              .array(
+                z.union([
+                  z.string().min(1),
+                  z.literal("chosen"),
+                ]),
+              )
+              .min(2),
+            z.literal("chosen"),
+          ]),
+        ),
+      ])
+      .optional(),
     /**
      * Wave 4.8 follow-up 7 lane 75 (#2614 follow-up):
      * "as long as this is in play, it's a copy of [a chosen
@@ -1834,9 +3409,26 @@ export const StaticSchema = z
              * must be on the battlefield for the
              * overlay to take effect (the refresh
              * pass checks `state.cards.has(targetId)`).
+             *
+             * Wave 4.8 follow-up 22 lane 70 piece 1/N
+             * (#2614 follow-up): `until` now also
+             * accepts `"permanent"` — the "becomes a
+             * copy of [X] forever" variant (Clone,
+             * Phantasmal Image without the EOT
+             * suffix). v1 ships the schema arm + the
+             * substrate only; the refresh-pass write
+             * that honours the permanent overlay
+             * rides a follow-up piece (the field is
+             * parseable and the substrate stamps
+             * `copyOfTargetIdPermanent` onto the
+             * source, but the overlay itself is not
+             * yet applied).
              */
             target: z.string().min(1),
-            until: z.literal("end_of_turn"),
+            until: z.union([
+              z.literal("end_of_turn"),
+              z.literal("permanent"),
+            ]),
             /**
              * Wave 4.8 follow-up 8 lane 75c
              * (#2614 follow-up): copy with
@@ -1874,10 +3466,7 @@ export const StaticSchema = z
              */
             exceptions: z
               .object({
-                add_subtype: z
-                  .array(z.string().min(1))
-                  .min(1)
-                  .optional(),
+                add_subtype: z.array(z.string().min(1)).min(1).optional(),
               })
               .strict()
               .optional(),
@@ -1926,7 +3515,20 @@ export const StaticSchema = z
                 name: z.string().min(1),
               })
               .strict(),
-            until: z.literal("end_of_turn"),
+            /**
+             * Wave 4.8 follow-up 22 lane 70 piece 1/N
+             * (#2614 follow-up): `until` now also
+             * accepts `"permanent"` for the named-card
+             * copy variant. Same substrate / engine
+             * split as the `target` arm — v1 ships the
+             * schema + the `copyOfTargetIdPermanent`
+             * field; the refresh-pass write rides a
+             * follow-up piece.
+             */
+            until: z.union([
+              z.literal("end_of_turn"),
+              z.literal("permanent"),
+            ]),
             /**
              * Wave 4.8 follow-up 8 lane 75c
              * (#2614 follow-up): copy-with-exception
@@ -1939,16 +3541,67 @@ export const StaticSchema = z
              */
             exceptions: z
               .object({
-                add_subtype: z
-                  .array(z.string().min(1))
-                  .min(1)
-                  .optional(),
+                add_subtype: z.array(z.string().min(1)).min(1).optional(),
               })
               .strict()
               .optional(),
           })
           .strict(),
       ])
+      .optional(),
+    /**
+     * Wave 4.8 follow-up 18 lane 112 (#2614 follow-up):
+     * the self-grant triggered-ability arm of `StaticSchema`.
+     * CR 603.2 grant semantics — the source's own static
+     * copies one or more triggered abilities onto the
+     * SOURCE itself. Mirrors the lane 65 Aura-shaped
+     * variant (`AuraStaticSchema.grants.triggers`, which
+     * grants triggers onto the ENCHANTED card) but routes
+     * the grant onto the source. The engine consumer
+     * (`refreshScriptedStatics`) reads the static's
+     * `grants.triggers` list and merges each entry into
+     * the source's per-instance `grantedTriggers` field
+     * with `from: source.id` and `sourceControllerId:
+     * source.controllerId`; the trigger fire path
+     * (`detectTriggeredAbilities` in
+     * `abilities/triggered.ts`) already reads the
+     * `grantedTriggers` list (lane 65's path) and fires
+     * alongside the card's own scripted triggers.
+     *
+     * v1 supports a single `event: "dies"` trigger
+     * (parallel to the lane 65 v1 minimum). Multi-event
+     * grants (`["dies" | "etb" | "attacks"]`) and
+     * grants that reference the source's controller
+     * (vs the source's controller at fire time) ride
+     * future lanes. CR 603.2: the static-creature
+     * itself becomes the source of the granted trigger;
+     * the trigger's `effect text` reads `[card name]
+     * dies, …` (matching the lane 65 Aura path's
+     * `When [enchanted card name] dies, …`).
+     *
+     * Use case (single-card sample + lane 112 v1): a
+     * creature whose static reads "When this creature
+     * dies, draw a card" but written as a self-grant
+     * (the card has no native `triggers`; the static
+     * grants the trigger). The v1 minimum covers the
+     * self-dies shape so the lane parallels the Aura
+     * pattern end-to-end.
+     */
+    grants: z
+      .object({
+        triggers: z
+          .array(
+            z
+              .object({
+                event: z.enum(["dies"]),
+                effects: z.array(EffectSchema).min(1),
+              })
+              .strict(),
+          )
+          .min(1)
+          .optional(),
+      })
+      .strict()
       .optional(),
   })
   .strict()
@@ -1960,23 +3613,45 @@ export const StaticSchema = z
       s.power !== undefined ||
       s.keywords ||
       s.X !== undefined ||
+      // Wave 4.8 follow-up 23 lane 32 (#2614 follow-up):
+      // the scaling-anthem arm — the per-count P/T
+      // modifier. Combines with the integer `power` /
+      // `toughness` arms but is allowed as a stand-alone
+      // arm for the "+1/+1 per [type]" family that has no
+      // integer component (e.g.
+      // `affects: { controller: "you", other: true }` +
+      // `anthemScaling: { per: "other_creatures", perPower:
+      // 1, perToughness: 1 }`).
+      s.anthemScaling !== undefined ||
       // Wave 4.7 phase 2 lane 50 (#2708 phase 2b): the
       // chosen-name block is a meta-static — allow it as a
       // stand-alone arm. See lane 50's `chosen_name_block`
       // docstring.
-      s.affects.chosen_name_block === true ||
+      s.affects?.chosen_name_block === true ||
       // Wave 4.8 lane 52 (#2614 follow-up): chosen-type
       // addition is a pure type-changer — also a
       // meta-static, allowed as a stand-alone arm with the
       // `addCreatureTypeToSelf` flag.
-      (s.affects.add_creature_type !== undefined &&
-        s.affects.addCreatureTypeToSelf === true) ||
+      (s.affects?.add_creature_type !== undefined &&
+        s.affects?.addCreatureTypeToSelf === true) ||
       // Wave 4.8 lane 55 (#2614 follow-up): chosen-color
       // addition is a pure color-changer — same
       // meta-static shape, allowed as a stand-alone arm
       // with the `addColorToSelf` flag. Redcap
       // Gutter-Dweller-style self-only semantics for v1.
-      (s.affects.add_color !== undefined && s.affects.addColorToSelf === true) ||
+      (s.affects?.add_color !== undefined &&
+        s.affects?.addColorToSelf === true) ||
+      // Wave 4.8 follow-up 14 lane 51 (#2614 follow-up):
+      // a permanent type-line overlay meta-static —
+      // `becomes_chosen_creature_type: true` is allowed
+      // as a stand-alone arm. The engine overlays the
+      // source's `cardData.type_line` permanently to
+      // include the chosen creature type alongside the
+      // printed subtypes (Adaptive Automaton's
+      // type-change half). No P/T or keywords of its
+      // own; the static only triggers the type-line
+      // overlay.
+      s.affects?.becomes_chosen_creature_type === true ||
       // Wave 4.8 follow-up 5 lane 71 (#2614 follow-up):
       // protection-from static is a meta-static — allow it
       // as a stand-alone arm. The protection is granted via
@@ -1994,10 +3669,41 @@ export const StaticSchema = z
       // EOT cleanup rolls them back. No P/T or keyword
       // changes of its own; the static only triggers the
       // copy swap.
-      s.become_copy !== undefined,
+      s.become_copy !== undefined ||
+      // Wave 4.8 follow-up 12 lane 91 (#2614 follow-up):
+      // a while-condition gate by itself isn't enough — the
+      // keyword/power arm must still be present — but allow
+      // it to be combined with `keywords: ["double strike",
+      // "lifelink"]` (Twinblade Paladin). Always evaluated
+      // alongside the keywords; nothing additional to add.
+      s.while_condition !== undefined ||
+      // Wave 4.8 follow-up 13 lane 61b (#2614 follow-up):
+      // the `death_replacement` arm is a meta-static —
+      // allow it as a stand-alone arm. The engine reads
+      // the source's `cardData.oracle_text` and builds a
+      // per-instance `deathReplacement` ledger (parallel
+      // to `scriptStaticKeywords` for keyword grants).
+      // No P/T or keyword changes of its own; the static
+      // only triggers the death-replacement consult.
+      s.death_replacement !== undefined ||
+      // Wave 4.8 follow-up 18 lane 112 (#2614 follow-up):
+      // the self-grant triggered-ability arm
+      // (`grants.triggers`) is a meta-static — allow it
+      // as a stand-alone arm. The engine reads the
+      // source's `statics[].grants.triggers` list in
+      // `refreshScriptedStatics` and merges each entry
+      // onto the source's per-instance `grantedTriggers`
+      // field (with `from: source.id`). The trigger fire
+      // path (`detectTriggeredAbilities`) consumes the
+      // list alongside the card's own scripted triggers —
+      // no P/T or keyword changes of its own. The
+      // v1 schema accepts an array of `event: "dies"`
+      // + `effects[]` entries (parallel to the lane 65
+      // Aura variant).
+      (s.grants?.triggers?.length ?? 0) > 0,
     {
       message:
-        "a static needs power/toughness, keywords, X, chosen_name_block, add_creature_type (with addCreatureTypeToSelf), add_color (with addColorToSelf), protectionFrom, or become_copy",
+        "a static needs power/toughness, keywords, X, chosen_name_block, add_creature_type (with addCreatureTypeToSelf), add_color (with addColorToSelf), protectionFrom, becomes_chosen_creature_type, become_copy, death_replacement, anthemScaling, or grants.triggers",
     },
   );
 
@@ -2186,6 +3892,27 @@ export const AuraStaticSchema = z
      * lane 75 `animatedUntilEndOfUntil` infrastructure
      * for EOT rollback.
      *
+     * Wave 4.8 follow-up 24 lane 70 piece 2/N (#2614
+     * follow-up): `until` now also accepts
+     * `"permanent"` — the Aura-shaped permanent-arm
+     * copy variant (parallel to lane 70's `StaticSchema`
+     * `become_copy: { until: "permanent" }` arm). The
+     * engine writes the overlay onto the ENCHANTED card
+     * via `refreshAuraBonuses` using the lane 70
+     * `permanentCopyPrintedCardData` /
+     * `copyOfTargetIdPermanent` substrate (snapshot +
+     * overlay + battlefield-leave cleanup). The
+     * overlay is NOT cleared at end of turn; it persists
+     * for as long as the Aura is attached. The chosen
+     * target's "in a tracked zone" cross-zones check is
+     * inherited from lane 78 (the overlay applies for
+     * any chosen target whose zone is in `state.zones`).
+     * The Aura's own `copyOfTargetIdPermanent` ledger
+     * is stamped by the substrate (parallel to the
+     * lane 70 `setPermanentCopyOf` helper for the
+     * source-driven overlay; the helper is reused
+     * unchanged).
+     *
      * v1 supports the lane 75 `target: CardInstanceId`
      * arm only — the chosen permanent must be on the
      * battlefield at refresh time (the engine validates
@@ -2195,7 +3922,10 @@ export const AuraStaticSchema = z
      * variants are follow-up lanes. The overlay is
      * dropped at end of turn via the existing
      * `clearUntilEndOfTurnPT` /
-     * `restoreAnimatedOffBattlefield` rollback paths.
+     * `restoreAnimatedOffBattlefield` rollback paths
+     * (for the `end_of_turn` arm) or via the lane 70
+     * `restorePermanentCopyOffBattlefield` cleanup +
+     * Aura-detach rollback (for the `permanent` arm).
      *
      * Sample card: a synthetic Aura registered via
      * the test harness ("Enchanted creature is a copy
@@ -2212,13 +3942,20 @@ export const AuraStaticSchema = z
              * The chosen permanent on the
              * battlefield to copy (CR 707.2
              * "all characteristics copied"
-             * semantics, until end of turn).
-             * Validated at refresh time via
+             * semantics, until end of turn,
+             * or `permanent` — the
+             * Aura-shaped permanent arm
+             * added in follow-up 24 lane 70
+             * piece 2/N). Validated at
+             * refresh time via
              * `state.cards.has(targetId)` +
-             * zone endsWith `"-battlefield"`.
+             * the lane 78 tracked-zone check.
              */
             target: z.string().min(1),
-            until: z.literal("end_of_turn"),
+            until: z.union([
+              z.literal("end_of_turn"),
+              z.literal("permanent"),
+            ]),
           })
           .strict(),
       ])
@@ -2270,7 +4007,7 @@ export const AuraStaticSchema = z
       s.become_copy !== undefined,
     {
       message:
-        "an aura static needs power/toughness, keywords, a restriction, maxBlockers, removesAllAbilities, grants, protectionFrom, or become_copy",
+        "an aura static needs power/toughness, keywords, a restriction, maxBlockers, removesAllAbilities, grants, protectionFrom, become_copy, or anthemScaling",
     },
   );
 
@@ -2351,6 +4088,185 @@ export const AuraSchema = z
      * (P/T) per CR 613.3.
      */
     static: AuraStaticSchema,
+  })
+  .strict();
+
+/**
+ * Wave 4.8 follow-up 13 lane 61a (#2614 follow-up):
+ * ReplacementEffectSchema — the structured form of a CR 614.1
+ * "if X would happen, instead Y" replacement effect, declarative
+ * on a permanent card. Drives the foundational
+ * `death_replacement` arm (Whip of Erebos-style "if a creature
+ * you control would die, instead exile it") that
+ * `moveCardToZone`'s consult and
+ * `ReplacementEffectManager.processEvent` consume.
+ *
+ * The v1 minimum supports a single shape:
+ *   `event: "would_die"` + `applies_to.type: "creature"` +
+ *   `applies_to.controller: "you"` + `redirect.to: "exile"`.
+ * Other `event` values, `applies_to` filters, and `redirect`
+ * destinations ride follow-up lanes (100 / 101 / 102 / 103 /
+ * 104 / 105). The schema is permissive — it accepts the wider
+ * shape — but the engine only acts on the v1 minimum today.
+ */
+export const ReplacementEffectSchema = z
+  .object({
+    /**
+     * Oracle-text-style description of the replacement effect
+     * (e.g. "if a creature you control would die, instead exile
+     * it"). Used by the engine to label the
+     * `ReplacementAbility.description` and by the
+     * `REPLACEMENT_CHOICE_TYPE` waitingChoice.
+     */
+    text: z.string().min(1),
+    /**
+     * The event this replacement effect watches. v1 supports
+     * only `"would_die"`; other events are documented but not
+     * yet implemented in the engine.
+     */
+    event: z.enum(["would_die", "would_be_destroyed"]).default("would_die"),
+    /**
+     * Which permanents the replacement effect applies to.
+     * v1 minimum: `type: "creature"` + `controller: "you"`.
+     * Other combinations parse but are out of scope for lane
+     * 61a's engine consult.
+     *
+     * Wave 4.8 follow-up 13 lane 102 (#2614 follow-up):
+     * `notSelf: true` excludes the source permanent from
+     * the replacement ("if ANOTHER creature you control
+     * would die, instead..." — defender-of-the-faith-
+     * style anthem). When `notSelf: true`, the consult
+     * skips the replacement when the dying card IS
+     * the source's own instance — the source is
+     * immune to its own replacement. The
+     * implementation: the `canApply` filter
+     * compares the event's `sourceId` against the
+     * dying card's `targetId` (a miss when the dying
+     * card IS the source's own). v1 supports `notSelf:
+     * true` only.
+     */
+    applies_to: z
+      .object({
+        type: z
+          .enum([
+            "self",
+            "creature",
+            "artifact",
+            "enchantment",
+            "planeswalker",
+            "any",
+          ])
+          .default("creature"),
+        controller: z.enum(["you", "opponent", "any"]).default("you"),
+        notSelf: z.literal(true).optional(),
+        /**
+         * Wave 4.8 follow-up 13 lane 105 (#2614 follow-up):
+         * `isToken: true` filters the replacement to
+         * only fire for dying TOKEN creatures
+         * (Hedron Crawler-style "if a token you control
+         * would die, instead exile it"). The consult's
+         * `canApply` filter reads
+         * `state.cards[dyingCardId].isToken`; when
+         * `isToken: true` is set on the replacement,
+         * the filter returns false for non-token
+         * dying cards. v1 supports `isToken: true`
+         * only — the inverse ("if a nontoken creature
+         * would die") rides a follow-up lane.
+         */
+        isToken: z.literal(true).optional(),
+      })
+      .strict()
+      .default({ type: "creature", controller: "you" }),
+    /**
+     * Where the replacement effect routes the event. v1
+     * supports only `to: "exile"`. Other destinations parse
+     * but are out of scope for lane 61a (lanes 100 / 101 / 104
+     * wire them).
+     */
+    redirect: z
+      .object({
+        to: z
+          .enum([
+            "exile",
+            "library_top",
+            "library_bottom",
+            "hand",
+            "battlefield_tapped",
+            "battlefield_untapped",
+            "sacrifice",
+            // Wave 4.8 follow-up 21 lane 61 sub-piece
+            // piece 2/N (#2614 follow-up): "any_zone"
+            // — the drafter writes a free-form
+            // destination ("may put it into their
+            // hand, library, graveyard, or exile
+            // instead"); the consult surfaces a
+            // `redirect_zone_choice` WaitingChoice
+            // and routes the chosen zone through
+            // `moveCardToZoneWithoutTriggers`.
+            // Valid destinations exclude
+            // `battlefield` and `command`; the
+            // consult refuses non-death redirects.
+            "any_zone",
+            // Wave 4.8 follow-up 13 lane 104 (#2614 follow-up):
+            // "life_loss" — the replacement routes the
+            // death to a life loss instead (e.g.
+            // "if [thing] would die, instead lose 1
+            // life"). The `amount` field carries the
+            // integer loss.
+            "life_loss",
+          ])
+          .default("exile"),
+        /**
+         * Wave 4.8 follow-up 13 lane 104 (#2614 follow-up):
+         * the integer parameter for `redirect.to:
+         * "life_loss"` (the number of life points to
+         * lose). Optional — defaults to 0 when the
+         * redirect is anything other than `"life_loss"`.
+         * When the redirect is `"life_loss"` and `amount`
+         * is unset, the factory returns null (the
+         * `life_loss` redirect requires an explicit
+         * amount).
+         */
+        amount: z.number().int().min(0).optional(),
+        /**
+         * Wave 4.8 follow-up 21 lane 61 sub-piece
+         * piece 2/N (#2614 follow-up): optional marker
+         * for `redirect.to: "any_zone"` — when `true`
+         * the consult surfaces a `redirect_zone_choice`
+         * WaitingChoice on the controller. Default
+         * `true` when `to === "any_zone"`; otherwise
+         * ignored. Reserved for forward compatibility
+         * with the "any_zone with filters" sub-variant
+         * ("any zone you choose except [battlefield]")
+         * that rides a follow-up lane.
+         */
+        controller_choice: z.boolean().optional(),
+      })
+      .strict()
+      .default({ to: "exile" }),
+    /**
+     * CR 603.4 intervening-if: the replacement only fires when
+     * the named condition holds (the drafter writes the
+     * condition string verbatim; the engine evaluates it via
+     * `evaluateInterveningIfClause`). Out of scope for v1; the
+     * field parses but the engine ignores it. Lane 103 wires it.
+     */
+    if_condition: z.string().min(1).optional(),
+    /**
+     * Whether the replacement is optional. When `true`, the
+     * engine surfaces a `REPLACEMENT_CHOICE_TYPE` waitingChoice
+     * for the affected player. Out of scope for v1; the field
+     * parses but the engine treats every v1 replacement as
+     * mandatory. Lane 100+ wires it.
+     */
+    optional: z.boolean().optional(),
+    /**
+     * CR 702 — once-per-turn cap. The engine tracks usage on
+     * the source's per-instance ledger and refuses the
+     * replacement a second time in the same turn. Out of
+     * scope for v1.
+     */
+    once_per_turn: z.boolean().optional(),
   })
   .strict();
 
@@ -2448,6 +4364,36 @@ export const CardScriptSchema = z
       })
       .strict()
       .optional(),
+    /**
+     * Wave 4.8 follow-up 13 lane 61a (#2614 follow-up):
+     * Replacement effects ("if X would happen, instead Y",
+     * CR 614.1) declared on a permanent card. The v1 minimum
+     * supports the single shape "if a creature you control
+     * would die, instead exile it" (Whip of Erebos, False
+     * Dawn — the foundational replacement-effect-for-death
+     * layer). Other shapes (`hand`, `library_top`,
+     * `library_bottom`, `battlefield_tapped`,
+     * `battlefield_untapped`, `sacrifice`, conditional
+     * `if_condition`, `optional`, `notSelf`, `isToken`)
+     * parse but are out of scope for lane 61a.
+     *
+     * The engine arm:
+     * 1. registers each entry on
+     *    `state.replacementEffectManager` when the card enters
+     *    the battlefield (the script-resolution path is
+     *    triggered via `refreshScriptedReplacementEffects`,
+     *    called alongside `refreshScriptedStatics`);
+     * 2. consults the manager in `moveCardToZone` whenever a
+     *    creature is about to leave the battlefield for the
+     *    graveyard (the consult runs BEFORE the move so the
+     *    replacement effect runs on the "would die" event
+     *    with the battlefield still intact — CR 603.10a).
+     *
+     * A card with `replacement_effects` only (no `triggers`,
+     * `activated`, `statics`, etc.) is legal under the
+     * "needs ... or replacement_effects" refine arm below.
+     */
+    replacement_effects: z.array(ReplacementEffectSchema).min(1).optional(),
     /**
      * Wave 4.8 follow-up lane 59 (#2614 follow-up): "enters
      * with N counters, one for each creature you control of
@@ -2565,25 +4511,27 @@ export const CardScriptSchema = z
      * zone as a script-level `castable_from: ["exile" | "graveyard"
      * | "command"]` array.
      *
-     * v1 supports a SINGLE entry in the array (multi-zone
-     * casting is a follow-up lane). The engine reads the
-     * field at cast time (`canCastSpell` extends to accept the
-     * card from any named zone) and at resolve time (the
-     * post-resolution end zone is inferred from the source:
-     * `castable_from: ["graveyard"]` → exile, `castable_from:
-     * ["exile"]` → exile, `castable_from: ["command"]` →
-     * command). The end zone is implicit for v1; a future
-     * lane can extend the field with an explicit
-     * `end_zone` arm.
+     * Wave 4.8 follow-up 17 lane 113 piece 2 (#2614 follow-up):
+     * relax the v1 single-entry cap to support multi-zone
+     * arrays. v1.1 accepts any non-empty subset of
+     * ["exile", "graveyard", "command"] (e.g. flashback+foretell
+     * cards that cast from BOTH graveyard AND exile — the
+     * classic Yawgmoth's Vile Offer / Jump-Start pattern when
+     * combined with the printed flashback effect). At cast time
+     * the engine iterates the array and accepts the cast from
+     * the FIRST matching zone (the script's listed order is the
+     * preference order — graveyard over exile over command).
+     * The `castableFromZone` field on the StackObject reflects
+     * the actual source zone so the resolve path routes correctly.
      *
-     * v1 ships the standard printed mana cost (no
-     * `cost` arm; the v0 `flashback.cost` field still works
-     * alongside — the engine uses the flashback cost when
-     * both are set, mirroring how the lane 22 / 23 / 24
-     * additional-costs arms compose with the printed mana
-     * cost). The cast-time legality check just confirms the
-     * card is in one of the named zones; the resolve-time
-     * redirect routes the card to the right end zone.
+     * The end zone is implicit for v1.1; a future lane can
+     * extend the field with an explicit `end_zone` arm (the
+     * follow-up 17 lane 113 piece 3 work).
+     *
+     * The cast-time legality check just confirms the card is in
+     * one of the named zones; the resolve-time redirect routes
+     * the card to the right end zone (exile for graveyard or
+     * exile source; command for commander).
      *
      * Sample card: a synthetic 1/1 creature that can be cast
      * from exile via `castable_from: ["exile"]` (foretell-
@@ -2592,12 +4540,14 @@ export const CardScriptSchema = z
      * keeps the card in exile after resolution). A flashback-
      * style sample (`castable_from: ["graveyard"]`) would
      * accept the cast when the card is in the graveyard and
-     * route it to exile on resolution.
+     * route it to exile on resolution. A multi-zone sample
+     * (`castable_from: ["graveyard", "exile"]`) accepts the
+     * cast from EITHER zone and prefers the graveyard entry
+     * when the card is in both.
      */
     castable_from: z
       .array(z.enum(["exile", "graveyard", "command"]))
       .min(1)
-      .max(1)
       .optional(),
     /**
      * Harmonize (CR 702.180) — "You may cast this card from your graveyard
@@ -2830,9 +4780,7 @@ export const CardScriptSchema = z
              * Restriction colors. v1 enforces exactly one entry;
              * multi-color restrictions are a follow-up lane.
              */
-            colors: z
-              .array(z.enum(["W", "U", "B", "R", "G"]))
-              .length(1),
+            colors: z.array(z.enum(["W", "U", "B", "R", "G"])).length(1),
             /**
              * Amount of generic mana the player may pay using only
              * the named color(s). v1 minimum: 1 (matches a single
@@ -2961,6 +4909,28 @@ export const CardScriptSchema = z
           "player",
           "chosen_name",
           "color_and_creature_type",
+          // Wave 4.8 follow-up 26 lane 71 piece 3/N
+          // (#2614 follow-up): the protection-quality
+          // sentinel. When set, the source's
+          // `chosenProtectionFrom` instance field is
+          // resolved at ETB-time by `enter_choice` →
+          // `kind === "protection_quality"` → choice
+          // value validated against the curated
+          // protection-quality set (W/U/B/R/G plus
+          // "everything" — parallel to the lane 86
+          // chosen-type anthem curated list). The
+          // `protectionFrom: "chosen"` static then
+          // consults this instance field (parallel to
+          // `affects.subtype: "chosen"` +
+          // `perSubtype: "chosen"` +
+          // `perCounter.counter: "chosen"` reading
+          // `chosenCreatureType`). The dual kind
+          // `color_and_creature_type` is not extended
+          // — the protection-quality sentinel is
+          // resolved independently of the chosen
+          // creature type (different instance field,
+          // independent resolver call).
+          "protection_quality",
         ]),
         /**
          * Free-form text the drafter wants surfaced in the prompt and
@@ -2998,12 +4968,20 @@ export const CardScriptSchema = z
       // `SearchLibrary.stun` arm which writes to `card.counters`;
       // the v1 schema arm declares the counter at ETB and the
       // engine stamps both `instanceCounters` and `card.counters`).
+      // Wave 4.8 follow-up 13 lane 61a (#2614 follow-up): a card
+      // with only `replacement_effects` is also legal — it's the
+      // foundational replacement-effect-for-death substrate
+      // (Whip of Erebos-style "if a creature you control would
+      // die, instead exile it"). The synthetic
+      // `Whispering_Ward_of_Grave` card in lane 61a carries only
+      // this arm and no `triggers` / `activated` / `statics`.
       s.cycling ||
       s.enter_choice ||
-      s.enters_with_counters,
+      s.enters_with_counters ||
+      s.replacement_effects,
     {
       message:
-        "a card script needs spell, modes, triggers, activated, statics, rules, equipment, aura, cycling, enter_choice, or enters_with_counters",
+        "a card script needs spell, modes, triggers, activated, statics, rules, equipment, aura, cycling, enter_choice, enters_with_counters, or replacement_effects",
     },
   )
   .refine(
@@ -3063,6 +5041,7 @@ export type ScriptedEquipment = z.infer<typeof EquipmentSchema>;
 export type ScriptedEquipmentStatic = z.infer<typeof EquipmentStaticSchema>;
 export type ScriptedAura = z.infer<typeof AuraSchema>;
 export type ScriptedAuraStatic = z.infer<typeof AuraStaticSchema>;
+export type ScriptedReplacementEffect = z.infer<typeof ReplacementEffectSchema>;
 
 export {
   isPermanentScript,

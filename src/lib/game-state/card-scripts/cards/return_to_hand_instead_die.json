@@ -1,0 +1,17 @@
+{
+  "name": "Return to Hand Instead Die",
+  "oracle": "Enchantment\nIf a creature you control would die, instead return it to its owner's hand.",
+  "replacement_effects": [
+    {
+      "text": "If a creature you control would die, instead return it to its owner's hand.",
+      "event": "would_die",
+      "applies_to": {
+        "type": "creature",
+        "controller": "you"
+      },
+      "redirect": {
+        "to": "hand"
+      }
+    }
+  ]
+}

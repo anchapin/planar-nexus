@@ -26,6 +26,7 @@ import { hasHexproofStrict } from "./keyword-actions/hexproof";
 import {
   hasProtectionFromColorStrict,
   getProtectionQualitiesStrict,
+  getProtectionQualitiesForSource,
 } from "./keyword-actions/protection";
 import { hasFlyingStrict } from "./keyword-actions/flying";
 import { getCardScript } from "./card-scripts/registry";
@@ -554,13 +555,29 @@ export function getCardColors(card: CardInstance): string[] {
  * by, blocked by, dealt damage by, or enchanted by anything with that
  * protected quality, and damage from such sources is prevented.
  *
- * Detection: defer to `getProtectionQualitiesStrict` (parsed-keywords only,
- * canonical contract — see `keyword-actions/protection.ts`); fall back to
- * the oracle-text regex only when the strict check returns empty, so cards
- * whose `keywords` array is missing the tag still resolve correctly. This
- * mirrors the flash/defender/ward/hexproof pattern.
+ * Detection (lane 71 piece 2/N — Wave 4.8 follow-up 23): consult the
+ * per-instance `protectionFrom` ledger FIRST. The ledger is stamped by
+ * `refreshScriptedStatics` from a `StaticSchema.protectionFrom` arm
+ * (e.g. "Creatures you control have protection from red"). When the
+ * ledger is populated, the protection qualities for this consult come
+ * from the ledger — the strict + oracle-text paths are fallbacks for
+ * cards without a ledger (printed-only protection). The shape mirrors
+ * the lane 71 piece 1/N fix in `targeting-validation.ts`'s
+ * `getProtectionQualities` (the targeting-validation path was already
+ * fixed in follow-up 22; this file's consult is the symmetric
+ * combat-side + enchant-side + damage-prevention + equip-side enforcement
+ * surface consulted by `canBeTargetedBySource`, `canBeEnchantedBy`,
+ * `canBeEquippedBy`, `shouldPreventDamageToTarget`, and
+ * `isProtectedFromSource`).
  */
 export function getProtectionQualities(card: CardInstance): string[] {
+  // Lane 71 piece 2/N: per-instance ledger first. The strict +
+  // oracle-text paths are fallbacks for printed-only protection.
+  // Mirrors the lane 71 piece 1/N fix in `targeting-validation.ts`.
+  const perInstance = card.protectionFrom ?? [];
+  if (perInstance.length > 0) {
+    return [...perInstance];
+  }
   const strict = getProtectionQualitiesStrict(card);
   if (strict.length > 0) {
     return strict;
@@ -623,12 +640,33 @@ export function hasProtectionFrom(card: CardInstance, color: string): boolean {
 /**
  * Check if a card is protected from any quality of a source card
  * Used for targeting, enchanting, and equipping restrictions
+ *
+ * Wave 4.8 follow-up 25 lane 71 piece 1/N (#2614 follow-up):
+ * consults the per-source `protectionFromBySource` ledger
+ * FIRST (multi-cast enforcement — a target granted
+ * protection from TWO simultaneous Auras is protected from
+ * each Aura's quality independently, NOT the union). When
+ * the per-source ledger has an entry for the source under
+ * consult, only that source's qualities are evaluated;
+ * otherwise the union `protectionFrom` field is consulted
+ * (the symmetric surface to `targeting-validation.isProtectedFromSource`).
  */
 export function isProtectedFromSource(
   target: CardInstance,
   source: CardInstance,
 ): boolean {
-  const targetQualities = getProtectionQualities(target);
+  // Wave 4.8 follow-up 25 lane 71 piece 1/N: per-source
+  // consult first (see targeting-validation mirror).
+  const sourceSpecificQualities = getProtectionQualitiesForSource(
+    target,
+    source.id,
+  );
+  let targetQualities: string[];
+  if (sourceSpecificQualities !== null) {
+    targetQualities = sourceSpecificQualities;
+  } else {
+    targetQualities = getProtectionQualities(target);
+  }
   if (targetQualities.length === 0) return false;
 
   const sourceColors = getCardColors(source);

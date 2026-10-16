@@ -654,6 +654,13 @@ export class ReplacementEffectManager {
       put_into_hand: ["command_zone_replacement"],
       put_into_library: ["command_zone_replacement"],
       landEnterBattlefield: ["land_enter_replacement"],
+      // Wave 4.8 follow-up 13 lane 61a (#2614 follow-up): the
+      // "would die" event matches `death_replacement` arms
+      // (Whip of Erebos, False Dawn, the foundational layer
+      // for lanes 100 / 101 / 104). Per-event filters live on
+      // each `ReplacementAbility.canApply`, NOT on the event
+      // type — so this mapping is intentionally minimal.
+      would_die: ["death_replacement"],
     };
     return mapping[eventType]?.includes(effectType) || false;
   }

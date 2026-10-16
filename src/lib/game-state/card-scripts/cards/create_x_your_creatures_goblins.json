@@ -1,0 +1,22 @@
+{
+  "name": "Create X Your Creatures Goblins",
+  "oracle": "Enchantment\nWhenever a Goblin you control attacks, create a 1/1 red Goblin creature token equal to the number of creatures you control.",
+  "triggers": [
+    {
+      "text": "Whenever a Goblin you control attacks, create a 1/1 red Goblin creature token equal to the number of creatures you control.",
+      "event": "attacks",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "CreateToken",
+          "count": 1,
+          "power": 1,
+          "toughness": 1,
+          "color": "red",
+          "subtypes": ["Goblin"],
+          "X": "yourCreatures"
+        }
+      ]
+    }
+  ]
+}

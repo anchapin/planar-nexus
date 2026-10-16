@@ -1,0 +1,17 @@
+{
+  "name": "Instead Library Top On Die",
+  "oracle": "Enchantment\nIf a creature you control would die, instead put it on top of its owner's library.",
+  "replacement_effects": [
+    {
+      "text": "If a creature you control would die, instead put it on top of its owner's library.",
+      "event": "would_die",
+      "applies_to": {
+        "type": "creature",
+        "controller": "you"
+      },
+      "redirect": {
+        "to": "library_top"
+      }
+    }
+  ]
+}

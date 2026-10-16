@@ -1,12 +1,17 @@
 {
   "name": "Storm Fleet Spy",
-  "oracle": "Raid — When this creature enters, if you attacked this turn, draw a card.",
+  "oracle": "Raid — When this creature enters, if you attacked this turn, discard a card. If you do, draw a card.",
   "triggers": [
     {
-      "text": "Raid — When this creature enters, if you attacked this turn, draw a card.",
+      "text": "Raid — When this creature enters, if you attacked this turn, discard a card. If you do, draw a card.",
       "event": "etb",
       "subject": "self",
       "intervening_if": "you attacked this turn",
+      "cost": {
+        "discard": {
+          "amount": 1
+        }
+      },
       "effects": [
         {
           "op": "Draw",

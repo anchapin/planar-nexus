@@ -6,6 +6,7 @@
  */
 import type { ScryfallCard } from "./card-data";
 import { PlayerId } from "./players";
+import type { ScriptedReplacementEffect } from "../card-scripts/schema";
 
 /**
  * Unique identifier for a card instance in the game
@@ -131,6 +132,31 @@ export interface CardInstance {
    */
   chosenCreatureType: string | null;
   /**
+   * Wave 4.8 follow-up 26 lane 71 piece 3/N (#2614
+   * follow-up): the per-instance protection-quality
+   * chosen at ETB. Stamped by
+   * `resolveEnterChoice` in
+   * `keyword-actions/enter-choice.ts` for the new
+   * `enter_choice: { kind: "protection_quality" }`
+   * kind. Consulted by `refreshScriptedStatics` when
+   * the source carries `protectionFrom: "chosen"` —
+   * the static resolves the protected qualities from
+   * `[chosenProtectionFrom]` (a single-element list,
+   * parallel to the `affects.subtype: "chosen"` and
+   * `perSubtype: "chosen"` and
+   * `perCounter.counter: "chosen"` sentinels reading
+   * `chosenCreatureType`). The curation validates
+   * against W/U/B/R/G colors + the "everything"
+   * quality (matching the existing protection-from
+   * `z.string()` ledger shape). `null` until the
+   * enter choice resolves, or on permanents that
+   * don't carry an `enter_choice: { kind:
+   * "protection_quality" }` script; the static is
+   * INERT for that pass when null (parallel to the
+   * lane 86 chosen-type anthem semantics).
+   */
+  chosenProtectionFrom: string | null;
+  /**
    * Wave 4.8 lane 52 (#2614 follow-up): the per-instance
    * subtype additions granted by a
    * `StaticSchema.affects.add_creature_type` static on the
@@ -204,6 +230,33 @@ export interface CardInstance {
    */
   protectionFrom?: string[];
   /**
+   * Wave 4.8 follow-up 25 lane 71 piece 1/N (#2614 follow-up):
+   * per-SOURCE protection-from ledger stamped by
+   * `refreshScriptedStatics` / `refreshAuraBonuses`. Maps each
+   * source `CardInstanceId` to the qualities it grants to
+   * this permanent. When populated for the source under
+   * consult, the `isProtectedFromSource` /
+   * `hasProtectionFromColor` reads the PER-SOURCE qualities
+   * instead of the UNION `protectionFrom` field — this is
+   * the multi-cast enforcement shape ("two simultaneous
+   * protection-granting Auras each independently protect
+   * from their own quality"). When the source is not in the
+   * map, falls back to the union semantics.
+   *
+   * Example: target has `protectionFrom: ["red", "blue"]`
+   * (union from source A's red-grant + source B's blue-grant)
+   * AND `protectionFromBySource: { sourceA: ["red"], sourceB:
+   * ["blue"] }`. A red source different from sourceA/B is
+   * NOT blocked via the per-source ledger (it's not sourceA)
+   * but IS blocked via the union (the ledger says "red").
+   * The multi-cast semantic resolves this by checking the
+   * per-source map for the specific source under consult.
+   *
+   * Battlefield-zone-only: cleared when sources leave the
+   * battlefield (mirrors `protectionFrom`).
+   */
+  protectionFromBySource?: Record<string, string[]>;
+  /**
    * Wave 4.8 follow-up 7 lane 75 (#2614 follow-up): the
    * `CardInstanceId` of the permanent whose printed
    * characteristics this card is currently copying for
@@ -225,6 +278,29 @@ export interface CardInstance {
    * (the refresh pass self-corrects).
    */
   copyOfTargetId?: string;
+  /**
+   * Wave 4.8 follow-up 22 lane 70 piece 1/N (#2614 follow-up):
+   * the `CardInstanceId` of the permanent whose printed
+   * characteristics this card is currently copying FOREVER
+   * ("becomes a copy of [X]" — Clone, Phantasmal Image without
+   * the EOT suffix, Sakashima without the EOT suffix). Set by
+   * `refreshScriptedStatics` when the source carries a
+   * `become_copy: { target, until: "permanent" }` static and
+   * the named target is on the battlefield; the source's
+   * `cardData` is swapped for the target's (name, type_line,
+   * power, toughness, colors, keywords). v1 ships the field +
+   * the `setPermanentCopyOf` / `clearPermanentCopyOf` helpers
+   * only — the refresh-pass write that consults this field
+   * and applies the overlay permanently (and the cleanup
+   * path that drops the overlay when the source or target
+   * leaves the battlefield) rides a follow-up piece. The
+   * field is per-instance + battlefield-zone-only and is
+   * distinct from `copyOfTargetId` (the EOT variant stamps
+   * `animatedUntilEndOfTurn` + rolls back via the existing
+   * `clearUntilEndOfTurnPT` path; the permanent variant
+   * needs its own battlefield-leave cleanup path).
+   */
+  copyOfTargetIdPermanent?: string;
   /**
    * Wave 4.8 follow-up lane 59 (#2614 follow-up): per-instance
    * counter ledger keyed by counter type. Banner of Kinship
@@ -530,6 +606,26 @@ export interface CardInstance {
    */
   scriptStaticKeywords?: string[];
   /**
+   * Wave 4.8 follow-up 13 lane 61b (#2614 follow-up):
+   * death-replacement effects sourced from this card's
+   * `static[].death_replacement` arms (the printed-card
+   * mechanism for Whip of Erebos-style "if a creature you
+   * control would die, instead exile it"). Each entry is a
+   * structured `ScriptedReplacementEffect` built by
+   * `refreshScriptedStatics` from the source's printed
+   * `cardData.oracle_text`; the consult in
+   * `keyword-actions/removal.ts`'s `moveCardToZone` reads
+   * the field in addition to the lane 61a schema arm.
+   * Cleared when the source leaves the battlefield (the
+   * `refreshScriptedStatics` drop branch deletes the
+   * field — the consult uses a fresh build per call, so
+   * stale entries don't affect the consult, but a stale
+   * entry on a source that bounced would point to the
+   * wrong card; the drop branch keeps the ledger
+   * consistent with the source's battlefield presence).
+   */
+  deathReplacement?: ScriptedReplacementEffect[];
+  /**
    * Wave 4.8 lane 54 (#2614 follow-up): true while this card
    * is enchanted by an Aura with `static.removesAllAbilities:
    * true` (Witness Protection's "loses all other abilities"
@@ -601,6 +697,57 @@ export interface CardInstance {
      * this flag.
      */
     setByAura?: boolean;
+  };
+  /**
+   * Wave 4.8 follow-up 23 lane 70 piece 2b (#2614 follow-up):
+   * the `until: "permanent"` snapshot of the card's printed
+   * `cardData` taken when a `StaticSchema.become_copy` static
+   * with `until: "permanent"` activates. Field shape mirrors
+   * `animatedUntilEndOfTurn.cardData` but the snapshot is
+   * permanent (no EOT cleanup) — the overlay persists as long
+   * as the source is on the battlefield with an active
+   * `until: "permanent"` `become_copy`. When the source or
+   * target leaves the battlefield, or the source's static
+   * changes/disappears, the refresh pass restores the source's
+   * `cardData` from this snapshot and clears the field (parallel
+   * to the lane 51 `restorePermanentTypeOverlay` cleanup). v1
+   * carries ONLY a single snapshot per card; multiple
+   * simultaneous permanent-copy overlays (a card with two
+   * `until: "permanent"` `become_copy` statics) ride a
+   * follow-up lane.
+   */
+  permanentCopyPrintedCardData?: ScryfallCard;
+  /**
+   * Wave 4.8 follow-up 14 lane 51 (#2614 follow-up): a permanent
+   * (not end-of-turn) overlay of the card's `cardData.type_line`
+   * set by a `StaticSchema.affects.becomes_chosen_creature_type`
+   * static — Adaptive Automaton's "is the chosen type in addition
+   * to its other types" half. Field shape mirrors
+   * `animatedUntilEndOfTurn.cardData` but WITHOUT the EOT cleanup
+   * path (the overlay persists as long as the source is on the
+   * battlefield). The refresh pass rebuilds `cardData.type_line`
+   * to include the chosen creature type's subtypes alongside the
+   * printed subtypes; the original printed `cardData` (before
+   * the overlay was applied) is stashed under
+   * `permanentTypeOverlay.cardData` so a zone-change / static-
+   * removed rollback can restore it. Cleared when the source
+   * leaves the battlefield (handled by the
+   * `restorePermanentTypeOverlay` consult at the top of the
+   * refresh pass). v1 supports ONLY the chosen-creature-type
+   * overlay; the chosen-color /
+   * "gains-this-color-in-addition" generalization rides a
+   * follow-up lane.
+   */
+  permanentTypeOverlay?: {
+    cardData: ScryfallCard;
+    /**
+     * The `CardInstanceId` of the source whose static set the
+     * overlay. Used by the rollback consult to know which
+     * source caused the overlay; multiple sources stacking
+     * permanent overlays on the same target is a follow-up
+     * lane (lane 51 v1 supports a single overlay per card).
+     */
+    source: CardInstanceId;
   };
   /**
    * Keywords granted to this card's spell while it resolves (#2483): set

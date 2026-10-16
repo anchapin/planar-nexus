@@ -117,13 +117,25 @@ describe("Redcap Gutter-Dweller full JSON (Wave 4.8 follow-up lane 57, #2614 fol
     registerCardScripts(RAW_CARD_SCRIPTS);
   });
 
-  it("Redcap Gutter-Dweller JSON ships chosen-color enter_choice + add_color chosen static + attacks Treasure trigger", () => {
+  it("Redcap Gutter-Dweller JSON ships chosen-color enter_choice + add_color chosen static + menace-when-3+-counters static + attacks Treasure trigger (Wave 4.8 follow-up 14 lane 57)", () => {
     const redcap = RAW_CARD_SCRIPTS.find(
       (s): s is {
         name: string;
         enter_choice?: { kind: string };
         statics?: Array<{
-          affects?: { add_color?: string; addColorToSelf?: boolean };
+          affects?: {
+            add_color?: string;
+            addColorToSelf?: boolean;
+            controller?: string;
+            subtype?: string;
+          };
+          keywords?: string[];
+          while_condition?: {
+            kind: string;
+            counter?: string;
+            op?: string;
+            n?: number;
+          };
         }>;
         triggers?: Array<{
           event: string;
@@ -144,10 +156,23 @@ describe("Redcap Gutter-Dweller full JSON (Wave 4.8 follow-up lane 57, #2614 fol
     if (!redcap) throw new Error("Redcap Gutter-Dweller JSON not found");
     // enter_choice: color
     expect(redcap.enter_choice?.kind).toBe("color");
-    // add_color: "chosen" + addColorToSelf: true static
-    expect(redcap.statics?.length).toBe(1);
+    // Wave 4.8 follow-up 14 lane 57 (#2614 follow-up): two
+    // statics now — the chosen-color self-add (lane 55) AND
+    // the menace-when-3+-counters anthem (this lane).
+    expect(redcap.statics?.length).toBe(2);
+    // static 0: add_color "chosen" + addColorToSelf: true
     expect(redcap.statics?.[0].affects?.add_color).toBe("chosen");
     expect(redcap.statics?.[0].affects?.addColorToSelf).toBe(true);
+    // static 1: Goblin menace-with-counter-conditional
+    expect(redcap.statics?.[1].affects?.controller).toBe("you");
+    expect(redcap.statics?.[1].affects?.subtype).toBe("Goblin");
+    expect(redcap.statics?.[1].keywords).toEqual(["menace"]);
+    expect(redcap.statics?.[1].while_condition?.kind).toBe(
+      "counter_minimum",
+    );
+    expect(redcap.statics?.[1].while_condition?.counter).toBe("+1/+1");
+    expect(redcap.statics?.[1].while_condition?.op).toBe("gte");
+    expect(redcap.statics?.[1].while_condition?.n).toBe(3);
     // attacks trigger → CreatePredefinedToken treasure x1
     expect(redcap.triggers?.length).toBe(1);
     expect(redcap.triggers?.[0].event).toBe("attacks");

@@ -359,14 +359,33 @@ describe("Wave 4.8 follow-up 7 lane 75 — until-EOT copy static", () => {
     expect(source?.copyOfTargetId).toBeUndefined();
   });
 
-  it("restores the source's printed cardData when the target leaves the battlefield", () => {
-    // Setup: source + target on Alice's battlefield, the
-    // copy is active. Move the target off the
-    // battlefield by reassigning its `currentZoneKey` to
-    // a non-battlefield zone. The next refresh pass sees
-    // the target is no longer on the battlefield and
-    // restores the source's printed cardData from
-    // `animatedUntilEndOfTurn`.
+  it("restores the source's printed cardData when the target leaves the battlefield (untracked zone)", () => {
+    // Wave 4.8 follow-up 10 lane 78 (#2614 follow-up):
+    // the target's "in a tracked zone" check. v1 dropped
+    // the overlay when the target moved to ANY
+    // non-battlefield zone (graveyard / hand / exile /
+    // library / command). Lane 78 changed that — the
+    // overlay persists for tracked zones (graveyard is
+    // a tracked zone after `startGame`) and only drops
+    // for untracked zones (a zone key not in
+    // `state.zones`, e.g. `limbo`). This test exercises
+    // the untracked-zone path: the target's
+    // `currentZoneKey` is reassigned to a key NOT in
+    // `state.zones`, the next refresh pass drops the
+    // overlay and restores the source's printed
+    // `cardData` from `animatedUntilEndOfTurn`.
+    //
+    // Wave 4.8 follow-up 23 lane 70 piece 2b (#2614
+    // follow-up): the script-lookup consult was widened
+    // from `card.cardData.name` to
+    // `printedCardDataOf(card).name` so the source's
+    // overlay-aware cardData does not mask the
+    // `staticAffects` walk on subsequent refreshes. The
+    // pre-2b lane 75 lookup used `card.cardData.name`
+    // which (after overlay) returned the target's
+    // printed name — the script wasn't found, the diff
+    // was a no-op, and the rollback never ran. The
+    // pre-2b test passed via that bug.
     const { state, aliceId } = setupTwoPlayerGame();
     const { state: withTarget, cardId: targetId } = putOnBattlefield(
       state,
@@ -382,14 +401,15 @@ describe("Wave 4.8 follow-up 7 lane 75 — until-EOT copy static", () => {
     const refreshed = refreshScriptedStatics(withSource);
     const activeSource = refreshed.cards.get(sourceId);
     expect(activeSource?.cardData.name).toBe("Grizzly Bears");
-    // Move the target off the battlefield (simulate the
-    // target dying). Move it to the graveyard zone
-    // (which exists after `startGame`).
+    // Move the target to an UNTRACKED zone (a zone key
+    // that doesn't exist in `state.zones`). The lookup
+    // `state.zones.has(target.currentZoneKey)` returns
+    // false → the overlay drops on the next refresh.
     const targetCard = refreshed.cards.get(targetId)!;
     const movedCards = new Map(refreshed.cards);
     movedCards.set(targetId, {
       ...targetCard,
-      currentZoneKey: `${aliceId}-graveyard`,
+      currentZoneKey: `${aliceId}-limbo`,
     });
     const movedZones = new Map(refreshed.zones);
     const bfKey = `${aliceId}-battlefield`;
@@ -398,14 +418,6 @@ describe("Wave 4.8 follow-up 7 lane 75 — until-EOT copy static", () => {
       ...bf,
       cardIds: bf.cardIds.filter((id) => id !== targetId),
     });
-    const gyKey = `${aliceId}-graveyard`;
-    const gy = movedZones.get(gyKey);
-    if (gy) {
-      movedZones.set(gyKey, {
-        ...gy,
-        cardIds: [...gy.cardIds, targetId],
-      });
-    }
     const afterMove = refreshScriptedStatics({
       ...refreshed,
       cards: movedCards,

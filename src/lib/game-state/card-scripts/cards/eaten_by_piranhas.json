@@ -1,30 +1,26 @@
 {
   "name": "Eaten by Piranhas",
-  "oracle": "As Eaten by Piranhas enters, choose a color and a creature type. Eaten by Piranhas has protection from the chosen color and the chosen creature type.",
+  "oracle": "As Eaten by Piranhas enters, choose a color and a creature type. Eaten by Piranhas has the chosen color and chosen creature type in addition to its other colors and creature types.",
   "enter_choice": {
     "kind": "color_and_creature_type",
     "text": "As Eaten by Piranhas enters, choose a color and a creature type."
   },
   "statics": [
     {
-      "text": "Eaten by Piranhas has protection from the chosen color and gets +1/+1.",
+      "text": "Eaten by Piranhas has the chosen color in addition to its other colors.",
       "affects": {
         "controller": "you",
-        "self": true,
-        "color": "chosen"
-      },
-      "power": 1,
-      "toughness": 1
+        "add_color": "chosen",
+        "addColorToSelf": true
+      }
     },
     {
-      "text": "Eaten by Piranhas has protection from the chosen creature type and gets +1/+1.",
+      "text": "Eaten by Piranhas is the chosen creature type in addition to its other types.",
       "affects": {
         "controller": "you",
-        "self": true,
-        "subtype": "chosen"
-      },
-      "power": 1,
-      "toughness": 1
+        "add_creature_type": "chosen",
+        "addCreatureTypeToSelf": true
+      }
     }
   ]
 }

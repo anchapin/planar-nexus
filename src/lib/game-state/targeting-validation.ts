@@ -20,6 +20,7 @@ import { hasHexproofStrict } from "./keyword-actions/hexproof";
 import { hasShroudStrict } from "./keyword-actions/shroud";
 import { oracleTextDeclaresOwnKeyword } from "./keyword-actions/grant-negation";
 import { getProtectionQualitiesStrict } from "./keyword-actions/protection";
+import { getProtectionQualitiesForSource } from "./keyword-actions/protection";
 import { parseWardCostString, type WardCostDescriptor } from "./ward-system";
 
 /**
@@ -108,11 +109,46 @@ export function hasShroud(card: CardInstance): boolean {
  * - Can't be enchanted by Auras of that color
  * - Deals no damage to blockers of that color
  * - Can't be blocked by creatures of that color
+ *
+ * Wave 4.8 follow-up 22 lane 71 piece 1/N (#2614 follow-up):
+ * consults the per-instance `protectionFrom` ledger first
+ * (the static-stamped field produced by
+ * `refreshScriptedStatics` for a `StaticSchema.protectionFrom`
+ * arm — e.g. a "Creatures you control have protection from
+ * red" anthem). The lane 71 substrate ships the field stamp
+ * but the layer-6/7 enforcement consult (this file's
+ * `canBeTargetedBy` / `hasProtectionFromColor` /
+ * `isProtectedFromSource` path) was NOT reading it — a card
+ * granted protection via static was stamped but NOT actually
+ * protected under the targeting-validation path. v1 consults
+ * the per-instance ledger FIRST and falls through to the
+ * existing oracle-text regex only when the ledger is empty,
+ * mirroring the `evergreen-keywords.hasProtectionFrom`
+ * precedence (per-instance > parsed-keyword > oracle-text).
+ * Layered multi-source-union enforcement rides a follow-up
+ * piece.
  */
 export function hasProtectionFromColor(
   card: CardInstance,
   color: string,
 ): boolean {
+  // Lane 71 piece 1/N: consult the per-instance
+  // `protectionFrom` ledger first (static-stamped
+  // protection). When the ledger has entries, those entries
+  // are the authoritative protection qualities for this
+  // card at this point in the refresh — the oracle-text
+  // regex below is a fallback for cards without a
+  // static-stamped ledger.
+  const perInstance = card.protectionFrom ?? [];
+  if (perInstance.length > 0) {
+    const colorLower = color.toLowerCase();
+    const matched = perInstance.some((q) => q.toLowerCase() === colorLower);
+    if (matched) return true;
+    // The ledger has entries but none match the queried
+    // color — fall through to the oracle-text regex as a
+    // secondary check (a card with BOTH a static grant AND
+    // a printed "protection from X" should honor both).
+  }
   const oracleText = card.cardData.oracle_text?.toLowerCase() || "";
   const colorLower = color.toLowerCase();
 
@@ -147,8 +183,30 @@ export function hasProtectionFromColor(
  * oracle-text regex only when the strict check returns empty, so cards
  * whose `keywords` array is missing the tag still resolve correctly. This
  * mirrors the ward/hexproof pattern.
+ *
+ * Wave 4.8 follow-up 22 lane 71 piece 1/N (#2614 follow-up):
+ * unions the per-instance `protectionFrom` ledger into the
+ * result alongside the strict + oracle-text checks. The
+ * ledger is stamped by `refreshScriptedStatics` for a
+ * `StaticSchema.protectionFrom` arm and reflects the union of
+ * every static currently affecting the card; this consult
+ * keeps the targeting-validation path consistent with
+ * `evergreen-keywords.hasProtectionFrom` (which already
+ * consults the ledger directly). When the ledger has entries
+ * the oracle-text regex is NOT consulted — a card with a
+ * static-stamped ledger should not pick up ADDITIONAL
+ * qualities from a flavour-text oracle regex match.
  */
 export function getProtectionQualities(card: CardInstance): string[] {
+  // Lane 71 piece 1/N: per-instance ledger first. A card
+  // with a static-stamped ledger has the authoritative
+  // protection qualities for this consult; the strict +
+  // oracle-text paths are fallbacks for cards without a
+  // ledger (printed-only protection).
+  const perInstance = card.protectionFrom ?? [];
+  if (perInstance.length > 0) {
+    return [...perInstance];
+  }
   const strict = getProtectionQualitiesStrict(card);
   if (strict.length > 0) {
     return strict;
@@ -213,12 +271,37 @@ function normalizeColor(color: string): string {
 /**
  * Check if a target is protected from a source based on protection keywords
  * CR 702.16A: Can't be targeted by spells/abilities with the given quality
+ *
+ * Wave 4.8 follow-up 25 lane 71 piece 1/N (#2614 follow-up):
+ * consults the per-source `protectionFromBySource` ledger
+ * FIRST (multi-cast enforcement — a target granted
+ * protection from TWO simultaneous Auras is protected from
+ * each Aura's quality independently, NOT the union). When
+ * the per-source ledger has an entry for the source under
+ * consult, only that source's qualities are evaluated;
+ * otherwise the union `protectionFrom` field is consulted
+ * (lane 71 piece 1/N + 2/N fallback path).
  */
 export function isProtectedFromSource(
   target: CardInstance,
   source: CardInstance,
 ): boolean {
-  const targetQualities = getProtectionQualities(target);
+  // Wave 4.8 follow-up 25 lane 71 piece 1/N: per-source
+  // consult first. When the source under consult has its
+  // own ledger entry, the multi-cast semantic resolves
+  // independently for that source — the union is NOT
+  // consulted (the source's protection is its own
+  // quality list, not the sum of all grants).
+  const sourceSpecificQualities = getProtectionQualitiesForSource(
+    target,
+    source.id,
+  );
+  let targetQualities: string[];
+  if (sourceSpecificQualities !== null) {
+    targetQualities = sourceSpecificQualities;
+  } else {
+    targetQualities = getProtectionQualities(target);
+  }
   if (targetQualities.length === 0) return false;
 
   const sourceColors = getCardColors(source);

@@ -20,7 +20,7 @@ export function evaluateInterveningIfClause(
   state: GameState,
   controllerId: PlayerId,
   _sourceCard?: CardInstance,
-  _context?: TriggerContext,
+  context?: TriggerContext,
 ): boolean {
   const c = condition.toLowerCase().trim();
 
@@ -78,6 +78,25 @@ export function evaluateInterveningIfClause(
   if (m) {
     const player = state.players.get(controllerId);
     return player ? player.life >= parseInt(m[1], 10) : false;
+  }
+
+  // Wave 4.8 follow-up 12 lane 92 (#2614 follow-up): "if [the
+  // entering creature]'s mana value is N or greater" (Drogskol
+  // Reaver's "Whenever a creature you control enters, if its
+  // mana value is 4 or greater, you gain life equal to its
+  // toughness" half). The gate evaluates the entering creature's
+  // printed `cmc` (from `context.enteringCardId`) against the
+  // named threshold. v1 supports a single shape: a positive
+  // integer threshold compared via `>=`; the `mana value is
+  // exactly N` variant and the `less than N` comparator are
+  // follow-up lanes.
+  m = c.match(/(?:its )?mana value is (\d+) or (?:greater|more)/);
+  if (m) {
+    const n = parseInt(m[1], 10);
+    const enteringId = context?.enteringCardId;
+    if (!enteringId) return false;
+    const entering = state.cards.get(enteringId);
+    return entering ? (entering.cardData.cmc ?? 0) >= n : false;
   }
 
   m = c.match(/you have (\d+) or more poison counters/);

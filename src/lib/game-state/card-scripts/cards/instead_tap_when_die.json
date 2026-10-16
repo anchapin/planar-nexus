@@ -1,0 +1,17 @@
+{
+  "name": "Instead Tap When Die",
+  "oracle": "Creature — Cyclops\nIf this creature would die, instead tap it.",
+  "replacement_effects": [
+    {
+      "text": "If this creature would die, instead tap it.",
+      "event": "would_die",
+      "applies_to": {
+        "type": "creature",
+        "controller": "you"
+      },
+      "redirect": {
+        "to": "battlefield_tapped"
+      }
+    }
+  ]
+}

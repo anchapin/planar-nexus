@@ -2460,7 +2460,13 @@ describe("scripted X spells (#2552)", () => {
       f.endsWith(".json"),
     )) {
       const text = readFileSync(join(CARDS_DIR, file), "utf8");
-      if (/"-?X"/.test(text)) {
+      // Wave 4.8 follow-up 12 lane 90 (#2614 follow-up): the
+      // JSON-key `"X": "creaturesDiedThisTurn"` arm on
+      // `Draw.amount.X` is NOT a CR 107.3 mana-cost X. Strip
+      // JSON field-key usages of "X" before checking for CR
+      // 107.3-X.
+      const stripped = text.replace(/"X"\s*:\s*"[^"]*"/g, "");
+      if (/"-?X"/.test(stripped)) {
         const { name, oracle } = JSON.parse(text) as CardScript;
         expect(`${name}: ${oracle}`).toMatch(/\bX\b/);
       }
@@ -9741,8 +9747,8 @@ describe("Knight of Grace: literal color anthem (#2594 lane 30)", () => {
     expect(knight).toBeDefined();
     expect(knight!.statics).toHaveLength(1);
     const stat = knight!.statics![0];
-    expect(stat.affects.controller).toBe("you");
-    expect(stat.affects.color).toBe("W");
+    expect(stat.affects!.controller).toBe("you");
+    expect(stat.affects!.color).toBe("W");
     expect(stat.power).toBe(1);
     expect(stat.toughness).toBe(1);
   });

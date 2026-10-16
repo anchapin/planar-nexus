@@ -1,0 +1,17 @@
+{
+  "name": "Whispering Ward of the Grave",
+  "oracle": "If a creature you control would die, instead exile it.",
+  "replacement_effects": [
+    {
+      "text": "If a creature you control would die, instead exile it.",
+      "event": "would_die",
+      "applies_to": {
+        "type": "creature",
+        "controller": "you"
+      },
+      "redirect": {
+        "to": "exile"
+      }
+    }
+  ]
+}

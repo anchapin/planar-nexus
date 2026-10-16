@@ -256,6 +256,72 @@ export interface StackObject {
    * the combination (see `TriggerSchema`).
    */
   you_may_resolved?: boolean;
+  /**
+   * Wave 4.8 follow-up 12 lane 88 (#2614 follow-up): answer to a
+   * `cost.sacrifice_self: true` prompt (CR 602.2b "Sacrifice this
+   * [permanent]:" cost). `true` / `false` is recorded when the
+   * controller resolves the `sacrifice_self_prompt` waitingChoice.
+   * `resolveScriptedAbility` reads this: on `true` it sacrifices
+   * the source permanent THEN runs the trigger's effects; on
+   * `false` it skips the trigger (CR 602.2b — failing to pay the
+   * cost cancels the ability). Undefined = the prompt hasn't been
+   * answered yet — the engine surfaces the `sacrifice_self_prompt`
+   * waitingChoice and suspends resolution. The presence of this
+   * field does NOT affect non-sacrifice-cost triggers.
+   */
+  cost_paid?: boolean;
+  /**
+   * Wave 4.8 follow-up 21 lane 99 follow-up extension
+   * (#2614 follow-up): the 0-based index of the
+   * chosen cost arm when the trigger carries a
+   * `cost.or: [...]` multi-cost combinator
+   * ("you may pay [A] OR pay [B]; if you do,
+   * [effects]"). Set on a triggered ability's
+   * StackObject when the controller resolves
+   * the `cost_combinator_or_prompt`
+   * waitingChoice. Read by `resolveScriptedAbility`
+   * on the next pass to pick which standalone
+   * `cost.<arm>` shape the engine should apply
+   * (lane 88 sacrifice-self / lane 98 discard /
+   * lane 106 pay_life / lane 117 pay_mana).
+   * Undefined on the first resolve pass (before
+   * the controller picks an arm). Mirrors the
+   * modal `chosenModes` field in shape (an
+   * indexed choice from a list the schema
+   * declared) but for cost arms rather than
+   * mode options.
+   */
+  chosen_or_cost_index?: number;
+  /**
+   * Wave 4.8 follow-up 21 lane 99 follow-up extension
+   * (#2614 follow-up): the synthesized standalone
+   * cost shape corresponding to the picked
+   * `chosen_or_cost_index` arm. The OR combinator
+   * dispatch sets this field on the stack object
+   * on the second resolve pass (the controller's
+   * pick), then the existing lane 88 / 98 / 106 /
+   * 117 cost-arm dispatch reads `effective_cost`
+   * FIRST (the picked arm's shape) before falling
+   * back to the script's `cost.<arm>`. Carrying
+   * the picked shape on the stack object — rather
+   * than mutating the script — keeps the script
+   * immutable across multiple triggers (a single
+   * script can fire multiple times; each
+   * resolution carries its own pick).
+   *
+   * Shape: a single-arm cost object (one of
+   * `{ sacrifice_self: true }` / `{ discard: {
+   * amount } }` / `{ pay_life: { amount } }` /
+   * `{ pay_mana: { amount } }`). Mirrors the
+   * standalone `cost.<arm>` shape exactly so the
+   * existing dispatch reads it identically.
+   */
+  effective_cost?: {
+    sacrifice_self?: boolean;
+    discard?: { amount: number };
+    pay_life?: { amount: number };
+    pay_mana?: { amount: number };
+  };
   /** Structured effects to resolve (CR 608) */
   effects?: StackEffect[];
 }

@@ -345,16 +345,25 @@ export class ValidationService {
       // Wave 4.8 follow-up 4 lane 68 (#2614 follow-up): the
       // generalized `castable_from` schema arm. When the card's
       // script declares `castable_from: ["graveyard" | "exile" |
-      // "command"]` and the card is in the named zone, accept
-      // the cast from that zone. The cast still pays the
-      // printed mana cost; the resolve-time redirect is handled
-      // via the `castableFromZone` field on the StackObject.
+      // "command"]` and the card is in one of the named zones,
+      // accept the cast. The cast still pays the printed mana
+      // cost; the resolve-time redirect is handled via the
+      // `castableFromZone` field on the StackObject.
+      //
+      // Wave 4.8 follow-up 17 lane 113 piece 2 (#2614 follow-up):
+      // multi-zone arrays. A cast from any of the listed zones
+      // is accepted (the script's listed order is the preference
+      // order for downstream stamps).
       const cardScript = getCardScript(card.cardData.name);
-      const castableFrom = cardScript?.castable_from?.[0];
+      const castableFromZones = cardScript?.castable_from ?? [];
       const castableFromMatch =
-        (castableFrom === "graveyard" && inGrave) ||
-        (castableFrom === "exile" && inExile) ||
-        (castableFrom === "command" && inCommand);
+        castableFromZones.length > 0 &&
+        castableFromZones.some(
+          (z) =>
+            (z === "graveyard" && inGrave) ||
+            (z === "exile" && inExile) ||
+            (z === "command" && inCommand),
+        );
       if (
         !(altType === "foretell" && isForetold) &&
         !(altType === "escape" && inGrave) &&

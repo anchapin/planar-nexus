@@ -98,6 +98,24 @@ export interface GameState {
    * `?? []`.
    */
   pendingAttackReturnOffers?: CardInstanceId[];
+
+  /**
+   * Wave 4.8 follow-up 19 lane 116 (#2614 follow-up):
+   * per-game X-cast ledger. Maps a spell's `CardInstanceId`
+   * to the X value chosen when the spell was cast
+   * (CR 107.3, #2559). A trigger on card A that uses
+   * `cast_filter.X: "X_spent_on_spell"` reads the value
+   * here to surface the stored X for card A's effect.
+   *
+   * v1 ships a **read-only path** — the engine reads the
+   * map but does NOT yet write to it at cast time. The
+   * synthetic lane 116 test pre-populates the map
+   * directly; the write step is a follow-up sub-piece
+   * (lane 116 piece 2/2). Optional so legacy state
+   * literals default to "no X-cast record" (read with
+   * `?? new Map()`).
+   */
+  castVariableValues?: Map<CardInstanceId, number>;
 }
 
 /**

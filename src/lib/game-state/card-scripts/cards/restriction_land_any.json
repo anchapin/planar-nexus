@@ -1,0 +1,13 @@
+{
+  "name": "Restriction Land Any",
+  "oracle": "{T}: Add one mana of any color. Spend this mana only on instant or sorcery spells.",
+  "activated": [
+    {
+      "text": "Add one mana of any color. Spend this mana only on instant or sorcery spells.",
+      "cost": { "tap": true },
+      "effects": [
+        { "op": "AddMana", "amount": 1, "colors": "any", "restriction": "instant_or_sorcery" }
+      ]
+    }
+  ]
+}

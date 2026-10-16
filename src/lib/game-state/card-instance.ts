@@ -61,6 +61,15 @@ export function createCardInstance(
     // null today so a follow-up lane can extend the engine
     // without a CardInstance-shape bump.
     chosenCardName: null,
+    // Wave 4.8 follow-up 26 lane 71 piece 3/N (#2614
+    // follow-up): `enter_choice: { kind:
+    // "protection_quality" }` sets this via
+    // `resolveEnterChoice`; the follow-up 26 lane 71
+    // piece 3/N `protectionFrom: "chosen"` static reads
+    // it to resolve the protected qualities. Parallel
+    // to the existing `chosenCreatureType` /
+    // `chosenColor` init.
+    chosenProtectionFrom: null,
     isToken: options.isToken || false,
     tokenData: options.tokenData || null,
     // Boast keyword tracking (CR 702.131) - default to false, set when creature attacks

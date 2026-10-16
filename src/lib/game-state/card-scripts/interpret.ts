@@ -31,7 +31,9 @@ import {
   destroyCard,
   exileCard,
   moveCardToZone,
+  sacrificeCard,
 } from "../keyword-actions/removal";
+import { loseLife } from "../player-actions";
 import { discardCards } from "../keyword-actions/draw";
 import { tapCardAction, untapCardAction } from "../keyword-actions/damage-tap";
 import {
@@ -55,8 +57,10 @@ import {
   addUntilEndOfTurnKeyword,
   CANT_BE_BLOCKED,
 } from "../pt-until-end-of-turn";
-import { getCardScript } from "./registry";
+import { getCardScript, getCardDataByName } from "./registry";
 import { addMana } from "../mana/mana-pool";
+import { addRestrictedMana } from "../mana/restriction-ledger";
+import { spendMana } from "../mana/mana-payment";
 import { PREDEFINED_TOKENS } from "./predefined-tokens";
 import {
   matchesController,
@@ -111,6 +115,21 @@ interface EffectContext {
    * ability contexts.
    */
   drawingPlayerId?: PlayerId;
+  /**
+   * Wave 4.8 follow-up 12 lane 92 (#2614 follow-up): the trigger's
+   * `enteringCardId` for `event: "etb"` triggers (Drogskol Reaver's
+   * "Whenever a creature you control enters, if its mana value is
+   * 4 or greater, you gain life equal to its toughness"). The
+   * entering creature's id is propagated from
+   * `stackObject.triggerContext.enteringCardId` (set by
+   * `checkTriggeredAbilities`) into the EffectContext. Read by
+   * `GainLife.amount.X: "toughness"` (and any future
+   * `X: "power" | "mana_value" | "creatures"` arm) to read the
+   * entering creature's printed `cardData` fields. Undefined for
+   * non-ETB triggers and for direct spell / activated ability
+   * contexts.
+   */
+  enteringCardId?: CardInstanceId;
 }
 
 /**
@@ -373,6 +392,175 @@ function artifactCount(state: GameState, playerId: PlayerId): number {
     if (/\bArtifact\b/.test(card.cardData.type_line ?? "")) n++;
   }
   return n;
+}
+
+/**
+ * Wave 4.8 follow-up 12 lane 90 (#2614 follow-up) + follow-up 13
+ * lanes 94 + 95 (#2614 follow-up): resolve a `Draw.amount`
+ * from state when the `X` arm is set.
+ *   - `creaturesDiedThisTurn`: boolean
+ *     `state.turn.creatureDiedThisTurn` for 0 or 1
+ *     (Needletooth Pack).
+ *   - `cardsDrawnThisTurn`: integer
+ *     `state.players[controllerId].cardsDrawnThisTurn`
+ *     (Proft's Eidetic Memory's "draw N where N = cards drawn
+ *     this turn" — the lane 87 `recordCardsDrawn` helper
+ *     already maintains the per-player counter; lane 94
+ *     just reads it).
+ *   - `cardsDrawnThisTurnByOpponents`: sum of the
+ *     per-opponent counters — every player EXCEPT the
+ *     controller — across all opponents
+ *     (Rhystic Study's "draw N where N = cards drawn by
+ *     opponents this turn" — lane 95). A 3-player game
+ *     has 2 opponents; the sum is across both.
+ *
+ * When `X` is not set, the integer `amount` (which may
+ * itself be `number | "X"` — "X" here falls back to 0
+ * per the existing CR 107.3 default) is returned as-is.
+ */
+function resolveDrawAmount(
+  state: GameState,
+  effect: {
+    amount: number | "X";
+    X?:
+      | "creaturesDiedThisTurn"
+      | "cardsDrawnThisTurn"
+      | "cardsDrawnThisTurnByOpponents";
+  },
+  controllerId?: PlayerId,
+): number {
+  if (effect.X === "creaturesDiedThisTurn") {
+    return state.turn.creatureDiedThisTurn === true ? 1 : 0;
+  }
+  if (effect.X === "cardsDrawnThisTurn") {
+    if (!controllerId) return 0;
+    return state.players.get(controllerId)?.cardsDrawnThisTurn ?? 0;
+  }
+  if (effect.X === "cardsDrawnThisTurnByOpponents") {
+    if (!controllerId) return 0;
+    let sum = 0;
+    for (const [pid, p] of state.players) {
+      if (pid === controllerId) continue;
+      sum += p.cardsDrawnThisTurn ?? 0;
+    }
+    return sum;
+  }
+  return typeof effect.amount === "number" ? effect.amount : 0;
+}
+
+/**
+ * Wave 4.8 follow-up 13 lane 97 (#2614 follow-up): resolve a
+ * `CreateToken.count` from state when the `X` arm is set
+ * (Redcap-style "create X 1/1 red Goblin creature tokens" —
+ * the X-counts scale with the board state).
+ *   - `cardsDrawnThisTurn`: integer
+ *     `state.players[controllerId].cardsDrawnThisTurn`
+ *     (same as `Draw.X: "cardsDrawnThisTurn"`, lane 94).
+ *   - `creaturesDiedThisTurn`: boolean
+ *     `state.turn.creatureDiedThisTurn` for 0 or 1
+ *     (same as `Draw.X: "creaturesDiedThisTurn"`, lane 90).
+ *   - `yourCreatures`: integer — the number of creatures
+ *     the controller controls on the battlefield
+ *     (Redcap-style X-count that scales with the
+ *     controller's board).
+ *   - `landsYouControl`: integer — the number of
+ *     lands the controller controls on the
+ *     battlefield (Avenger of Zendikar's
+ *     "create X 0/1 green Plant creature tokens
+ *     where X is the number of lands you control"
+ *     half — #2500 Zendikar Rising, DFC 186,
+ *     lane 114 piece 2). The engine reads the
+ *     controller's battlefield land count via the
+ *     same loop as the static-anthem
+ *     `computeX(..., "lands")` arm in
+ *     `keyword-actions/scripted-statics.ts`.
+ *
+ * When `X` is not set, the integer `count` is
+ * returned as-is. `xCount` permits the literal "X"
+ * (CR 107.3 default of 0), which falls through to 0.
+ */
+function resolveCreateTokenAmount(
+  state: GameState,
+  effect: {
+    count: number | "X";
+    X?:
+      | "cardsDrawnThisTurn"
+      | "creaturesDiedThisTurn"
+      | "yourCreatures"
+      | "landsYouControl";
+  },
+  controllerId?: PlayerId,
+): number {
+  if (effect.X === "creaturesDiedThisTurn") {
+    return state.turn.creatureDiedThisTurn === true ? 1 : 0;
+  }
+  if (effect.X === "cardsDrawnThisTurn") {
+    if (!controllerId) return 0;
+    return state.players.get(controllerId)?.cardsDrawnThisTurn ?? 0;
+  }
+  if (effect.X === "yourCreatures") {
+    if (!controllerId) return 0;
+    let count = 0;
+    for (const [cardId, card] of state.cards) {
+      if (card.controllerId !== controllerId) continue;
+      // Parallel to `countControlledByType` in
+      // `evaluate.ts` but counts ALL creatures (any
+      // type_line that includes "creature").
+      const typeLine = (card.cardData.type_line ?? "").toLowerCase();
+      if (!typeLine.includes("creature")) continue;
+      // Only count cards on the battlefield.
+      if (!card.currentZoneKey?.endsWith("-battlefield")) continue;
+      count += 1;
+    }
+    return count;
+  }
+  if (effect.X === "landsYouControl") {
+    if (!controllerId) return 0;
+    let count = 0;
+    for (const card of state.cards.values()) {
+      if (card.controllerId !== controllerId) continue;
+      const typeLine = (card.cardData.type_line ?? "").toLowerCase();
+      if (!typeLine.includes("land")) continue;
+      // Only count cards on the battlefield.
+      if (!card.currentZoneKey?.endsWith("-battlefield")) continue;
+      count += 1;
+    }
+    return count;
+  }
+  return typeof effect.count === "number" ? effect.count : 0;
+}
+
+/**
+ * Wave 4.8 follow-up 12 lane 92 (#2614 follow-up): resolve a
+ * `GainLife.amount` from state when the `X` arm is set
+ * (Drogskol Reaver's "you gain life equal to its toughness" —
+ * the entering creature's printed `cardData.toughness` becomes
+ * the life-gain amount). v1 supports a single shape:
+ * `toughness` reads `state.cards[ctx.enteringCardId]` — the
+ * entering creature's id is on the `EffectContext` (set via
+ * the trigger's `triggerContext.enteringCardId`). Falls back
+ * to the integer `amount` (which may be `number | "X"` —
+ * "X" here falls back to 0 per the existing CR 107.3 default)
+ * when `X` is not set.
+ */
+function resolveGainLifeAmount(
+  state: GameState,
+  effect: { amount: number | "X"; X?: "toughness" },
+  ctx: { enteringCardId?: CardInstanceId },
+): number {
+  if (effect.X === "toughness") {
+    const enteringId = ctx.enteringCardId;
+    if (!enteringId) {
+      return typeof effect.amount === "number" ? effect.amount : 0;
+    }
+    const entering = state.cards.get(enteringId);
+    if (!entering) {
+      return typeof effect.amount === "number" ? effect.amount : 0;
+    }
+    const toughness = parseInt(entering.cardData.toughness ?? "0", 10);
+    return Number.isFinite(toughness) ? toughness : 0;
+  }
+  return typeof effect.amount === "number" ? effect.amount : 0;
 }
 
 /**
@@ -844,6 +1032,23 @@ function applyEffect(
       );
     }
     case "Draw": {
+      // Wave 4.8 follow-up 12 lane 90 (#2614 follow-up): when
+      // `X: "creaturesDiedThisTurn"` is set, the engine reads the
+      // boolean `state.turn.creatureDiedThisTurn` (Needletooth
+      // Pack's "draw N cards where N = creatures that died this
+      // turn" — v1 minimum is the boolean, 0 or 1; the count ledger
+      // is a follow-up lane). The integer `amount` is ignored when
+      // `X` is set.
+      //
+      // Wave 4.8 follow-up 13 lane 94 (#2614 follow-up): when
+      // `X: "cardsDrawnThisTurn"` is set, the engine reads the
+      // integer `state.players[controllerId].cardsDrawnThisTurn`
+      // counter (Proft's Eidetic Memory). The controller is
+      // `ctx.controllerId` for a normal scripted trigger; for
+      // an `each_player` Draw, the helper falls through to the
+      // global default (the helper handles the `each_player`
+      // fan-out below).
+      const drawAmount = resolveDrawAmount(state, effect, ctx.controllerId);
       // #2594 lane 25: each_player (Scrawling Crawler, FDN).
       if (effect.who === "each_player") {
         let next = state;
@@ -851,7 +1056,7 @@ function applyEffect(
           const r = resolveCardDrawEffect(
             next,
             sourceId ?? ("unknown" as CardInstanceId),
-            effect.amount,
+            drawAmount,
             pid,
           );
           if (r.success) next = r.state;
@@ -863,7 +1068,7 @@ function applyEffect(
       const r = resolveCardDrawEffect(
         state,
         sourceId ?? ("unknown" as CardInstanceId),
-        effect.amount,
+        drawAmount,
         player,
       );
       return r.success ? r.state : state;
@@ -878,17 +1083,42 @@ function applyEffect(
       // have access to the source's `chosenColor`; the activated
       // mana path handles the sentinel via
       // `substituteChosenColorInEffect` in `abilities/mana.ts`.
+      // #2614 follow-up, Wave 4.8 follow-up 21 lane 69 piece 1/N:
+      // when `effect.restriction` is set, route the produced mana
+      // into the parallel `restrictionLedger[restriction]` instead
+      // of the main pool. `"any"` colors + restriction still
+      // no-ops (the color choice would need to land on the ledger
+      // by predicate, which is the multi-lane piece 2/N).
       if (effect.colors === "any") return state;
       if (effect.colors.length !== 1) return state;
       if (effect.colors[0] === "chosen") return state;
-      return addMana(state, ctx.controllerId, {
+      const manaAmount = {
         [MANA_POOL_KEY[effect.colors[0]]]: effect.amount,
-      });
+      };
+      if (effect.restriction) {
+        return addRestrictedMana(
+          state,
+          ctx.controllerId,
+          effect.restriction,
+          manaAmount,
+        );
+      }
+      return addMana(state, ctx.controllerId, manaAmount);
     }
     case "GainLife": {
+      // Wave 4.8 follow-up 12 lane 92 (#2614 follow-up): when
+      // `X: "toughness"` is set, the engine reads the entering
+      // creature's `cardData.toughness` (Drogskol Reaver's
+      // "you gain life equal to its toughness"). The integer
+      // `amount` is ignored when `X` is set; the trigger's
+      // `triggerContext` (carried on the stack object via
+      // `stackObject.triggerContext` and threaded into the
+      // EffectContext in `resolveScriptedEffects`) provides
+      // `enteringCardId` for the read.
+      const lifeAmount = resolveGainLifeAmount(state, effect, ctx);
       const player = playerFor(effect.who, ctx);
       if (!player) return state;
-      const r = resolveLifeGainEffect(state, sourceId, effect.amount, player);
+      const r = resolveLifeGainEffect(state, sourceId, lifeAmount, player);
       return r.success ? r.state : state;
     }
     case "LoseLife": {
@@ -908,12 +1138,7 @@ function applyEffect(
       // callers, though the schema gates "drawer" to drawCard arms).
       if (effect.who === "drawer") {
         const drawer = ctx.drawingPlayerId ?? state.turn.activePlayerId;
-        const r = resolveLifeLossEffect(
-          state,
-          sourceId,
-          effect.amount,
-          drawer,
-        );
+        const r = resolveLifeLossEffect(state, sourceId, effect.amount, drawer);
         return r.success ? r.state : state;
       }
       const player = playerFor(effect.who, ctx);
@@ -941,6 +1166,15 @@ function applyEffect(
       const embeddedKeywords = effect.embedded_static?.keywords?.map(
         (k) => k.charAt(0).toUpperCase() + k.slice(1),
       );
+      // Wave 4.8 follow-up 13 lane 97 (#2614 follow-up): the
+      // `X` arm resolves the token count from state
+      // (Redcap-style X-count that scales with the board).
+      // The integer `count` is ignored when `X` is set.
+      const tokenCount = resolveCreateTokenAmount(
+        state,
+        effect,
+        ctx.controllerId,
+      );
       const r = resolveTokenCreationEffect(
         state,
         sourceId,
@@ -954,7 +1188,7 @@ function applyEffect(
           oracle_text: keywords.join(", "),
           embeddedStaticKeywords: embeddedKeywords,
         },
-        effect.count,
+        tokenCount,
         ctx.controllerId,
         effect.embedded_static?.power,
         effect.embedded_static?.toughness,
@@ -1010,10 +1244,33 @@ function applyEffect(
       // (reanimation), "copied characteristics except for
       // [X]" (Phyrexian Metamorph), and "named-copy" /
       // "choose-creature-type-copy" filters.
-      const matchTargetType = (
-        typeLine: string,
-        want: string,
-      ): boolean => {
+      //
+      // Wave 4.8 follow-up 29 priority 1 (lane 28,
+      // piece 2/4) (#2614 follow-up): the
+      // discriminated-union target selector. The
+      // `target` field is now a discriminated
+      // union (the `kind` field). Three arms:
+      //   - `kind: "filter"` (the existing enum
+      //     filter — `value` is the enum string).
+      //     The engine resolves the first matching
+      //     permanent on the battlefield APNAP.
+      //   - `kind: "id"` (the explicit named
+      //     target on the battlefield — `value` is
+      //     the `CardInstanceId`). The engine
+      //     reads the named target's `cardData`
+      //     directly; a missing target is a no-op
+      //     per the lane 70 substrate's auto-pick
+      //     fallback.
+      //   - `kind: "named_card"` (STUB — the
+      //     named-card variant "create a token
+      //     that's a copy of [card name]"). The
+      //     schema arm parses; the engine consult
+      //     lands in piece 3/4. For piece 2/4, the
+      //     named-card arm falls through to a
+      //     no-op (the engine cannot resolve a
+      //     printed card without the piece 3/4
+      //     consult).
+      const matchTargetType = (typeLine: string, want: string): boolean => {
         const lower = typeLine.toLowerCase();
         if (want === "permanent") return true;
         if (want === "creature") return lower.startsWith("creature");
@@ -1030,15 +1287,491 @@ function applyEffect(
         if (want === "land") return lower.startsWith("land");
         return true;
       };
-      const matchController = (
-        cardControllerId: PlayerId,
-      ): boolean => {
+      const matchController = (cardControllerId: PlayerId): boolean => {
         if (!effect.controller || effect.controller === "any") return true;
         const wantsYou = effect.controller === "you";
         return wantsYou
           ? cardControllerId === ctx.controllerId
           : cardControllerId !== ctx.controllerId;
       };
+      // Wave 4.8 follow-up 29 priority 3 (lane
+      // 28, piece 4/4) (#2614 follow-up): the
+      // `exceptions` arm consult. When
+      // `effect.exceptions?.add_subtype` is
+      // set, the engine rebuilds each copy
+      // token's `cardData.type_line` to
+      // APPEND the added subtypes to the
+      // printed subtypes. The exceptions arm
+      // is ADDITIVE (no overwrite of the
+      // printed subtypes). The
+      // `cardData.type_line` is the printed
+      // type line — `<types> — <subtypes>`
+      // (em-dash separator, MTG standard
+      // shape). The added subtypes are
+      // appended to the existing subtype
+      // half of the type_line (or prepended
+      // if the printed type_line has no
+      // subtype half). v1 minimum:
+      // `add_subtype` only.
+      //
+      // Wave 4.8 follow-up 30 priority 1
+      // (lane 28, piece 1/N) (#2614
+      // follow-up): the `add_color`
+      // additive merge consult. When
+      // `effect.exceptions?.add_color` is
+      // set, the engine APPENDS the listed
+      // color names to each copy token's
+      // `cardData.colors` (deduped; declared
+      // order preserved) and rebuilds
+      // `cardData.color_identity` to the
+      // union of printed + added. The
+      // `add_color` arm is ADDITIVE (no
+      // overwrite of the printed colors).
+      // Color names use the engine's
+      // full-name convention (`"white" |
+      // "blue" | "black" | "red" | "green" |
+      // "colorless"`).
+      //
+      // Wave 4.8 follow-up 30 priority 2
+      // (lane 28, piece 2/N) (#2614
+      // follow-up): the `add_power`
+      // additive P/T merge. When
+      // `effect.exceptions?.add_power` is
+      // set, the engine parses the printed
+      // `power` string as an integer,
+      // ADDS the `add_power` value, and
+      // rebuilds `cardData.power` as a
+      // string. Negative integers are
+      // accepted (Phyrexian Metamorph-style
+      // `-1` → "1+(-1)" = "0"). The arm
+      // is ADDITIVE — no overwrite of the
+      // printed power. Non-integer
+      // printed powers (`*` / `1+*`)
+      // resolve to 0 (the v1 minimum does
+      // not model variable-power
+      // resolution; a `*` source becomes
+      // a `0 + add_power` token — a
+      // documented limitation, not a
+      // silent bug).
+      //
+      // Wave 4.8 follow-up 30 priority 3
+      // (lane 28, piece 3/N) (#2614
+      // follow-up): the `add_toughness`
+      // additive merge — symmetric to the
+      // `add_power` arm. When
+      // `effect.exceptions?.add_toughness`
+      // is set, the engine parses the
+      // printed `toughness` string as an
+      // integer, ADDS the value, and
+      // rebuilds `cardData.toughness` as a
+      // string. Negative integers are
+      // accepted. The arm is ADDITIVE —
+      // no overwrite of the printed
+      // toughness. Composes with
+      // `add_power` for parallel P/T
+      // additive merges.
+      //
+      // `add_type` exception variant
+      // rides follow-up 30 priority 4.
+      //
+      // Wave 4.8 follow-up 30 priority 4
+      // (lane 28, piece 4/N) (#2614
+      // follow-up): the `add_type`
+      // type-line prepend. When
+      // `effect.exceptions?.add_type` is
+      // set, the engine PREPENDS the
+      // listed card types to the TYPES
+      // half of `cardData.type_line`
+      // (e.g. `"Creature — Bear"` +
+      // `["Artifact"]` =
+      // `"Artifact Creature — Bear"`).
+      // The subtypes half is preserved.
+      // The arm is ADDITIVE — no overwrite
+      // of the printed types. The
+      // `add_type` consult runs AFTER the
+      // `add_subtype` consult (subtype
+      // append is the INNER consult;
+      // type prepend is the OUTER
+      // consult — the cross-arm order is
+      // documented in the handoff). v1
+      // minimum: a list of the seven
+      // `CARD_TYPES` enum values
+      // (`Creature | Artifact |
+      // Enchantment | Land | Planeswalker
+      // | Battle | Tribal`); supertypes
+      // (`Legendary` / `Snow` / `Basic`)
+      // ride follow-up 31.
+      const applyExceptions = (
+        cardData: ScryfallCard,
+      ): ScryfallCard => {
+        const exceptions = (
+          effect as {
+            exceptions?: {
+              add_subtype?: string[];
+              add_color?: string[];
+              add_power?: number;
+              add_toughness?: number;
+              add_type?: string[];
+            };
+          }
+        ).exceptions;
+        let rebuilt: ScryfallCard = { ...cardData };
+        // Wave 4.8 follow-up 29 priority 3
+        // (lane 28, piece 4/4) (#2614
+        // follow-up): the `add_subtype`
+        // append-consult — append the
+        // added subtypes to the printed
+        // subtypes half of `cardData.type_line`.
+        if (exceptions?.add_subtype?.length) {
+          const printed = rebuilt.type_line ?? "";
+          const emDashIdx = printed.indexOf("—");
+          if (emDashIdx < 0) {
+            // No subtypes half — append the
+            // added subtypes after the types
+            // with the em-dash separator.
+            rebuilt = {
+              ...rebuilt,
+              type_line: `${printed} — ${exceptions.add_subtype.join(" ")}`,
+            };
+          } else {
+            const typesHalf = printed.slice(0, emDashIdx).trimEnd();
+            const subtypesHalf = printed
+              .slice(emDashIdx + 1)
+              .trim();
+            const existingSubtypes = subtypesHalf
+              ? subtypesHalf.split(/\s+/).filter(Boolean)
+              : [];
+            const allSubtypes = [
+              ...existingSubtypes,
+              ...exceptions.add_subtype,
+            ];
+            rebuilt = {
+              ...rebuilt,
+              type_line: `${typesHalf} — ${allSubtypes.join(" ")}`,
+            };
+          }
+        }
+        // Wave 4.8 follow-up 30 priority 4
+        // (lane 28, piece 4/N) (#2614
+        // follow-up): the `add_type`
+        // type-line prepend — PREPEND the
+        // added card types to the TYPES
+        // half of `cardData.type_line`. The
+        // types come BEFORE the printed
+        // types (e.g. `"Creature — Bear"`
+        // + `["Artifact"]` =
+        // `"Artifact Creature — Bear"`).
+        // The subtypes half is preserved
+        // (the `add_subtype` consult already
+        // runs first; this consult operates
+        // on the post-`add_subtype`
+        // type_line). The arm is ADDITIVE
+        // — no overwrite of the printed
+        // types. If no subtypes half exists
+        // (no `—` separator), the added
+        // types are prepended to the
+        // entire printed type_line (no
+        // subtypes half to preserve).
+        if (exceptions?.add_type?.length) {
+          const printed = rebuilt.type_line ?? "";
+          const emDashIdx = printed.indexOf("—");
+          const addedTypes = exceptions.add_type.join(" ");
+          if (emDashIdx < 0) {
+            // No subtypes half — prepend
+            // the added types to the
+            // printed type_line as a whole.
+            rebuilt = {
+              ...rebuilt,
+              type_line: `${addedTypes} ${printed}`.trim(),
+            };
+          } else {
+            const typesHalf = printed.slice(0, emDashIdx).trimEnd();
+            const subtypesHalf = printed
+              .slice(emDashIdx + 1)
+              .trim();
+            // Prepend the added types to
+            // the existing types half.
+            const allTypes = `${addedTypes} ${typesHalf}`.trim();
+            if (subtypesHalf) {
+              rebuilt = {
+                ...rebuilt,
+                type_line: `${allTypes} — ${subtypesHalf}`,
+              };
+            } else {
+              rebuilt = {
+                ...rebuilt,
+                type_line: allTypes,
+              };
+            }
+          }
+        }
+        // Wave 4.8 follow-up 30 priority 1
+        // (lane 28, piece 1/N) (#2614
+        // follow-up): the `add_color`
+        // additive merge — APPEND the added
+        // color names to the printed
+        // `colors` array (deduped; declared
+        // order preserved), and rebuild
+        // `color_identity` to the union of
+        // printed + added (one-pass Set
+        // transform). The arm is ADDITIVE
+        // — no overwrite of the printed
+        // colors.
+        if (exceptions?.add_color?.length) {
+          const printedColors = Array.isArray(rebuilt.colors)
+            ? rebuilt.colors
+            : [];
+          const seen = new Set<string>();
+          const mergedColors: string[] = [];
+          for (const c of printedColors) {
+            if (!seen.has(c)) {
+              seen.add(c);
+              mergedColors.push(c);
+            }
+          }
+          for (const c of exceptions.add_color) {
+            if (!seen.has(c)) {
+              seen.add(c);
+              mergedColors.push(c);
+            }
+          }
+          // color_identity is the union
+          // mirror — same dedup logic, same
+          // order as the merged colors.
+          const printedIdentity = Array.isArray(rebuilt.color_identity)
+            ? rebuilt.color_identity
+            : [];
+          const idSeen = new Set<string>();
+          const mergedIdentity: string[] = [];
+          for (const c of printedIdentity) {
+            if (!idSeen.has(c)) {
+              idSeen.add(c);
+              mergedIdentity.push(c);
+            }
+          }
+          for (const c of exceptions.add_color) {
+            if (!idSeen.has(c)) {
+              idSeen.add(c);
+              mergedIdentity.push(c);
+            }
+          }
+          rebuilt = {
+            ...rebuilt,
+            colors: mergedColors,
+            color_identity: mergedIdentity,
+          };
+        }
+        // Wave 4.8 follow-up 30 priority 2
+        // (lane 28, piece 2/N) (#2614
+        // follow-up): the `add_power`
+        // additive P/T merge. The engine
+        // parses the printed `power` string
+        // as an integer (default 0;
+        // non-integer printed powers like
+        // `*` or `1+*` yield 0 + the
+        // additive), ADDS the `add_power`
+        // value, and rebuilds
+        // `cardData.power` as a string. The
+        // arm is ADDITIVE — no overwrite
+        // of the printed power.
+        if (exceptions?.add_power !== undefined) {
+          const printedPower = parseInt(rebuilt.power ?? "0", 10);
+          const basePower = Number.isFinite(printedPower)
+            ? printedPower
+            : 0;
+          const nextPower = basePower + exceptions.add_power;
+          rebuilt = {
+            ...rebuilt,
+            power: String(nextPower),
+          };
+        }
+        // Wave 4.8 follow-up 30 priority 3
+        // (lane 28, piece 3/N) (#2614
+        // follow-up): the `add_toughness`
+        // additive toughness merge. The
+        // engine parses the printed
+        // `toughness` string as an integer
+        // (default 0; non-integer printed
+        // toughnesses like `*` or `1+*`
+        // yield 0 + the additive), ADDS
+        // the `add_toughness` value, and
+        // rebuilds `cardData.toughness` as
+        // a string. The arm is ADDITIVE —
+        // no overwrite of the printed
+        // toughness. The `add_toughness`
+        // arm composes with the priority 2
+        // `add_power` arm (parallel
+        // additive P/T merge — both arms
+        // consume the printed P/T as the
+        // base; each arm runs independently
+        // against the printed value).
+        if (exceptions?.add_toughness !== undefined) {
+          const printedToughness = parseInt(rebuilt.toughness ?? "0", 10);
+          const baseToughness = Number.isFinite(printedToughness)
+            ? printedToughness
+            : 0;
+          const nextToughness =
+            baseToughness + exceptions.add_toughness;
+          rebuilt = {
+            ...rebuilt,
+            toughness: String(nextToughness),
+          };
+        }
+        return rebuilt;
+      };
+      // Wave 4.8 follow-up 29 priority 1 (lane 28,
+      // piece 2/4) (#2614 follow-up): consult the
+      // `target` discriminator. The legacy enum
+      // string fallback (pre-piece-2/4) is
+      // preserved for any callers that hand-build
+      // a `CopyPermanent` effect without the
+      // discriminator — the engine still consults
+      // the string enum as a fallback (the
+      // pre-piece-2/4 substrate).
+      const targetDisc = effect.target;
+      const isDiscriminated =
+        typeof targetDisc === "object" &&
+        targetDisc !== null &&
+        "kind" in targetDisc;
+      // Wave 4.8 follow-up 29 priority 1 (lane
+      // 28, piece 2/4): the `kind: "named_card"`
+      // STUB. The schema arm parses; the engine
+      // consult lands in piece 3/4. For piece
+      // 2/4, the named-card arm falls through to
+      // a no-op (the engine cannot resolve a
+      // printed card without the piece 3/4
+      // consult; the stub is intentionally inert).
+      //
+      // Wave 4.8 follow-up 29 priority 2 (lane
+      // 28, piece 3/4) (#2614 follow-up): the
+      // engine consult for the `kind:
+      // "named_card"` arm. The named-card variant
+      // reads `getCardDataByName(value.name)`
+      // (the named card's printed `cardData` —
+      // parallel to the lane 75b
+      // `become_copy.named_card` shape). When
+      // set, the engine creates `count` tokens
+      // with the named card's printed `cardData`.
+      // The named card is NOT required to be on
+      // the battlefield (parallel to the lane 75b
+      // named-card substrate). Missing name is a
+      // no-op — `getCardDataByName` returns
+      // `undefined` and the engine returns state
+      // unchanged.
+      if (
+        isDiscriminated &&
+        (targetDisc as { kind: string }).kind === "named_card"
+      ) {
+        const namedCardName = (
+          targetDisc as { kind: "named_card"; value: { name: string } }
+        ).value.name;
+        const namedCardData = getCardDataByName(namedCardName);
+        if (!namedCardData) return state;
+        const copiedCardData = applyExceptions({
+          ...namedCardData,
+        });
+        const controllerId = ctx.controllerId;
+        const ownerId = controllerId;
+        const copyCount = effect.count ?? 1;
+        const newCards = new Map(state.cards);
+        const bfKey = `${controllerId}-battlefield`;
+        const initialBf = state.zones.get(bfKey);
+        if (!initialBf) return state;
+        let bfCardIds = [...initialBf.cardIds];
+        for (let i = 0; i < copyCount; i++) {
+          const cardIdNew =
+            `copyperm-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 11)}` as CardInstanceId;
+          const newInstance = createCardInstance(
+            copiedCardData as ScryfallCard,
+            ownerId,
+            controllerId,
+            {
+              id: cardIdNew,
+              currentZoneKey: `${controllerId}-battlefield`,
+            },
+          );
+          newCards.set(cardIdNew, newInstance);
+          bfCardIds = [...bfCardIds, cardIdNew];
+        }
+        const newZones = new Map(state.zones);
+        newZones.set(bfKey, {
+          ...initialBf,
+          cardIds: bfCardIds,
+        });
+        return {
+          ...state,
+          cards: newCards,
+          zones: newZones,
+          lastModifiedAt: Date.now(),
+        };
+      }
+      // Wave 4.8 follow-up 29 priority 1 (lane
+      // 28, piece 2/4): the `kind: "id"` arm.
+      // The named target on the battlefield is
+      // resolved directly from
+      // `state.cards.get(value)` (validates the
+      // target is on the battlefield; a missing
+      // target is a no-op per the lane 70
+      // substrate's auto-pick fallback). The
+      // controller filter is ALSO applied (the
+      // explicit named target may still be
+      // filtered by `controller: "you"` /
+      // `"opponent"` / `"any"`).
+      if (isDiscriminated && (targetDisc as { kind: string }).kind === "id") {
+        const idValue = (targetDisc as { kind: "id"; value: string }).value;
+        const namedSource = state.cards.get(idValue as CardInstanceId);
+        if (
+          !namedSource ||
+          !isOnBattlefield(state, idValue as CardInstanceId) ||
+          !matchController(namedSource.controllerId)
+        ) {
+          return state;
+        }
+        const copiedCardData = applyExceptions({
+          ...namedSource.cardData,
+        });
+        const controllerId = ctx.controllerId;
+        const ownerId = controllerId;
+        const copyCount = effect.count ?? 1;
+        const newCards = new Map(state.cards);
+        const bfKey = `${controllerId}-battlefield`;
+        const initialBf = state.zones.get(bfKey);
+        if (!initialBf) return state;
+        let bfCardIds = [...initialBf.cardIds];
+        for (let i = 0; i < copyCount; i++) {
+          const cardIdNew =
+            `copyperm-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 11)}` as CardInstanceId;
+          const newInstance = createCardInstance(
+            copiedCardData as ScryfallCard,
+            ownerId,
+            controllerId,
+            {
+              id: cardIdNew,
+              currentZoneKey: `${controllerId}-battlefield`,
+            },
+          );
+          newCards.set(cardIdNew, newInstance);
+          bfCardIds = [...bfCardIds, cardIdNew];
+        }
+        const newZones = new Map(state.zones);
+        newZones.set(bfKey, {
+          ...initialBf,
+          cardIds: bfCardIds,
+        });
+        return {
+          ...state,
+          cards: newCards,
+          zones: newZones,
+          lastModifiedAt: Date.now(),
+        };
+      }
+      // For the `kind: "filter"` arm OR the
+      // legacy enum string fallback: resolve the
+      // effective enum value and use the v1 lane
+      // 70 auto-pick path.
+      const filterValue = isDiscriminated
+        ? (targetDisc as { kind: "filter"; value: string }).value
+        : (targetDisc as unknown as string);
       // Find the target: either the chosen target on the
       // stack object, or the first matching permanent on the
       // battlefield (APNAP-ordered).
@@ -1049,7 +1782,10 @@ function applyEffect(
         if (
           !sourceCard ||
           !isOnBattlefield(state, sourceId) ||
-          !matchTargetType(sourceCard.cardData.type_line ?? "", effect.target) ||
+          !matchTargetType(
+            sourceCard.cardData.type_line ?? "",
+            filterValue,
+          ) ||
           !matchController(sourceCard.controllerId)
         ) {
           sourceId = undefined;
@@ -1071,7 +1807,7 @@ function applyEffect(
             const inst = state.cards.get(id);
             if (!inst) continue;
             if (
-              matchTargetType(inst.cardData.type_line ?? "", effect.target) &&
+              matchTargetType(inst.cardData.type_line ?? "", filterValue) &&
               matchController(inst.controllerId)
             ) {
               sourceId = id;
@@ -1089,31 +1825,62 @@ function applyEffect(
       // P/T, keywords, oracle_text, colors) which never
       // mutate. Per-instance fields (counters, attachedTo,
       // etc.) start fresh.
-      const copiedCardData = { ...sourceCard.cardData };
+      const copiedCardData = applyExceptions({
+        ...sourceCard.cardData,
+      });
       const controllerId = ctx.controllerId;
       const ownerId = controllerId;
-      const cardIdNew = `copyperm-${Date.now()}-${Math.random().toString(36).slice(2, 11)}` as CardInstanceId;
-      // Build the new CardInstance via createCardInstance so
-      // we get all the defaults (summoning sickness, counters,
-      // attachedTo, etc.).
-      const newInstance = createCardInstance(
-        copiedCardData as ScryfallCard,
-        ownerId,
-        controllerId,
-        {
-          id: cardIdNew,
-          currentZoneKey: `${controllerId}-battlefield`,
-        },
-      );
+      // Wave 4.8 follow-up 28 priority 4 (lane 28,
+      // piece 1/N) (#2614 follow-up): the multi-
+      // copy `count` field (Rite of Replication's
+      // "create X tokens that are copies of target
+      // creature"; Extravagant Replication's "create
+      // three tokens that are copies"). When
+      // `count >= 2`, the engine creates `count`
+      // independent tokens in sequence — each with
+      // its own `cardId`, `cardData` (shallow copy
+      // of the source's cardData), and battlefield
+      // entry. The tokens are NEW CardInstances, not
+      // the existing copy-substrate's overlay
+      // mechanism. The v1 minimum is `count: 1`
+      // (default — single copy, mirrors the lane 70
+      // substrate). `count >= 1` is enforced at the
+      // Zod layer (`z.number().int().min(1)`). CR
+      // 707.2 reference for "all characteristics
+      // copied" semantics on each token.
+      const copyCount = effect.count ?? 1;
       const newCards = new Map(state.cards);
-      newCards.set(cardIdNew, newInstance);
       const bfKey = `${controllerId}-battlefield`;
-      const bf = state.zones.get(bfKey);
-      if (!bf) return state;
+      const initialBf = state.zones.get(bfKey);
+      if (!initialBf) return state;
+      let bfCardIds = [...initialBf.cardIds];
+      for (let i = 0; i < copyCount; i++) {
+        const cardIdNew =
+          `copyperm-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 11)}` as CardInstanceId;
+        // Build the new CardInstance via
+        // createCardInstance so we get all the
+        // defaults (summoning sickness, counters,
+        // attachedTo, etc.). Each token starts
+        // with a fresh `cardId` (the loop index
+        // disambiguates copies when `Date.now()`
+        // would collide on multiple counts in the
+        // same tick).
+        const newInstance = createCardInstance(
+          copiedCardData as ScryfallCard,
+          ownerId,
+          controllerId,
+          {
+            id: cardIdNew,
+            currentZoneKey: `${controllerId}-battlefield`,
+          },
+        );
+        newCards.set(cardIdNew, newInstance);
+        bfCardIds = [...bfCardIds, cardIdNew];
+      }
       const newZones = new Map(state.zones);
       newZones.set(bfKey, {
-        ...bf,
-        cardIds: [...bf.cardIds, cardIdNew],
+        ...initialBf,
+        cardIds: bfCardIds,
       });
       return {
         ...state,
@@ -1174,7 +1941,8 @@ function applyEffect(
       const chosenPrintedCardData = chosenCard.cardData;
       const controllerId = ctx.controllerId;
       const ownerId = controllerId;
-      const cardIdNew = `copyeot-${Date.now()}-${Math.random().toString(36).slice(2, 11)}` as CardInstanceId;
+      const cardIdNew =
+        `copyeot-${Date.now()}-${Math.random().toString(36).slice(2, 11)}` as CardInstanceId;
       // Build the new CardInstance with the chosen target's
       // printed characteristics, mirroring lane 70's
       // `createCardInstance + zone push` flow so the new
@@ -1730,6 +2498,38 @@ function applyEffect(
       return addUntilEndOfTurnKeyword(state, cardId, CANT_BE_BLOCKED);
     }
     case "PutCounters": {
+      // Wave 4.8 follow-up 19 lane 114 piece 2/2
+      // (#2614 follow-up): the "each_creature" target
+      // mode on `PutCounters` (Avenger of Zendikar's
+      // "Landfall — you may put a +1/+1 counter on each
+      // Plant you control" half). The engine iterates
+      // the controller's battlefield creatures matching
+      // the `target_each.subtype` filter and stamps
+      // `amount` counters on each. v1 minimum: a
+      // single `subtype` filter, the `controller`
+      // field, no optional / kicker gate.
+      if (effect.target_each) {
+        const subtype = effect.target_each.subtype.toLowerCase();
+        const amount = effect.use_source_power
+          ? sourceId
+            ? Math.max(0, getEffectivePower(state.cards.get(sourceId)!))
+            : 0
+          : (effect.amount ?? 0);
+        if (amount <= 0) return state;
+        const cards = new Map(state.cards);
+        for (const card of cards.values()) {
+          if (!isOnBattlefield(state, card.id)) continue;
+          if (
+            effect.controller !== undefined &&
+            !matchesController(card, effect.controller, ctx.controllerId)
+          )
+            continue;
+          const typeLine = (card.cardData.type_line ?? "").toLowerCase();
+          if (!typeLine.includes(subtype)) continue;
+          cards.set(card.id, addCounters(card, effect.counter, amount));
+        }
+        return { ...state, cards };
+      }
       const cardId = creatureFor(state, effect.target, ctx, effect.controller);
       const card = cardId ? state.cards.get(cardId) : undefined;
       if (!cardId || !card) return state;
@@ -2122,6 +2922,8 @@ export function resolveScriptedEffects(
           triggeringStackObjectId: stackObject.triggeringStackObjectId,
           drawingPlayerId:
             stackObject.triggerContext?.drawingPlayerId ?? undefined,
+          enteringCardId:
+            stackObject.triggerContext?.enteringCardId ?? undefined,
         };
         const legal =
           taken.length === skippedCount &&
@@ -2200,6 +3002,8 @@ export function resolveScriptedEffects(
           triggeringStackObjectId: stackObject.triggeringStackObjectId,
           drawingPlayerId:
             stackObject.triggerContext?.drawingPlayerId ?? undefined,
+          enteringCardId:
+            stackObject.triggerContext?.enteringCardId ?? undefined,
         };
         const legal =
           taken.length === count &&
@@ -2221,8 +3025,8 @@ export function resolveScriptedEffects(
       wasKicked,
       x,
       triggeringStackObjectId: stackObject.triggeringStackObjectId,
-      drawingPlayerId:
-        stackObject.triggerContext?.drawingPlayerId ?? undefined,
+      drawingPlayerId: stackObject.triggerContext?.drawingPlayerId ?? undefined,
+      enteringCardId: stackObject.triggerContext?.enteringCardId ?? undefined,
     });
   }
   return current;
@@ -2386,6 +3190,77 @@ export function createYouMayPromptWaitingChoice(
 }
 
 /**
+ * Wave 4.8 follow-up 12 lane 88 (#2614 follow-up): a triggered
+ * ability's `cost.sacrifice_self: true` gate (CR 602.2b — "Sacrifice
+ * this [permanent]:" as a trigger cost). Surfaces a yes/no
+ * `sacrifice_self_prompt` WaitingChoice; the controller picks yes /
+ * no. On yes, the source permanent is sacrificed BEFORE the
+ * trigger's effects resolve (CR 602.2b "the cost is paid before
+ * the spell or ability resolves"); on no, the trigger does nothing.
+ *
+ * The prompt text names the trigger and surfaces the "yes/no" choice
+ * for the controller. Resolved by the `sacrifice_self_prompt`
+ * branch in spell-casting/choices.ts, which stamps
+ * `stackObject.cost_paid` and returns the controller to the
+ * resolution path.
+ */
+export function createSacrificeSelfPromptWaitingChoice(
+  stackObjectId: string,
+  playerId: PlayerId,
+  triggerText: string,
+): WaitingChoice {
+  return {
+    type: "sacrifice_self_prompt",
+    playerId,
+    stackObjectId,
+    prompt: `${triggerText} (sacrifice this permanent to pay the cost?)`,
+    choices: [
+      { label: "Yes", value: true, isValid: true },
+      { label: "No", value: false, isValid: true },
+    ],
+    minChoices: 1,
+    maxChoices: 1,
+    presentedAt: Date.now(),
+  };
+}
+
+/**
+ * Wave 4.8 follow-up 13 lane 98 (#2614 follow-up):
+ * `createDiscardPromptWaitingChoice` — surfaces a
+ * yes/no prompt asking the controller to discard a
+ * card as a trigger cost (Storm Fleet Spy variant —
+ * parallel to {@link createSacrificeSelfPromptWaitingChoice}).
+ * On yes, the engine calls `discardCards` to move
+ * `amount` cards from the controller's hand to the
+ * graveyard; on no, the trigger does nothing
+ * (CR 602.2b). v1 uses a random-discard path; explicit
+ * controller selection rides a follow-up lane.
+ */
+export function createDiscardPromptWaitingChoice(
+  stackObjectId: string,
+  playerId: PlayerId,
+  triggerText: string,
+  amount: number,
+): WaitingChoice {
+  return {
+    type: "discard_prompt",
+    playerId,
+    stackObjectId,
+    prompt:
+      amount === 1
+        ? `${triggerText} (discard a card to pay the cost?)`
+        : `${triggerText} (discard ${amount} cards to pay the cost?)`,
+    choices: [
+      { label: "Yes", value: true, isValid: true },
+      { label: "No", value: false, isValid: true },
+    ],
+    minChoices: 1,
+    maxChoices: 1,
+    presentedAt: Date.now(),
+  };
+}
+
+/**
  * Resolve a triggered or activated ability from its source's script.
  * Returns undefined when the ability isn't scripted, so the caller falls back
  * to reading its text.
@@ -2397,6 +3272,14 @@ export function createYouMayPromptWaitingChoice(
  * list is skipped (the trigger fizzles silently). If undefined, the
  * prompt is surfaced and resolution is suspended — the engine's
  * usual `waitingChoice` machinery resumes it.
+ *
+ * Wave 4.8 follow-up 12 lane 88 (#2614 follow-up) extension: when
+ * the scripted trigger carries `cost.sacrifice_self: true`, the
+ * engine surfaces a `sacrifice_self_prompt` waitingChoice at
+ * resolution; the controller picks yes / no. On yes, the source
+ * permanent is sacrificed BEFORE the effects (CR 602.2b); on no,
+ * the trigger does nothing. The `cost_paid` field on the
+ * StackObject tracks the player's choice.
  */
 export function resolveScriptedAbility(
   state: GameState,
@@ -2427,6 +3310,511 @@ export function resolveScriptedAbility(
       };
     }
     // you_may_resolved === true: fall through and run effects.
+  }
+  // Wave 4.8 follow-up 13 lane 93 (#2614 follow-up):
+  // "you may pay [cost]; if you do, [effects]" gate.
+  // Combines the lane 60 `you_may` yes/no prompt with a
+  // cost-on-yes path (CR 117.3a "you may pay N life;
+  // if you do, ..." pattern; Skyship Buccaneer is the
+  // canonical example).
+  //
+  // The v1 minimum supports two cost shapes (parallel
+  // to the lane 88 `cost` substrate):
+  //   - `sacrifice_self: true` — sacrifice the source
+  //     permanent. Reuses the lane 88 sacrifice-card
+  //     path.
+  //   - `pay_life: { amount: N }` — pay N life. Reuses
+  //     the lane 63 `resolveLifeLossEffect` /
+  //     `loseLife` helpers.
+  //
+  // Mutual exclusion with `cost` is enforced in the
+  // schema (the refine rule rejects both arms on the
+  // same trigger). The cost runs only when
+  // `you_may_resolved === true` (the yes is the
+  // consent); on `=== false` the trigger is skipped
+  // by the lane 60 `you_may` gate above. The cost
+  // stamps `cost_paid: true` (reusing the lane 88
+  // flag — the schema guarantees `cost` and
+  // `you_may_cost` are mutually exclusive, so no
+  // double-stamp risk) and re-runs the effects loop.
+  const youMayCost = (ability as { you_may_cost?: unknown }).you_may_cost;
+  if (youMayCost !== undefined) {
+    // Defensive: if the controller's `you_may` flag is
+    // missing, surface the prompt (the schema's
+    // refine rule already enforces `you_may: true`,
+    // but a hand-written ability could miss it). This
+    // mirrors the lane 60 gate.
+    if (stackObject.you_may_resolved !== true) {
+      // The lane 60 gate handles `=== undefined`
+      // (surface prompt) and `=== false` (skip). If
+      // we're here with `you_may_resolved !== true`,
+      // the lane 60 gate's logic already covered the
+      // case — fall through.
+      // (No-op here; the lane 60 gate's return paths
+      // covered undefined and false above.)
+    } else {
+      // `you_may_resolved === true`: pay it.
+      const stackAny = stackObject as StackObject & {
+        cost_paid?: boolean;
+      };
+      if (stackAny.cost_paid === undefined) {
+        // Stamp and apply the cost in the same pass —
+        // the yes/no gate has already settled the
+        // controller's consent; the cost_paid flag
+        // guards against double-apply on subsequent
+        // resolve passes.
+        if (
+          typeof youMayCost === "object" &&
+          youMayCost !== null &&
+          "sacrifice_self" in youMayCost &&
+          (youMayCost as { sacrifice_self: unknown }).sacrifice_self === true
+        ) {
+          // Defensive: if the source has been
+          // destroyed by another effect before the
+          // cost runs, the trigger fizzles (CR
+          // 602.2b). Reuses the lane 88 source-
+          // presence guard.
+          const sourceStillPresent =
+            stackObject.sourceCardId !== null &&
+            state.cards.has(stackObject.sourceCardId as CardInstanceId) &&
+            state.zones
+              .get(`${stackObject.controllerId as PlayerId}-battlefield`)
+              ?.cardIds.includes(stackObject.sourceCardId);
+          if (!sourceStillPresent) {
+            stackAny.cost_paid = false;
+            return state;
+          }
+          const sacrificed = sacrificeCard(
+            state,
+            stackObject.sourceCardId as CardInstanceId,
+          );
+          if (sacrificed.success) state = sacrificed.state;
+          else {
+            stackAny.cost_paid = false;
+            return state;
+          }
+        } else if (
+          typeof youMayCost === "object" &&
+          youMayCost !== null &&
+          "pay_life" in youMayCost
+        ) {
+          const amount = (youMayCost as { pay_life: { amount: number } })
+            .pay_life.amount;
+          // Pay the cost: lose N life. The helper
+          // stamps the spectator's `lastTurnLifeLost`
+          // for CR 702.135 spectacle. Defensive:
+          // losing more life than the controller has
+          // floors at 0 (the helper handles this), so
+          // the cost always succeeds.
+          state = loseLife(state, stackObject.controllerId as PlayerId, amount);
+        }
+        stackAny.cost_paid = true;
+      }
+      // `cost_paid === true` (already paid): fall
+      // through to effects. `cost_paid === false`
+      // (the trigger fizzled defensively above).
+      if (stackAny.cost_paid === false) return state;
+    }
+  }
+  // Wave 4.8 follow-up 21 lane 99 follow-up extension
+  // (#2614 follow-up): the multi-cost OR combinator
+  // ("you may pay [A] OR pay [B]; if you do,
+  // [effects]" — Skeletonize / Oracle-shaped choices on
+  // the cost). When `cost.or: [{ ... }, { ... }]` is set,
+  // the engine surfaces a `cost_combinator_or_prompt`
+  // waitingChoice that lists the alternative cost arms
+  // (one of `sacrifice_self` / `discard` / `pay_life` /
+  // `pay_mana` — the same v1 substrate as the standalone
+  // `cost.<arm>` siblings). On the first resolve pass the
+  // controller picks an arm (the 0-based index is stamped
+  // on `stackObject.chosen_or_cost_index`); on the second
+  // pass the engine synthesizes the picked arm into a
+  // standalone `effective_cost` shape and STAMPS IT ON THE
+  // STACK OBJECT (rather than mutating the script — a
+  // script can fire multiple times; each resolution
+  // carries its own pick). The existing cost-arm
+  // dispatch reads `effective_cost` FIRST (the picked
+  // arm's shape) before falling back to the script's
+  // `cost.<arm>`.
+  //
+  // The combinator requires `you_may: true` (enforced by
+  // the schema's refine rule) — the yes/no gate is the
+  // precondition for picking which arm to pay. The
+  // combinator dispatch sits BEFORE the standalone cost
+  // arms so that `cost.or` takes priority over any
+  // coincidental single-arm cost (the schema rejects the
+  // dual shape via the refine rule, so the only entry
+  // path into the combinator is via `cost.or` being
+  // defined).
+  const orCost = (
+    ability as {
+      cost?: { or?: ReadonlyArray<Record<string, unknown>> };
+    }
+  ).cost?.or;
+  if (orCost !== undefined) {
+    const stackAny = stackObject as StackObject & {
+      chosen_or_cost_index?: number;
+      effective_cost?: {
+        sacrifice_self?: boolean;
+        discard?: { amount: number };
+        pay_life?: { amount: number };
+        pay_mana?: { amount: number };
+      };
+    };
+    if (stackAny.chosen_or_cost_index === undefined) {
+      // First resolve pass: surface the
+      // `cost_combinator_or_prompt` with a label
+      // per arm. The `cost_combinator_or_prompt`
+      // branch in spell-casting/choices.ts
+      // stamps `stackObject.chosen_or_cost_index`
+      // and returns the controller to the
+      // resolution path.
+      const labelFor = (arm: Record<string, unknown>): string => {
+        if ("sacrifice_self" in arm) return "Sacrifice this permanent";
+        if ("discard" in arm) return "Discard a card";
+        if ("pay_life" in arm) {
+          return `Pay ${(arm as { pay_life: { amount: number } }).pay_life.amount} life`;
+        }
+        if ("pay_mana" in arm) {
+          return `Pay ${(arm as { pay_mana: { amount: number } }).pay_mana.amount} mana`;
+        }
+        return "Unknown cost";
+      };
+      const choices = orCost.map((arm, idx) => ({
+        label: labelFor(arm),
+        value: idx,
+        isValid: true,
+      }));
+      return {
+        ...state,
+        waitingChoice: {
+          type: "cost_combinator_or_prompt",
+          playerId: stackObject.controllerId as PlayerId,
+          stackObjectId: stackObject.id,
+          prompt: `${ability.text} (choose which cost to pay)`,
+          choices,
+          minChoices: 1,
+          maxChoices: 1,
+          presentedAt: Date.now(),
+        },
+      };
+    }
+    // Second resolve pass: synthesize the
+    // picked arm into a standalone
+    // `effective_cost` shape on the stack
+    // object (NOT the script — a single script
+    // can fire multiple times; each
+    // resolution carries its own pick). The
+    // existing cost-arm dispatch reads
+    // `effective_cost` first, so the picked
+    // arm's standalone path runs on this and
+    // subsequent passes. Fall through to the
+    // existing dispatch.
+    const pickedArm = orCost[stackAny.chosen_or_cost_index];
+    if (pickedArm !== undefined) {
+      const synthesizedCost: {
+        sacrifice_self?: boolean;
+        discard?: { amount: number };
+        pay_life?: { amount: number };
+        pay_mana?: { amount: number };
+      } = {};
+      if ("sacrifice_self" in pickedArm) {
+        synthesizedCost.sacrifice_self = true;
+      } else if ("discard" in pickedArm) {
+        synthesizedCost.discard = (
+          pickedArm as { discard: { amount: number } }
+        ).discard;
+      } else if ("pay_life" in pickedArm) {
+        synthesizedCost.pay_life = (
+          pickedArm as { pay_life: { amount: number } }
+        ).pay_life;
+      } else if ("pay_mana" in pickedArm) {
+        synthesizedCost.pay_mana = (
+          pickedArm as { pay_mana: { amount: number } }
+        ).pay_mana;
+      }
+      stackAny.effective_cost = synthesizedCost;
+    } else {
+      // Defensive: an out-of-range index is a
+      // bug (the schema's `min(2)` rule
+      // guarantees the array is non-empty,
+      // and the resolver normalizes the
+      // selected value to a number). Fizzle
+      // silently rather than crash.
+      return state;
+    }
+  }
+  // Lane 88 (#2614 follow-up): sacrifice-self cost gate.
+  // Wave 4.8 follow-up 21 lane 99 follow-up extension
+  // (#2614 follow-up): reads `effective_cost` FIRST
+  // (the OR combinator's picked-arm shape stamped on
+  // the stack object), then falls back to the
+  // script's `cost.sacrifice_self` for the standalone
+  // arm. The same fallback pattern applies to the
+  // lane 98 / 106 / 117 arms below.
+  const hasSacrificeCost =
+    ((stackObject as StackObject & {
+      effective_cost?: { sacrifice_self?: boolean };
+    }).effective_cost?.sacrifice_self === true) ||
+    (ability as { cost?: { sacrifice_self?: boolean } }).cost
+      ?.sacrifice_self === true;
+  if (hasSacrificeCost) {
+    // Defensive: if the source has already been sacrificed by another
+    // effect (the cost can't be paid), the trigger fizzles. CR 602.2b.
+    const sourceStillPresent =
+      stackObject.sourceCardId !== null &&
+      state.cards.has(stackObject.sourceCardId as CardInstanceId) &&
+      state.zones
+        .get(`${stackObject.controllerId as PlayerId}-battlefield`)
+        ?.cardIds.includes(stackObject.sourceCardId);
+    if (!sourceStillPresent) return state;
+    // Track the cost_paid status; default undefined = awaiting answer.
+    const costPaid = (stackObject as StackObject & { cost_paid?: boolean })
+      .cost_paid;
+    if (costPaid === false) {
+      // Controller declined: the trigger does nothing.
+      return state;
+    }
+    if (costPaid === undefined) {
+      return {
+        ...state,
+        waitingChoice: createSacrificeSelfPromptWaitingChoice(
+          stackObject.id,
+          stackObject.controllerId as PlayerId,
+          ability.text,
+        ),
+      };
+    }
+    // costPaid === true: sacrifice the source, then fall through to
+    // resolve effects. The sacrifice is its own state mutation that
+    // runs before the effects loop (CR 602.2b "the cost is paid
+    // before the spell or ability resolves").
+    if (
+      stackObject.sourceCardId !== null &&
+      state.cards.has(stackObject.sourceCardId as CardInstanceId)
+    ) {
+      const sacrificed = sacrificeCard(state, stackObject.sourceCardId);
+      if (sacrificed.success) state = sacrificed.state;
+      else return state;
+    }
+  }
+  // Wave 4.8 follow-up 13 lane 98 (#2614 follow-up):
+  // discard-a-card cost gate (parallel to the lane 88
+  // sacrifice-self substrate). When `cost.discard: {
+  // amount: 1 }` is set, the engine surfaces a yes/no
+  // `discard_prompt` WaitingChoice; on yes, the
+  // controller discards `amount` cards; on no, the
+  // trigger does nothing (CR 602.2b). v1 supports a
+  // single-card discard (`amount: 1`); the multi-card
+  // variant rides a follow-up lane.
+  //
+  // Wave 4.8 follow-up 21 lane 99 follow-up extension
+  // (#2614 follow-up): reads `effective_cost.discard`
+  // FIRST (the OR combinator's picked arm), then falls
+  // back to the script's `cost.discard` for the
+  // standalone lane 98 substrate.
+  const discardCost =
+    (stackObject as StackObject & {
+      effective_cost?: { discard?: { amount: number } };
+    }).effective_cost?.discard ??
+    (ability as {
+      cost?: { discard?: { amount: number } };
+    }).cost?.discard;
+  if (discardCost !== undefined) {
+    const stackAny = stackObject as StackObject & {
+      cost_paid?: boolean;
+    };
+    const costPaid = stackAny.cost_paid;
+    if (costPaid === false) {
+      // Controller declined: the trigger does nothing.
+      return state;
+    }
+    if (costPaid === undefined) {
+      return {
+        ...state,
+        waitingChoice: createDiscardPromptWaitingChoice(
+          stackObject.id,
+          stackObject.controllerId as PlayerId,
+          ability.text,
+          discardCost.amount,
+        ),
+      };
+    }
+    // costPaid === true: discard `amount` cards, then
+    // fall through to resolve effects. The discard is
+    // its own state mutation that runs before the
+    // effects loop (CR 602.2b).
+    const discard = discardCards(
+      state,
+      stackObject.controllerId as PlayerId,
+      discardCost.amount,
+      true, // v1 uses random discard (controller-choice selection is a follow-up lane)
+    );
+    if (discard.success) state = discard.state;
+    else {
+      // The controller's hand is empty or doesn't have
+      // enough cards — defensive: the trigger fizzles
+      // (CR 602.2b).
+      return state;
+    }
+  }
+  // Wave 4.8 follow-up 13 lane 106 (#2614 follow-up):
+  // "you may pay [life]; if you do, [X]" alternate cost
+  // (Aether Burst / Skeleton Scarab / Necropotence
+  // style). Parallel to the lane 88 `sacrifice_self`
+  // and lane 98 `discard` substrates. When
+  // `cost.pay_life.amount: N` is set, the engine
+  // surfaces a yes/no prompt (reusing the
+  // `you_may_prompt` shape — a yes/no yes/no gate for
+  // the cost consent); on yes, the controller loses
+  // `amount` life via the existing `loseLife` helper
+  // (the `state.turn.creatureDiedThisTurn` counter is
+  // NOT bumped — life loss is not the same as dying);
+  // on no, the trigger fizzles (CR 602.2b).
+  //
+  // The `additionalCosts.pay_life` arm on `CardScript`
+  // (from lane 63) is spell-cast only — the
+  // `cost.pay_life` arm is the lane 106 trigger-cost
+  // substrate. v1 supports a single integer `amount`.
+  //
+  // Wave 4.8 follow-up 21 lane 99 follow-up extension
+  // (#2614 follow-up): reads `effective_cost.pay_life`
+  // FIRST (the OR combinator's picked arm), then falls
+  // back to the script's `cost.pay_life` for the
+  // standalone lane 106 substrate.
+  const payLifeCost =
+    (stackObject as StackObject & {
+      effective_cost?: { pay_life?: { amount: number } };
+    }).effective_cost?.pay_life ??
+    (ability as {
+      cost?: { pay_life?: { amount: number } };
+    }).cost?.pay_life;
+  if (payLifeCost !== undefined) {
+    const stackAny = stackObject as StackObject & {
+      cost_paid?: boolean;
+    };
+    const costPaid = stackAny.cost_paid;
+    if (costPaid === false) {
+      // Controller declined: the trigger does nothing.
+      return state;
+    }
+    if (costPaid === undefined) {
+      // Surface a `pay_life_prompt` yes/no consent
+      // gate. The `pay_life_prompt` branch in
+      // `spell-casting/choices.ts` stamps
+      // `stackObject.cost_paid` (parallel to
+      // `discard_prompt`); the engine consult runs
+      // `loseLife` on `cost_paid === true`.
+      return {
+        ...state,
+        waitingChoice: {
+          type: "pay_life_prompt",
+          playerId: stackObject.controllerId as PlayerId,
+          stackObjectId: stackObject.id,
+          prompt: `${ability.text} (pay ${payLifeCost.amount} life?)`,
+          choices: [
+            { label: "Yes", value: true, isValid: true },
+            { label: "No", value: false, isValid: true },
+          ],
+          minChoices: 1,
+          maxChoices: 1,
+          presentedAt: Date.now(),
+        },
+      };
+    }
+    // costPaid === true: lose `amount` life, then fall
+    // through to resolve effects. The life loss is
+    // its own state mutation that runs before the
+    // effects loop (CR 602.2b "the cost is paid before
+    // the spell or ability resolves"). `loseLife` returns
+    // `GameState` directly (not a `KeywordActionResult`).
+    state = loseLife(
+      state,
+      stackObject.controllerId as PlayerId,
+      payLifeCost.amount,
+    );
+  }
+  // Wave 4.8 follow-up 17 lane 117 (#2614 follow-up):
+  // parallel to the lane 106 `cost.pay_life` substrate.
+  // "Pay N mana:" as a trigger cost — Mana Echo / Selvala
+  // Heart of the Wilds style. The engine surfaces a
+  // yes/no prompt (`pay_mana_prompt` waitingChoice); on
+  // yes, the controller pays `amount` generic mana via
+  // the existing `spendMana` helper (the standard
+  // generic → colorless → colored cascade); on no, the
+  // trigger fizzles (CR 602.2b).
+  //
+  // The check runs BEFORE the effects resolution so the
+  // prompt surfaces on the first pass (before any
+  // effects are applied). The `cost_paid === undefined`
+  // path surfaces the prompt; `cost_paid === false`
+  // fizzes; `cost_paid === true` deducts mana and
+  // falls through to the effects loop.
+  //
+  // Wave 4.8 follow-up 21 lane 99 follow-up extension
+  // (#2614 follow-up): reads `effective_cost.pay_mana`
+  // FIRST (the OR combinator's picked arm), then falls
+  // back to the script's `cost.pay_mana` for the
+  // standalone lane 117 substrate.
+  const payManaCost =
+    (stackObject as StackObject & {
+      effective_cost?: { pay_mana?: { amount: number } };
+    }).effective_cost?.pay_mana ??
+    (ability as {
+      cost?: { pay_mana?: { amount: number } };
+    }).cost?.pay_mana;
+  if (payManaCost !== undefined) {
+    const stackAny = stackObject as StackObject & {
+      cost_paid?: boolean;
+    };
+    const costPaid = stackAny.cost_paid;
+    if (costPaid === false) {
+      // Controller declined: the trigger does nothing.
+      return state;
+    }
+    if (costPaid === undefined) {
+      // Surface a `pay_mana_prompt` yes/no consent
+      // gate. The `pay_mana_prompt` branch in
+      // `spell-casting/choices.ts` stamps
+      // `stackObject.cost_paid` (parallel to
+      // `pay_life_prompt`); the engine consult runs
+      // `spendMana` on `cost_paid === true`.
+      return {
+        ...state,
+        waitingChoice: {
+          type: "pay_mana_prompt",
+          playerId: stackObject.controllerId as PlayerId,
+          stackObjectId: stackObject.id,
+          prompt: `${ability.text} (pay ${payManaCost.amount} mana?)`,
+          choices: [
+            { label: "Yes", value: true, isValid: true },
+            { label: "No", value: false, isValid: true },
+          ],
+          minChoices: 1,
+          maxChoices: 1,
+          presentedAt: Date.now(),
+        },
+      };
+    }
+    // costPaid === true: spend `amount` generic mana,
+    // then fall through to resolve effects. The mana
+    // deduction runs before the effects loop
+    // (CR 602.2b "the cost is paid before the spell or
+    // ability resolves"). If the controller has fewer
+    // than `amount` mana in the pool, the trigger
+    // fizzles (defensive — the player should never
+    // have been able to confirm the prompt without
+    // the mana, but the engine surfaces a no-op on
+    // short mana as a safety net).
+    const spendResult = spendMana(state, stackObject.controllerId as PlayerId, {
+      generic: payManaCost.amount,
+    });
+    if (spendResult.success) {
+      state = spendResult.state;
+    } else {
+      // Defensive: short mana — fizzles.
+      return state;
+    }
   }
   const effects = getScriptedAbilityEffects(state, stackObject);
   if (!effects) return undefined;

@@ -339,7 +339,484 @@ const SCOPES = [
     // / until-eot-copy family (the historical precedent
     // continues; subsequent lane 75e may grow the same
     // family).
-    budgetLines: 3100,
+    //
+    // Wave 4.8 follow-up 12 lane 87 (#2614 follow-up):
+    // Scrawling Crawler's "Whenever an opponent draws a
+    // card, that player loses 1 life" half. The schema
+    // accepts a new `"drawCard"` event arm + a new
+    // `whose_draws` filter on TriggerSchema (parallel to
+    // the existing `whose` upkeep filter); `LoseLife.who`
+    // extends with a `"drawer"` arm. +27 lines;
+    // schema.ts measured at 3077. Still within the 3100
+    // bump.
+    //
+    // Wave 4.8 follow-up 12 lane 88 (#2614 follow-up):
+    // Midnight Snack's "sacrifice this artifact as a
+    // cost" trigger-cost substrate. The schema accepts
+    // a new `cost: { sacrifice_self: true }` arm on
+    // TriggerSchema (parallel to the `additionalCosts`
+    // slot on spells, but for trigger-cost — lane 63's
+    // `additionalCosts.sacrifice.target: "self"` was
+    // spell-cast only; the lane 88 arm covers trigger-
+    // cost). +28 lines; schema.ts measured at 3105.
+    // Bumping 3100 → 3150 to give the trigger-cost /
+    // sacrifice-self family room to land without
+    // fragmenting the until-EOT-copy family (the
+    // historical precedent continues; subsequent
+    // follow-up lanes may grow the same family).
+    //
+    // Wave 4.8 follow-up 12 lane 90 (#2614 follow-up):
+    // Needletooth Pack's "draw N where N = creatures that
+    // died this turn" half. The schema accepts a new
+    // `X: "creaturesDiedThisTurn"` arm on DrawSchema
+    // (parallel to the StaticSchema.X state-derived
+    // count). +12 lines; schema.ts measured at 3117.
+    // Within the 3150 budget.
+    //
+    // Wave 4.8 follow-up 12 lane 91 (#2614 follow-up):
+    // Twinblade Paladin's "as long as you have 25 or
+    // more life, this creature has double strike and
+    // lifelink" static. The schema accepts a new
+    // `while_condition: { kind: "life_minimum",
+    // value: N }` arm on StaticSchema (CR 603.2
+    // "while"-gate, parallel to a trigger's
+    // whileCondition). The TOKEN_KEYWORDS enum gains
+    // `"double strike"` for the keyword grant (+3 lines
+    // total). schema.ts measured at 3152. Bumping
+    // 3150 → 3200 to give the while-condition family
+    // room to land without fragmenting the
+    // until-EOT-copy family (the historical precedent
+    // continues; subsequent follow-up lanes may grow
+    // the same family).
+    //
+    // Wave 4.8 follow-up 13 lane 61a (#2614 follow-up):
+    // the foundational replacement-effect-for-death
+    // layer (Whip of Erebos-style "if a creature you
+    // control would die, instead exile it"). The
+    // schema adds a new `ReplacementEffectSchema`
+    // (event / applies_to / redirect / if_condition /
+    // optional / once_per_turn) and a top-level
+    // `replacement_effects: z.array(...)` arm on
+    // `CardScriptSchema` (parallel to `triggers` /
+    // `activated` / `statics`). The docstring + the
+    // schema entry land at +144 lines; schema.ts
+    // measured at 3308. Bumping 3200 → 3350 to give
+    // the replacement-effect family room to land
+    // without fragmenting the chosen-X /
+    // additional-costs / affinity / grants /
+    // counter-ledger / cast-from-zone / mana-restriction
+    // / copy-permanent / creature-payment /
+    // aura-protection / until-EOT-copy /
+    // trigger-cost / while-condition family (the
+    // historical precedent continues; the follow-up 13
+    // lanes 100 / 102 / 103 / 105 ride the same family).
+    //
+    // Wave 4.8 follow-up 13 lane 61b (#2614 follow-up):
+    // the printed-card mechanism for Whip of Erebos's
+    // actual oracle. The schema accepts a new
+    // `death_replacement: { description, optional }`
+    // arm on `StaticSchema` (parallel to the lane 71
+    // `protectionFrom` static arm) — the engine
+    // reads the source's `cardData.oracle_text` at
+    // refresh time and writes a per-instance
+    // `deathReplacement` ledger. The docstring + the
+    // schema entry land at +66 lines; schema.ts
+    // measured at 3374. Bumping 3350 → 3400 to give
+    // the printed-oracle replacement-effect family
+    // room to land without fragmenting the
+    // chosen-X / additional-costs / affinity / grants /
+    // counter-ledger / cast-from-zone / mana-restriction
+    // / copy-permanent / creature-payment /
+    // aura-protection / until-EOT-copy /
+    // trigger-cost / while-condition /
+    // replacement-effect family (the historical
+    // precedent continues; follow-up 13 lanes 100 /
+    // 102 / 103 / 104 / 105 ride the same family).
+    //
+    // Wave 4.8 follow-up 13 lane 93 (#2614 follow-up):
+    // the "you may pay [cost]; if you do, [effects]"
+    // gate (Skyship Buccaneer's deferred half — the
+    // CR 117.3a "you may pay 2 life; if you do, draw
+    // a card" pattern). The schema accepts a new
+    // `you_may_cost` arm on `TriggerSchema` (parallel
+    // to the lane 88 `cost` substrate) with two v1
+    // shapes (`sacrifice_self: true` and
+    // `pay_life: { amount: N }`). The docstring + the
+    // schema entries land at +73 lines; schema.ts
+    // measured at 3447. Bumping 3400 → 3450 to give
+    // the you-may + cost family room to land without
+    // fragmenting the trigger-cost /
+    // while-condition / replacement-effect family
+    // (the historical precedent continues; follow-up
+    // 13 lanes 95 / 96 / 97 / 98 / 99 / 100 / 106 ride
+    // the same family).
+    //
+    // Wave 4.8 follow-up 13 lane 94 (#2614 follow-up):
+    // the "draw N where N = cards drawn this turn"
+    // X-count (Proft's Eidetic Memory's deferred
+    // half). The schema adds
+    // `X: "cardsDrawnThisTurn"` to DrawSchema (parallel
+    // to lane 90's `creaturesDiedThisTurn`). The
+    // docstring + the schema entry land at +9 lines;
+    // schema.ts measured at 3456. Bumping 3450 →
+    // 3500 to give the cards-drawn-this-turn family
+    // room to land without fragmenting the
+    // trigger-cost / while-condition /
+    // replacement-effect / you-may-cost family
+    // (the historical precedent continues; follow-up
+    // 13 lanes 95 / 98 / 99 / 100 / 106 ride the same
+    // family).
+    //
+    // Wave 4.8 follow-up 13 lane 98 (#2614 follow-up):
+    // the "may discard a card" cost (Storm Fleet Spy
+    // variant — parallel to the lane 88 sacrifice-self
+    // substrate). The schema accepts a new
+    // `cost: { discard: { amount: 1 } }` arm on
+    // `TriggerSchema`. The docstring + the schema
+    // entries land at +22 lines; schema.ts measured
+    // at 3522. Bumping 3500 → 3550 to give the
+    // discard-cost family room to land without
+    // fragmenting the trigger-cost / you-may-cost /
+    // while-condition / replacement-effect /
+    // cards-drawn / opponent-drawn /
+    // create-token-xcount family (the historical
+    // precedent continues; follow-up 13 lane 99
+    // rides the same family).
+    //
+    // Wave 4.8 follow-up 14 lane 57 (#2614 follow-up):
+    // the `counter_minimum` arm on `StaticSchema.while_condition`
+    // (parallel to lane 91's `life_minimum`) for Redcap
+    // Gutter-Dweller's "Goblins you control have menace
+    // as long as this has 3+ counters on it" half. The
+    // schema arm replaces the single-arm `z.object().strict()`
+    // with a 2-arm `z.discriminatedUnion("kind", [...])`
+    // (net +9 vs the prior single-arm shape). schema.ts
+    // measured at 3609. Bumping 3600 → 3650 to cover
+    // the while-condition / counter-ledger family on the
+    // same trajectory as follow-up 13.
+    //
+    // Wave 4.8 follow-up 14 lane 51 (#2614 follow-up):
+    // the `becomes_chosen_creature_type: z.literal(true)`
+    // arm on `StaticSchema.affects` (Adaptive Automaton's
+    // "is the chosen type in addition to its other types"
+    // permanent type-line overlay half). Distinct from
+    // the lane 52 `add_creature_type` / `addCreatureTypeToSelf`
+    // pair — the lane 51 arm overlays the source's
+    // `cardData.type_line` permanently (rather than only
+    // stamping the parallel `chosenTypeAdditions` field),
+    // so call sites that read `cardData.type_line`
+    // directly see the chosen creature type as a
+    // subtype. The schema arm adds ~32 lines
+    // (docstring + z.literal(true).optional() +
+    // refine() allow-list addition + refined-message
+    // extension). schema.ts measured at 3661 (+11 over
+    // 3650). Bumping 3650 → 3700 to cover the lane 51
+    // permanent-overlay family on the same trajectory
+    // as the follow-up 13 / follow-up 14 budget bumps.
+    //
+    // Wave 4.8 follow-up 17 lane 117 (#2614 follow-up):
+    // the `cost.pay_mana: { amount: N }` arm on
+    // TriggerSchema.cost (parallel to lane 106's
+    // `cost.pay_life`). v1 ships generic mana only
+    // (the standard spendMana cascade); colored-mana
+    // payment rides a follow-up lane. The arm adds ~36
+    // lines (docstring + the pay_mana object +
+    // amount validation) — schema.ts measured at
+    // 3701 (+1 over 3700). Bumping 3700 → 3750 to
+    // cover the trigger-cost family on the same
+    // trajectory as the follow-up 13 / 14 / lane 51
+    // budget bumps.
+    //
+    // Wave 4.8 follow-up 18 lane 112 (#2614 follow-up):
+    // the self-grant triggered-ability arm on
+    // StaticSchema (`grants.triggers`). Mirrors the
+    // lane 65 Aura-shaped variant but routes the
+    // grant onto the SOURCE itself. The arm adds
+    // ~50 lines (docstring + the grants object schema
+    // + the refine-list entry for stand-alone arm
+    // permission) — schema.ts measured at 3770 (+20
+    // over 3750). Bumping 3750 → 3800 to give the
+    // follow-up 18 self-grant family room to land
+    // without fragmenting the StaticSchema sub-family.
+    //
+    // Wave 4.8 follow-up 19 lane 116 (#2614 follow-up):
+    // the `X: "X_spent_on_spell"` cast-filter arm on
+    // TriggerSchema (read-only path; the cast-time
+    // writer is a follow-up sub-piece). The arm
+    // adds ~14 lines (docstring + the X enum +
+    // refine-list entry for cast-only permission) —
+    // schema.ts measured at 3814 (+14 over 3800).
+    // Bumping 3800 → 3825 to give the follow-up 19
+    // X-spent cast-filter family room to land on
+    // the same trajectory as the follow-up 12 / 13 /
+    // 14 / 15 / 16 / 17 / 18 budget bumps.
+    //
+    // Wave 4.8 follow-up 19 lane 114 piece 2/2
+    // (#2614 follow-up): the `X: "landsYouControl"`
+    // arm on `CreateTokenSchema.X` (parallel to the
+    // lane 97 `yourCreatures` arm). The arm adds
+    // ~8 lines (docstring extension + the
+    // `landsYouControl` enum entry) — schema.ts
+    // measured at 3833 (+8 over 3825). Bumping
+    // 3825 → 3850 to give the follow-up 19 Avenger
+    // of Zendikar half room to land on the same
+    // trajectory as the follow-up 12 / 13 / 14 /
+    // 15 / 16 / 17 / 18 / 19-lane-116 budget bumps.
+    //
+    // Wave 4.8 follow-up 19 lane 114 piece 2/2
+    // second sub-piece (#2614 follow-up): the
+    // `target_each: { subtype }` mode on
+    // `PutCountersSchema` (the Landfall "each
+    // Plant" half). The arm adds ~12 lines
+    // (docstring + the target_each object +
+    // refine-list entry for '+1/+1' counter
+    // permission) — schema.ts measured at 3862
+    // (+12 over 3850). Bumping 3850 → 3875 to
+    // give the follow-up 19 Landfall-each-Plant
+    // half room to land on the same trajectory
+    // as the prior budget bumps.
+    //
+    // Wave 4.8 follow-up 21 lane 69 piece 1/N
+    // (#2614 follow-up): the `restriction?: string`
+    // arm on `AddManaSchema` (the per-mana
+    // restriction-tag ledger substrate — "spend
+    // this mana only on [X]" family). The arm
+    // adds ~14 lines (docstring + the optional
+    // restriction field) — schema.ts measured
+    // at 3876 (+1 over 3875 with the docstring
+    // trimmed). Bumping 3875 → 3900 to give the
+    // follow-up 21 per-mana restriction family
+    // room to land on the same trajectory as
+    // the prior follow-up 12 / 13 / 14 / 15 /
+    // 16 / 17 / 18 / 19 / 20 budget bumps.
+    //
+    // Wave 4.8 follow-up 21 lane 99 follow-up
+    // extension piece 1/N (#2614 follow-up): the
+    // `cost.or: [{ sacrifice_self | discard |
+    // pay_life | pay_mana }, ...]` arm on
+    // TriggerSchema.cost (the multi-cost OR
+    // combinator — "you may pay [A] OR pay [B];
+    // if you do, [effects]" pattern; the follow-up
+    // 20 piece 2 verified the single-cost
+    // `you_may + cost.pay_life` bridge, and the
+    // OR-combinator extends that substrate to a
+    // 2-arm choice family). The arm adds ~71
+    // lines (docstring + the union of single-arm
+    // cost shapes + the `min(2)` length gate + the
+    // mutual-exclusion refine rule + the
+    // you_may-gate refine rule) — schema.ts
+    // measured at 3971 (+71 over 3900 with the
+    // docstring trimmed to match prior-pieces'
+    // precedent; the prompt's 50-60 LOC estimate
+    // assumed a shorter docstring). Bumping 3900
+    // → 4000 to give the follow-up 21 multi-cost
+    // OR combinator family room to land on the
+    // same trajectory as the prior follow-up 12
+    // / 13 / 14 / 15 / 16 / 17 / 18 / 19 / 20
+    // budget bumps; subsequent lane 99
+    // follow-up pieces (e.g. the engine wiring
+    // + the chosen_or_cost_index stack field)
+    // ride the same family.
+    //
+    // Wave 4.8 follow-up 22 lane 70 piece 1/N
+    // (#2614 follow-up): the `until: "permanent"`
+    // arm on `StaticSchema.become_copy` (the
+    // "becomes a copy of [X] forever" variant —
+    // Clone / Phantasmal Image without the EOT
+    // suffix). The arm extends the lane 75
+    // `target` arm + the lane 75b `named_card`
+    // arm by replacing the `until: literal
+    // "end_of_turn"` field with a `union(["end_of
+    // _turn", "permanent"])`, plus the
+    // docstrings explaining the new arm + the
+    // substrate-only v1 status. The arm adds
+    // ~30 lines (docstring + the union
+    // replacement × 2). schema.ts measured at
+    // 4026 (+26 over 4000 with the docstrings
+    // trimmed to match prior-pieces' precedent).
+    // Bumping 4000 → 4050 to give the lane 70
+    // family (the refresh-pass write +
+    // battlefield-leave rollback in lane 70
+    // piece 2/N, plus any lane 70
+    // follow-up extensions) room to land on the
+    // same trajectory as the prior follow-up
+    // budget bumps.
+    //
+    // Wave 4.8 follow-up 23 lane 32 (#2614
+    // follow-up): the `anthemScaling: { per,
+    // perPower, perToughness }` arm on
+    // `StaticSchema` — the Warrior Knights /
+    // adaptive anthem family that grows with the
+    // board (e.g. "creatures you control get +1/+1
+    // for each other creature you control"). The
+    // arm adds ~75 lines (the Zod envelope +
+    // docstring explaining the per count source
+    // + the lane-32 `other_creatures` addition +
+    // the follow-up scope notes). schema.ts
+    // measured at 4103 (+53 over the 4050 cap
+    // after the lane 32 docstring trim).
+    // Bumping 4050 → 4150 to give the lane 32
+    // family and any lane 32 follow-up
+    // extensions (filtered count sources,
+    // compound count sources, per-counter
+    // scales — each a follow-up sub-piece per
+    // the handoff) room to land.
+    //
+    // Wave 4.8 follow-up 24 lane 32 piece 2/N
+    // (#2614 follow-up): the optional `perSubtype`
+    // field on `anthemScaling` — the "per OTHER
+    // Warrior you control" filtered-count-source
+    // variant. Adds ~65 lines (the Zod envelope +
+    // docstring explaining the perSubtype filter
+    // + the typed-creature cases + the engine's
+    // `computeAnthemScalingCount` filter consult).
+    // schema.ts measured at 4199 (+49 over the
+    // 4150 cap).
+    // Bumping 4150 → 4250 to give the lane 32
+    // family follow-up sub-pieces (compound count
+    // sources, per-counter scales) room to land.
+    //
+    // Wave 4.8 follow-up 25 lane 32 pieces 2/N + 3/N
+    // (#2614 follow-up): the `andPer` compound count
+    // arm + the `perSubtype: "chosen"` sentinel on
+    // `anthemScaling`. Adds ~9 lines (the
+    // `andPer: { per, perSubtype? }` Zod envelope +
+    // docstring explaining the compound count source
+    // + the chosen-sentinel union extension on both
+    // `perSubtype` fields). schema.ts measured at
+    // 4259 (+9 over the 4250 cap).
+    // Bumping 4250 → 4300 to give the lane 32
+    // family further follow-up sub-pieces (per-counter
+    // scales, chosen-counter variant) room to land.
+    // Bumping 4300 → 4320 to capture the follow-up 26
+    // lane 32 piece 1/N (chosen-counter variant) Zod
+    // union extension + docstring expansion.
+    // schema.ts measured at 4312 (+12 over 4300).
+    // Bumping 4320 → 4370 to capture the follow-up 26
+    // lane 71 piece 3/N (chosen-quality sentinel)
+    // `protectionFrom` Zod union extension +
+    // docstring expansion + the `enter_choice.kind`
+    // enum extension with `"protection_quality"`
+    // docstring. schema.ts measured at 4364 (+44 over
+    // 4320).
+    //
+    // Bumping 4370 → 4430 to capture the follow-up 27
+    // lane 32 piece 1/N (`andPer.perCounter` self-
+    // referential per-counter arm on the AND-source —
+    // `andPer` schema arm extension with an OPTIONAL
+    // `perCounter: { counter: string | "chosen" }` sub-
+    // arm + docstring expansion on the parent `andPer`
+    // arm). schema.ts measured at 4418 (+48 over 4370).
+    //
+    // Bumping 4430 → 4450 to capture the follow-up 27
+    // lane 71 piece 3/N (multi-quality sentinel —
+    // `protectionFrom` Zod union extension with the
+    // per-entry `Array<string | "chosen">` form +
+    // docstring expansion on the `protectionFrom`
+    // arm). schema.ts measured at 4439 (+9 over 4430).
+    //
+    // Bumping 4450 → 4500 to capture the follow-up 28
+    // priority 1 (lane 32 chosen-counter ordinal) —
+    // OPTIONAL `ordinal: number` field on both the
+    // primary `perCounter` arm and the
+    // `andPer.perCounter` arm (parallel ordinal
+    // extensions; cumulative sum of first N counters
+    // of the resolved type) + parent `perCounter`
+    // docstring expansion explaining the ordinal
+    // variant and the `"chosen"` sentinel + ordinal
+    // interaction. schema.ts measured at 4495 (+45
+    // over 4450).
+    //
+    // Bumping 4500 → 4550 to capture the follow-up 28
+    // priority 2 (lane 71 array-aware entry shape) —
+    // the per-entry `protectionFrom` Zod union
+    // extension with the nested-array "pair" form
+    // (`z.array(z.string().min(1)).min(2)` as a
+    // per-entry union member) + parent `protectionFrom`
+    // docstring expansion explaining the pair form,
+    // the 1-element rejection rationale, and the
+    // flattening semantics. schema.ts measured at 4523
+    // (+23 over 4500).
+    //
+    // Bumping 4550 → 4620 to capture the follow-up 28
+    // priority 3 (`andPer.perCounterSummed` summed
+    // form) — the `andPer` schema arm extension with
+    // an OPTIONAL `perCounterSummed: { counter: string
+    // | "chosen", ordinal?: number }` sub-arm
+    // (parallel to the existing REPLACE `perCounter`
+    // sub-arm; the SUM form is the natural read for
+    // "per creature AND per chosen counter" anthems
+    // + parent `andPer` docstring expansion
+    // explaining the SUMMED vs REPLACE semantic
+    // distinction and the future deprecation path).
+    // schema.ts measured at 4582 (+32 over 4550).
+    //
+    // Bumping 4620 → 4710 to capture the follow-up 29
+    // priority 1 (lane 28 piece 2/4 — `CopyPermanent`
+    // target discriminator) — the `target` arm is
+    // restructured to a discriminated union (`kind:
+    // "filter"` + `kind: "id"` + `kind: "named_card"`
+    // stub) with the legacy enum filter preserved as
+    // the `kind: "filter"` arm + parent
+    // `CopyPermanent` docstring expansion explaining
+    // the discriminator shape, the auto-pick vs
+    // named-target vs named-card resolution paths,
+    // and the piece 3/4 named-card stub rationale.
+    // schema.ts measured at 4706 (+86 over 4620).
+    //
+    // Bumping 4710 → 4750 to capture the follow-up 29
+    // priority 3 (lane 28 piece 4/4 —
+    // `CopyPermanent.exceptions` arm) — the OPTIONAL
+    // `exceptions: { add_subtype?: string[] }` arm
+    // (parallel to the lane 75c
+    // `become_copy.exceptions` shape — a
+    // `add_subtype` list that the engine merges onto
+    // each copy token's overlaid `cardData.type_line`)
+    // + parent `CopyPermanent` docstring expansion
+    // explaining the per-copy modifier + the additive
+    // semantic + the future `add_color` / `add_power`
+    // / `add_toughness` / `add_type` exception
+    // variants that ride follow-up 30. schema.ts
+    // measured at 4749 (+39 over 4710).
+    //
+    // Bumping 4750 → 4810 to capture the follow-up 29
+    // priority 4 (lane 32 — per-pair counter ordinal
+    // variant) — the new OPTIONAL `perPair` sub-arm on
+    // `perCounter` (`{ ordinal?: number }`) — the
+    // "Nth counter of each unique type" cross-type
+    // variant. The `perPair` arm lives alongside the
+    // existing `perCounter.ordinal?` arm; both can be
+    // set, but the `perPair` arm takes precedence
+    // when both are set (parallel to the
+    // `andPer.perCounterSummed` precedence rule from
+    // follow-up 28 priority 3) + parent `perCounter`
+    // docstring expansion explaining the cross-type
+    // per-pair semantics, the `perPair.ordinal: 1`
+    // default ("first counter per pair" read), and the
+    // future `andPer.perCounter.perPair` extension +
+    // the per-pair-with-sentinel extension that ride
+    // follow-up 30. schema.ts measured at 4803 (+53
+    // over 4750).
+    //
+    // Bumping 4985 → 5060 to capture the follow-up 30
+    // priority 4 (lane 28, piece 4/N) —
+    // `CopyPermanent.exceptions.add_type` arm
+    // (`z.array(z.enum(CARD_TYPES)).min(1).
+    // optional()` on the existing `exceptions`
+    // shape — the seven `CARD_TYPES` enum values:
+    // `Creature | Artifact | Enchantment | Land |
+    // Planeswalker | Battle | Tribal`) + parent
+    // `exceptions` docstring expansion explaining
+    // the type-line prepend (the types-precede-
+    // printed-types rebuild), the parallel
+    // `add_subtype` arm composition (type prepend
+    // is OUTER, subtype append is INNER), the
+    // `add_supertype` extension that rides
+    // follow-up 31, and the destructive
+    // `set_type` variant that also rides
+    // follow-up 31. schema.ts measured at 5056
+    // (+71 over 4985).
+    budgetLines: 5060,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),
@@ -431,20 +908,19 @@ if (process.argv.includes("--report")) {
       .sort((a, b) => b.lines - a.lines)
       .slice(0, 10);
     console.log(
-      `  ${scope.name} (budget: ${scope.budgetLines} lines) — top ${inScope.length}:`
+      `  ${scope.name} (budget: ${scope.budgetLines} lines) — top ${inScope.length}:`,
     );
     for (const m of inScope) {
-      const over = Number(m.lines) > Number(m.scopeBudgetLines) ? "  ⚠ OVER" : "";
-      console.log(
-        `    ${String(m.lines).padStart(5)}  ${m.file}${over}`
-      );
+      const over =
+        Number(m.lines) > Number(m.scopeBudgetLines) ? "  ⚠ OVER" : "";
+      console.log(`    ${String(m.lines).padStart(5)}  ${m.file}${over}`);
     }
   }
   process.exit(0);
 }
 
 const offenders = modules.filter(
-  (m) => Number(m.lines) > Number(m.scopeBudgetLines)
+  (m) => Number(m.lines) > Number(m.scopeBudgetLines),
 );
 
 if (offenders.length === 0) {
@@ -457,18 +933,18 @@ if (offenders.length === 0) {
   const total = modules.length;
   console.log(
     `module-size-budget: OK — ${total} files within budget ` +
-      `(engine max: ${engineMax}, ai max: ${aiMax}).`
+      `(engine max: ${engineMax}, ai max: ${aiMax}).`,
   );
   process.exit(0);
 }
 
 console.error(
-  `module-size-budget: FAILED — ${offenders.length} file(s) exceed their scope budget (issue #1725/#1808):`
+  `module-size-budget: FAILED — ${offenders.length} file(s) exceed their scope budget (issue #1725/#1808):`,
 );
 for (const o of offenders) {
   console.error(
     `  ${o.scopeName.padEnd(8)}  ${String(o.lines).padStart(5)}  ` +
-      `${o.file} (+${o.lines - Number(o.scopeBudgetLines)} over budget ${o.scopeBudgetLines})`
+      `${o.file} (+${o.lines - Number(o.scopeBudgetLines)} over budget ${o.scopeBudgetLines})`,
   );
 }
 console.error(
@@ -477,6 +953,6 @@ console.error(
     `the established pattern in src/lib/game-state/, mirrored by\n` +
     `src/ai/decision-making/ for the AI surface) or, if the file is\n` +
     `genuinely cohesive, raise SIZE_BUDGET_LINES in\n` +
-    `scripts/check-engine-size-budget.mjs with a documented rationale.`
+    `scripts/check-engine-size-budget.mjs with a documented rationale.`,
 );
 process.exit(1);

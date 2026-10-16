@@ -1,0 +1,13 @@
+{
+  "name": "Restriction Land Artifact",
+  "oracle": "{T}: Add {W}. This mana can only be spent on artifact or enchantment spells.",
+  "activated": [
+    {
+      "text": "Add {W}. This mana can only be spent on artifact or enchantment spells.",
+      "cost": { "tap": true },
+      "effects": [
+        { "op": "AddMana", "amount": 1, "colors": ["W"], "restriction": "artifact_or_enchantment" }
+      ]
+    }
+  ]
+}

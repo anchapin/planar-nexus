@@ -84,6 +84,16 @@ function castFilterOf(t: ScriptedTrigger): CastFilter {
     ...SPELL_FILTER[t.spell ?? "any"],
     ...(t.targets === "single" ? { singleTarget: true } : {}),
     ...(t.cast_color ? { color: t.cast_color } : {}),
+    // Wave 4.8 follow-up 19 lane 116 (#2614 follow-up):
+    // pass through the script's `X: "X_spent_on_spell"`
+    // arm to the engine's `CastFilter.X`. The
+    // `castTriggerMatches` helper in `triggered.ts`
+    // consults the field plus
+    // `state.castVariableValues[spellCardId]` to gate
+    // the trigger (read-only path — the cast-time
+    // writer is a follow-up sub-piece, lane 116
+    // piece 2/2).
+    ...(t.X ? { X: t.X } : {}),
   };
 }
 

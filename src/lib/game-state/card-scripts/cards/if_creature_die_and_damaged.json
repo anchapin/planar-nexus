@@ -1,0 +1,18 @@
+{
+  "name": "If Creature Die and Damaged",
+  "oracle": "Enchantment\nIf a creature you control would die and it has damage marked on it, instead exile it.",
+  "replacement_effects": [
+    {
+      "text": "If a creature you control would die and it has damage marked on it, instead exile it.",
+      "event": "would_die",
+      "applies_to": {
+        "type": "creature",
+        "controller": "you"
+      },
+      "if_condition": "it has damage marked on it",
+      "redirect": {
+        "to": "exile"
+      }
+    }
+  ]
+}
