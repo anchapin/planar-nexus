@@ -2704,19 +2704,40 @@ export const StaticSchema = z
      * (a red creature + a red-quality anthem verify the
      * protection is honored at cast time and combat time).
      *
-     * Out of scope (each a follow-up lane): the multi-
-     * quality sentinel (e.g. an array of mixed literal
-     * strings + the `"chosen"` sentinel at one position);
-     * the union with the per-source per-quality ledger
-     * (the follow-up 26 lane 71 piece 2/N parked out as a
-     * redundant fourth ledger); the `affects.subtype:
+     * Out of scope (each a follow-up lane): the
+     * union with the per-source per-quality ledger
+     * (the follow-up 26 lane 71 piece 2/N parked out as
+     * a redundant fourth ledger); the `affects.subtype:
      * "chosen"` interaction with `protectionFrom: "chosen"`
      * (the sentinel resolves independently of the
      * `chosenCreatureType` instance field — different
      * field, same resolution pattern).
+     *
+     * Wave 4.8 follow-up 27 lane 71 piece 3/N (#2614
+     * follow-up): the per-entry `"chosen"` sentinel
+     * (multi-quality sentinel). The protectionFrom
+     * field accepts a per-entry union form
+     * `z.array(z.union([z.string().min(1),
+     * z.literal("chosen")]))` so a multi-quality
+     * anthem can grant protection from a list of
+     * literal qualities AND the chosen quality in the
+     * same arm (e.g. `["red", "chosen"]` = "protection
+     * from red AND the chosen quality"). The
+     * `"chosen"` entry is resolved from
+     * `source.chosenProtectionFrom` (the same
+     * `enter_choice: { kind: "protection_quality" }`
+     * instance field as the standalone sentinel). When
+     * `chosenProtectionFrom` is null, the `"chosen"`
+     * entry contributes 0 qualities (the static
+     * still grants the literal entries — the entry-
+     * level resolution is independent per entry).
      */
     protectionFrom: z
-      .union([z.array(z.string().min(1)), z.literal("chosen")])
+      .union([
+        z.array(z.string().min(1)),
+        z.literal("chosen"),
+        z.array(z.union([z.string().min(1), z.literal("chosen")])),
+      ])
       .optional(),
     /**
      * Wave 4.8 follow-up 7 lane 75 (#2614 follow-up):

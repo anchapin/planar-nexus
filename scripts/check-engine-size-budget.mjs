@@ -707,7 +707,14 @@ const SCOPES = [
     // `perCounter: { counter: string | "chosen" }` sub-
     // arm + docstring expansion on the parent `andPer`
     // arm). schema.ts measured at 4418 (+48 over 4370).
-    budgetLines: 4430,
+    //
+    // Bumping 4430 → 4450 to capture the follow-up 27
+    // lane 71 piece 3/N (multi-quality sentinel —
+    // `protectionFrom` Zod union extension with the
+    // per-entry `Array<string | "chosen">` form +
+    // docstring expansion on the `protectionFrom`
+    // arm). schema.ts measured at 4439 (+9 over 4430).
+    budgetLines: 4450,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

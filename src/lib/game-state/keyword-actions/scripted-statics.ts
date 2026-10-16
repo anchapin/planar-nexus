@@ -1057,16 +1057,38 @@ export function refreshScriptedStatics(input: GameState): GameState {
         // is INERT for that pass — no qualities
         // stamped (parallel to the lane 86 chosen-type
         // anthem "null" semantics).
+        //
+        // Wave 4.8 follow-up 27 lane 71 piece 3/N (#2614
+        // follow-up): the per-entry `"chosen"` sentinel
+        // (multi-quality sentinel). The
+        // `protectionFrom` field accepts a per-entry
+        // union form `Array<string | "chosen">` so a
+        // multi-quality anthem can grant protection
+        // from a list of literal qualities AND the
+        // chosen quality in the same arm (e.g.
+        // `["red", "chosen"]` = "protection from red
+        // AND the chosen quality"). The engine
+        // resolves each `"chosen"` entry to
+        // `source.chosenProtectionFrom` (when set) or
+        // skips it (when null — the literal entries
+        // still contribute). The per-entry resolution
+        // is independent — a null `chosenProtectionFrom`
+        // does NOT make the whole static inert; only
+        // the `"chosen"` entry is skipped.
         if (stat.protectionFrom) {
-          // Wave 4.8 follow-up 26 lane 71 piece 3/N:
+          // Wave 4.8 follow-up 26 lane 71 piece 3/N
+          // + follow-up 27 lane 71 piece 3/N:
           // resolve the per-static qualities list
-          // ONCE — either the literal array OR the
-          // chosen sentinel (or none, when the
-          // sentinel and `chosenProtectionFrom` is
-          // null). When inert, both `protFrom.add`
-          // and the per-source ledger stamp are
-          // skipped (the static contributes zero
-          // qualities this pass).
+          // ONCE — either the literal array, the
+          // chosen sentinel, OR the per-entry
+          // mixed form. The per-entry form is
+          // detected by the presence of `"chosen"`
+          // in the array (a flat `string[]` has no
+          // `"chosen"` entry — the array is taken
+          // literally). The chosen-sentinel
+          // resolution is per-entry (each
+          // `"chosen"` contributes at most one
+          // resolved quality).
           let resolvedProtFromQualities: readonly string[] | null;
           if (stat.protectionFrom === "chosen") {
             resolvedProtFromQualities =
@@ -1074,8 +1096,42 @@ export function refreshScriptedStatics(input: GameState): GameState {
               card.chosenProtectionFrom !== undefined
                 ? [card.chosenProtectionFrom]
                 : null;
+          } else if (
+            Array.isArray(stat.protectionFrom) &&
+            (stat.protectionFrom as readonly string[]).includes("chosen")
+          ) {
+            // Per-entry mixed form: resolve each
+            // `"chosen"` entry to the source's
+            // `chosenProtectionFrom` (when set) or
+            // skip it (when null). The literal
+            // entries contribute as-is. The
+            // resulting list may have fewer entries
+            // than the input if the chosen sentinel
+            // is null (only the literal entries
+            // contribute). If the input array
+            // contains ONLY a `"chosen"` entry and
+            // the sentinel is null, the resolved
+            // list is empty (NOT null — the static
+            // still iterates, contributing zero
+            // qualities).
+            const resolved: string[] = [];
+            for (const entry of stat.protectionFrom as readonly (
+              | string
+            )[]) {
+              if (entry === "chosen") {
+                if (
+                  card.chosenProtectionFrom !== null &&
+                  card.chosenProtectionFrom !== undefined
+                ) {
+                  resolved.push(card.chosenProtectionFrom);
+                }
+              } else {
+                resolved.push(entry);
+              }
+            }
+            resolvedProtFromQualities = resolved;
           } else {
-            resolvedProtFromQualities = stat.protectionFrom;
+            resolvedProtFromQualities = stat.protectionFrom as readonly string[];
           }
           if (resolvedProtFromQualities !== null) {
             for (const q of resolvedProtFromQualities) protFrom.add(q);
