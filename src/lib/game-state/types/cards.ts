@@ -227,6 +227,29 @@ export interface CardInstance {
    */
   copyOfTargetId?: string;
   /**
+   * Wave 4.8 follow-up 22 lane 70 piece 1/N (#2614 follow-up):
+   * the `CardInstanceId` of the permanent whose printed
+   * characteristics this card is currently copying FOREVER
+   * ("becomes a copy of [X]" — Clone, Phantasmal Image without
+   * the EOT suffix, Sakashima without the EOT suffix). Set by
+   * `refreshScriptedStatics` when the source carries a
+   * `become_copy: { target, until: "permanent" }` static and
+   * the named target is on the battlefield; the source's
+   * `cardData` is swapped for the target's (name, type_line,
+   * power, toughness, colors, keywords). v1 ships the field +
+   * the `setPermanentCopyOf` / `clearPermanentCopyOf` helpers
+   * only — the refresh-pass write that consults this field
+   * and applies the overlay permanently (and the cleanup
+   * path that drops the overlay when the source or target
+   * leaves the battlefield) rides a follow-up piece. The
+   * field is per-instance + battlefield-zone-only and is
+   * distinct from `copyOfTargetId` (the EOT variant stamps
+   * `animatedUntilEndOfTurn` + rolls back via the existing
+   * `clearUntilEndOfTurnPT` path; the permanent variant
+   * needs its own battlefield-leave cleanup path).
+   */
+  copyOfTargetIdPermanent?: string;
+  /**
    * Wave 4.8 follow-up lane 59 (#2614 follow-up): per-instance
    * counter ledger keyed by counter type. Banner of Kinship
    * "enters with X counters on it" stamps N `+1/+1` counters

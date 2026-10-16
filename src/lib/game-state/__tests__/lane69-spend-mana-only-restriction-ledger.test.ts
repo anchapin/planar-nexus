@@ -21,7 +21,7 @@ import {
 import { resolveScriptedAbility } from "../card-scripts/interpret";
 import { createInitialGameState, startGame } from "../game-state";
 import { createCardInstance } from "../card-instance";
-import { addMana } from "../mana";
+import { addMana, spendMana } from "../mana";
 import { Phase } from "../types";
 import type {
   CardInstance,
@@ -481,6 +481,89 @@ describe("Lane 69 piece 1/N (follow-up 21): per-mana restriction tag ledger", ()
       expect(
         resolveXspentOn(afterTap, alice, "instant_or_sorcery", { green: 1 }),
       ).toBe(false);
+    });
+  });
+
+  describe("piece 3/N (follow-up 22) — spendMana enforcement consult", () => {
+    it("spendMana WITHOUT a restriction arg is the un-restricted baseline (regression guard)", () => {
+      // No restriction in the ledger, no restriction passed to
+      // spendMana — the call must succeed and debit the main
+      // pool. This guards against piece 3/N inadvertently
+      // narrowing the un-restricted call shape that every
+      // existing caller (cast.ts, ward-system.ts, etc.) uses.
+      const withMain = addMana(state, alice, { green: 2 });
+      const result = spendMana(withMain, alice, { green: 1 });
+      expect(result.success).toBe(true);
+      expect(result.state.players.get(alice)!.manaPool.green).toBe(1);
+    });
+
+    it("spendMana WITH a matching restriction tag succeeds AND clears the ledger entry", () => {
+      // Seed both the ledger and the main pool. The main pool
+      // holds enough mana to satisfy the spend; the ledger
+      // also holds enough tagged mana. The consult passes, the
+      // main-pool spend debits green, and the ledger tag is
+      // cleared (the tag won't double-fund a second spend).
+      const seeded = addRestrictedMana(state, alice, "creature_spells", {
+        green: 1,
+      });
+      const withMain = addMana(seeded, alice, { green: 2 });
+      const result = spendMana(withMain, alice, { green: 1 }, {
+        restriction: "creature_spells",
+      });
+      expect(result.success).toBe(true);
+      // Main pool debited by 1.
+      expect(result.state.players.get(alice)!.manaPool.green).toBe(1);
+      // Ledger tag cleared (the tagged mana was spent).
+      expect(
+        result.state.players.get(alice)!.restrictionLedger?.["creature_spells"],
+      ).toBeUndefined();
+    });
+
+    it("spendMana WITH a restriction tag BLOCKS the spend when the ledger has insufficient tagged mana", () => {
+      // Ledger has only {G: 1}; the spend asks for {G: 2}. The
+      // consult returns false (insufficient total) and the
+      // spend is blocked — main pool untouched, ledger
+      // untouched. This is the "War Tax denies the cast"
+      // surface.
+      const seeded = addRestrictedMana(state, alice, "creature_spells", {
+        green: 1,
+      });
+      const withMain = addMana(seeded, alice, { green: 3 });
+      const result = spendMana(withMain, alice, { green: 2 }, {
+        restriction: "creature_spells",
+      });
+      expect(result.success).toBe(false);
+      // Main pool untouched (defensive: the spend didn't even
+      // start its main-pool arithmetic).
+      expect(result.state.players.get(alice)!.manaPool.green).toBe(3);
+      // Ledger untouched.
+      expect(
+        result.state.players.get(alice)!.restrictionLedger?.["creature_spells"]
+          ?.green,
+      ).toBe(1);
+    });
+
+    it("spendMana WITH a MISMATCHED restriction tag BLOCKS the spend even when main pool has enough mana", () => {
+      // The player's ledger carries mana under
+      // "instant_or_sorcery" but the caller asks for
+      // "creature_spells". The consult returns false (different
+      // tag) and the spend is blocked — main pool untouched,
+      // ledger untouched. This is the cross-tag isolation
+      // guarantee: a "creature_spells" spend cannot steal
+      // "instant_or_sorcery" tagged mana.
+      const seeded = addRestrictedMana(state, alice, "instant_or_sorcery", {
+        blue: 5,
+      });
+      const withMain = addMana(seeded, alice, { green: 5 });
+      const result = spendMana(withMain, alice, { green: 1 }, {
+        restriction: "creature_spells",
+      });
+      expect(result.success).toBe(false);
+      expect(result.state.players.get(alice)!.manaPool.green).toBe(5);
+      expect(
+        result.state.players.get(alice)!.restrictionLedger?.["instant_or_sorcery"]
+          ?.blue,
+      ).toBe(5);
     });
   });
 });

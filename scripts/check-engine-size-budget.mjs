@@ -617,7 +617,31 @@ const SCOPES = [
     // follow-up pieces (e.g. the engine wiring
     // + the chosen_or_cost_index stack field)
     // ride the same family.
-    budgetLines: 4000,
+    //
+    // Wave 4.8 follow-up 22 lane 70 piece 1/N
+    // (#2614 follow-up): the `until: "permanent"`
+    // arm on `StaticSchema.become_copy` (the
+    // "becomes a copy of [X] forever" variant —
+    // Clone / Phantasmal Image without the EOT
+    // suffix). The arm extends the lane 75
+    // `target` arm + the lane 75b `named_card`
+    // arm by replacing the `until: literal
+    // "end_of_turn"` field with a `union(["end_of
+    // _turn", "permanent"])`, plus the
+    // docstrings explaining the new arm + the
+    // substrate-only v1 status. The arm adds
+    // ~30 lines (docstring + the union
+    // replacement × 2). schema.ts measured at
+    // 4026 (+26 over 4000 with the docstrings
+    // trimmed to match prior-pieces' precedent).
+    // Bumping 4000 → 4050 to give the lane 70
+    // family (the refresh-pass write +
+    // battlefield-leave rollback in lane 70
+    // piece 2/N, plus any lane 70
+    // follow-up extensions) room to land on the
+    // same trajectory as the prior follow-up
+    // budget bumps.
+    budgetLines: 4050,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),
