@@ -1324,29 +1324,57 @@ function applyEffect(
       const copiedCardData = { ...sourceCard.cardData };
       const controllerId = ctx.controllerId;
       const ownerId = controllerId;
-      const cardIdNew =
-        `copyperm-${Date.now()}-${Math.random().toString(36).slice(2, 11)}` as CardInstanceId;
-      // Build the new CardInstance via createCardInstance so
-      // we get all the defaults (summoning sickness, counters,
-      // attachedTo, etc.).
-      const newInstance = createCardInstance(
-        copiedCardData as ScryfallCard,
-        ownerId,
-        controllerId,
-        {
-          id: cardIdNew,
-          currentZoneKey: `${controllerId}-battlefield`,
-        },
-      );
+      // Wave 4.8 follow-up 28 priority 4 (lane 28,
+      // piece 1/N) (#2614 follow-up): the multi-
+      // copy `count` field (Rite of Replication's
+      // "create X tokens that are copies of target
+      // creature"; Extravagant Replication's "create
+      // three tokens that are copies"). When
+      // `count >= 2`, the engine creates `count`
+      // independent tokens in sequence — each with
+      // its own `cardId`, `cardData` (shallow copy
+      // of the source's cardData), and battlefield
+      // entry. The tokens are NEW CardInstances, not
+      // the existing copy-substrate's overlay
+      // mechanism. The v1 minimum is `count: 1`
+      // (default — single copy, mirrors the lane 70
+      // substrate). `count >= 1` is enforced at the
+      // Zod layer (`z.number().int().min(1)`). CR
+      // 707.2 reference for "all characteristics
+      // copied" semantics on each token.
+      const copyCount = effect.count ?? 1;
       const newCards = new Map(state.cards);
-      newCards.set(cardIdNew, newInstance);
       const bfKey = `${controllerId}-battlefield`;
-      const bf = state.zones.get(bfKey);
-      if (!bf) return state;
+      const initialBf = state.zones.get(bfKey);
+      if (!initialBf) return state;
+      let bfCardIds = [...initialBf.cardIds];
+      for (let i = 0; i < copyCount; i++) {
+        const cardIdNew =
+          `copyperm-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 11)}` as CardInstanceId;
+        // Build the new CardInstance via
+        // createCardInstance so we get all the
+        // defaults (summoning sickness, counters,
+        // attachedTo, etc.). Each token starts
+        // with a fresh `cardId` (the loop index
+        // disambiguates copies when `Date.now()`
+        // would collide on multiple counts in the
+        // same tick).
+        const newInstance = createCardInstance(
+          copiedCardData as ScryfallCard,
+          ownerId,
+          controllerId,
+          {
+            id: cardIdNew,
+            currentZoneKey: `${controllerId}-battlefield`,
+          },
+        );
+        newCards.set(cardIdNew, newInstance);
+        bfCardIds = [...bfCardIds, cardIdNew];
+      }
       const newZones = new Map(state.zones);
       newZones.set(bfKey, {
-        ...bf,
-        cardIds: [...bf.cardIds, cardIdNew],
+        ...initialBf,
+        cardIds: bfCardIds,
       });
       return {
         ...state,

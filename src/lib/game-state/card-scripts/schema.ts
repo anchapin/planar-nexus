@@ -392,6 +392,42 @@ export const CopyPermanentSchema = z
     ]),
     /** Restrict to the controller's own permanents. */
     controller: z.enum(["you", "opponent", "any"]).optional(),
+    /**
+     * Wave 4.8 follow-up 28 priority 4 (lane 28,
+     * piece 1/N) (#2614 follow-up): the `count`
+     * field for multi-copy tokens (Rite of
+     * Replication's "create X tokens that are
+     * copies of target creature"; Extravagant
+     * Replication's "create three tokens that
+     * are copies"). Default is 1 (the v1
+     * minimum — a single copy; the engine
+     * creates a single new CardInstance as in
+     * the lane 70 substrate). When `count >= 2`,
+     * the engine creates `count` independent
+     * tokens in sequence (each with its own
+     * `cardId`, `cardData`, and battlefield
+     * entry — the tokens are NEW CardInstances,
+     * not the existing copy-substrate's overlay
+     * mechanism). v1 minimum: count=1 (default)
+     * + count=N (integer >= 1). CR 707.2
+     * reference for "all characteristics
+     * copied" semantics on each token.
+     *
+     * Out of scope (each a follow-up lane):
+     * explicit `target: CardInstanceId` (a
+     * named target on the battlefield — the
+     * current `target` enum auto-picks the
+     * first matching permanent); the named-card
+     * variant `named_card: { name: string }`
+     * (Self-Reflection-style "create a token
+     * that's a copy of [card name]"); the
+     * copy-with-exception variant (Phyrexian
+     * Metamorph-style "create a token that's a
+     * copy of [target] EXCEPT it has no
+     * abilities"). Each rides follow-up
+     * 4 piece 2/N + 3/N + 4/N.
+     */
+    count: z.number().int().min(1).optional(),
     if_kicked: ifKicked,
   })
   .strict();
