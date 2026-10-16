@@ -683,6 +683,18 @@ export function refreshScriptedStatics(input: GameState): GameState {
   // in `evergreen-keywords.ts` consults the field via the
   // existing `canBeTargetedBy` / `canBeBlocked` checks.
   const protFromById = new Map<string, string[]>();
+  // Wave 4.8 follow-up 25 lane 71 piece 1/N (#2614 follow-up):
+  // per-SOURCE protection-from ledger (multi-cast enforcement).
+  // For each target with a static-driven protection grant,
+  // maps each granting source's `CardInstanceId` to the
+  // qualities IT grants (independent of other grants). The
+  // `isProtectedFromSource` consult reads the per-source
+  // ledger FIRST (a target granted protection from two
+  // simultaneous Auras is protected from each Aura's quality
+  // independently, NOT the union). When the source under
+  // consult is not in the map, the union `protectionFrom`
+  // field is consulted (the lane 71 piece 1/N + 2/N fallback).
+  const protFromBySourceById = new Map<string, Record<string, string[]>>();
   // Wave 4.8 follow-up 7 lane 75 (#2614 follow-up): the
   // per-card copy-of-target ledger stamped by statics with
   // a `become_copy` arm. For each source with a
@@ -749,6 +761,16 @@ export function refreshScriptedStatics(input: GameState): GameState {
     // in `evergreen-keywords.ts` alongside the parsed
     // keyword list and the regex fallback.
     const protFrom = new Set<string>();
+    // Wave 4.8 follow-up 25 lane 71 piece 1/N (#2614 follow-up):
+    // per-source ledger of protection qualities for multi-cast
+    // enforcement. Maps each granting source's `CardInstanceId`
+    // to the qualities it grants to THIS target. When a source
+    // appears in `sources` with a `protectionFrom` arm that
+    // matches the target, the source's `CardInstanceId` becomes
+    // a key in this map and the source's qualities become the
+    // value. The `isProtectedFromSource` consult reads this map
+    // FIRST (independent per-source resolution).
+    const protFromBySource: Record<string, string[]> = {};
     for (const { card, statics } of sources) {
       for (const stat of statics) {
         // Wave 4.8 follow-up 18 lane 112 (#2614 follow-up):
@@ -834,6 +856,25 @@ export function refreshScriptedStatics(input: GameState): GameState {
         // stamp once.
         if (stat.protectionFrom) {
           for (const q of stat.protectionFrom) protFrom.add(q);
+          // Wave 4.8 follow-up 25 lane 71 piece 1/N:
+          // per-source ledger stamp (multi-cast enforcement).
+          // Track THIS source's granted qualities in
+          // `protFromBySource[card.id]` so the consult
+          // can resolve the source under query
+          // independently of other grants. Multiple
+          // `protectionFrom` arms on the same source
+          // union (the union semantics mirror the
+          // `protectionFrom` per-card ledger). The
+          // `isProtectedFromSource` consult reads
+          // `protFromBySource[source.id]` first; when
+          // the source is present, the per-source
+          // qualities are consulted (NOT the union).
+          const existing = protFromBySource[card.id] ?? [];
+          const merged = [...existing];
+          for (const q of stat.protectionFrom) {
+            if (!merged.includes(q)) merged.push(q);
+          }
+          protFromBySource[card.id] = merged;
         }
         // Wave 4.8 follow-up 7 lane 75 (#2614 follow-up):
         // record the `become_copy.target` for the source
@@ -939,6 +980,15 @@ export function refreshScriptedStatics(input: GameState): GameState {
       colorAdditions.set(target.id, [...colorAdds].sort());
     if (protFrom.size > 0)
       protFromById.set(target.id, [...protFrom].sort());
+    // Wave 4.8 follow-up 25 lane 71 piece 1/N: stamp the
+    // per-source ledger (`Record<sourceId, string[]>`) on
+    // `protFromBySourceById` when the target has any
+    // source-specific grants. The write phase at the
+    // bottom of the pass reads this map and overlays
+    // it onto the card's `protectionFromBySource` field.
+    if (Object.keys(protFromBySource).length > 0) {
+      protFromBySourceById.set(target.id, protFromBySource);
+    }
   }
 
   // Wave 4.8 follow-up 13 lane 61b (#2614 follow-up): the
@@ -1032,6 +1082,12 @@ export function refreshScriptedStatics(input: GameState): GameState {
     const nextColors = colorAdditions.get(cardId);
     const nextDr = deathReplacements.get(cardId);
     const nextProtFrom = protFromById.get(cardId);
+    // Wave 4.8 follow-up 25 lane 71 piece 1/N (#2614 follow-up):
+    // the per-source ledger is read in parallel with the
+    // union `protectionFrom`. When the source under consult
+    // has its own entry, `isProtectedFromSource` resolves
+    // the source's per-source qualities independently.
+    const nextProtFromBySource = protFromBySourceById.get(cardId);
     // Wave 4.8 follow-up 10 lane 77 (#2614 follow-up):
     // the rolled leaf `protectionFrom` (union semantics
     // with `nextProtFrom` — the source's own
@@ -1089,6 +1145,44 @@ export function refreshScriptedStatics(input: GameState): GameState {
     const sameProtFrom =
       mergedProtFrom.length === prevProtFrom.length &&
       mergedProtFrom.every((q, i) => q === prevProtFrom[i]);
+    // Wave 4.8 follow-up 25 lane 71 piece 1/N: per-source
+    // ledger diff. Compares the previous `Record<...>` (or
+    // undefined) against the next per-source map; a change
+    // in either direction triggers a re-stamp. The
+    // `JSON.stringify`-based comparison is sufficient for
+    // the v1 minimum — keys are `CardInstanceId` strings
+    // and values are stable string arrays.
+    const prevProtFromBySource = card.protectionFromBySource ?? null;
+    let sameProtFromBySource = true;
+    if (nextProtFromBySource === undefined && prevProtFromBySource === null) {
+      sameProtFromBySource = true;
+    } else if (nextProtFromBySource === undefined) {
+      sameProtFromBySource = false;
+    } else if (prevProtFromBySource === null) {
+      sameProtFromBySource = false;
+    } else {
+      const nextKeys = Object.keys(nextProtFromBySource).sort();
+      const prevKeys = Object.keys(prevProtFromBySource).sort();
+      if (nextKeys.length !== prevKeys.length) {
+        sameProtFromBySource = false;
+      } else {
+        for (const k of nextKeys) {
+          if (prevKeys.indexOf(k) === -1) {
+            sameProtFromBySource = false;
+            break;
+          }
+          const n = [...(nextProtFromBySource[k] ?? [])].sort();
+          const p = [...(prevProtFromBySource[k] ?? [])].sort();
+          if (
+            n.length !== p.length ||
+            !n.every((q, i) => q === p[i])
+          ) {
+            sameProtFromBySource = false;
+            break;
+          }
+        }
+      }
+    }
     // Wave 4.8 follow-up 7 lane 75 (#2614 follow-up): the
     // per-instance `copyOfTargetId` is part of the change-
     // detection diff so the refresh pass re-stamps the card
@@ -1192,6 +1286,7 @@ export function refreshScriptedStatics(input: GameState): GameState {
       sameAdds &&
       sameColors &&
       sameProtFrom &&
+      sameProtFromBySource &&
       sameCopyOfTarget &&
       sameDr &&
       sameTypeOverlay &&
@@ -1397,6 +1492,20 @@ export function refreshScriptedStatics(input: GameState): GameState {
           updated.protectionFrom = [...nextProtFrom];
         } else if ("protectionFrom" in updated) {
           delete updated.protectionFrom;
+        }
+        // Wave 4.8 follow-up 25 lane 71 piece 1/N
+        // (#2614 follow-up): per-source ledger
+        // parallel — the cycle case drops the
+        // leaf-rolled protection but preserves
+        // per-source grants (each source's
+        // contribution stays independent).
+        if (
+          nextProtFromBySource &&
+          Object.keys(nextProtFromBySource).length > 0
+        ) {
+          updated.protectionFromBySource = nextProtFromBySource;
+        } else if ("protectionFromBySource" in updated) {
+          delete updated.protectionFromBySource;
         }
         // Skip the rest of the write phase for this
         // card; the cycle case is fully handled here.
@@ -1853,6 +1962,19 @@ export function refreshScriptedStatics(input: GameState): GameState {
       updated.protectionFrom = deduped;
     } else if ("protectionFrom" in updated) {
       delete updated.protectionFrom;
+    }
+    // Wave 4.8 follow-up 25 lane 71 piece 1/N (#2614 follow-up):
+    // post-overlay-write phase for the per-source ledger.
+    // The per-source map is stamped when the source has any
+    // `protectionFrom` arms that affect this target. When
+    // empty, the field is cleared (the multi-cast semantic
+    // reverts to the union). Multiple sources contribute
+    // independent entries (the map shape preserves the
+    // per-source qualities).
+    if (nextProtFromBySource && Object.keys(nextProtFromBySource).length > 0) {
+      updated.protectionFromBySource = nextProtFromBySource;
+    } else if ("protectionFromBySource" in updated) {
+      delete updated.protectionFromBySource;
     }
     // Wave 4.8 follow-up 13 lane 61b (#2614 follow-up):
     // final write of the per-instance `deathReplacement`

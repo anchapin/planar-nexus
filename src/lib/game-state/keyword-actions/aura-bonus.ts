@@ -145,6 +145,19 @@ export function refreshAuraBonuses(state: GameState): GameState {
   // (battlefield-zone-only, dropped when no Aura with the
   // arm is attached).
   const auraProtFromByTarget = new Map<string, string[]>();
+  // Wave 4.8 follow-up 25 lane 71 piece 1/N (#2614 follow-up):
+  // per-source protection-from ledger for Auras. Maps each
+  // target's `CardInstanceId` to a `Record<auraId,
+  // string[]>` — each entry tracks the qualities a specific
+  // Aura grants to this enchanted card. The
+  // `isProtectedFromSource` consult reads this map FIRST
+  // (multi-cast enforcement — two simultaneous protection-
+  // granting Auras protect from each Aura's quality
+  // independently, NOT the union).
+  const auraProtFromBySourceByTarget = new Map<
+    string,
+    Record<string, string[]>
+  >();
   // Wave 4.8 follow-up 10 lane 77 (#2614 follow-up):
   // the rolled leaf `protectionFrom` for enchanted
   // cards whose attached Aura has a `become_copy` arm.
@@ -369,6 +382,21 @@ export function refreshAuraBonuses(state: GameState): GameState {
           if (!list.includes(q)) list.push(q);
         }
         auraProtFromByTarget.set(target, list);
+        // Wave 4.8 follow-up 25 lane 71 piece 1/N: per-
+        // source ledger stamp (multi-cast enforcement).
+        // Track THIS aura's granted qualities on the
+        // target's per-source ledger. When the consult's
+        // source under query is THIS aura, only the
+        // qualities THIS aura grants apply (independent
+        // of other Auras' grants).
+        const perSource = auraProtFromBySourceByTarget.get(target) ?? {};
+        const existing = perSource[aura.id] ?? [];
+        const merged = [...existing];
+        for (const q of scriptedStatic.protectionFrom) {
+          if (!merged.includes(q)) merged.push(q);
+        }
+        perSource[aura.id] = merged;
+        auraProtFromBySourceByTarget.set(target, perSource);
       }
       // Wave 4.8 follow-up 8 lane 75d (#2614 follow-up):
       // an Aura with a `become_copy: { target,
@@ -479,6 +507,42 @@ export function refreshAuraBonuses(state: GameState): GameState {
     const sameProtFrom =
       nextProtFrom.length === wasProtFrom.length &&
       nextProtFrom.every((q, i) => q === wasProtFrom[i]);
+    // Wave 4.8 follow-up 25 lane 71 piece 1/N (#2614
+    // follow-up): per-source ledger diff for Auras. Same
+    // shape as the union `protectionFrom` diff but tracks
+    // the per-Aura `Record<auraId, string[]>` map. The
+    // `isProtectedFromSource` consult reads the per-Aura
+    // map FIRST when the source under query IS an Aura.
+    const nextProtFromBySource =
+      auraProtFromBySourceByTarget.get(cardId) ?? null;
+    const wasProtFromBySource = card.protectionFromBySource ?? null;
+    let sameProtFromBySource = true;
+    if (nextProtFromBySource === null && wasProtFromBySource === null) {
+      sameProtFromBySource = true;
+    } else if (nextProtFromBySource === null) {
+      sameProtFromBySource = false;
+    } else if (wasProtFromBySource === null) {
+      sameProtFromBySource = false;
+    } else {
+      const nextKeys = Object.keys(nextProtFromBySource).sort();
+      const wasKeys = Object.keys(wasProtFromBySource).sort();
+      if (nextKeys.length !== wasKeys.length) {
+        sameProtFromBySource = false;
+      } else {
+        for (const k of nextKeys) {
+          if (wasKeys.indexOf(k) === -1) {
+            sameProtFromBySource = false;
+            break;
+          }
+          const n = [...(nextProtFromBySource[k] ?? [])].sort();
+          const w = [...(wasProtFromBySource[k] ?? [])].sort();
+          if (n.length !== w.length || !n.every((q, i) => q === w[i])) {
+            sameProtFromBySource = false;
+            break;
+          }
+        }
+      }
+    }
     // Wave 4.8 follow-up 8 lane 75d (#2614 follow-up):
     // the per-enchanted-card copy-target ledger for
     // Auras with a `become_copy` arm. The next-value
@@ -536,6 +600,7 @@ export function refreshAuraBonuses(state: GameState): GameState {
       Boolean(card.losesAbilities) === nextLosesAbilities &&
       sameGrantedTriggers &&
       sameProtFrom &&
+      sameProtFromBySource &&
       sameAuraCopyOfTarget &&
       sameAuraCopyOfTargetPermanent
     ) {
@@ -1005,6 +1070,23 @@ export function refreshAuraBonuses(state: GameState): GameState {
       updated.protectionFrom = deduped;
     } else if ("protectionFrom" in updated) {
       delete updated.protectionFrom;
+    }
+    // Wave 4.8 follow-up 25 lane 71 piece 1/N (#2614
+    // follow-up): per-source ledger write for Auras.
+    // Stamp the per-Aura `Record<auraId, string[]>` map
+    // onto `updated.protectionFromBySource`. The
+    // consult reads this map FIRST when the source
+    // under query IS an Aura. When no Aura grants
+    // protection (the field would be empty), the
+    // field is cleared (multi-cast semantic reverts
+    // to the union).
+    if (
+      nextProtFromBySource &&
+      Object.keys(nextProtFromBySource).length > 0
+    ) {
+      updated.protectionFromBySource = nextProtFromBySource;
+    } else if ("protectionFromBySource" in updated) {
+      delete updated.protectionFromBySource;
     }
     cards.set(cardId, updated);
   }

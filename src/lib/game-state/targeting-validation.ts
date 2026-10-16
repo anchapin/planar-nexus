@@ -20,6 +20,7 @@ import { hasHexproofStrict } from "./keyword-actions/hexproof";
 import { hasShroudStrict } from "./keyword-actions/shroud";
 import { oracleTextDeclaresOwnKeyword } from "./keyword-actions/grant-negation";
 import { getProtectionQualitiesStrict } from "./keyword-actions/protection";
+import { getProtectionQualitiesForSource } from "./keyword-actions/protection";
 import { parseWardCostString, type WardCostDescriptor } from "./ward-system";
 
 /**
@@ -270,12 +271,37 @@ function normalizeColor(color: string): string {
 /**
  * Check if a target is protected from a source based on protection keywords
  * CR 702.16A: Can't be targeted by spells/abilities with the given quality
+ *
+ * Wave 4.8 follow-up 25 lane 71 piece 1/N (#2614 follow-up):
+ * consults the per-source `protectionFromBySource` ledger
+ * FIRST (multi-cast enforcement — a target granted
+ * protection from TWO simultaneous Auras is protected from
+ * each Aura's quality independently, NOT the union). When
+ * the per-source ledger has an entry for the source under
+ * consult, only that source's qualities are evaluated;
+ * otherwise the union `protectionFrom` field is consulted
+ * (lane 71 piece 1/N + 2/N fallback path).
  */
 export function isProtectedFromSource(
   target: CardInstance,
   source: CardInstance,
 ): boolean {
-  const targetQualities = getProtectionQualities(target);
+  // Wave 4.8 follow-up 25 lane 71 piece 1/N: per-source
+  // consult first. When the source under consult has its
+  // own ledger entry, the multi-cast semantic resolves
+  // independently for that source — the union is NOT
+  // consulted (the source's protection is its own
+  // quality list, not the sum of all grants).
+  const sourceSpecificQualities = getProtectionQualitiesForSource(
+    target,
+    source.id,
+  );
+  let targetQualities: string[];
+  if (sourceSpecificQualities !== null) {
+    targetQualities = sourceSpecificQualities;
+  } else {
+    targetQualities = getProtectionQualities(target);
+  }
   if (targetQualities.length === 0) return false;
 
   const sourceColors = getCardColors(source);

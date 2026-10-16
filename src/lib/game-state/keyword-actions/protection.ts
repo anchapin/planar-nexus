@@ -148,3 +148,32 @@ export function getProtectionQualitiesStrict(card: CardInstance): string[] {
   }
   return qualities;
 }
+
+/**
+ * Wave 4.8 follow-up 25 lane 71 piece 1/N (#2614 follow-up):
+ * per-source protection-qualities consult. When the target's
+ * `protectionFromBySource` ledger has an entry for the
+ * specific source under consult, returns the per-source
+ * qualities (multi-cast enforcement — a card granted
+ * protection from two simultaneous Auras is protected from
+ * each Aura's quality independently, NOT the union). When
+ * the source is not in the map, returns null (the consult
+ * falls back to the union `protectionFrom` field semantics).
+ *
+ * Multi-cast semantic: when source A grants `protection from
+ * red` AND source B grants `protection from blue`, a red
+ * source from a third card is NOT blocked via this per-source
+ * consult (it's not source A or B). The union `protectionFrom`
+ * ledger still blocks it (the union says "red"), but the
+ * per-source consult resolves it independently.
+ */
+export function getProtectionQualitiesForSource(
+  target: CardInstance,
+  sourceId: string,
+): string[] | null {
+  const ledger = target.protectionFromBySource;
+  if (!ledger) return null;
+  const qualities = ledger[sourceId];
+  if (!qualities || qualities.length === 0) return null;
+  return [...qualities];
+}
