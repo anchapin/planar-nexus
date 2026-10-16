@@ -1,4 +1,8 @@
 import type { GameState, ManaPool, PlayerId } from "../types";
+import {
+  clearRestrictionTag,
+  resolveXspentOn,
+} from "./restriction-ledger";
 
 export function canAffordMana(
   state: GameState,
@@ -46,10 +50,41 @@ export function spendMana(
   state: GameState,
   playerId: PlayerId,
   mana: Partial<ManaPool>,
+  /**
+   * Wave 4.8 follow-up 22 lane 69 piece 3/N (#2614 follow-up):
+   * optional restriction-tag gate. When set, the spend consults
+   * the player's `restrictionLedger[restriction]` before allowing
+   * the spend to proceed. The consult (`resolveXspentOn`) must
+   * return true; if the ledger under that tag has enough tagged
+   * mana to cover the spend, the spend succeeds AND the tag's
+   * ledger entry is cleared via `clearRestrictionTag` so the
+   * ledger stays in sync with the mana it produced. v1
+   * collapses the gated spend to "ledger-consult first, then
+   * spend from main pool" — partial-pool mixing (spending tagged
+   * mana + main-pool mana in one transaction) rides a follow-up
+   * lane. Pass `restriction: undefined` (the default) for the
+   * un-restricted spend shape every existing caller uses.
+   */
+  options?: { restriction?: string },
 ): { success: boolean; state: GameState } {
   const player = state.players.get(playerId);
   if (!player) {
     return { success: false, state };
+  }
+
+  // Lane 69 piece 3/N: when the caller passes a restriction tag,
+  // the spend is gated on the ledger having enough tagged mana
+  // to cover the spend. The consult runs first so a short /
+  // mismatched ledger short-circuits to `{ success: false }`
+  // without touching the main pool. The actual ledger debit
+  // happens at the end of the function (after the main-pool
+  // spend succeeds) so the ledger stays in sync with the
+  // produced-and-spent mana.
+  const restriction = options?.restriction;
+  if (restriction !== undefined) {
+    if (!resolveXspentOn(state, playerId, restriction, mana)) {
+      return { success: false, state };
+    }
   }
 
   const safeMana: ManaPool = {
@@ -162,12 +197,24 @@ export function spendMana(
   };
   updatedPlayers.set(playerId, updatedPlayer);
 
+  // Lane 69 piece 3/N: after the main-pool spend succeeds,
+  // debit the consulted ledger tag so the ledger stays in sync
+  // with the tagged mana that just funded the spend. The
+  // consult above already gated on "ledger has enough"; we
+  // don't re-validate here — the spend succeeded, the tag
+  // clears. A future piece may replace this clear with a
+  // partial decrement if partial-pool mixing is added.
+  let nextState: GameState = {
+    ...state,
+    players: updatedPlayers,
+    lastModifiedAt: Date.now(),
+  };
+  if (restriction !== undefined) {
+    nextState = clearRestrictionTag(nextState, playerId, restriction);
+  }
+
   return {
     success: true,
-    state: {
-      ...state,
-      players: updatedPlayers,
-      lastModifiedAt: Date.now(),
-    },
+    state: nextState,
   };
 }
