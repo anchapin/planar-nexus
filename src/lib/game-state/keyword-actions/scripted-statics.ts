@@ -271,14 +271,196 @@ function computeX(state: GameState, source: CardInstance, kind: string): number 
  * only those whose type line ALSO includes the
  * chosen subtype — usually a no-op, but the v1
  * shape is parallel across `per` values).
+ *
+ * Wave 4.8 follow-up 25 lane 32 piece 2/N (#2614
+ * follow-up): the optional `andPer` secondary
+ * AND-source. When set, the count is
+ * `count(per) + count(andPer.per)` — a card granting
+ * "+1/+1 for each creature AND each artifact you
+ * control" reads as the sum of both source counts.
+ * CR 613.4c-style multi-source scaling. The
+ * `andPer` arm has the same `per` enum +
+ * `perSubtype` filter shape as the primary source;
+ * the engine iterates the battlefield twice (once
+ * for the primary count, once for the andPer count)
+ * and sums the two. v1 minimum is a single
+ * secondary AND-source; an array form
+ * (`andPer: [...]`) is a follow-up.
+ *
+ * Wave 4.8 follow-up 27 lane 32 piece 1/N (#2614
+ * follow-up): the optional `andPer.perCounter`
+ * self-referential per-counter arm. When set, the
+ * `andPer` contribution to the compound count is the
+ * SOURCE's own per-counter count (REPLACES the
+ * `andPer.per` state-derived count — the per-counter
+ * count and the state-derived count are not summed).
+ * The `andPer.perCounter.counter` accepts the
+ * `"chosen"` sentinel (resolved from
+ * `source.chosenCreatureType`, parallel to the primary
+ * `perCounter` sentinel). When
+ * `andPer.perCounter` is set, the `andPer.per` and
+ * `andPer.perSubtype` fields are ignored.
  */
 function computeAnthemScalingCount(
   state: GameState,
   source: CardInstance,
   per: "creatures" | "treasures" | "lands" | "other_creatures",
   perSubtype?: string,
+  andPer?:
+    | {
+        per: "creatures" | "treasures" | "lands" | "other_creatures";
+        perSubtype?: string;
+        perCounter?: { counter: string; ordinal?: number } | undefined;
+        perCounterSummed?:
+          | { counter: string; ordinal?: number }
+          | undefined;
+      }
+    | undefined,
+  perCounter?:
+    | {
+        counter: string;
+        ordinal?: number;
+        perPair?: { ordinal?: number };
+      }
+    | undefined,
 ): number {
-  const subtypeLc = perSubtype?.toLowerCase();
+  // Wave 4.8 follow-up 25 lane 32 piece 4/N (#2614
+  // follow-up): the optional self-referential
+  // per-counter count source. When set, REPLACES
+  // the `per` arm's state-derived count with the
+  // source's own per-counter count. The count is
+  // `source.counters?.find(c => c.type === counter)?.count
+  // ?? 0` — matches how
+  // `evergreen-keywords.getEffectivePower` reads
+  // the +1/+1 counter from the same field. v1
+  // single counter type per anthem; a hybrid
+  // "per creatures + per counter" arm is a follow-up.
+  //
+  // Wave 4.8 follow-up 26 lane 32 piece 1/N (#2614
+  // follow-up): the `"chosen"` sentinel for
+  // `perCounter.counter`. When `perCounter.counter`
+  // is the sentinel, resolve the counter type from
+  // `source.chosenCreatureType` (parallel to the
+  // `perSubtype: "chosen"` sentinel — the same
+  // instance field drives both substrates via
+  // independent branches). If
+  // `chosenCreatureType` is null (the
+  // `enter_choice: { kind: "creature_type" }`
+  // resolve hasn't happened yet), the count is 0
+  // (matches the lane 86 chosen-type anthem
+  // semantics). The sentinel is a separate field
+  // from the source's `counters` types — the
+  // source's OWN counters are still consulted; only
+  // the type string is resolved dynamically.
+  //
+  // Wave 4.8 follow-up 28 priority 1 (#2614
+  // follow-up): the OPTIONAL `ordinal: number`
+  // field on `perCounter`. When set, the count is
+  // the CUMULATIVE sum of the first `ordinal`
+  // counters of the resolved type on the source
+  // (matches MTG "Nth counter" semantics — a source
+  // with 3 +1/+1 counters and `ordinal: 2`
+  // contributes 2, not 3). When unset, the existing
+  // per-counter semantic is used (sum of ALL counters
+  // of the resolved type). The `"chosen"` sentinel
+  // resolves the counter type first; the ordinal
+  // then applies to the resolved type. The ordinal
+  // is a per-source Nth-counter read; a per-pair
+  // counter ordinal ("Nth counter of each unique
+  // type") rides a future lane.
+  if (perCounter) {
+    const resolvedCounterType =
+      perCounter.counter === "chosen"
+        ? source.chosenCreatureType !== null &&
+          source.chosenCreatureType !== undefined
+          ? source.chosenCreatureType
+          : null
+        : perCounter.counter;
+    if (resolvedCounterType === null) {
+      return 0;
+    }
+    // Wave 4.8 follow-up 29 priority 4 (lane 32)
+    // (#2614 follow-up): the OPTIONAL `perPair`
+    // arm — a per-pair cross-type variant
+    // ("Nth counter of each unique type"). When
+    // set, the per-pair takes precedence over
+    // the `perCounter.ordinal?` arm (the
+    // per-pair is a separate semantic from the
+    // per-counter Nth-counter read). The
+    // per-pair reads ALL unique counter types
+    // on the source, sums the cumulative sum
+    // of the first `perPair.ordinal` counters
+    // of each type. A source with 2 +1/+1 + 3
+    // -1/-1 with `perPair.ordinal: 2`
+    // contributes 2 + 2 = 4 (NOT 2 + 3 = 5).
+    // When unset, the existing
+    // `perCounter.ordinal?` semantic is used.
+    // The `perPair.ordinal` defaults to 1
+    // (cumulative sum of the FIRST counter of
+    // each unique type — a "first counter per
+    // pair" read).
+    if (perCounter.perPair) {
+      const pairOrdinal = perCounter.perPair.ordinal ?? 1;
+      const allCounters = source.counters ?? [];
+      // Group counters by type; iterate the
+      // unique types in `source.counters` array
+      // order (preserves stamping order); for
+      // each unique type, sum the first
+      // `pairOrdinal` entries of that type.
+      const seenTypes = new Set<string>();
+      let pairSum = 0;
+      for (const c of allCounters) {
+        if (seenTypes.has(c.type)) continue;
+        seenTypes.add(c.type);
+        const ofType = allCounters.filter(
+          (x) => x.type === c.type,
+        );
+        const firstN = ofType.slice(0, pairOrdinal);
+        pairSum += firstN.reduce(
+          (acc, x) => acc + x.count,
+          0,
+        );
+      }
+      return pairSum;
+    }
+    const ordinal = perCounter.ordinal ?? 0;
+    if (ordinal === 0) {
+      // No ordinal — existing perCounter semantic
+      // (total count of all counters of this type).
+      const counterEntry = source.counters?.find(
+        (c) => c.type === resolvedCounterType,
+      );
+      return counterEntry?.count ?? 0;
+    }
+    // Ordinal set — cumulative sum of the first N
+    // counters of this type on the source. The source
+    // can carry multiple counter entries of the same
+    // type (separate stamping events); the engine
+    // reads them in `source.counters` array order
+    // and slices the first `ordinal` entries.
+    const allOfType = (source.counters ?? []).filter(
+      (c) => c.type === resolvedCounterType,
+    );
+    const firstN = allOfType.slice(0, ordinal);
+    return firstN.reduce((sum, c) => sum + c.count, 0);
+  }
+  // Wave 4.8 follow-up 25 lane 32 piece 3/N (#2614
+  // follow-up): the `"chosen"` sentinel for
+  // `perSubtype`. When the field is the sentinel,
+  // substitute `source.chosenCreatureType` (parallel
+  // to `affects.subtype: "chosen"` reading the same
+  // field). If `chosenCreatureType` is null (the
+  // enter choice hasn't resolved yet), the count is
+  // 0 (the scripted anthem remains inert — matches
+  // lane 86 chosen-type anthem semantics).
+  let resolvedPerSubtype: string | undefined = perSubtype;
+  if (perSubtype === "chosen") {
+    resolvedPerSubtype =
+      source.chosenCreatureType !== null && source.chosenCreatureType !== undefined
+        ? source.chosenCreatureType
+        : undefined;
+  }
+  const subtypeLc = resolvedPerSubtype?.toLowerCase();
   const matchesSubtype = (card: CardInstance): boolean => {
     if (!subtypeLc) return true;
     return (card.cardData.type_line ?? "")
@@ -314,6 +496,222 @@ function computeAnthemScalingCount(
     }
     if (!matchesSubtype(card)) continue;
     n++;
+  }
+  // Wave 4.8 follow-up 25 lane 32 piece 2/N: the
+  // optional AND-source. Iterate the battlefield a
+  // second time with the AND-source's `per` arm +
+  // optional `perSubtype` filter, sum the count.
+  // The secondary iteration uses the same
+  // inline-predicate shape (no helper reuse — the
+  // arm's `per` and `perSubtype` are independent
+  // per iteration; a shared helper would have to
+  // parameterize on two pairs, which obscures the
+  // shape). v1 single secondary source; the OR
+  // combinator (lane 36 `X.or`-style matrix) is a
+  // follow-up.
+  if (andPer) {
+    // Wave 4.8 follow-up 27 lane 32 piece 1/N: the
+    // optional `andPer.perCounter` self-referential
+    // per-counter arm. When set, REPLACES the
+    // `andPer.per` state-derived count with the
+    // source's own per-counter count (parallels the
+    // primary `perCounter` REPLACES the primary
+    // `per` — the two are not summed). The
+    // `"chosen"` sentinel is resolved from
+    // `source.chosenCreatureType` (same instance
+    // field as the primary `perCounter` sentinel
+    // and the `perSubtype: "chosen"` sentinel). Null
+    // resolved counter type returns 0 (matches the
+    // lane 86 chosen-type anthem semantics). When
+    // `andPer.perCounter` is set, the `andPer.per`
+    // and `andPer.perSubtype` fields are ignored
+    // (early return — the per-counter contribution
+    // is added to `n` and we skip the state-derived
+    // count loop entirely).
+    //
+    // Wave 4.8 follow-up 28 priority 3 (#2614
+    // follow-up): the `andPer.perCounterSummed`
+    // arm — the SUMMED per-counter form on the
+    // `andPer` AND-source. Unlike the REPLACE
+    // arm, this form SUMMED the per-counter count
+    // with the `andPer.per` state-derived count
+    // (the natural read for "per creature AND per
+    // chosen counter" anthems). When
+    // `andPer.perCounterSummed` is set, the engine
+    // computes the `andPer.per` state-derived count
+    // AND the summed per-counter count, then sums
+    // them. The REPLACE arm stays as the
+    // self-referential case. When BOTH
+    // `andPer.perCounter` and
+    // `andPer.perCounterSummed` are set, the SUM
+    // arm takes precedence (the SUM is the natural
+    // read). The `"chosen"` sentinel resolution
+    // mirrors the REPLACE arm. The ordinal variant
+    // (follow-up 28 priority 1) applies to the
+    // summed form too — when set, the summed
+    // per-counter count is the cumulative sum of
+    // the first `ordinal` counters of the resolved
+    // type.
+    if (andPer.perCounterSummed) {
+      // Wave 4.8 follow-up 28 priority 3: the
+      // SUMMED per-counter arm. The per-counter
+      // count is SUMMED with the `andPer.per`
+      // state-derived count (NOT replaced). The
+      // engine iterates the battlefield for the
+      // `andPer.per` state-derived count, then
+      // adds the per-counter count. The sentinel
+      // and ordinal resolution are independent of
+      // the REPLACE arm (parallel structure).
+      // Compute the state-derived count first.
+      let resolvedAndPerSubtypeForSum:
+        | string
+        | undefined = andPer.perSubtype;
+      if (andPer.perSubtype === "chosen") {
+        resolvedAndPerSubtypeForSum =
+          source.chosenCreatureType !== null &&
+          source.chosenCreatureType !== undefined
+            ? source.chosenCreatureType
+            : undefined;
+      }
+      const andSubtypeLcSum =
+        resolvedAndPerSubtypeForSum?.toLowerCase();
+      const matchesAndSubtypeSum = (card: CardInstance): boolean => {
+        if (!andSubtypeLcSum) return true;
+        return (card.cardData.type_line ?? "")
+          .toLowerCase()
+          .includes(andSubtypeLcSum);
+      };
+      for (const card of battlefieldCards(state)) {
+        if (card.controllerId !== source.controllerId) continue;
+        if (andPer.per === "other_creatures" && card.id === source.id) {
+          continue;
+        }
+        if (
+          (andPer.per === "creatures" || andPer.per === "other_creatures") &&
+          !isCreature(card)
+        ) {
+          continue;
+        }
+        if (andPer.per === "treasures") {
+          const t = (card.cardData.type_line ?? "").toLowerCase();
+          if (!t.includes("treasure")) continue;
+        }
+        if (andPer.per === "lands") {
+          const t = (card.cardData.type_line ?? "").toLowerCase();
+          if (!t.includes("land")) continue;
+        }
+        if (!matchesAndSubtypeSum(card)) continue;
+        n++;
+      }
+      // Now add the per-counter count. Resolve
+      // the counter type first (sentinel
+      // resolution), then read the cumulative
+      // sum (ordinal variant from follow-up 28
+      // priority 1).
+      const resolvedSumCounterType =
+        andPer.perCounterSummed.counter === "chosen"
+          ? source.chosenCreatureType !== null &&
+            source.chosenCreatureType !== undefined
+            ? source.chosenCreatureType
+            : null
+          : andPer.perCounterSummed.counter;
+      if (resolvedSumCounterType !== null) {
+        const ordinalSum = andPer.perCounterSummed.ordinal ?? 0;
+        if (ordinalSum === 0) {
+          const counterEntry = source.counters?.find(
+            (c) => c.type === resolvedSumCounterType,
+          );
+          n += counterEntry?.count ?? 0;
+        } else {
+          const allOfTypeSum = (source.counters ?? []).filter(
+            (c) => c.type === resolvedSumCounterType,
+          );
+          const firstNSum = allOfTypeSum.slice(0, ordinalSum);
+          n += firstNSum.reduce((sum, c) => sum + c.count, 0);
+        }
+      }
+      return n;
+    }
+    if (andPer.perCounter) {
+      const resolvedAndCounterType =
+        andPer.perCounter.counter === "chosen"
+          ? source.chosenCreatureType !== null &&
+            source.chosenCreatureType !== undefined
+            ? source.chosenCreatureType
+            : null
+          : andPer.perCounter.counter;
+      if (resolvedAndCounterType !== null) {
+        // Wave 4.8 follow-up 28 priority 1 (#2614
+        // follow-up): the OPTIONAL `ordinal: number`
+        // field on `andPer.perCounter` mirrors the
+        // primary `perCounter.ordinal?` semantic.
+        // When set, the per-counter count is the
+        // CUMULATIVE sum of the first `ordinal`
+        // counters of the resolved type on the
+        // source. When unset, the existing semantic
+        // is used (sum of ALL counters of the
+        // resolved type). The primary
+        // `perCounter.ordinal?` and the
+        // `andPer.perCounter.ordinal?` fields are
+        // INDEPENDENT (each applies to its own arm).
+        const ordinal = andPer.perCounter.ordinal ?? 0;
+        if (ordinal === 0) {
+          const counterEntry = source.counters?.find(
+            (c) => c.type === resolvedAndCounterType,
+          );
+          n += counterEntry?.count ?? 0;
+        } else {
+          const allOfType = (source.counters ?? []).filter(
+            (c) => c.type === resolvedAndCounterType,
+          );
+          const firstN = allOfType.slice(0, ordinal);
+          n += firstN.reduce((sum, c) => sum + c.count, 0);
+        }
+      }
+      return n;
+    }
+    // Wave 4.8 follow-up 25 lane 32 piece 3/N: the
+    // `"chosen"` sentinel also applies to the
+    // AND-source's `perSubtype`. Same resolution
+    // (substitute `source.chosenCreatureType`,
+    // count 0 when unset).
+    let resolvedAndPerSubtype: string | undefined = andPer.perSubtype;
+    if (andPer.perSubtype === "chosen") {
+      resolvedAndPerSubtype =
+        source.chosenCreatureType !== null &&
+        source.chosenCreatureType !== undefined
+          ? source.chosenCreatureType
+          : undefined;
+    }
+    const andSubtypeLc = resolvedAndPerSubtype?.toLowerCase();
+    const matchesAndSubtype = (card: CardInstance): boolean => {
+      if (!andSubtypeLc) return true;
+      return (card.cardData.type_line ?? "")
+        .toLowerCase()
+        .includes(andSubtypeLc);
+    };
+    for (const card of battlefieldCards(state)) {
+      if (card.controllerId !== source.controllerId) continue;
+      if (andPer.per === "other_creatures" && card.id === source.id) {
+        continue;
+      }
+      if (
+        (andPer.per === "creatures" || andPer.per === "other_creatures") &&
+        !isCreature(card)
+      ) {
+        continue;
+      }
+      if (andPer.per === "treasures") {
+        const t = (card.cardData.type_line ?? "").toLowerCase();
+        if (!t.includes("treasure")) continue;
+      }
+      if (andPer.per === "lands") {
+        const t = (card.cardData.type_line ?? "").toLowerCase();
+        if (!t.includes("land")) continue;
+      }
+      if (!matchesAndSubtype(card)) continue;
+      n++;
+    }
   }
   return n;
 }
@@ -683,6 +1081,18 @@ export function refreshScriptedStatics(input: GameState): GameState {
   // in `evergreen-keywords.ts` consults the field via the
   // existing `canBeTargetedBy` / `canBeBlocked` checks.
   const protFromById = new Map<string, string[]>();
+  // Wave 4.8 follow-up 25 lane 71 piece 1/N (#2614 follow-up):
+  // per-SOURCE protection-from ledger (multi-cast enforcement).
+  // For each target with a static-driven protection grant,
+  // maps each granting source's `CardInstanceId` to the
+  // qualities IT grants (independent of other grants). The
+  // `isProtectedFromSource` consult reads the per-source
+  // ledger FIRST (a target granted protection from two
+  // simultaneous Auras is protected from each Aura's quality
+  // independently, NOT the union). When the source under
+  // consult is not in the map, the union `protectionFrom`
+  // field is consulted (the lane 71 piece 1/N + 2/N fallback).
+  const protFromBySourceById = new Map<string, Record<string, string[]>>();
   // Wave 4.8 follow-up 7 lane 75 (#2614 follow-up): the
   // per-card copy-of-target ledger stamped by statics with
   // a `become_copy` arm. For each source with a
@@ -749,6 +1159,16 @@ export function refreshScriptedStatics(input: GameState): GameState {
     // in `evergreen-keywords.ts` alongside the parsed
     // keyword list and the regex fallback.
     const protFrom = new Set<string>();
+    // Wave 4.8 follow-up 25 lane 71 piece 1/N (#2614 follow-up):
+    // per-source ledger of protection qualities for multi-cast
+    // enforcement. Maps each granting source's `CardInstanceId`
+    // to the qualities it grants to THIS target. When a source
+    // appears in `sources` with a `protectionFrom` arm that
+    // matches the target, the source's `CardInstanceId` becomes
+    // a key in this map and the source's qualities become the
+    // value. The `isProtectedFromSource` consult reads this map
+    // FIRST (independent per-source resolution).
+    const protFromBySource: Record<string, string[]> = {};
     for (const { card, statics } of sources) {
       for (const stat of statics) {
         // Wave 4.8 follow-up 18 lane 112 (#2614 follow-up):
@@ -832,8 +1252,219 @@ export function refreshScriptedStatics(input: GameState): GameState {
         // field. The set is deduplicated per-quality so
         // multiple statics granting the same color only
         // stamp once.
+        //
+        // Wave 4.8 follow-up 26 lane 71 piece 3/N (#2614
+        // follow-up): the `protectionFrom` field is a
+        // union of `z.array(z.string()) | z.literal("chosen")`.
+        // When the field is the `"chosen"` sentinel,
+        // resolve the qualities from
+        // `source.chosenProtectionFrom` (a single-
+        // element list, parallel to the chosen-type
+        // anthem `affects.subtype: "chosen"` sentinel).
+        // If `chosenProtectionFrom` is null (the enter
+        // choice hasn't resolved yet, or the source
+        // doesn't carry an `enter_choice: { kind:
+        // "protection_quality" }` script), the static
+        // is INERT for that pass — no qualities
+        // stamped (parallel to the lane 86 chosen-type
+        // anthem "null" semantics).
+        //
+        // Wave 4.8 follow-up 27 lane 71 piece 3/N (#2614
+        // follow-up): the per-entry `"chosen"` sentinel
+        // (multi-quality sentinel). The
+        // `protectionFrom` field accepts a per-entry
+        // union form `Array<string | "chosen">` so a
+        // multi-quality anthem can grant protection
+        // from a list of literal qualities AND the
+        // chosen quality in the same arm (e.g.
+        // `["red", "chosen"]` = "protection from red
+        // AND the chosen quality"). The engine
+        // resolves each `"chosen"` entry to
+        // `source.chosenProtectionFrom` (when set) or
+        // skips it (when null — the literal entries
+        // still contribute). The per-entry resolution
+        // is independent — a null `chosenProtectionFrom`
+        // does NOT make the whole static inert; only
+        // the `"chosen"` entry is skipped.
         if (stat.protectionFrom) {
-          for (const q of stat.protectionFrom) protFrom.add(q);
+          // Wave 4.8 follow-up 26 lane 71 piece 3/N
+          // + follow-up 27 lane 71 piece 3/N:
+          // resolve the per-static qualities list
+          // ONCE — either the literal array, the
+          // chosen sentinel, OR the per-entry
+          // mixed form. The per-entry form is
+          // detected by the presence of `"chosen"`
+          // in the array (a flat `string[]` has no
+          // `"chosen"` entry — the array is taken
+          // literally). The chosen-sentinel
+          // resolution is per-entry (each
+          // `"chosen"` contributes at most one
+          // resolved quality).
+          let resolvedProtFromQualities: readonly string[] | null;
+          if (stat.protectionFrom === "chosen") {
+            resolvedProtFromQualities =
+              card.chosenProtectionFrom !== null &&
+              card.chosenProtectionFrom !== undefined
+                ? [card.chosenProtectionFrom]
+                : null;
+          } else if (
+            Array.isArray(stat.protectionFrom) &&
+            // Wave 4.8 follow-up 28 priority 2
+            // (#2614 follow-up): the array-aware
+            // entry shape (nested-array "pair" form).
+            // The per-entry branch is entered when
+            // ANY entry is the `"chosen"` sentinel OR
+            // a nested array (a "pair"). A pure
+            // literal `string[]` (e.g. `["red"]`) is
+            // handled by the `else` branch — it's a
+            // flat literal form, not a per-entry
+            // form. The detection is per-entry: if
+            // any entry is `"chosen"` or a nested
+            // array, the per-entry form is engaged
+            // (each entry is resolved independently).
+            (stat.protectionFrom as readonly (string | string[])[]).some(
+              (entry) =>
+                entry === "chosen" || Array.isArray(entry),
+            )
+          ) {
+            // Per-entry mixed form (follow-up 27 lane
+            // 71 piece 3/N) + array-aware form
+            // (follow-up 28 priority 2): resolve
+            // each entry independently. `"chosen"`
+            // entries resolve to the source's
+            // `chosenProtectionFrom` (when set) or
+            // skip (when null). Nested-array entries
+            // ("pairs") are FLATTENED to their
+            // literal entries. Literal string entries
+            // contribute as-is. The resulting list
+            // may have fewer entries than the input
+            // when the chosen sentinel is null
+            // (only the literal + pair entries
+            // contribute). If the input array
+            // contains ONLY a `"chosen"` entry and
+            // the sentinel is null, the resolved
+            // list is empty (NOT null — the static
+            // still iterates, contributing zero
+            // qualities).
+            const resolved: string[] = [];
+            for (const entry of stat.protectionFrom as readonly (
+              | string
+              | string[]
+            )[]) {
+              if (entry === "chosen") {
+                if (
+                  card.chosenProtectionFrom !== null &&
+                  card.chosenProtectionFrom !== undefined
+                ) {
+                  resolved.push(card.chosenProtectionFrom);
+                }
+              } else if (Array.isArray(entry)) {
+                // Wave 4.8 follow-up 28 priority 2
+                // (#2614 follow-up): the
+                // array-aware entry shape (nested-
+                // array "pair" form). Each nested
+                // array represents a "pair" of
+                // qualities (e.g. `["red", "green"]` =
+                // "protection from the red/green
+                // pair"). The Zod layer enforces
+                // `.min(2)` (a 1-element nested array
+                // is REJECTED to avoid confusion
+                // with the flat literal form), so
+                // every nested array here has at
+                // least 2 elements. Flatten the
+                // nested array to its literal
+                // entries (the pair contributes each
+                // literal quality independently to
+                // the resolved list).
+                //
+                // Wave 4.8 follow-up 29 priority 5
+                // (lane 71) (#2614 follow-up): the
+                // per-pair `"chosen"` sentinel
+                // entry. The nested array now ALSO
+                // accepts a `"chosen"` sentinel
+                // entry — the engine consult
+                // FLATTENS each nested array to its
+                // literal entries AND resolves the
+                // `"chosen"` entry via
+                // `source.chosenProtectionFrom`. The
+                // resulting quality is added to the
+                // flattened list (alongside the
+                // literal entries). v1 minimum: a
+                // single `"chosen"` entry inside the
+                // nested array.
+                //
+                // Wave 4.8 follow-up 30 priority 5
+                // (lane 71) (#2614 follow-up): the
+                // per-pair-with-`"chosen"`-per-pair
+                // resolution. The
+                // `protectionFrom` schema accepts
+                // multiple per-pair `"chosen"`
+                // entries across nested arrays (e.g.
+                // `[["red", "chosen"], ["green",
+                // "chosen"]]` = "protection from
+                // red+chosen AND green+chosen"). The
+                // engine consult reads the SAME
+                // `card.chosenProtectionFrom`
+                // instance field for EACH
+                // `"chosen"` entry, even across
+                // multiple nested arrays — the
+                // resolved qualities are pushed
+                // once per `"chosen"` entry, and
+                // the `protFrom` Set dedupes at
+                // write time. The v1 minimum is the
+                // single-instance-field model
+                // (parallel to the lane 52
+                // `chosenColor` instance field);
+                // a per-pair independent
+                // sentinel-resolution map rides
+                // follow-up 31 if any future
+                // priority piece surfaces a
+                // per-pair sentinel field (e.g.
+                // `source.chosenProtectionFromPerPair`).
+                for (const q of entry) {
+                  if (q === "chosen") {
+                    if (
+                      card.chosenProtectionFrom !== null &&
+                      card.chosenProtectionFrom !== undefined
+                    ) {
+                      resolved.push(card.chosenProtectionFrom);
+                    }
+                  } else if (typeof q === "string") {
+                    resolved.push(q);
+                  }
+                }
+              } else {
+                resolved.push(entry);
+              }
+            }
+            resolvedProtFromQualities = resolved;
+          } else {
+            resolvedProtFromQualities = stat.protectionFrom as readonly string[];
+          }
+          if (resolvedProtFromQualities !== null) {
+            for (const q of resolvedProtFromQualities) protFrom.add(q);
+          }
+          // Wave 4.8 follow-up 25 lane 71 piece 1/N:
+          // per-source ledger stamp (multi-cast enforcement).
+          // Track THIS source's granted qualities in
+          // `protFromBySource[card.id]` so the consult
+          // can resolve the source under query
+          // independently of other grants. Multiple
+          // `protectionFrom` arms on the same source
+          // union (the union semantics mirror the
+          // `protectionFrom` per-card ledger). The
+          // `isProtectedFromSource` consult reads
+          // `protFromBySource[source.id]` first; when
+          // the source is present, the per-source
+          // qualities are consulted (NOT the union).
+          if (resolvedProtFromQualities !== null) {
+            const existing = protFromBySource[card.id] ?? [];
+            const merged = [...existing];
+            for (const q of resolvedProtFromQualities) {
+              if (!merged.includes(q)) merged.push(q);
+            }
+            protFromBySource[card.id] = merged;
+          }
         }
         // Wave 4.8 follow-up 7 lane 75 (#2614 follow-up):
         // record the `become_copy.target` for the source
@@ -916,6 +1547,20 @@ export function refreshScriptedStatics(input: GameState): GameState {
             card,
             stat.anthemScaling.per,
             stat.anthemScaling.perSubtype,
+            // Wave 4.8 follow-up 25 lane 32 piece 2/N:
+            // the optional AND-source is forwarded
+            // through to the count consult. When unset
+            // (the v1 default), the consult ignores
+            // `andPer` and falls through to the
+            // primary-source count.
+            stat.anthemScaling.andPer,
+            // Wave 4.8 follow-up 25 lane 32 piece 4/N:
+            // the optional self-referential per-counter
+            // arm. When set, the consult returns the
+            // source's own per-counter count
+            // (REPLACES the `per` arm entirely — the
+            // v1 minimum is single-source scaling).
+            stat.anthemScaling.perCounter,
           );
           power += count * (stat.anthemScaling.perPower ?? 0);
           toughness += count * (stat.anthemScaling.perToughness ?? 0);
@@ -939,6 +1584,15 @@ export function refreshScriptedStatics(input: GameState): GameState {
       colorAdditions.set(target.id, [...colorAdds].sort());
     if (protFrom.size > 0)
       protFromById.set(target.id, [...protFrom].sort());
+    // Wave 4.8 follow-up 25 lane 71 piece 1/N: stamp the
+    // per-source ledger (`Record<sourceId, string[]>`) on
+    // `protFromBySourceById` when the target has any
+    // source-specific grants. The write phase at the
+    // bottom of the pass reads this map and overlays
+    // it onto the card's `protectionFromBySource` field.
+    if (Object.keys(protFromBySource).length > 0) {
+      protFromBySourceById.set(target.id, protFromBySource);
+    }
   }
 
   // Wave 4.8 follow-up 13 lane 61b (#2614 follow-up): the
@@ -1032,6 +1686,12 @@ export function refreshScriptedStatics(input: GameState): GameState {
     const nextColors = colorAdditions.get(cardId);
     const nextDr = deathReplacements.get(cardId);
     const nextProtFrom = protFromById.get(cardId);
+    // Wave 4.8 follow-up 25 lane 71 piece 1/N (#2614 follow-up):
+    // the per-source ledger is read in parallel with the
+    // union `protectionFrom`. When the source under consult
+    // has its own entry, `isProtectedFromSource` resolves
+    // the source's per-source qualities independently.
+    const nextProtFromBySource = protFromBySourceById.get(cardId);
     // Wave 4.8 follow-up 10 lane 77 (#2614 follow-up):
     // the rolled leaf `protectionFrom` (union semantics
     // with `nextProtFrom` — the source's own
@@ -1089,6 +1749,44 @@ export function refreshScriptedStatics(input: GameState): GameState {
     const sameProtFrom =
       mergedProtFrom.length === prevProtFrom.length &&
       mergedProtFrom.every((q, i) => q === prevProtFrom[i]);
+    // Wave 4.8 follow-up 25 lane 71 piece 1/N: per-source
+    // ledger diff. Compares the previous `Record<...>` (or
+    // undefined) against the next per-source map; a change
+    // in either direction triggers a re-stamp. The
+    // `JSON.stringify`-based comparison is sufficient for
+    // the v1 minimum — keys are `CardInstanceId` strings
+    // and values are stable string arrays.
+    const prevProtFromBySource = card.protectionFromBySource ?? null;
+    let sameProtFromBySource = true;
+    if (nextProtFromBySource === undefined && prevProtFromBySource === null) {
+      sameProtFromBySource = true;
+    } else if (nextProtFromBySource === undefined) {
+      sameProtFromBySource = false;
+    } else if (prevProtFromBySource === null) {
+      sameProtFromBySource = false;
+    } else {
+      const nextKeys = Object.keys(nextProtFromBySource).sort();
+      const prevKeys = Object.keys(prevProtFromBySource).sort();
+      if (nextKeys.length !== prevKeys.length) {
+        sameProtFromBySource = false;
+      } else {
+        for (const k of nextKeys) {
+          if (prevKeys.indexOf(k) === -1) {
+            sameProtFromBySource = false;
+            break;
+          }
+          const n = [...(nextProtFromBySource[k] ?? [])].sort();
+          const p = [...(prevProtFromBySource[k] ?? [])].sort();
+          if (
+            n.length !== p.length ||
+            !n.every((q, i) => q === p[i])
+          ) {
+            sameProtFromBySource = false;
+            break;
+          }
+        }
+      }
+    }
     // Wave 4.8 follow-up 7 lane 75 (#2614 follow-up): the
     // per-instance `copyOfTargetId` is part of the change-
     // detection diff so the refresh pass re-stamps the card
@@ -1192,6 +1890,7 @@ export function refreshScriptedStatics(input: GameState): GameState {
       sameAdds &&
       sameColors &&
       sameProtFrom &&
+      sameProtFromBySource &&
       sameCopyOfTarget &&
       sameDr &&
       sameTypeOverlay &&
@@ -1397,6 +2096,20 @@ export function refreshScriptedStatics(input: GameState): GameState {
           updated.protectionFrom = [...nextProtFrom];
         } else if ("protectionFrom" in updated) {
           delete updated.protectionFrom;
+        }
+        // Wave 4.8 follow-up 25 lane 71 piece 1/N
+        // (#2614 follow-up): per-source ledger
+        // parallel — the cycle case drops the
+        // leaf-rolled protection but preserves
+        // per-source grants (each source's
+        // contribution stays independent).
+        if (
+          nextProtFromBySource &&
+          Object.keys(nextProtFromBySource).length > 0
+        ) {
+          updated.protectionFromBySource = nextProtFromBySource;
+        } else if ("protectionFromBySource" in updated) {
+          delete updated.protectionFromBySource;
         }
         // Skip the rest of the write phase for this
         // card; the cycle case is fully handled here.
@@ -1853,6 +2566,19 @@ export function refreshScriptedStatics(input: GameState): GameState {
       updated.protectionFrom = deduped;
     } else if ("protectionFrom" in updated) {
       delete updated.protectionFrom;
+    }
+    // Wave 4.8 follow-up 25 lane 71 piece 1/N (#2614 follow-up):
+    // post-overlay-write phase for the per-source ledger.
+    // The per-source map is stamped when the source has any
+    // `protectionFrom` arms that affect this target. When
+    // empty, the field is cleared (the multi-cast semantic
+    // reverts to the union). Multiple sources contribute
+    // independent entries (the map shape preserves the
+    // per-source qualities).
+    if (nextProtFromBySource && Object.keys(nextProtFromBySource).length > 0) {
+      updated.protectionFromBySource = nextProtFromBySource;
+    } else if ("protectionFromBySource" in updated) {
+      delete updated.protectionFromBySource;
     }
     // Wave 4.8 follow-up 13 lane 61b (#2614 follow-up):
     // final write of the per-instance `deathReplacement`

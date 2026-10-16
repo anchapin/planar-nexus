@@ -132,6 +132,31 @@ export interface CardInstance {
    */
   chosenCreatureType: string | null;
   /**
+   * Wave 4.8 follow-up 26 lane 71 piece 3/N (#2614
+   * follow-up): the per-instance protection-quality
+   * chosen at ETB. Stamped by
+   * `resolveEnterChoice` in
+   * `keyword-actions/enter-choice.ts` for the new
+   * `enter_choice: { kind: "protection_quality" }`
+   * kind. Consulted by `refreshScriptedStatics` when
+   * the source carries `protectionFrom: "chosen"` —
+   * the static resolves the protected qualities from
+   * `[chosenProtectionFrom]` (a single-element list,
+   * parallel to the `affects.subtype: "chosen"` and
+   * `perSubtype: "chosen"` and
+   * `perCounter.counter: "chosen"` sentinels reading
+   * `chosenCreatureType`). The curation validates
+   * against W/U/B/R/G colors + the "everything"
+   * quality (matching the existing protection-from
+   * `z.string()` ledger shape). `null` until the
+   * enter choice resolves, or on permanents that
+   * don't carry an `enter_choice: { kind:
+   * "protection_quality" }` script; the static is
+   * INERT for that pass when null (parallel to the
+   * lane 86 chosen-type anthem semantics).
+   */
+  chosenProtectionFrom: string | null;
+  /**
    * Wave 4.8 lane 52 (#2614 follow-up): the per-instance
    * subtype additions granted by a
    * `StaticSchema.affects.add_creature_type` static on the
@@ -204,6 +229,33 @@ export interface CardInstance {
    * battlefield.
    */
   protectionFrom?: string[];
+  /**
+   * Wave 4.8 follow-up 25 lane 71 piece 1/N (#2614 follow-up):
+   * per-SOURCE protection-from ledger stamped by
+   * `refreshScriptedStatics` / `refreshAuraBonuses`. Maps each
+   * source `CardInstanceId` to the qualities it grants to
+   * this permanent. When populated for the source under
+   * consult, the `isProtectedFromSource` /
+   * `hasProtectionFromColor` reads the PER-SOURCE qualities
+   * instead of the UNION `protectionFrom` field — this is
+   * the multi-cast enforcement shape ("two simultaneous
+   * protection-granting Auras each independently protect
+   * from their own quality"). When the source is not in the
+   * map, falls back to the union semantics.
+   *
+   * Example: target has `protectionFrom: ["red", "blue"]`
+   * (union from source A's red-grant + source B's blue-grant)
+   * AND `protectionFromBySource: { sourceA: ["red"], sourceB:
+   * ["blue"] }`. A red source different from sourceA/B is
+   * NOT blocked via the per-source ledger (it's not sourceA)
+   * but IS blocked via the union (the ledger says "red").
+   * The multi-cast semantic resolves this by checking the
+   * per-source map for the specific source under consult.
+   *
+   * Battlefield-zone-only: cleared when sources leave the
+   * battlefield (mirrors `protectionFrom`).
+   */
+  protectionFromBySource?: Record<string, string[]>;
   /**
    * Wave 4.8 follow-up 7 lane 75 (#2614 follow-up): the
    * `CardInstanceId` of the permanent whose printed

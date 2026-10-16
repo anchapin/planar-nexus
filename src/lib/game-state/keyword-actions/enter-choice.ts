@@ -49,6 +49,34 @@ function isColorLetter(v: unknown): v is ColorLetter {
 }
 
 /**
+ * Wave 4.8 follow-up 26 lane 71 piece 3/N (#2614
+ * follow-up): the curated protection-quality set for
+ * the `enter_choice: { kind: "protection_quality" }`
+ * sentinel. Mirrors the lane 86 chosen-type anthem
+ * curated list pattern: a list of valid protection
+ * qualities (W/U/B/R/G colors + the "everything"
+ * quality that the existing protection-from ledger
+ * already accepts via `z.string().min(1)`). The
+ * sentinel resolves `card.chosenProtectionFrom` to a
+ * value validated against this set; an invalid pick
+ * (e.g. "purple" or "") is rejected at the same
+ * resolver-returns-failure point as the color /
+ * creature_type paths.
+ */
+const PROTECTION_QUALITIES = [
+  ...COLOR_LETTERS,
+  "everything",
+] as const;
+type ProtectionQuality = (typeof PROTECTION_QUALITIES)[number];
+
+function isProtectionQuality(v: unknown): v is ProtectionQuality {
+  return (
+    typeof v === "string" &&
+    (PROTECTION_QUALITIES as readonly string[]).includes(v)
+  );
+}
+
+/**
  * Curated creature-type list v1 supports as enter-time choices
  * (Wave 4.7 follow-up lane 44, #2705a). The ten most-common
  * creature types cover most real Anthems-of-Champions-style
@@ -96,7 +124,8 @@ export function enterChoiceOptionsForKind(
     | "creature_type"
     | "player"
     | "chosen_name"
-    | "color_and_creature_type",
+    | "color_and_creature_type"
+    | "protection_quality",
 ): readonly string[] {
   switch (kind) {
     case "color":
@@ -127,6 +156,19 @@ export function enterChoiceOptionsForKind(
       }
       return options;
     }
+    case "protection_quality":
+      // Wave 4.8 follow-up 26 lane 71 piece 3/N (#2614
+      // follow-up): the curated protection-quality set
+      // for the chosen-quality sentinel. Same shape as
+      // `COLOR_LETTERS` + the "everything" quality (the
+      // existing protection-from ledger already accepts
+      // both via `z.string().min(1)`). The sentinel
+      // resolves `card.chosenProtectionFrom` to a value
+      // validated against this set at resolveEnterChoice
+      // time. Invalid picks (e.g. "purple", "") are
+      // rejected with the same error path as
+      // `color`/`creature_type`.
+      return PROTECTION_QUALITIES;
   }
 }
 
@@ -192,7 +234,16 @@ export function hasEnterChoice(card: CardInstance): boolean {
     ec.kind === "color" ||
     ec.kind === "creature_type" ||
     ec.kind === "chosen_name" ||
-    ec.kind === "color_and_creature_type"
+    ec.kind === "color_and_creature_type" ||
+    // Wave 4.8 follow-up 26 lane 71 piece 3/N (#2614
+    // follow-up): the chosen-quality sentinel is a
+    // supported `enter_choice` kind. The card carries a
+    // `protectionFrom: "chosen"` static, and the kind
+    // is resolved by `resolveEnterChoice` →
+    // `kind === "protection_quality"` → stamps
+    // `card.chosenProtectionFrom` from the value-list
+    // options.
+    ec.kind === "protection_quality"
   );
 }
 
@@ -284,7 +335,8 @@ function defaultPrompt(
     | "creature_type"
     | "player"
     | "chosen_name"
-    | "color_and_creature_type",
+    | "color_and_creature_type"
+    | "protection_quality",
 ): string {
   switch (kind) {
     case "color":
@@ -297,6 +349,15 @@ function defaultPrompt(
       return `As ${name} enters, choose a card name.`;
     case "color_and_creature_type":
       return `As ${name} enters, choose a color and a creature type.`;
+    case "protection_quality":
+      // Wave 4.8 follow-up 26 lane 71 piece 3/N (#2614
+      // follow-up): the chosen-quality sentinel uses
+      // a parallel prompt phrasing. The picker
+      // surfaces the W/U/B/R/G colors + the
+      // "everything" quality; the static consult in
+      // `refreshScriptedStatics` reads the resolved
+      // value from `chosenProtectionFrom`.
+      return `As ${name} enters, choose a protection quality (color or everything).`;
   }
 }
 
@@ -622,6 +683,33 @@ export function resolveEnterChoice(
       chosenColor: decoded.color,
       chosenCreatureType: decoded.creatureType,
     });
+  } else if (kind === "protection_quality") {
+    // Wave 4.8 follow-up 26 lane 71 piece 3/N (#2614
+    // follow-up): the chosen-quality sentinel
+    // resolver. The card carries a `protectionFrom:
+    // "chosen"` static; the resolver stamps
+    // `card.chosenProtectionFrom` from the value-list
+    // pick (validated against `PROTECTION_QUALITIES` —
+    // W/U/B/R/G plus "everything"). When the pick is
+    // invalid (not in the set), the resolver returns
+    // failure with a description mirroring the
+    // `color`/`creature_type` error shape. The static
+    // consult in `refreshScriptedStatics` reads this
+    // instance field; an unset stamp leaves the static
+    // inert for that pass (parallel to the
+    // `chosenCreatureType` "null" path).
+    if (!isProtectionQuality(chosenValue)) {
+      return {
+        success: false,
+        state,
+        description:
+          "Invalid enter choice value (expected W/U/B/R/G or \"everything\")",
+      };
+    }
+    updatedCards.set(cardId, {
+      ...card,
+      chosenProtectionFrom: chosenValue,
+    });
   } else {
     // "player" is documented-only (#2705); "chosen_name"
     // (Wave 4.7 phase 2 lane 49, #2708 phase 2a) uses a separate
@@ -781,7 +869,8 @@ function resolveCardIdForChoice(
   // back to scanning the battlefield for the first card that
   // matches an enter_choice script and still has its choice field
   // (chosenColor for "color", chosenCreatureType for
-  // "creature_type", chosenCardName for "chosen_name") unset.
+  // "creature_type", chosenCardName for "chosen_name",
+  // chosenProtectionFrom for "protection_quality") unset.
   const stacked = _choice.stackObjectId as CardInstanceId | null;
   if (stacked && state.cards.has(stacked) && hasEnterChoice(state.cards.get(stacked)!)) {
     return stacked;
@@ -802,7 +891,16 @@ function resolveCardIdForChoice(
       // resolver writes both at once, so either being null is
       // equivalent to the choice not having resolved).
       (kind === "color_and_creature_type" &&
-        (card.chosenColor === null || card.chosenCreatureType === null));
+        (card.chosenColor === null || card.chosenCreatureType === null)) ||
+      // Wave 4.8 follow-up 26 lane 71 piece 3/N (#2614
+      // follow-up): the chosen-quality sentinel kind
+      // stamps `chosenProtectionFrom` from one call. The
+      // card is "pending" until the field is set
+      // (`refreshScriptedStatics` consults this field
+      // when `protectionFrom: "chosen"` is in effect).
+      (kind === "protection_quality" &&
+        (card.chosenProtectionFrom === null ||
+          card.chosenProtectionFrom === undefined));
     if (choicePending) return card.id;
   }
   return null;

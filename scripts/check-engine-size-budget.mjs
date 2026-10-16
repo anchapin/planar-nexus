@@ -675,7 +675,148 @@ const SCOPES = [
     // Bumping 4150 → 4250 to give the lane 32
     // family follow-up sub-pieces (compound count
     // sources, per-counter scales) room to land.
-    budgetLines: 4250,
+    //
+    // Wave 4.8 follow-up 25 lane 32 pieces 2/N + 3/N
+    // (#2614 follow-up): the `andPer` compound count
+    // arm + the `perSubtype: "chosen"` sentinel on
+    // `anthemScaling`. Adds ~9 lines (the
+    // `andPer: { per, perSubtype? }` Zod envelope +
+    // docstring explaining the compound count source
+    // + the chosen-sentinel union extension on both
+    // `perSubtype` fields). schema.ts measured at
+    // 4259 (+9 over the 4250 cap).
+    // Bumping 4250 → 4300 to give the lane 32
+    // family further follow-up sub-pieces (per-counter
+    // scales, chosen-counter variant) room to land.
+    // Bumping 4300 → 4320 to capture the follow-up 26
+    // lane 32 piece 1/N (chosen-counter variant) Zod
+    // union extension + docstring expansion.
+    // schema.ts measured at 4312 (+12 over 4300).
+    // Bumping 4320 → 4370 to capture the follow-up 26
+    // lane 71 piece 3/N (chosen-quality sentinel)
+    // `protectionFrom` Zod union extension +
+    // docstring expansion + the `enter_choice.kind`
+    // enum extension with `"protection_quality"`
+    // docstring. schema.ts measured at 4364 (+44 over
+    // 4320).
+    //
+    // Bumping 4370 → 4430 to capture the follow-up 27
+    // lane 32 piece 1/N (`andPer.perCounter` self-
+    // referential per-counter arm on the AND-source —
+    // `andPer` schema arm extension with an OPTIONAL
+    // `perCounter: { counter: string | "chosen" }` sub-
+    // arm + docstring expansion on the parent `andPer`
+    // arm). schema.ts measured at 4418 (+48 over 4370).
+    //
+    // Bumping 4430 → 4450 to capture the follow-up 27
+    // lane 71 piece 3/N (multi-quality sentinel —
+    // `protectionFrom` Zod union extension with the
+    // per-entry `Array<string | "chosen">` form +
+    // docstring expansion on the `protectionFrom`
+    // arm). schema.ts measured at 4439 (+9 over 4430).
+    //
+    // Bumping 4450 → 4500 to capture the follow-up 28
+    // priority 1 (lane 32 chosen-counter ordinal) —
+    // OPTIONAL `ordinal: number` field on both the
+    // primary `perCounter` arm and the
+    // `andPer.perCounter` arm (parallel ordinal
+    // extensions; cumulative sum of first N counters
+    // of the resolved type) + parent `perCounter`
+    // docstring expansion explaining the ordinal
+    // variant and the `"chosen"` sentinel + ordinal
+    // interaction. schema.ts measured at 4495 (+45
+    // over 4450).
+    //
+    // Bumping 4500 → 4550 to capture the follow-up 28
+    // priority 2 (lane 71 array-aware entry shape) —
+    // the per-entry `protectionFrom` Zod union
+    // extension with the nested-array "pair" form
+    // (`z.array(z.string().min(1)).min(2)` as a
+    // per-entry union member) + parent `protectionFrom`
+    // docstring expansion explaining the pair form,
+    // the 1-element rejection rationale, and the
+    // flattening semantics. schema.ts measured at 4523
+    // (+23 over 4500).
+    //
+    // Bumping 4550 → 4620 to capture the follow-up 28
+    // priority 3 (`andPer.perCounterSummed` summed
+    // form) — the `andPer` schema arm extension with
+    // an OPTIONAL `perCounterSummed: { counter: string
+    // | "chosen", ordinal?: number }` sub-arm
+    // (parallel to the existing REPLACE `perCounter`
+    // sub-arm; the SUM form is the natural read for
+    // "per creature AND per chosen counter" anthems
+    // + parent `andPer` docstring expansion
+    // explaining the SUMMED vs REPLACE semantic
+    // distinction and the future deprecation path).
+    // schema.ts measured at 4582 (+32 over 4550).
+    //
+    // Bumping 4620 → 4710 to capture the follow-up 29
+    // priority 1 (lane 28 piece 2/4 — `CopyPermanent`
+    // target discriminator) — the `target` arm is
+    // restructured to a discriminated union (`kind:
+    // "filter"` + `kind: "id"` + `kind: "named_card"`
+    // stub) with the legacy enum filter preserved as
+    // the `kind: "filter"` arm + parent
+    // `CopyPermanent` docstring expansion explaining
+    // the discriminator shape, the auto-pick vs
+    // named-target vs named-card resolution paths,
+    // and the piece 3/4 named-card stub rationale.
+    // schema.ts measured at 4706 (+86 over 4620).
+    //
+    // Bumping 4710 → 4750 to capture the follow-up 29
+    // priority 3 (lane 28 piece 4/4 —
+    // `CopyPermanent.exceptions` arm) — the OPTIONAL
+    // `exceptions: { add_subtype?: string[] }` arm
+    // (parallel to the lane 75c
+    // `become_copy.exceptions` shape — a
+    // `add_subtype` list that the engine merges onto
+    // each copy token's overlaid `cardData.type_line`)
+    // + parent `CopyPermanent` docstring expansion
+    // explaining the per-copy modifier + the additive
+    // semantic + the future `add_color` / `add_power`
+    // / `add_toughness` / `add_type` exception
+    // variants that ride follow-up 30. schema.ts
+    // measured at 4749 (+39 over 4710).
+    //
+    // Bumping 4750 → 4810 to capture the follow-up 29
+    // priority 4 (lane 32 — per-pair counter ordinal
+    // variant) — the new OPTIONAL `perPair` sub-arm on
+    // `perCounter` (`{ ordinal?: number }`) — the
+    // "Nth counter of each unique type" cross-type
+    // variant. The `perPair` arm lives alongside the
+    // existing `perCounter.ordinal?` arm; both can be
+    // set, but the `perPair` arm takes precedence
+    // when both are set (parallel to the
+    // `andPer.perCounterSummed` precedence rule from
+    // follow-up 28 priority 3) + parent `perCounter`
+    // docstring expansion explaining the cross-type
+    // per-pair semantics, the `perPair.ordinal: 1`
+    // default ("first counter per pair" read), and the
+    // future `andPer.perCounter.perPair` extension +
+    // the per-pair-with-sentinel extension that ride
+    // follow-up 30. schema.ts measured at 4803 (+53
+    // over 4750).
+    //
+    // Bumping 4985 → 5060 to capture the follow-up 30
+    // priority 4 (lane 28, piece 4/N) —
+    // `CopyPermanent.exceptions.add_type` arm
+    // (`z.array(z.enum(CARD_TYPES)).min(1).
+    // optional()` on the existing `exceptions`
+    // shape — the seven `CARD_TYPES` enum values:
+    // `Creature | Artifact | Enchantment | Land |
+    // Planeswalker | Battle | Tribal`) + parent
+    // `exceptions` docstring expansion explaining
+    // the type-line prepend (the types-precede-
+    // printed-types rebuild), the parallel
+    // `add_subtype` arm composition (type prepend
+    // is OUTER, subtype append is INNER), the
+    // `add_supertype` extension that rides
+    // follow-up 31, and the destructive
+    // `set_type` variant that also rides
+    // follow-up 31. schema.ts measured at 5056
+    // (+71 over 4985).
+    budgetLines: 5060,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

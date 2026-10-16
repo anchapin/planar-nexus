@@ -84,6 +84,13 @@ describe("ValidationService", () => {
       chosenColor: null,
       chosenCreatureType: null,
       chosenCardName: null,
+      // Wave 4.8 follow-up 26 lane 71 piece 3/N (#2614
+      // follow-up): chosen-quality enter-choice field
+      // default for type-completeness. The card here
+      // doesn't carry `protectionFrom: "chosen"`, so
+      // the field stays `null` and the static consult
+      // ignores it.
+      chosenProtectionFrom: null,
       isToken: false,
       tokenData: null,
       attackedLastTurn: false,

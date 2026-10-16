@@ -57,7 +57,7 @@ import {
   addUntilEndOfTurnKeyword,
   CANT_BE_BLOCKED,
 } from "../pt-until-end-of-turn";
-import { getCardScript } from "./registry";
+import { getCardScript, getCardDataByName } from "./registry";
 import { addMana } from "../mana/mana-pool";
 import { addRestrictedMana } from "../mana/restriction-ledger";
 import { spendMana } from "../mana/mana-payment";
@@ -1244,6 +1244,32 @@ function applyEffect(
       // (reanimation), "copied characteristics except for
       // [X]" (Phyrexian Metamorph), and "named-copy" /
       // "choose-creature-type-copy" filters.
+      //
+      // Wave 4.8 follow-up 29 priority 1 (lane 28,
+      // piece 2/4) (#2614 follow-up): the
+      // discriminated-union target selector. The
+      // `target` field is now a discriminated
+      // union (the `kind` field). Three arms:
+      //   - `kind: "filter"` (the existing enum
+      //     filter — `value` is the enum string).
+      //     The engine resolves the first matching
+      //     permanent on the battlefield APNAP.
+      //   - `kind: "id"` (the explicit named
+      //     target on the battlefield — `value` is
+      //     the `CardInstanceId`). The engine
+      //     reads the named target's `cardData`
+      //     directly; a missing target is a no-op
+      //     per the lane 70 substrate's auto-pick
+      //     fallback.
+      //   - `kind: "named_card"` (STUB — the
+      //     named-card variant "create a token
+      //     that's a copy of [card name]"). The
+      //     schema arm parses; the engine consult
+      //     lands in piece 3/4. For piece 2/4, the
+      //     named-card arm falls through to a
+      //     no-op (the engine cannot resolve a
+      //     printed card without the piece 3/4
+      //     consult).
       const matchTargetType = (typeLine: string, want: string): boolean => {
         const lower = typeLine.toLowerCase();
         if (want === "permanent") return true;
@@ -1268,6 +1294,484 @@ function applyEffect(
           ? cardControllerId === ctx.controllerId
           : cardControllerId !== ctx.controllerId;
       };
+      // Wave 4.8 follow-up 29 priority 3 (lane
+      // 28, piece 4/4) (#2614 follow-up): the
+      // `exceptions` arm consult. When
+      // `effect.exceptions?.add_subtype` is
+      // set, the engine rebuilds each copy
+      // token's `cardData.type_line` to
+      // APPEND the added subtypes to the
+      // printed subtypes. The exceptions arm
+      // is ADDITIVE (no overwrite of the
+      // printed subtypes). The
+      // `cardData.type_line` is the printed
+      // type line — `<types> — <subtypes>`
+      // (em-dash separator, MTG standard
+      // shape). The added subtypes are
+      // appended to the existing subtype
+      // half of the type_line (or prepended
+      // if the printed type_line has no
+      // subtype half). v1 minimum:
+      // `add_subtype` only.
+      //
+      // Wave 4.8 follow-up 30 priority 1
+      // (lane 28, piece 1/N) (#2614
+      // follow-up): the `add_color`
+      // additive merge consult. When
+      // `effect.exceptions?.add_color` is
+      // set, the engine APPENDS the listed
+      // color names to each copy token's
+      // `cardData.colors` (deduped; declared
+      // order preserved) and rebuilds
+      // `cardData.color_identity` to the
+      // union of printed + added. The
+      // `add_color` arm is ADDITIVE (no
+      // overwrite of the printed colors).
+      // Color names use the engine's
+      // full-name convention (`"white" |
+      // "blue" | "black" | "red" | "green" |
+      // "colorless"`).
+      //
+      // Wave 4.8 follow-up 30 priority 2
+      // (lane 28, piece 2/N) (#2614
+      // follow-up): the `add_power`
+      // additive P/T merge. When
+      // `effect.exceptions?.add_power` is
+      // set, the engine parses the printed
+      // `power` string as an integer,
+      // ADDS the `add_power` value, and
+      // rebuilds `cardData.power` as a
+      // string. Negative integers are
+      // accepted (Phyrexian Metamorph-style
+      // `-1` → "1+(-1)" = "0"). The arm
+      // is ADDITIVE — no overwrite of the
+      // printed power. Non-integer
+      // printed powers (`*` / `1+*`)
+      // resolve to 0 (the v1 minimum does
+      // not model variable-power
+      // resolution; a `*` source becomes
+      // a `0 + add_power` token — a
+      // documented limitation, not a
+      // silent bug).
+      //
+      // Wave 4.8 follow-up 30 priority 3
+      // (lane 28, piece 3/N) (#2614
+      // follow-up): the `add_toughness`
+      // additive merge — symmetric to the
+      // `add_power` arm. When
+      // `effect.exceptions?.add_toughness`
+      // is set, the engine parses the
+      // printed `toughness` string as an
+      // integer, ADDS the value, and
+      // rebuilds `cardData.toughness` as a
+      // string. Negative integers are
+      // accepted. The arm is ADDITIVE —
+      // no overwrite of the printed
+      // toughness. Composes with
+      // `add_power` for parallel P/T
+      // additive merges.
+      //
+      // `add_type` exception variant
+      // rides follow-up 30 priority 4.
+      //
+      // Wave 4.8 follow-up 30 priority 4
+      // (lane 28, piece 4/N) (#2614
+      // follow-up): the `add_type`
+      // type-line prepend. When
+      // `effect.exceptions?.add_type` is
+      // set, the engine PREPENDS the
+      // listed card types to the TYPES
+      // half of `cardData.type_line`
+      // (e.g. `"Creature — Bear"` +
+      // `["Artifact"]` =
+      // `"Artifact Creature — Bear"`).
+      // The subtypes half is preserved.
+      // The arm is ADDITIVE — no overwrite
+      // of the printed types. The
+      // `add_type` consult runs AFTER the
+      // `add_subtype` consult (subtype
+      // append is the INNER consult;
+      // type prepend is the OUTER
+      // consult — the cross-arm order is
+      // documented in the handoff). v1
+      // minimum: a list of the seven
+      // `CARD_TYPES` enum values
+      // (`Creature | Artifact |
+      // Enchantment | Land | Planeswalker
+      // | Battle | Tribal`); supertypes
+      // (`Legendary` / `Snow` / `Basic`)
+      // ride follow-up 31.
+      const applyExceptions = (
+        cardData: ScryfallCard,
+      ): ScryfallCard => {
+        const exceptions = (
+          effect as {
+            exceptions?: {
+              add_subtype?: string[];
+              add_color?: string[];
+              add_power?: number;
+              add_toughness?: number;
+              add_type?: string[];
+            };
+          }
+        ).exceptions;
+        let rebuilt: ScryfallCard = { ...cardData };
+        // Wave 4.8 follow-up 29 priority 3
+        // (lane 28, piece 4/4) (#2614
+        // follow-up): the `add_subtype`
+        // append-consult — append the
+        // added subtypes to the printed
+        // subtypes half of `cardData.type_line`.
+        if (exceptions?.add_subtype?.length) {
+          const printed = rebuilt.type_line ?? "";
+          const emDashIdx = printed.indexOf("—");
+          if (emDashIdx < 0) {
+            // No subtypes half — append the
+            // added subtypes after the types
+            // with the em-dash separator.
+            rebuilt = {
+              ...rebuilt,
+              type_line: `${printed} — ${exceptions.add_subtype.join(" ")}`,
+            };
+          } else {
+            const typesHalf = printed.slice(0, emDashIdx).trimEnd();
+            const subtypesHalf = printed
+              .slice(emDashIdx + 1)
+              .trim();
+            const existingSubtypes = subtypesHalf
+              ? subtypesHalf.split(/\s+/).filter(Boolean)
+              : [];
+            const allSubtypes = [
+              ...existingSubtypes,
+              ...exceptions.add_subtype,
+            ];
+            rebuilt = {
+              ...rebuilt,
+              type_line: `${typesHalf} — ${allSubtypes.join(" ")}`,
+            };
+          }
+        }
+        // Wave 4.8 follow-up 30 priority 4
+        // (lane 28, piece 4/N) (#2614
+        // follow-up): the `add_type`
+        // type-line prepend — PREPEND the
+        // added card types to the TYPES
+        // half of `cardData.type_line`. The
+        // types come BEFORE the printed
+        // types (e.g. `"Creature — Bear"`
+        // + `["Artifact"]` =
+        // `"Artifact Creature — Bear"`).
+        // The subtypes half is preserved
+        // (the `add_subtype` consult already
+        // runs first; this consult operates
+        // on the post-`add_subtype`
+        // type_line). The arm is ADDITIVE
+        // — no overwrite of the printed
+        // types. If no subtypes half exists
+        // (no `—` separator), the added
+        // types are prepended to the
+        // entire printed type_line (no
+        // subtypes half to preserve).
+        if (exceptions?.add_type?.length) {
+          const printed = rebuilt.type_line ?? "";
+          const emDashIdx = printed.indexOf("—");
+          const addedTypes = exceptions.add_type.join(" ");
+          if (emDashIdx < 0) {
+            // No subtypes half — prepend
+            // the added types to the
+            // printed type_line as a whole.
+            rebuilt = {
+              ...rebuilt,
+              type_line: `${addedTypes} ${printed}`.trim(),
+            };
+          } else {
+            const typesHalf = printed.slice(0, emDashIdx).trimEnd();
+            const subtypesHalf = printed
+              .slice(emDashIdx + 1)
+              .trim();
+            // Prepend the added types to
+            // the existing types half.
+            const allTypes = `${addedTypes} ${typesHalf}`.trim();
+            if (subtypesHalf) {
+              rebuilt = {
+                ...rebuilt,
+                type_line: `${allTypes} — ${subtypesHalf}`,
+              };
+            } else {
+              rebuilt = {
+                ...rebuilt,
+                type_line: allTypes,
+              };
+            }
+          }
+        }
+        // Wave 4.8 follow-up 30 priority 1
+        // (lane 28, piece 1/N) (#2614
+        // follow-up): the `add_color`
+        // additive merge — APPEND the added
+        // color names to the printed
+        // `colors` array (deduped; declared
+        // order preserved), and rebuild
+        // `color_identity` to the union of
+        // printed + added (one-pass Set
+        // transform). The arm is ADDITIVE
+        // — no overwrite of the printed
+        // colors.
+        if (exceptions?.add_color?.length) {
+          const printedColors = Array.isArray(rebuilt.colors)
+            ? rebuilt.colors
+            : [];
+          const seen = new Set<string>();
+          const mergedColors: string[] = [];
+          for (const c of printedColors) {
+            if (!seen.has(c)) {
+              seen.add(c);
+              mergedColors.push(c);
+            }
+          }
+          for (const c of exceptions.add_color) {
+            if (!seen.has(c)) {
+              seen.add(c);
+              mergedColors.push(c);
+            }
+          }
+          // color_identity is the union
+          // mirror — same dedup logic, same
+          // order as the merged colors.
+          const printedIdentity = Array.isArray(rebuilt.color_identity)
+            ? rebuilt.color_identity
+            : [];
+          const idSeen = new Set<string>();
+          const mergedIdentity: string[] = [];
+          for (const c of printedIdentity) {
+            if (!idSeen.has(c)) {
+              idSeen.add(c);
+              mergedIdentity.push(c);
+            }
+          }
+          for (const c of exceptions.add_color) {
+            if (!idSeen.has(c)) {
+              idSeen.add(c);
+              mergedIdentity.push(c);
+            }
+          }
+          rebuilt = {
+            ...rebuilt,
+            colors: mergedColors,
+            color_identity: mergedIdentity,
+          };
+        }
+        // Wave 4.8 follow-up 30 priority 2
+        // (lane 28, piece 2/N) (#2614
+        // follow-up): the `add_power`
+        // additive P/T merge. The engine
+        // parses the printed `power` string
+        // as an integer (default 0;
+        // non-integer printed powers like
+        // `*` or `1+*` yield 0 + the
+        // additive), ADDS the `add_power`
+        // value, and rebuilds
+        // `cardData.power` as a string. The
+        // arm is ADDITIVE — no overwrite
+        // of the printed power.
+        if (exceptions?.add_power !== undefined) {
+          const printedPower = parseInt(rebuilt.power ?? "0", 10);
+          const basePower = Number.isFinite(printedPower)
+            ? printedPower
+            : 0;
+          const nextPower = basePower + exceptions.add_power;
+          rebuilt = {
+            ...rebuilt,
+            power: String(nextPower),
+          };
+        }
+        // Wave 4.8 follow-up 30 priority 3
+        // (lane 28, piece 3/N) (#2614
+        // follow-up): the `add_toughness`
+        // additive toughness merge. The
+        // engine parses the printed
+        // `toughness` string as an integer
+        // (default 0; non-integer printed
+        // toughnesses like `*` or `1+*`
+        // yield 0 + the additive), ADDS
+        // the `add_toughness` value, and
+        // rebuilds `cardData.toughness` as
+        // a string. The arm is ADDITIVE —
+        // no overwrite of the printed
+        // toughness. The `add_toughness`
+        // arm composes with the priority 2
+        // `add_power` arm (parallel
+        // additive P/T merge — both arms
+        // consume the printed P/T as the
+        // base; each arm runs independently
+        // against the printed value).
+        if (exceptions?.add_toughness !== undefined) {
+          const printedToughness = parseInt(rebuilt.toughness ?? "0", 10);
+          const baseToughness = Number.isFinite(printedToughness)
+            ? printedToughness
+            : 0;
+          const nextToughness =
+            baseToughness + exceptions.add_toughness;
+          rebuilt = {
+            ...rebuilt,
+            toughness: String(nextToughness),
+          };
+        }
+        return rebuilt;
+      };
+      // Wave 4.8 follow-up 29 priority 1 (lane 28,
+      // piece 2/4) (#2614 follow-up): consult the
+      // `target` discriminator. The legacy enum
+      // string fallback (pre-piece-2/4) is
+      // preserved for any callers that hand-build
+      // a `CopyPermanent` effect without the
+      // discriminator — the engine still consults
+      // the string enum as a fallback (the
+      // pre-piece-2/4 substrate).
+      const targetDisc = effect.target;
+      const isDiscriminated =
+        typeof targetDisc === "object" &&
+        targetDisc !== null &&
+        "kind" in targetDisc;
+      // Wave 4.8 follow-up 29 priority 1 (lane
+      // 28, piece 2/4): the `kind: "named_card"`
+      // STUB. The schema arm parses; the engine
+      // consult lands in piece 3/4. For piece
+      // 2/4, the named-card arm falls through to
+      // a no-op (the engine cannot resolve a
+      // printed card without the piece 3/4
+      // consult; the stub is intentionally inert).
+      //
+      // Wave 4.8 follow-up 29 priority 2 (lane
+      // 28, piece 3/4) (#2614 follow-up): the
+      // engine consult for the `kind:
+      // "named_card"` arm. The named-card variant
+      // reads `getCardDataByName(value.name)`
+      // (the named card's printed `cardData` —
+      // parallel to the lane 75b
+      // `become_copy.named_card` shape). When
+      // set, the engine creates `count` tokens
+      // with the named card's printed `cardData`.
+      // The named card is NOT required to be on
+      // the battlefield (parallel to the lane 75b
+      // named-card substrate). Missing name is a
+      // no-op — `getCardDataByName` returns
+      // `undefined` and the engine returns state
+      // unchanged.
+      if (
+        isDiscriminated &&
+        (targetDisc as { kind: string }).kind === "named_card"
+      ) {
+        const namedCardName = (
+          targetDisc as { kind: "named_card"; value: { name: string } }
+        ).value.name;
+        const namedCardData = getCardDataByName(namedCardName);
+        if (!namedCardData) return state;
+        const copiedCardData = applyExceptions({
+          ...namedCardData,
+        });
+        const controllerId = ctx.controllerId;
+        const ownerId = controllerId;
+        const copyCount = effect.count ?? 1;
+        const newCards = new Map(state.cards);
+        const bfKey = `${controllerId}-battlefield`;
+        const initialBf = state.zones.get(bfKey);
+        if (!initialBf) return state;
+        let bfCardIds = [...initialBf.cardIds];
+        for (let i = 0; i < copyCount; i++) {
+          const cardIdNew =
+            `copyperm-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 11)}` as CardInstanceId;
+          const newInstance = createCardInstance(
+            copiedCardData as ScryfallCard,
+            ownerId,
+            controllerId,
+            {
+              id: cardIdNew,
+              currentZoneKey: `${controllerId}-battlefield`,
+            },
+          );
+          newCards.set(cardIdNew, newInstance);
+          bfCardIds = [...bfCardIds, cardIdNew];
+        }
+        const newZones = new Map(state.zones);
+        newZones.set(bfKey, {
+          ...initialBf,
+          cardIds: bfCardIds,
+        });
+        return {
+          ...state,
+          cards: newCards,
+          zones: newZones,
+          lastModifiedAt: Date.now(),
+        };
+      }
+      // Wave 4.8 follow-up 29 priority 1 (lane
+      // 28, piece 2/4): the `kind: "id"` arm.
+      // The named target on the battlefield is
+      // resolved directly from
+      // `state.cards.get(value)` (validates the
+      // target is on the battlefield; a missing
+      // target is a no-op per the lane 70
+      // substrate's auto-pick fallback). The
+      // controller filter is ALSO applied (the
+      // explicit named target may still be
+      // filtered by `controller: "you"` /
+      // `"opponent"` / `"any"`).
+      if (isDiscriminated && (targetDisc as { kind: string }).kind === "id") {
+        const idValue = (targetDisc as { kind: "id"; value: string }).value;
+        const namedSource = state.cards.get(idValue as CardInstanceId);
+        if (
+          !namedSource ||
+          !isOnBattlefield(state, idValue as CardInstanceId) ||
+          !matchController(namedSource.controllerId)
+        ) {
+          return state;
+        }
+        const copiedCardData = applyExceptions({
+          ...namedSource.cardData,
+        });
+        const controllerId = ctx.controllerId;
+        const ownerId = controllerId;
+        const copyCount = effect.count ?? 1;
+        const newCards = new Map(state.cards);
+        const bfKey = `${controllerId}-battlefield`;
+        const initialBf = state.zones.get(bfKey);
+        if (!initialBf) return state;
+        let bfCardIds = [...initialBf.cardIds];
+        for (let i = 0; i < copyCount; i++) {
+          const cardIdNew =
+            `copyperm-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 11)}` as CardInstanceId;
+          const newInstance = createCardInstance(
+            copiedCardData as ScryfallCard,
+            ownerId,
+            controllerId,
+            {
+              id: cardIdNew,
+              currentZoneKey: `${controllerId}-battlefield`,
+            },
+          );
+          newCards.set(cardIdNew, newInstance);
+          bfCardIds = [...bfCardIds, cardIdNew];
+        }
+        const newZones = new Map(state.zones);
+        newZones.set(bfKey, {
+          ...initialBf,
+          cardIds: bfCardIds,
+        });
+        return {
+          ...state,
+          cards: newCards,
+          zones: newZones,
+          lastModifiedAt: Date.now(),
+        };
+      }
+      // For the `kind: "filter"` arm OR the
+      // legacy enum string fallback: resolve the
+      // effective enum value and use the v1 lane
+      // 70 auto-pick path.
+      const filterValue = isDiscriminated
+        ? (targetDisc as { kind: "filter"; value: string }).value
+        : (targetDisc as unknown as string);
       // Find the target: either the chosen target on the
       // stack object, or the first matching permanent on the
       // battlefield (APNAP-ordered).
@@ -1280,7 +1784,7 @@ function applyEffect(
           !isOnBattlefield(state, sourceId) ||
           !matchTargetType(
             sourceCard.cardData.type_line ?? "",
-            effect.target,
+            filterValue,
           ) ||
           !matchController(sourceCard.controllerId)
         ) {
@@ -1303,7 +1807,7 @@ function applyEffect(
             const inst = state.cards.get(id);
             if (!inst) continue;
             if (
-              matchTargetType(inst.cardData.type_line ?? "", effect.target) &&
+              matchTargetType(inst.cardData.type_line ?? "", filterValue) &&
               matchController(inst.controllerId)
             ) {
               sourceId = id;
@@ -1321,32 +1825,62 @@ function applyEffect(
       // P/T, keywords, oracle_text, colors) which never
       // mutate. Per-instance fields (counters, attachedTo,
       // etc.) start fresh.
-      const copiedCardData = { ...sourceCard.cardData };
+      const copiedCardData = applyExceptions({
+        ...sourceCard.cardData,
+      });
       const controllerId = ctx.controllerId;
       const ownerId = controllerId;
-      const cardIdNew =
-        `copyperm-${Date.now()}-${Math.random().toString(36).slice(2, 11)}` as CardInstanceId;
-      // Build the new CardInstance via createCardInstance so
-      // we get all the defaults (summoning sickness, counters,
-      // attachedTo, etc.).
-      const newInstance = createCardInstance(
-        copiedCardData as ScryfallCard,
-        ownerId,
-        controllerId,
-        {
-          id: cardIdNew,
-          currentZoneKey: `${controllerId}-battlefield`,
-        },
-      );
+      // Wave 4.8 follow-up 28 priority 4 (lane 28,
+      // piece 1/N) (#2614 follow-up): the multi-
+      // copy `count` field (Rite of Replication's
+      // "create X tokens that are copies of target
+      // creature"; Extravagant Replication's "create
+      // three tokens that are copies"). When
+      // `count >= 2`, the engine creates `count`
+      // independent tokens in sequence — each with
+      // its own `cardId`, `cardData` (shallow copy
+      // of the source's cardData), and battlefield
+      // entry. The tokens are NEW CardInstances, not
+      // the existing copy-substrate's overlay
+      // mechanism. The v1 minimum is `count: 1`
+      // (default — single copy, mirrors the lane 70
+      // substrate). `count >= 1` is enforced at the
+      // Zod layer (`z.number().int().min(1)`). CR
+      // 707.2 reference for "all characteristics
+      // copied" semantics on each token.
+      const copyCount = effect.count ?? 1;
       const newCards = new Map(state.cards);
-      newCards.set(cardIdNew, newInstance);
       const bfKey = `${controllerId}-battlefield`;
-      const bf = state.zones.get(bfKey);
-      if (!bf) return state;
+      const initialBf = state.zones.get(bfKey);
+      if (!initialBf) return state;
+      let bfCardIds = [...initialBf.cardIds];
+      for (let i = 0; i < copyCount; i++) {
+        const cardIdNew =
+          `copyperm-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 11)}` as CardInstanceId;
+        // Build the new CardInstance via
+        // createCardInstance so we get all the
+        // defaults (summoning sickness, counters,
+        // attachedTo, etc.). Each token starts
+        // with a fresh `cardId` (the loop index
+        // disambiguates copies when `Date.now()`
+        // would collide on multiple counts in the
+        // same tick).
+        const newInstance = createCardInstance(
+          copiedCardData as ScryfallCard,
+          ownerId,
+          controllerId,
+          {
+            id: cardIdNew,
+            currentZoneKey: `${controllerId}-battlefield`,
+          },
+        );
+        newCards.set(cardIdNew, newInstance);
+        bfCardIds = [...bfCardIds, cardIdNew];
+      }
       const newZones = new Map(state.zones);
       newZones.set(bfKey, {
-        ...bf,
-        cardIds: [...bf.cardIds, cardIdNew],
+        ...initialBf,
+        cardIds: bfCardIds,
       });
       return {
         ...state,
