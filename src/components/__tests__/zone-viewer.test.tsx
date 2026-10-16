@@ -73,9 +73,15 @@ describe("ZoneViewer — focus management & keyboard semantics (#1104)", () => {
       />,
     );
     const dialog = await screen.findByRole("dialog");
-    expect(dialog.getAttribute("aria-describedby")).toBeTruthy();
-    const descId = dialog.getAttribute("aria-describedby");
-    const desc = descId ? document.getElementById(descId) : null;
+    const describedBy = dialog.getAttribute("aria-describedby");
+    expect(describedBy).toBeTruthy();
+    // Radix UI v1.2 may emit a space-separated list of IDs
+    // (the user's literal + its own auto-wired description ID).
+    const descIds = (describedBy ?? "").trim().split(/\s+/).filter(Boolean);
+    expect(descIds.length).toBeGreaterThan(0);
+    const desc = descIds
+      .map((id) => document.getElementById(id))
+      .find((el): el is HTMLElement => el !== null);
     expect(desc).toBeTruthy();
     expect(desc?.textContent).toMatch(/Inspecting|Tab|arrow/i);
   });
