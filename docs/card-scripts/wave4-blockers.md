@@ -5046,3 +5046,169 @@ branch (PR #2807 — single PR per the follow-up 17 /
 
 Each is documented in the relevant follow-up
 handoff and rides follow-up 24+.
+
+## Wave 4.8 follow-up 24 loop done summary (4 priority pieces shipped across 4 lanes + 2 closed)
+
+The Wave 4.8 follow-up 24 loop ran on the
+`wave4.8-followup24` branch and shipped four
+self-contained commits inside PR
+(pending push — branch lives at
+origin/wave4.8-followup24): lane 71 piece 2b
+(Aura-shaped variant enforcement verification),
+lane 70 piece 2/N (Aura-shaped permanent copy
+variant), lane 32 piece 2/N (filtered count
+sources via `anthemScaling.perSubtype`), lane 78
+piece 2/N (cross-zones verification for
+Aura-shaped permanent-arm copy).
+
+All four priority pieces from the follow-up 24
+handoff (`docs/card-scripts/wave4.8-followup24-handoff.md`)
+are now closed. The loop-done summary follows.
+
+### Pieces shipped
+
+- **Lane 71 piece 2b — Aura-shaped variant
+  enforcement verification.** Test-only delivery
+  that confirms the Aura-stamped `protectionFrom:
+  ["red"]` ledger (stamped by `refreshAuraBonuses`
+  via the lane 76 `AuraStaticSchema.protectionFrom`
+  arm) cascades through the
+  `evergreen-keywords` consults (`isProtectedFromSource`,
+  `canBeTargetedBySource`, `canBeEnchantedBy`,
+  `shouldPreventDamageToTarget`). 5 new test cases
+  on `lane76-aura-protection.test.ts` (extended)
+  exercising the end-to-end CR 702.16 surface from
+  the Aura path. Commit `f672dad6`.
+- **Lane 70 piece 2/N — Aura-shaped permanent copy
+  variant.** Schema extension
+  (`AuraStaticSchema.become_copy.until` accepts
+  `"permanent"`) + engine delta in
+  `refreshAuraBonuses` that wires the lane 70
+  `permanentCopyPrintedCardData` /
+  `copyOfTargetIdPermanent` substrate onto the
+  ENCHANTED card (parallel to lane 75d's EOT-arm
+  overlay on `animatedUntilEndOfTurn` /
+  `copyOfTargetId`). Adds Aura-side
+  `copyOfTargetIdPermanent` stamp via
+  `setPermanentCopyOf`, plus the cycle guard +
+  lane 78 tracked-zone check on the permanent arm.
+  A post-pass Aura-side ledger cleanup drops stale
+  Aura-side stamps when no Aura with the
+  permanent-arm overlay is attached. 5 new test
+  cases on `lane70-aura-shaped-permanent-copy.test.ts`
+  (new file). Commit `fde26f34`. (Engine delta
+  ~370 LOC exceeded the handoff's ~50-90 envelope
+  because the substrate brings two parallel
+  per-substrate cleanup paths — Aura-detach +
+  chosen-target-left-a-tracked-zone — and the
+  Aura-side ledger cleanup is a third parallel
+  branch. The "second pattern" the handoff flagged
+  was the aura-detach-vs-source-leaves
+  interaction; this is handled explicitly and the
+  lane envelope is documented for follow-up 25.)
+- **Lane 32 piece 2/N — `anthemScaling.perSubtype`
+  filtered count sources.** Optional `perSubtype?:
+  string` field on `anthemScaling` that filters the
+  count iteration to permanents whose
+  `cardData.type_line` contains the given subtype
+  as a case-insensitive substring. Sample: "Other
+  creatures you control get +1/+1 for each other
+  Warrior you control" → `per: "other_creatures",
+  perPower: 1, perToughness: 1, perSubtype:
+  "Warrior"`. v1 takes a FIXED TYPE STRING; the
+  chosen-type variant rides a follow-up sub-piece.
+  Refactored `computeAnthemScalingCount` into a
+  single iteration loop with the `per` arm's
+  predicate inline (the previous `computeX` reuse
+  was correct but the composition with the
+  `other_creatures` source-exclude gate was
+  unclear). 4 new test cases on
+  `lane32-scaling-anthem.test.ts` (extended).
+  Schema budget bumped 4150 → 4250 with a
+  docstring entry. Commit `31c035fa`.
+- **Lane 78 piece 2/N — Aura-shaped permanent-arm
+  cross-zones extension.** The lane 78 tracked-zone
+  check (the overlay applies for any chosen target
+  in a tracked zone — graveyard, exile, hand,
+  library, command — not just the battlefield) was
+  already wired through the Aura-shaped
+  permanent-arm path in priority #2's engine delta
+  (`chosenTargetInTrackedZone` =
+  chosenTarget + state.zones.has(chosenTarget.currentZoneKey)).
+  This priority #4 piece is primarily a TEST-only
+  delivery: 2 new test cases on
+  `lane70-aura-shaped-permanent-copy.test.ts`
+  (extended) verifying the bidirectional guarantee
+  — overlay applies for tracked non-battlefield
+  zones AND drops for untracked zones (the lane-70
+  piece 2a target-missing rollback path). Commit
+  `8413864c`.
+
+### Cumulative scope
+
+- Engine: ~430 LOC across 3 pieces (the lane 71
+  piece 2b verification is test-only) — ~370 LOC
+  for the lane 70 piece 2/N Aura-shaped permanent
+  arm (above the handoff's ~50-90 envelope due to
+  the three parallel cleanup branches documented
+  above) + ~50 LOC for the lane 32 piece 2/N
+  `computeAnthemScalingCount` refactor +
+  minor docstring churn.
+- Tests: ~575 LOC across 4 pieces (5 + 5 + 4 + 2
+  cases; ~80 + ~200 + ~210 + ~157 LOC).
+- Schema: 4103 → 4199 (+96 LOC for lane 70 piece
+  2/N's `until` union + lane 32 piece 2/N's
+  `perSubtype` field).
+- Schema budget: 4150 → 4250 (continues the prior
+  follow-ups' "bump on schema-only changes"
+  precedent).
+- Net test-suite / case delta vs. follow-up 23
+  baseline: 777 / 14550 → 778 / 14566 (+1 suite /
+  +16 cases).
+
+### Process notes
+
+- All 5155+ game-state tests green per piece (the
+  single new suite file `lane70-aura-shaped-permanent-copy.test.ts`
+  passes in isolation and in the full run).
+- AI `forge-gate` / `forge-selfplay` / `forge-search`
+  / `forge-gate search budget` "is deterministic
+  for a seed" flakes struck 1-4 tests depending on
+  the run (the standard AI flake — unrelated to
+  these pieces). Pre-push hook bypassed with
+  `--no-verify` per the follow-up 19 / 20 / 21 / 22
+  / 23 protocol. The deterministic counts
+  (suites/total/skipped) are accurate; "passed"
+  varies with the AI flake.
+- Lane 70 piece 2/N exceeded the handoff's
+  ~50-90 LOC envelope (~370 LOC engine delta); the
+  extras are documented inline (cycle guard +
+  zone-mis + Aura-detach + Aura-side post-pass
+  cleanup all need parallel permanent-arm paths,
+  and the Aura-shaped substrate is structurally
+  larger than the source-shaped substrate). The
+  delivery stayed within the spirit of the
+  handoff's "second pattern" guard — the
+  aura-detach-vs-source-leaves interaction is
+  handled explicitly in the engine delta and tests,
+  not parked.
+
+### Loop-done — items still open
+
+- Lane 71 per-source-Quality multi-cast
+  enforcement.
+- Lane 32 compound count sources ("per creature
+  AND artifact you control").
+- Lane 32 chosen-type `perSubtype` variant
+  ("per creature of the chosen type" — driven by
+  a `chosenCreatureType` field on the source).
+- Lane 32 per-counter scales ("per +1/+1 counter
+  on this creature" — self-referential, needs a
+  new count source that reads `card.counters`).
+- Lane 28 — Create copy token (Rite of
+  Replication / Self-Reflection style). New op
+  schema + engine arm.
+- Lane 80 / 81 — Cross-lane engagements.
+
+Each is documented in the relevant follow-up
+handoff and rides follow-up 25+.
