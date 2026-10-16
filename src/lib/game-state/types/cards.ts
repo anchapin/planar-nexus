@@ -647,6 +647,25 @@ export interface CardInstance {
     setByAura?: boolean;
   };
   /**
+   * Wave 4.8 follow-up 23 lane 70 piece 2b (#2614 follow-up):
+   * the `until: "permanent"` snapshot of the card's printed
+   * `cardData` taken when a `StaticSchema.become_copy` static
+   * with `until: "permanent"` activates. Field shape mirrors
+   * `animatedUntilEndOfTurn.cardData` but the snapshot is
+   * permanent (no EOT cleanup) — the overlay persists as long
+   * as the source is on the battlefield with an active
+   * `until: "permanent"` `become_copy`. When the source or
+   * target leaves the battlefield, or the source's static
+   * changes/disappears, the refresh pass restores the source's
+   * `cardData` from this snapshot and clears the field (parallel
+   * to the lane 51 `restorePermanentTypeOverlay` cleanup). v1
+   * carries ONLY a single snapshot per card; multiple
+   * simultaneous permanent-copy overlays (a card with two
+   * `until: "permanent"` `become_copy` statics) ride a
+   * follow-up lane.
+   */
+  permanentCopyPrintedCardData?: ScryfallCard;
+  /**
    * Wave 4.8 follow-up 14 lane 51 (#2614 follow-up): a permanent
    * (not end-of-turn) overlay of the card's `cardData.type_line`
    * set by a `StaticSchema.affects.becomes_chosen_creature_type`

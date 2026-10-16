@@ -76,7 +76,7 @@ function makeSourceCardDef(
     type_line: overrides.type_line ?? "Creature — Shapeshifter",
     oracle_text: overrides.oracle_text ?? "",
     mana_cost: overrides.mana_cost ?? "{3}{U}",
-    cmc: overrides.cm ?? 4,
+    cmc: overrides.cmc ?? 4,
     colors: overrides.colors ?? ["U"],
     color_identity: overrides.color_identity ?? ["U"],
     keywords: overrides.keywords ?? [],
@@ -208,15 +208,19 @@ describe("Wave 4.8 follow-up 23 lane 70 piece 2a — permanent-copy refresh writ
     expect(source!.copyOfTargetIdPermanent).toBe(targetId);
   });
 
-  it("permanent arm does NOT overlay cardData in piece 2a (ledger-only substrate)", () => {
-    // The cardData overlay (name / type_line / power /
-    // toughness / colors / keywords) rides piece 2b.
-    // Piece 2a is substrate-only — the refresh pass
-    // stamps the ledger but leaves `cardData` alone. The
-    // guard here catches a regression where the
-    // permanent arm accidentally runs through the EOT
-    // overlay block and writes the target's printed
-    // characteristics onto the source's `cardData`.
+  it("permanent arm overlays the source's cardData with the target's printed characteristics (piece 2b)", () => {
+    // Wave 4.8 follow-up 23 lane 70 piece 2b (#2614
+    // follow-up): the refresh pass overlays the
+    // source's `cardData` with the target's printed
+    // name / type_line / P/T / colors / color_identity
+    // / keywords (CR 707.2 "all characteristics
+    // copied"). The source's printed `cardData` (the
+    // version BEFORE the overlay was applied) is
+    // captured in `permanentCopyPrintedCardData` for
+    // the rollback path. This test exercises the
+    // overlay write directly — the snapshot field, the
+    // overlaid `cardData`, the ledger, and the EOT
+    // ledger absence.
     const { state, aliceId } = setupGame();
     const sourceDef = makeSourceCardDef({
       id: "perm-source-2",
@@ -233,25 +237,46 @@ describe("Wave 4.8 follow-up 23 lane 70 piece 2a — permanent-copy refresh writ
       GRIZZLY_BEARS_PERM,
     );
     const printedName = stateWithTarget.cards.get(sourceId)!.cardData.name;
-    const printedType = stateWithTarget.cards.get(sourceId)!.cardData.type_line;
+    const printedTypeLine = stateWithTarget.cards.get(sourceId)!.cardData.type_line;
     registerPermanentCopyScript(targetId);
     const refreshed = refreshScriptedStatics(stateWithTarget);
     const source = refreshed.cards.get(sourceId)!;
-    // The source's printed `cardData` is untouched on the
-    // permanent path (piece 2a does not overlay).
-    expect(source.cardData.name).toBe(printedName);
-    expect(source.cardData.type_line).toBe(printedType);
-    // The ledger is stamped (the piece 2a deliverable).
+    // The source's `cardData` is overlaid with the
+    // target's printed characteristics (Grizzly Bears).
+    expect(source.cardData.name).toBe(GRIZZLY_BEARS_PERM.name);
+    expect(source.cardData.type_line).toBe(GRIZZLY_BEARS_PERM.type_line);
+    expect(source.cardData.power).toBe(GRIZZLY_BEARS_PERM.power);
+    expect(source.cardData.toughness).toBe(GRIZZLY_BEARS_PERM.toughness);
+    expect(source.cardData.colors).toEqual(GRIZZLY_BEARS_PERM.colors);
+    expect(source.cardData.keywords).toEqual(GRIZZLY_BEARS_PERM.keywords);
+    // The source's printed `cardData` (the version
+    // BEFORE the overlay) is captured in the snapshot
+    // field — the rollback reference.
+    expect(source.permanentCopyPrintedCardData).toBeDefined();
+    expect(source.permanentCopyPrintedCardData!.name).toBe(printedName);
+    expect(source.permanentCopyPrintedCardData!.type_line).toBe(printedTypeLine);
+    // The ledger is stamped (the piece 2a deliverable,
+    // preserved by 2b).
     expect(source.copyOfTargetIdPermanent).toBe(targetId);
     // The EOT ledger is NOT stamped on the permanent arm
     // (regression guard: the two arms are separate).
     expect(source.copyOfTargetId).toBeUndefined();
+    // `animatedUntilEndOfTurn` is the EOT path's
+    // snapshot — the permanent path uses a different
+    // field and never touches this one.
+    expect(source.animatedUntilEndOfTurn).toBeUndefined();
   });
 
-  it("target leaving the battlefield clears the permanent ledger (no cardData restore needed)", () => {
-    // The permanent arm in 2a never modifies `cardData`,
-    // so the rollback is just `clearPermanentCopyOf` —
-    // no `animatedUntilEndOfTurn` to consume.
+  it("target leaving the battlefield restores the source's printed cardData + clears the permanent overlay", () => {
+    // The permanent arm in piece 2b overlays
+    // `cardData` + snapshots the printed `cardData`.
+    // When the target leaves the battlefield, the next
+    // refresh must:
+    //  - restore `cardData` from the snapshot
+    //  - clear `permanentCopyPrintedCardData`
+    //  - clear `copyOfTargetIdPermanent`
+    // The end state is the source's untouched printed
+    // `cardData` with no overlay residue.
     const { state, aliceId } = setupGame();
     const sourceDef = makeSourceCardDef({
       id: "perm-source-3",
@@ -267,17 +292,27 @@ describe("Wave 4.8 follow-up 23 lane 70 piece 2a — permanent-copy refresh writ
       aliceId,
       GRIZZLY_BEARS_PERM,
     );
+    const printedName = stateWithTarget.cards.get(sourceId)!.cardData.name;
     registerPermanentCopyScript(targetId);
     const refreshed = refreshScriptedStatics(stateWithTarget);
+    // Sanity: the overlay is in place.
+    expect(refreshed.cards.get(sourceId)!.cardData.name).toBe(GRIZZLY_BEARS_PERM.name);
     expect(refreshed.cards.get(sourceId)!.copyOfTargetIdPermanent).toBe(targetId);
     // Remove the target from `state.cards` — the next
-    // refresh must clear the ledger.
+    // refresh must restore the source's printed
+    // cardData and clear both overlay fields.
     const stripped = { ...refreshed, cards: new Map(refreshed.cards) };
     stripped.cards.delete(targetId);
     const after = refreshScriptedStatics(stripped);
-    expect(after.cards.get(sourceId)!.copyOfTargetIdPermanent).toBeUndefined();
+    const source = after.cards.get(sourceId)!;
+    // `cardData` restored to the source's printed
+    // values (NOT the target's overlaid values).
+    expect(source.cardData.name).toBe(printedName);
     // "No field if no data" immutability convention.
-    expect("copyOfTargetIdPermanent" in after.cards.get(sourceId)!).toBe(false);
+    expect(source.copyOfTargetIdPermanent).toBeUndefined();
+    expect("copyOfTargetIdPermanent" in source).toBe(false);
+    expect(source.permanentCopyPrintedCardData).toBeUndefined();
+    expect("permanentCopyPrintedCardData" in source).toBe(false);
   });
 
   it("EOT and permanent arms route to separate ledgers (regression guard)", () => {
@@ -311,8 +346,11 @@ describe("Wave 4.8 follow-up 23 lane 70 piece 2a — permanent-copy refresh writ
     expect(source.copyOfTargetId).toBeUndefined();
     // No `animatedUntilEndOfTurn` snapshot on the
     // permanent path (the snapshot is the EOT path's
-    // printed-cardData backup; the permanent path's
-    // printed-cardData backup rides piece 2b).
+    // printed-cardData backup; the permanent path
+    // uses `permanentCopyPrintedCardData` instead).
     expect(source.animatedUntilEndOfTurn).toBeUndefined();
+    // Permanent path uses its own snapshot field, NOT
+    // `animatedUntilEndOfTurn`.
+    expect(source.permanentCopyPrintedCardData).toBeDefined();
   });
 });

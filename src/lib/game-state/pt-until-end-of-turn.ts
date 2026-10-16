@@ -213,6 +213,43 @@ export function restorePermanentTypeOverlay(state: GameState): GameState {
 }
 
 /**
+ * Wave 4.8 follow-up 23 lane 70 piece 2b (#2614 follow-up):
+ * restore a `until: "permanent"` `become_copy` overlay for the
+ * source that left the battlefield. Parallel to
+ * `restorePermanentTypeOverlay` — when the source leaves the
+ * battlefield, drop `permanentCopyPrintedCardData` and
+ * `copyOfTargetIdPermanent` AND restore the source's printed
+ * `cardData` from the snapshot.
+ *
+ * Note: the TARGET leaving the battlefield is handled
+ * separately — the refresh pass consults
+ * `state.cards.has(targetId)` at write time (when the target's
+ * snapshot is no longer valid) and clears the source's overlay
+ * via `clearPermanentCopyOf` + `clearPermanentCopyPrintedCardData`
+ * + restoring `cardData`. This helper handles only the
+ * SOURCE-leaves-the-battlefield case; target leaves is the
+ * refresh-pass "target missing" branch's responsibility.
+ *
+ * Returns the same state when nothing changed.
+ */
+export function restorePermanentCopyOffBattlefield(state: GameState): GameState {
+  let cards: GameState["cards"] | null = null;
+  for (const [id, card] of state.cards) {
+    if (!card.permanentCopyPrintedCardData) continue;
+    if (card.currentZoneKey?.endsWith("-battlefield")) continue;
+    cards ??= new Map(state.cards);
+    const updated = {
+      ...card,
+      cardData: card.permanentCopyPrintedCardData,
+    };
+    delete updated.permanentCopyPrintedCardData;
+    delete updated.copyOfTargetIdPermanent;
+    cards.set(id, updated);
+  }
+  return cards ? { ...state, cards } : state;
+}
+
+/**
  * Append keywords to a card's until-end-of-turn keyword list (CR 611.2a,
  * layer 6, #2564). Used by the scripted `Pump` op when its `keywords`
  * field is set (e.g. Divine Resilience's lifelink). The layer-6 keyword

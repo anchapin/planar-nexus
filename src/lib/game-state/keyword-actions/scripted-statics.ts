@@ -17,13 +17,17 @@ import type { ScryfallCard } from "../types/card-data";
 import {
   restoreAnimatedOffBattlefield,
   restorePermanentTypeOverlay,
+  restorePermanentCopyOffBattlefield,
 } from "../pt-until-end-of-turn";
 import { returnEarthbentLands } from "./earthbend";
 import { getCardColors } from "../evergreen-keywords";
 import {
   buildStaticCopyChainSnapshot,
   clearPermanentCopyOf,
+  clearPermanentCopyPrintedCardData,
+  printedCardDataOf,
   setPermanentCopyOf,
+  snapshotPermanentCopyPrintedCardData,
 } from "./copy-chain";
 
 function battlefieldCards(state: GameState): CardInstance[] {
@@ -513,7 +517,9 @@ export function refreshScriptedStatics(input: GameState): GameState {
   // `restoreAnimatedOffBattlefield` consult at the top of
   // the pass.
   const state = restorePermanentTypeOverlay(
-    restoreAnimatedOffBattlefield(returnEarthbentLands(input)),
+    restorePermanentCopyOffBattlefield(
+      restoreAnimatedOffBattlefield(returnEarthbentLands(input)),
+    ),
   );
   // Wave 4.8 follow-up 9 lane 75e (#2614 follow-up):
   // build a snapshot of every card's "effective copy
@@ -532,7 +538,40 @@ export function refreshScriptedStatics(input: GameState): GameState {
   const onField = battlefieldCards(state);
   const sources: { card: CardInstance; statics: ScriptedStatic[] }[] = [];
   for (const card of onField) {
-    const statics = getCardScript(card.cardData.name)?.statics;
+    // Wave 4.8 follow-up 23 lane 70 piece 2b (#2614 follow-up):
+    // consult `printedCardDataOf(card).name` instead of
+    // `card.cardData.name` so a card whose `cardData` is
+    // overlaid by a `become_copy` static (EOT or permanent
+    // arm) still resolves its own scripted statics on the
+    // next refresh pass. Without this consult, the script
+    // lookup `getCardScript(card.cardData.name)` returns
+    // undefined when `card.cardData.name === target's
+    // printed name` (the overlay) and the source is no
+    // longer collected as a static source for the next
+    // overlay write — the change-detection diff
+    // short-circuits and the rollback never runs. The
+    // EOT arm has the same issue (lane 75's collection
+    // phase had the bug too — it relied on the
+    // `restoreAnimatedOffBattlefield` consult at the
+    // top of the pass to restore the overlay when the
+    // target moved off BF). The permanent arm fixes
+    // both at once because `printedCardDataOf` walks
+    // either snapshot field.
+    //
+    // Lane 75's "target leaves the battlefield" test
+    // (lane75-until-eot-copy.test.ts:362) historically
+    // moved the target to a graveyard zone and asserted
+    // that the overlay dropped. Lane 78 changed that
+    // behavior — graveyard is a tracked zone, so the
+    // overlay should persist per lane 78. The lane 78
+    // commit (59d388e3) did not update the lane 75 test;
+    // the test passed via the script-lookup bug (the
+    // script wasn't found, the diff was a no-op, the
+    // overlay was effectively absent on the next refresh).
+    // The scoped-up update to that test is part of this
+    // same commit — bringing the test in line with the
+    // lane 78 tracked-zone semantics.
+    const statics = getCardScript(printedCardDataOf(card).name)?.statics;
     if (statics) sources.push({ card, statics });
   }
 
@@ -1051,6 +1090,8 @@ export function refreshScriptedStatics(input: GameState): GameState {
           JSON.stringify(wasSelfGrantedTriggers_DIFF[i].effects) ===
             JSON.stringify(g.effects),
       );
+    // trace removed
+
     if (
       samePT &&
       sameKw &&
@@ -1062,6 +1103,8 @@ export function refreshScriptedStatics(input: GameState): GameState {
       sameTypeOverlay &&
       sameSelfGrantedTriggers
     ) {
+      // eslint-disable-next-line no-console
+      console.log("[trace-diff] all same, continuing for", cardId);
       // Wave 4.8 follow-up 9 lane 75e (#2614 follow-up):
       // if the card has an Aura-driven overlay and no
       // static-driven `become_copy` arm, skip the
@@ -1372,6 +1415,7 @@ export function refreshScriptedStatics(input: GameState): GameState {
         }
       }
       if (targetPrintedCardData !== undefined && nextTargetLedger !== undefined) {
+        // trace removed
         // Wave 4.8 follow-up 23 lane 70 piece 2a (#2614
         // follow-up): the "becomes a copy of [X] forever"
         // permanent arm takes a separate write path. v1
@@ -1389,20 +1433,54 @@ export function refreshScriptedStatics(input: GameState): GameState {
         // through `copyChain.cycleIds.has(cardId)` above
         // the overlay block.
         if (nextCopyTarget.until === "permanent") {
-          const withPermanentCopy = setPermanentCopyOf(
+          // Wave 4.8 follow-up 23 lane 70 piece 2b
+          // (#2614 follow-up): the `cardData` overlay
+          // for the `until: "permanent"` arm. Snapshots
+          // the source's printed `cardData` (the one the
+          // source had BEFORE the first overlay — the
+          // `permanentCopyPrintedCardData` field is the
+          // rollback reference) and overwrites the
+          // source's `cardData` with the target's
+          // printed name / type_line / P/T / colors /
+          // color_identity / keywords (CR 707.2 "all
+          // characteristics copied"). mana_cost, cmc,
+          // oracle_text, and other metadata are
+          // deliberately NOT copied — they are the
+          // spell's defining characteristics, not the
+          // on-battlefield copy semantics.
+          //
+          // The snapshot's "printed" reference is the
+          // current `card.cardData` (NOT
+          // `permanentCopyPrintedCardData` — the
+          // re-stamp case must NOT overwrite an existing
+          // snapshot with the overlaid cardData, or the
+          // rollback would restore the overlay). The
+          // snapshot helper is idempotent on equality so
+          // a refresh pass that re-stamps the same target
+          // returns the input object.
+          const printed = card.cardData;
+          const snapshotted = snapshotPermanentCopyPrintedCardData(
             updated,
+            printed,
+          );
+          const overlaid = {
+            ...snapshotted,
+            cardData: {
+              ...printed,
+              name: targetPrintedCardData.name,
+              type_line: targetPrintedCardData.type_line,
+              power: targetPrintedCardData.power,
+              toughness: targetPrintedCardData.toughness,
+              colors: targetPrintedCardData.colors,
+              color_identity: targetPrintedCardData.color_identity,
+              keywords: targetPrintedCardData.keywords,
+            },
+          };
+          const stamped = setPermanentCopyOf(
+            overlaid,
             nextTargetLedger,
           );
-          // Defensive: the helper returns the same
-          // reference when the field is already set to
-          // `nextTargetLedger`. The cycle guard above
-          // already short-circuited, so we land here only
-          // on a fresh permanent overlay (or a re-stamp
-          // when the target's id changed). Either way,
-          // never modify `updated.cardData` on the
-          // permanent path — that's piece 2b's
-          // responsibility.
-          cards.set(cardId, withPermanentCopy);
+          cards.set(cardId, stamped);
           continue;
         }
         // Snapshot the source's printed `cardData`
@@ -1506,18 +1584,35 @@ export function refreshScriptedStatics(input: GameState): GameState {
         // the source's own static-driven protection
         // is the only protection left.
         leafProtFromById.delete(cardId);
-      } else if (card.copyOfTargetIdPermanent !== undefined) {
-        // Wave 4.8 follow-up 23 lane 70 piece 2a
-        // (#2614 follow-up): the permanent-arm
-        // rollback. The permanent arm only writes
-        // `copyOfTargetIdPermanent` (no `cardData`
-        // overlay, no `animatedUntilEndOfTurn`
-        // backup — those ride piece 2b), so the
-        // "target missing" branch is just a
-        // `clearPermanentCopyOf`. The source keeps
-        // its printed `cardData` (never modified on
-        // the permanent path in 2a).
-        const cleared = clearPermanentCopyOf(updated);
+      } else if (
+        card.copyOfTargetIdPermanent !== undefined ||
+        card.permanentCopyPrintedCardData !== undefined
+      ) {
+        // Wave 4.8 follow-up 23 lane 70 piece 2a +
+        // piece 2b (#2614 follow-up): the
+        // permanent-arm rollback. The permanent arm
+        // writes both the `copyOfTargetIdPermanent`
+        // ledger AND the `permanentCopyPrintedCardData`
+        // snapshot; the "target missing" branch
+        // restores the source's printed `cardData`
+        // from the snapshot AND clears both fields
+        // (so the source returns to its untouched
+        // printed state). The `restorePermanentCopyOff
+        // Battlefield` consult at the TOP of the
+        // refresh pass handles the source-leaves-
+        // battlefield case; this branch is for the
+        // target-leaves case (where the source is
+        // still on the battlefield with a now-stale
+        // permanent-copy ledger pointing at a missing
+        // target).
+        const restored: CardInstance = {
+          ...updated,
+          cardData:
+            card.permanentCopyPrintedCardData ?? card.cardData,
+        };
+        const cleared = clearPermanentCopyOf(
+          clearPermanentCopyPrintedCardData(restored),
+        );
         cards.set(cardId, cleared);
         continue;
       } else {
@@ -1529,7 +1624,12 @@ export function refreshScriptedStatics(input: GameState): GameState {
         // Wave 4.8 follow-up 10 lane 77: no prior
         // overlay → no rolled protection to clear.
       }
-    } else if (card.copyOfTargetId !== undefined || card.animatedUntilEndOfTurn || card.copyOfTargetIdPermanent !== undefined) {
+    } else if (
+      card.copyOfTargetId !== undefined ||
+      card.animatedUntilEndOfTurn ||
+      card.copyOfTargetIdPermanent !== undefined ||
+      card.permanentCopyPrintedCardData !== undefined
+    ) {
       // The source no longer carries a `become_copy`
       // static (the script changed or the source left
       // its `become_copy`-bearing state). Drop the
@@ -1538,16 +1638,30 @@ export function refreshScriptedStatics(input: GameState): GameState {
       // Wave 4.8 follow-up 10 lane 77 (#2614
       // follow-up): also drop any leaf-rolled
       // `protectionFrom` — the overlay is gone.
-      // Wave 4.8 follow-up 23 lane 70 piece 2a (#2614
-      // follow-up): also drop the permanent-arm ledger
-      // (`copyOfTargetIdPermanent`) when the static
-      // disappears. The permanent-arm `cardData`
-      // overlay rides piece 2b; for now, the printed
-      // `cardData` was never modified on the permanent
-      // path (piece 2a is ledger-only), so a
-      // `clearPermanentCopyOf` is the entire cleanup.
-      if (card.copyOfTargetIdPermanent !== undefined) {
-        const cleared = clearPermanentCopyOf(updated);
+      // Wave 4.8 follow-up 23 lane 70 piece 2a + piece 2b
+      // (#2614 follow-up): also drop the permanent-arm
+      // ledger (`copyOfTargetIdPermanent`) + the
+      // permanent-arm snapshot (`permanentCopyPrintedCardData`)
+      // when the static disappears. The printed
+      // `cardData` is restored from the snapshot, then
+      // both fields are cleared. The `restorePermanentCopyOff
+      // Battlefield` consult handles the source-leaves-
+      // battlefield case BEFORE this block runs, so a
+      // source already restored to printed `cardData`
+      // with no snapshot field still lands here iff the
+      // `become_copy` static is no longer active.
+      if (
+        card.copyOfTargetIdPermanent !== undefined ||
+        card.permanentCopyPrintedCardData !== undefined
+      ) {
+        const restored: CardInstance = {
+          ...updated,
+          cardData:
+            card.permanentCopyPrintedCardData ?? card.cardData,
+        };
+        const cleared = clearPermanentCopyOf(
+          clearPermanentCopyPrintedCardData(restored),
+        );
         cards.set(cardId, cleared);
         continue;
       }

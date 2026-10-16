@@ -298,8 +298,30 @@ function resolveCopyChain(
  * agree on "what is printed for this card at this
  * point in the refresh".
  */
-function printedCardDataOf(card: CardInstance): ScryfallCard {
-  return card.animatedUntilEndOfTurn?.cardData ?? card.cardData;
+/**
+ * Read a card's printed `cardData` — the original
+ * `cardData` before any overlay writes. The helper
+ * mirrors the write phase's preference
+ * (`card.animatedUntilEndOfTurn?.cardData ??
+ * card.cardData`) so the helper and the write phase
+ * agree on "what is printed for this card at this
+ * point in the refresh".
+ *
+ * Public so the refresh pass's static-collection
+ * walk can consult it (a card whose `cardData.name`
+ * has been overlaid by a `become_copy` static still
+ * has its printed name under `animatedUntilEndOfTurn`
+ * for the EOT arm, and under `permanentCopyPrintedCardData`
+ * for the permanent arm — the lookup must round-trip
+ * to the printed name so the engine can re-find the
+ * source's static on the next refresh pass).
+ */
+export function printedCardDataOf(card: CardInstance): ScryfallCard {
+  return (
+    card.animatedUntilEndOfTurn?.cardData ??
+    card.permanentCopyPrintedCardData ??
+    card.cardData
+  );
 }
 
 /**
@@ -332,6 +354,54 @@ export function clearPermanentCopyOf(card: CardInstance): CardInstance {
   if (!card.copyOfTargetIdPermanent) return card;
   const next: CardInstance = { ...card };
   delete next.copyOfTargetIdPermanent;
+  return next;
+}
+
+/**
+ * Wave 4.8 follow-up 23 lane 70 piece 2b (#2614 follow-up):
+ * snapshot the source's printed `cardData` for the
+ * `until: "permanent"` `become_copy` overlay. The snapshot is
+ * the rollback path's reference — the refresh pass restores
+ * `cardData` from `permanentCopyPrintedCardData` when the
+ * source or target leaves the battlefield, or when the
+ * `become_copy` static disappears (parallel to how lane 75 /
+ * 75b / 75c's `animatedUntilEndOfTurn` snapshot drives the EOT
+ * cleanup). Idempotent: returns the input when the field is
+ * already set (the "last write wins" semantics — a re-stamp on
+ * a subsequent refresh pass returns the same object).
+ *
+ * `printedCardData` should be the source's printed cardData
+ * BEFORE the overlay is applied (the helper itself is
+ * value-only — it doesn't consult `card.animatedUntilEndOfTurn`
+ * or `card.permanentCopyPrintedCardData`; the call site is
+ * responsible for picking the right "printed" reference).
+ */
+export function snapshotPermanentCopyPrintedCardData(
+  card: CardInstance,
+  printedCardData: ScryfallCard,
+): CardInstance {
+  if (card.permanentCopyPrintedCardData === printedCardData) return card;
+  return { ...card, permanentCopyPrintedCardData: printedCardData };
+}
+
+/**
+ * Wave 4.8 follow-up 23 lane 70 piece 2b (#2614 follow-up):
+ * drop the `permanentCopyPrintedCardData` snapshot (the
+ * "restore" rollback path). Used by
+ * `restorePermanentCopyOffBattlefield` (battlefield-leave
+ * cleanup), the refresh-pass "target missing" branch (when
+ * the `until: "permanent"` overlay's target has left), and the
+ * "static disappeared" branch (when the source's
+ * `become_copy` static goes away). No-op when the snapshot is
+ * already absent (mirrors the `clearPermanentCopyOf`
+ * immutability convention "no field if no data").
+ */
+export function clearPermanentCopyPrintedCardData(
+  card: CardInstance,
+): CardInstance {
+  if (!card.permanentCopyPrintedCardData) return card;
+  const next: CardInstance = { ...card };
+  delete next.permanentCopyPrintedCardData;
   return next;
 }
 
