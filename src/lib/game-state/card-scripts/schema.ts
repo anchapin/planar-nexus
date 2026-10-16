@@ -2496,6 +2496,35 @@ export const StaticSchema = z
          * Treasure you control"). The count is
          * `creatures_count + treasures_count`.
          *
+         * Wave 4.8 follow-up 27 lane 32 piece 1/N
+         * (#2614 follow-up): the `andPer.perCounter`
+         * OPTIONAL self-referential per-counter arm
+         * (parallel to the primary `perCounter` arm).
+         * When set on the `andPer` arm, REPLACES the
+         * `andPer.per` state-derived count with the
+         * SOURCE's own per-counter count — the compound
+         * count is `count(per) + count(andPer.perCounter)`
+         * (matches how the primary `perCounter` REPLACES
+         * the primary `per` entirely). The
+         * `andPer.perCounter.counter` accepts the
+         * `"chosen"` sentinel — the engine resolves the
+         * counter type from `source.chosenCreatureType`
+         * (parallel to the primary `perCounter` sentinel
+         * and the `perSubtype: "chosen"` sentinel — the
+         * same instance field drives all three
+         * substrates via independent branches in
+         * `computeAnthemScalingCount`).
+         *
+         * The `andPer.perCounter` arm is INDEPENDENT
+         * from the `andPer.per` enum + `andPer.perSubtype`
+         * filter — they are not both consulted in the
+         * same pass. When `andPer.perCounter` is set,
+         * the `andPer.per` and `andPer.perSubtype`
+         * fields are ignored (the per-counter count
+         * replaces them). This matches the primary
+         * `perCounter` arm's "REPLACES the `per` arm
+         * entirely" semantic.
+         *
          * Out of scope (each a follow-up lane): the
          * exclusion variant ("per creature but NOT
          * artifact") and the OR combinator (lane 36's
@@ -2511,6 +2540,31 @@ export const StaticSchema = z
             ]),
             perSubtype: z
               .union([z.string().min(1), z.literal("chosen")])
+              .optional(),
+            /**
+             * Wave 4.8 follow-up 27 lane 32 piece 1/N
+             * (#2614 follow-up): an OPTIONAL self-
+             * referential per-counter arm on the
+             * `andPer` AND-source. When set, the
+             * `andPer` contribution to the compound
+             * count becomes the SOURCE's own
+             * per-counter count (REPLACES the
+             * `andPer.per` state-derived count). The
+             * `counter` field accepts the `"chosen"`
+             * sentinel — the engine resolves the
+             * counter type from
+             * `source.chosenCreatureType` (parallel
+             * to the primary `perCounter` sentinel
+             * from follow-up 26 piece 1/N).
+             */
+            perCounter: z
+              .object({
+                counter: z.union([
+                  z.string().min(1),
+                  z.literal("chosen"),
+                ]),
+              })
+              .strict()
               .optional(),
           })
           .strict()

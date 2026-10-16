@@ -286,6 +286,20 @@ function computeX(state: GameState, source: CardInstance, kind: string): number 
  * and sums the two. v1 minimum is a single
  * secondary AND-source; an array form
  * (`andPer: [...]`) is a follow-up.
+ *
+ * Wave 4.8 follow-up 27 lane 32 piece 1/N (#2614
+ * follow-up): the optional `andPer.perCounter`
+ * self-referential per-counter arm. When set, the
+ * `andPer` contribution to the compound count is the
+ * SOURCE's own per-counter count (REPLACES the
+ * `andPer.per` state-derived count — the per-counter
+ * count and the state-derived count are not summed).
+ * The `andPer.perCounter.counter` accepts the
+ * `"chosen"` sentinel (resolved from
+ * `source.chosenCreatureType`, parallel to the primary
+ * `perCounter` sentinel). When
+ * `andPer.perCounter` is set, the `andPer.per` and
+ * `andPer.perSubtype` fields are ignored.
  */
 function computeAnthemScalingCount(
   state: GameState,
@@ -296,6 +310,7 @@ function computeAnthemScalingCount(
     | {
         per: "creatures" | "treasures" | "lands" | "other_creatures";
         perSubtype?: string;
+        perCounter?: { counter: string } | undefined;
       }
     | undefined,
   perCounter?: { counter: string } | undefined,
@@ -410,6 +425,40 @@ function computeAnthemScalingCount(
   // combinator (lane 36 `X.or`-style matrix) is a
   // follow-up.
   if (andPer) {
+    // Wave 4.8 follow-up 27 lane 32 piece 1/N: the
+    // optional `andPer.perCounter` self-referential
+    // per-counter arm. When set, REPLACES the
+    // `andPer.per` state-derived count with the
+    // source's own per-counter count (parallels the
+    // primary `perCounter` REPLACES the primary
+    // `per` — the two are not summed). The
+    // `"chosen"` sentinel is resolved from
+    // `source.chosenCreatureType` (same instance
+    // field as the primary `perCounter` sentinel
+    // and the `perSubtype: "chosen"` sentinel). Null
+    // resolved counter type returns 0 (matches the
+    // lane 86 chosen-type anthem semantics). When
+    // `andPer.perCounter` is set, the `andPer.per`
+    // and `andPer.perSubtype` fields are ignored
+    // (early return — the per-counter contribution
+    // is added to `n` and we skip the state-derived
+    // count loop entirely).
+    if (andPer.perCounter) {
+      const resolvedAndCounterType =
+        andPer.perCounter.counter === "chosen"
+          ? source.chosenCreatureType !== null &&
+            source.chosenCreatureType !== undefined
+            ? source.chosenCreatureType
+            : null
+          : andPer.perCounter.counter;
+      if (resolvedAndCounterType !== null) {
+        const counterEntry = source.counters?.find(
+          (c) => c.type === resolvedAndCounterType,
+        );
+        n += counterEntry?.count ?? 0;
+      }
+      return n;
+    }
     // Wave 4.8 follow-up 25 lane 32 piece 3/N: the
     // `"chosen"` sentinel also applies to the
     // AND-source's `perSubtype`. Same resolution

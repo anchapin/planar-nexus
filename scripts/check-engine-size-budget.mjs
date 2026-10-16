@@ -699,7 +699,15 @@ const SCOPES = [
     // enum extension with `"protection_quality"`
     // docstring. schema.ts measured at 4364 (+44 over
     // 4320).
-    budgetLines: 4370,
+    //
+    // Bumping 4370 → 4430 to capture the follow-up 27
+    // lane 32 piece 1/N (`andPer.perCounter` self-
+    // referential per-counter arm on the AND-source —
+    // `andPer` schema arm extension with an OPTIONAL
+    // `perCounter: { counter: string | "chosen" }` sub-
+    // arm + docstring expansion on the parent `andPer`
+    // arm). schema.ts measured at 4418 (+48 over 4370).
+    budgetLines: 4430,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),
