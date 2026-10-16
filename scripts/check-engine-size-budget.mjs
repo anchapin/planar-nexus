@@ -750,7 +750,20 @@ const SCOPES = [
     // explaining the SUMMED vs REPLACE semantic
     // distinction and the future deprecation path).
     // schema.ts measured at 4582 (+32 over 4550).
-    budgetLines: 4620,
+    //
+    // Bumping 4620 → 4710 to capture the follow-up 29
+    // priority 1 (lane 28 piece 2/4 — `CopyPermanent`
+    // target discriminator) — the `target` arm is
+    // restructured to a discriminated union (`kind:
+    // "filter"` + `kind: "id"` + `kind: "named_card"`
+    // stub) with the legacy enum filter preserved as
+    // the `kind: "filter"` arm + parent
+    // `CopyPermanent` docstring expansion explaining
+    // the discriminator shape, the auto-pick vs
+    // named-target vs named-card resolution paths,
+    // and the piece 3/4 named-card stub rationale.
+    // schema.ts measured at 4706 (+86 over 4620).
+    budgetLines: 4710,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

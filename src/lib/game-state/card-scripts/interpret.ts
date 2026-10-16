@@ -1244,6 +1244,32 @@ function applyEffect(
       // (reanimation), "copied characteristics except for
       // [X]" (Phyrexian Metamorph), and "named-copy" /
       // "choose-creature-type-copy" filters.
+      //
+      // Wave 4.8 follow-up 29 priority 1 (lane 28,
+      // piece 2/4) (#2614 follow-up): the
+      // discriminated-union target selector. The
+      // `target` field is now a discriminated
+      // union (the `kind` field). Three arms:
+      //   - `kind: "filter"` (the existing enum
+      //     filter — `value` is the enum string).
+      //     The engine resolves the first matching
+      //     permanent on the battlefield APNAP.
+      //   - `kind: "id"` (the explicit named
+      //     target on the battlefield — `value` is
+      //     the `CardInstanceId`). The engine
+      //     reads the named target's `cardData`
+      //     directly; a missing target is a no-op
+      //     per the lane 70 substrate's auto-pick
+      //     fallback.
+      //   - `kind: "named_card"` (STUB — the
+      //     named-card variant "create a token
+      //     that's a copy of [card name]"). The
+      //     schema arm parses; the engine consult
+      //     lands in piece 3/4. For piece 2/4, the
+      //     named-card arm falls through to a
+      //     no-op (the engine cannot resolve a
+      //     printed card without the piece 3/4
+      //     consult).
       const matchTargetType = (typeLine: string, want: string): boolean => {
         const lower = typeLine.toLowerCase();
         if (want === "permanent") return true;
@@ -1268,6 +1294,99 @@ function applyEffect(
           ? cardControllerId === ctx.controllerId
           : cardControllerId !== ctx.controllerId;
       };
+      // Wave 4.8 follow-up 29 priority 1 (lane 28,
+      // piece 2/4) (#2614 follow-up): consult the
+      // `target` discriminator. The legacy enum
+      // string fallback (pre-piece-2/4) is
+      // preserved for any callers that hand-build
+      // a `CopyPermanent` effect without the
+      // discriminator — the engine still consults
+      // the string enum as a fallback (the
+      // pre-piece-2/4 substrate).
+      const targetDisc = effect.target;
+      const isDiscriminated =
+        typeof targetDisc === "object" &&
+        targetDisc !== null &&
+        "kind" in targetDisc;
+      // Wave 4.8 follow-up 29 priority 1 (lane
+      // 28, piece 2/4): the `kind: "named_card"`
+      // STUB. The schema arm parses; the engine
+      // consult lands in piece 3/4. For piece
+      // 2/4, the named-card arm falls through to
+      // a no-op (the engine cannot resolve a
+      // printed card without the piece 3/4
+      // consult; the stub is intentionally inert).
+      if (
+        isDiscriminated &&
+        (targetDisc as { kind: string }).kind === "named_card"
+      ) {
+        return state;
+      }
+      // Wave 4.8 follow-up 29 priority 1 (lane
+      // 28, piece 2/4): the `kind: "id"` arm.
+      // The named target on the battlefield is
+      // resolved directly from
+      // `state.cards.get(value)` (validates the
+      // target is on the battlefield; a missing
+      // target is a no-op per the lane 70
+      // substrate's auto-pick fallback). The
+      // controller filter is ALSO applied (the
+      // explicit named target may still be
+      // filtered by `controller: "you"` /
+      // `"opponent"` / `"any"`).
+      if (isDiscriminated && (targetDisc as { kind: string }).kind === "id") {
+        const idValue = (targetDisc as { kind: "id"; value: string }).value;
+        const namedSource = state.cards.get(idValue as CardInstanceId);
+        if (
+          !namedSource ||
+          !isOnBattlefield(state, idValue as CardInstanceId) ||
+          !matchController(namedSource.controllerId)
+        ) {
+          return state;
+        }
+        const copiedCardData = { ...namedSource.cardData };
+        const controllerId = ctx.controllerId;
+        const ownerId = controllerId;
+        const copyCount = effect.count ?? 1;
+        const newCards = new Map(state.cards);
+        const bfKey = `${controllerId}-battlefield`;
+        const initialBf = state.zones.get(bfKey);
+        if (!initialBf) return state;
+        let bfCardIds = [...initialBf.cardIds];
+        for (let i = 0; i < copyCount; i++) {
+          const cardIdNew =
+            `copyperm-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 11)}` as CardInstanceId;
+          const newInstance = createCardInstance(
+            copiedCardData as ScryfallCard,
+            ownerId,
+            controllerId,
+            {
+              id: cardIdNew,
+              currentZoneKey: `${controllerId}-battlefield`,
+            },
+          );
+          newCards.set(cardIdNew, newInstance);
+          bfCardIds = [...bfCardIds, cardIdNew];
+        }
+        const newZones = new Map(state.zones);
+        newZones.set(bfKey, {
+          ...initialBf,
+          cardIds: bfCardIds,
+        });
+        return {
+          ...state,
+          cards: newCards,
+          zones: newZones,
+          lastModifiedAt: Date.now(),
+        };
+      }
+      // For the `kind: "filter"` arm OR the
+      // legacy enum string fallback: resolve the
+      // effective enum value and use the v1 lane
+      // 70 auto-pick path.
+      const filterValue = isDiscriminated
+        ? (targetDisc as { kind: "filter"; value: string }).value
+        : (targetDisc as unknown as string);
       // Find the target: either the chosen target on the
       // stack object, or the first matching permanent on the
       // battlefield (APNAP-ordered).
@@ -1280,7 +1399,7 @@ function applyEffect(
           !isOnBattlefield(state, sourceId) ||
           !matchTargetType(
             sourceCard.cardData.type_line ?? "",
-            effect.target,
+            filterValue,
           ) ||
           !matchController(sourceCard.controllerId)
         ) {
@@ -1303,7 +1422,7 @@ function applyEffect(
             const inst = state.cards.get(id);
             if (!inst) continue;
             if (
-              matchTargetType(inst.cardData.type_line ?? "", effect.target) &&
+              matchTargetType(inst.cardData.type_line ?? "", filterValue) &&
               matchController(inst.controllerId)
             ) {
               sourceId = id;

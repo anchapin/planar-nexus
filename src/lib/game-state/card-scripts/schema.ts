@@ -376,20 +376,108 @@ export const CopyPermanentSchema = z
   .object({
     op: z.literal("CopyPermanent"),
     /**
-     * v1: `target: "permanent"` — any permanent on the
-     * battlefield. The schema's `controller` arm mirrors the
-     * lane 17 `cost.sacrifice_permanents.type` enum and the
-     * lane 63 `additionalCosts.sacrifice.target` enum.
-     * "creature" / "artifact" / "enchantment" / "land" are
-     * follow-up lanes (each adds a narrower filter).
+     * Wave 4.8 follow-up 29 priority 1 (lane 28,
+     * piece 2/4) (#2614 follow-up): the
+     * discriminated-union target selector. The
+     * existing enum filter (`"permanent"` /
+     * `"creature"` / `"artifact"` /
+     * `"enchantment"` / `"land"`) is preserved as
+     * the `kind: "filter"` arm — the v1 minimum
+     * (the engine auto-picks the first matching
+     * permanent APNAP-ordered). The new
+     * `kind: "id"` arm accepts a literal
+     * `CardInstanceId` (the named target on the
+     * battlefield — the engine reads the named
+     * target's `cardData` directly without the
+     * filter consult). The new `kind: "named_card"`
+     * arm is a STUB in this piece (parses, no
+     * engine consult — the engine consult lands
+     * in piece 3/4). Exactly one arm is set per
+     * effect (the `kind` discriminator enforces
+     * this); `if_kicked` is at the top level
+     * (independent of the discriminator).
+     *
+     * The v1 lane 70 substrate used
+     * `target: z.enum([...])` (a single enum
+     * value). The lane 28 piece 1/4 (follow-up
+     * 28 priority 4) preserved the v1 enum.
+     * Piece 2/4 (this piece) extends the schema
+     * with the discriminated union; the engine
+     * consult consults the `kind` discriminator
+     * for resolution.
      */
-    target: z.enum([
-      "permanent",
-      "creature",
-      "artifact",
-      "enchantment",
-      "land",
-    ]),
+    target: z
+      .union([
+        /**
+         * The existing enum filter — the v1 lane
+         * 70 substrate. The engine finds the
+         * first matching permanent on the
+         * battlefield (APNAP-ordered) whose
+         * `cardData.type_line` matches the enum
+         * value. Mirrors the lane 17
+         * `cost.sacrifice_permanents.type` enum
+         * and the lane 63
+         * `additionalCosts.sacrifice.target`
+         * enum.
+         */
+        z
+          .object({
+            kind: z.literal("filter"),
+            value: z.enum([
+              "permanent",
+              "creature",
+              "artifact",
+              "enchantment",
+              "land",
+            ]),
+          })
+          .strict(),
+        /**
+         * The explicit named target — a
+         * `CardInstanceId` on the battlefield.
+         * The engine reads the named target's
+         * `cardData` directly from
+         * `state.cards.get(value)` (validates the
+         * target is on the battlefield; a missing
+         * target is a no-op per the lane 70
+         * substrate's auto-pick fallback).
+         * Parallel to the lane 75a
+         * `CopyUntilEndOfTurn.chosen_permanent`
+         * shape (a literal `CardInstanceId` named
+         * target).
+         */
+        z
+          .object({
+            kind: z.literal("id"),
+            value: z.string().min(1),
+          })
+          .strict(),
+        /**
+         * The named-card variant (Self-Reflection
+         * style — "create a token that's a copy
+         * of [card name]"). This is a STUB in
+         * piece 2/4 (parses, no engine consult
+         * — the engine consult lands in piece
+         * 3/4). The schema union has all three
+         * arms; the engine consults two (filter
+         * + id) in piece 2/4. The named-card arm
+         * is included here so the discriminator
+         * is in place when piece 3/4 lands (no
+         * second schema bump needed). The
+         * `getCardDataByName(value.name)` lookup
+         * is the named card's printed `cardData`;
+         * missing-name is a no-op (see piece
+         * 3/4).
+         */
+        z
+          .object({
+            kind: z.literal("named_card"),
+            value: z
+              .object({ name: z.string().min(1) })
+              .strict(),
+          })
+          .strict(),
+      ]),
     /** Restrict to the controller's own permanents. */
     controller: z.enum(["you", "opponent", "any"]).optional(),
     /**
