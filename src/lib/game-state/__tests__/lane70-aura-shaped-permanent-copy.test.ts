@@ -63,6 +63,7 @@ import type {
   PlayerId,
   ScryfallCard,
 } from "../types";
+import { ZoneType } from "../types/zones";
 
 const HOST_NAME = "Test Aura-Shaped Permanent Copy (lane 70 piece 2/N)";
 
@@ -74,8 +75,7 @@ const HOST_NAME = "Test Aura-Shaped Permanent Copy (lane 70 piece 2/N)";
  */
 const SCRIPT_AURA_COPY_PERMANENT: CardScript = CardScriptSchema.parse({
   name: HOST_NAME,
-  oracle:
-    "Enchanted creature is a copy of [chosen permanent].",
+  oracle: "Enchanted creature is a copy of [chosen permanent].",
   aura: {
     text: "Enchanted creature is a copy of [chosen permanent].",
     static: {
@@ -175,13 +175,15 @@ function putAuraOnEnchanted(
   enchantedId: CardInstanceId;
   chosenId: CardInstanceId;
 } {
-  const chosenId = `card-${chosenDef.id}-${Math.random().toString(36).slice(2)}` as CardInstanceId;
+  const chosenId =
+    `card-${chosenDef.id}-${Math.random().toString(36).slice(2)}` as CardInstanceId;
   const chosen = createCardInstance(chosenDef, controllerId, controllerId, {
     id: chosenId,
     currentZoneKey: `${controllerId}-battlefield`,
   });
   chosen.hasSummoningSickness = false;
-  const enchantedId = `card-${enchantedDef.id}-${Math.random().toString(36).slice(2)}` as CardInstanceId;
+  const enchantedId =
+    `card-${enchantedDef.id}-${Math.random().toString(36).slice(2)}` as CardInstanceId;
   const enchanted = createCardInstance(
     enchantedDef,
     controllerId,
@@ -192,7 +194,8 @@ function putAuraOnEnchanted(
     },
   );
   enchanted.hasSummoningSickness = false;
-  const auraId = `card-${auraDef.id}-${Math.random().toString(36).slice(2)}` as CardInstanceId;
+  const auraId =
+    `card-${auraDef.id}-${Math.random().toString(36).slice(2)}` as CardInstanceId;
   const aura = createCardInstance(auraDef, controllerId, controllerId, {
     id: auraId,
     currentZoneKey: `${controllerId}-battlefield`,
@@ -328,9 +331,7 @@ describe("Wave 4.8 follow-up 24 lane 70 piece 2/N — Aura-shaped permanent copy
     // The permanent-arm substrate ledgers are stamped
     // (the rollback reference for the cleanup paths
     // + the source-stable ledger for the diff).
-    expect(enchanted?.copyOfTargetIdPermanent).toBe(
-      chosenId as string,
-    );
+    expect(enchanted?.copyOfTargetIdPermanent).toBe(chosenId as string);
     expect(enchanted?.permanentCopyPrintedCardData?.name).toBe(
       "Test Enchanted Shapeshifter",
     );
@@ -380,9 +381,9 @@ describe("Wave 4.8 follow-up 24 lane 70 piece 2/N — Aura-shaped permanent copy
     expect(refreshed.cards.get(enchantedId)?.cardData.name).toBe(
       "Grizzly Bears",
     );
-    expect(
-      refreshed.cards.get(enchantedId)?.copyOfTargetIdPermanent,
-    ).toBe(chosenId as string);
+    expect(refreshed.cards.get(enchantedId)?.copyOfTargetIdPermanent).toBe(
+      chosenId as string,
+    );
     expect(refreshed.cards.get(auraId)?.copyOfTargetIdPermanent).toBe(
       chosenId as string,
     );
@@ -404,9 +405,7 @@ describe("Wave 4.8 follow-up 24 lane 70 piece 2/N — Aura-shaped permanent copy
     const enchantedAfter = refreshed2.cards.get(enchantedId)!;
     // The overlay is dropped — the enchanted card's
     // printed `cardData` is restored.
-    expect(enchantedAfter.cardData.name).toBe(
-      "Test Enchanted Shapeshifter",
-    );
+    expect(enchantedAfter.cardData.name).toBe("Test Enchanted Shapeshifter");
     expect(enchantedAfter.cardData.power).toBe("1");
     expect(enchantedAfter.cardData.toughness).toBe("1");
     // The substrate snapshot is cleared.
@@ -469,13 +468,10 @@ describe("Wave 4.8 follow-up 24 lane 70 piece 2/N — Aura-shaped permanent copy
     };
     const restored = restorePermanentCopyOffBattlefield(movedState);
     const enchantedAfter = restored.cards.get(enchantedId)!;
-    expect(enchantedAfter.cardData.name).toBe(
-      "Test Enchanted Shapeshifter",
-    );
+    expect(enchantedAfter.cardData.name).toBe("Test Enchanted Shapeshifter");
     expect(enchantedAfter.permanentCopyPrintedCardData).toBeUndefined();
     expect(enchantedAfter.copyOfTargetIdPermanent).toBeUndefined();
   });
-
 
   it("applies the overlay when the chosen target is in a tracked non-battlefield zone (lane 78 cross-zones semantics for permanent arm)", () => {
     // Wave 4.8 follow-up 24 lane 78 permanent-arm
@@ -531,7 +527,13 @@ describe("Wave 4.8 follow-up 24 lane 70 piece 2/N — Aura-shaped permanent copy
     });
     let gyZone = zones2.get(graveyardKey);
     if (!gyZone) {
-      gyZone = { cardIds: [], type: "graveyard" as const };
+      gyZone = {
+        cardIds: [],
+        type: ZoneType.GRAVEYARD,
+        playerId: aliceId,
+        isRevealed: false,
+        visibleTo: [],
+      };
       zones2.set(graveyardKey, gyZone);
     }
     zones2.set(graveyardKey, {
@@ -554,18 +556,14 @@ describe("Wave 4.8 follow-up 24 lane 70 piece 2/N — Aura-shaped permanent copy
     expect(enchantedAfter.cardData.name).toBe("Grizzly Bears");
     expect(enchantedAfter.cardData.power).toBe("2");
     expect(enchantedAfter.cardData.toughness).toBe("2");
-    expect(enchantedAfter.copyOfTargetIdPermanent).toBe(
-      chosenId as string,
-    );
+    expect(enchantedAfter.copyOfTargetIdPermanent).toBe(chosenId as string);
     expect(enchantedAfter.permanentCopyPrintedCardData?.name).toBe(
       "Test Enchanted Shapeshifter",
     );
     // The Aura's own `copyOfTargetIdPermanent` is
     // stamped (parallel to the on-battlefield case).
     const auraAfter = refreshed.cards.get(auraId)!;
-    expect(auraAfter.copyOfTargetIdPermanent).toBe(
-      chosenId as string,
-    );
+    expect(auraAfter.copyOfTargetIdPermanent).toBe(chosenId as string);
   });
 
   it("the overlay drops when the chosen target is in an UNTRACKED zone (lane 78 fallback rollback)", () => {
@@ -626,9 +624,7 @@ describe("Wave 4.8 follow-up 24 lane 70 piece 2/N — Aura-shaped permanent copy
     // "target missing" rollback path is the
     // canonical drop site when the chosen target is
     // in an untracked zone).
-    expect(enchantedAfter.cardData.name).toBe(
-      "Test Enchanted Shapeshifter",
-    );
+    expect(enchantedAfter.cardData.name).toBe("Test Enchanted Shapeshifter");
     expect(enchantedAfter.cardData.power).toBe("1");
     expect(enchantedAfter.permanentCopyPrintedCardData).toBeUndefined();
     expect(enchantedAfter.copyOfTargetIdPermanent).toBeUndefined();
@@ -645,10 +641,7 @@ describe("Wave 4.8 follow-up 24 lane 70 piece 2/N — Aura-shaped permanent copy
     // sites that only need the ledger reset (e.g.
     // the Aura's own cycle-case clear).
     const { state, aliceId } = setupTwoPlayerGame();
-    const {
-      state: withChosen,
-      auraId,
-    } = putAuraOnEnchanted(
+    const { state: withChosen, auraId } = putAuraOnEnchanted(
       state,
       aliceId,
       makeAuraCard({ id: "aura-clear-perm-substrate" }),

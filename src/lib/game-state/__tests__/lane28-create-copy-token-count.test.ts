@@ -41,7 +41,14 @@
  *      a single token (the v1 lane 70 semantic; no
  *      regression on the existing substrate).
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "@jest/globals";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  beforeEach,
+} from "@jest/globals";
 import {
   CardScriptSchema,
   type CardEffect,
@@ -65,8 +72,7 @@ import type {
   ScryfallCard,
 } from "../types";
 
-const HOST_NAME =
-  "Test Create Copy Token Count (lane 28 piece 1/N)";
+const HOST_NAME = "Test Create Copy Token Count (lane 28 piece 1/N)";
 
 function makeCard(
   overrides: Partial<ScryfallCard> & { id: string },
@@ -114,7 +120,8 @@ function putOnBattlefield(
   controllerId: PlayerId,
   cardDef: ScryfallCard,
 ): { state: GameState; cardId: CardInstanceId } {
-  const cardId = `card-${cardDef.id}-${Math.random().toString(36).slice(2)}` as CardInstanceId;
+  const cardId =
+    `card-${cardDef.id}-${Math.random().toString(36).slice(2)}` as CardInstanceId;
   const card = createCardInstance(cardDef, controllerId, controllerId, {
     id: cardId,
     currentZoneKey: `${controllerId}-battlefield`,
@@ -169,7 +176,8 @@ function castScript(
     id: `host-${HOST_NAME.replace(/\s+/g, "-")}`,
     name: HOST_NAME,
   });
-  const cardId = `card-host-${Math.random().toString(36).slice(2)}` as CardInstanceId;
+  const cardId =
+    `card-host-${Math.random().toString(36).slice(2)}` as CardInstanceId;
   const card = createCardInstance(cardDef, aliceId, aliceId, {
     id: cardId,
     currentZoneKey: `${aliceId}-hand`,
@@ -179,10 +187,7 @@ function castScript(
     cards: new Map(state.cards).set(cardId, card),
     zones: new Map(state.zones).set(`${aliceId}-hand`, {
       ...state.zones.get(`${aliceId}-hand`)!,
-      cardIds: [
-        ...(state.zones.get(`${aliceId}-hand`)!.cardIds ?? []),
-        cardId,
-      ],
+      cardIds: [...(state.zones.get(`${aliceId}-hand`)!.cardIds ?? []), cardId],
     }),
     turn: {
       ...state.turn,
@@ -313,8 +318,7 @@ describe("Wave 4.8 follow-up 28 priority 4 piece 1/N — CopyPermanent.count mul
       // "all characteristics copied" semantics).
       const script: CardScript = CardScriptSchema.parse({
         name: "Rite of Replication (test substrate)",
-        oracle:
-          "Create two tokens that are copies of target creature.",
+        oracle: "Create two tokens that are copies of target creature.",
         spell: [
           {
             op: "CopyPermanent",
@@ -339,9 +343,7 @@ describe("Wave 4.8 follow-up 28 priority 4 piece 1/N — CopyPermanent.count mul
         }),
       );
       s = targetR.state;
-      const after = castScript(s, setup.aliceId, script, {
-        hostName: HOST_NAME,
-      });
+      const after = castScript(s, setup.aliceId, script, {});
       // Alice's battlefield had 0 creatures
       // before; after the cast, it has 2 tokens.
       const aliceBfKey = `${setup.aliceId}-battlefield`;
@@ -386,8 +388,7 @@ describe("Wave 4.8 follow-up 28 priority 4 piece 1/N — CopyPermanent.count mul
     it("creates 3 new cards when count: 3 (Extravagant Replication)", () => {
       const script: CardScript = CardScriptSchema.parse({
         name: "Extravagant Replication (test substrate)",
-        oracle:
-          "Create three tokens that are copies of target creature.",
+        oracle: "Create three tokens that are copies of target creature.",
         spell: [
           {
             op: "CopyPermanent",
@@ -412,9 +413,7 @@ describe("Wave 4.8 follow-up 28 priority 4 piece 1/N — CopyPermanent.count mul
         }),
       );
       s = targetR.state;
-      const after = castScript(s, setup.aliceId, script, {
-        hostName: HOST_NAME,
-      });
+      const after = castScript(s, setup.aliceId, script, {});
       const aliceBfKey = `${setup.aliceId}-battlefield`;
       const aliceBf = after.state.zones.get(aliceBfKey);
       expect(aliceBf).toBeDefined();
@@ -494,8 +493,7 @@ describe("Wave 4.8 follow-up 28 priority 4 piece 1/N — CopyPermanent.count mul
       // and NOT 2 (off-by-one).
       const script: CardScript = CardScriptSchema.parse({
         name: HOST_NAME,
-        oracle:
-          "Create a token that's a copy of target creature.",
+        oracle: "Create a token that's a copy of target creature.",
         spell: [
           {
             op: "CopyPermanent",
