@@ -1409,7 +1409,9 @@ function applyEffect(
       // additive merges.
       //
       // `add_type` exception variant
-      // rides follow-up 30 priority 4.
+      // (shipped in follow-up 30
+      // priority 4 — see the
+      // `add_type` consult below).
       //
       // Wave 4.8 follow-up 30 priority 4
       // (lane 28, piece 4/N) (#2614
@@ -1833,20 +1835,13 @@ function applyEffect(
           // exist in this enum (each entry
           // is a single word), so a leading
           // token filter is sufficient.
-          const SUPERTYPE_TOKEN = new Set([
-            "Legendary",
-            "Snow",
-            "Basic",
-          ]);
+          const SUPERTYPE_TOKEN = new Set(["Legendary", "Snow", "Basic"]);
           const tokens = currentTypes.split(/\s+/).filter(Boolean);
           // Drop leading tokens that are
           // supertypes until we hit a
           // non-supertype token.
           let i = 0;
-          while (
-            i < tokens.length &&
-            SUPERTYPE_TOKEN.has(tokens[i])
-          ) {
+          while (i < tokens.length && SUPERTYPE_TOKEN.has(tokens[i])) {
             i++;
           }
           const remainingTypes = tokens.slice(i).join(" ");
@@ -2036,8 +2031,9 @@ function applyEffect(
         // from a parallel `set_color_identity`
         // variant (which would override the
         // identity but leave the printed
-        // colors intact — a hybrid that
-        // rides follow-up 32).
+        // colors intact — a hybrid) is
+        // unbuilt; deferred since follow-up
+        // 32. See wave4.8-closed.md §2.
         if (exceptions?.set_color?.length) {
           // Deduplicate + preserve declared
           // order — same transform as the
@@ -2194,7 +2190,9 @@ function applyEffect(
         // (which would override the power
         // until end of turn and then
         // restore the printed power — a
-        // hybrid that rides follow-up 32).
+        // hybrid) is unbuilt; deferred since
+        // follow-up 32. See wave4.8-closed.md
+        // §2.
         if (exceptions?.set_power !== undefined) {
           // Destructive REPLACE — the
           // printed power string is

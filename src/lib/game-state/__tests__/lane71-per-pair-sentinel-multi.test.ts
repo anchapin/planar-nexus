@@ -13,11 +13,19 @@
  * `"chosen"` entry, and the `protFrom` Set
  * dedupes at write time. v1 minimum: the
  * single-instance-field model (parallel to the
- * lane 52 `chosenColor` instance field); a
- * per-pair independent sentinel-resolution
- * map rides follow-up 31 if any future
- * priority piece surfaces a per-pair sentinel
- * field (e.g. `source.chosenProtectionFromPerPair`).
+ * lane 52 `chosenColor` instance field). A
+ * per-pair INDEPENDENT sentinel-resolution
+ * map (a separate field per pair, distinct
+ * from the shared per-pair map at
+ * `source.chosenProtectionFromPerPair`)
+ * is unbuilt; deferred since follow-up 31.
+ * See wave4.8-closed.md §2. (The shared
+ * per-pair map itself — the
+ * `source.chosenProtectionFromPerPair`
+ * field — IS shipped, at cards.ts:204;
+ * this deferral is for an independent
+ * map that no priority piece has
+ * surfaced.)
  *
  * Three test groups:
  *   1. schema — `protectionFrom` parses the
@@ -188,8 +196,7 @@ describe("Wave 4.8 follow-up 30 priority 5 — protectionFrom per-pair-with-'cho
           "Creatures you control have protection from red+chosen and green+chosen.",
         statics: [
           {
-            text:
-              "Creatures you control have protection from red+chosen and green+chosen.",
+            text: "Creatures you control have protection from red+chosen and green+chosen.",
             affects: { controller: "you" },
             protectionFrom: [
               ["red", "chosen"],
@@ -220,8 +227,7 @@ describe("Wave 4.8 follow-up 30 priority 5 — protectionFrom per-pair-with-'cho
           "Creatures you control have protection from red+chosen and blue.",
         statics: [
           {
-            text:
-              "Creatures you control have protection from red+chosen and blue.",
+            text: "Creatures you control have protection from red+chosen and blue.",
             affects: { controller: "you" },
             protectionFrom: [["red", "chosen"], "blue"],
           },
@@ -230,10 +236,7 @@ describe("Wave 4.8 follow-up 30 priority 5 — protectionFrom per-pair-with-'cho
       const stat = script.statics![0] as {
         protectionFrom?: (string | string[])[];
       };
-      expect(stat.protectionFrom).toEqual([
-        ["red", "chosen"],
-        "blue",
-      ]);
+      expect(stat.protectionFrom).toEqual([["red", "chosen"], "blue"]);
     });
   });
 
@@ -261,8 +264,7 @@ describe("Wave 4.8 follow-up 30 priority 5 — protectionFrom per-pair-with-'cho
           "Creatures you control have protection from red+chosen and green+chosen.",
         statics: [
           {
-            text:
-              "Creatures you control have protection from red+chosen and green+chosen.",
+            text: "Creatures you control have protection from red+chosen and green+chosen.",
             affects: { controller: "you" },
             protectionFrom: [
               ["red", "chosen"],
@@ -280,12 +282,9 @@ describe("Wave 4.8 follow-up 30 priority 5 — protectionFrom per-pair-with-'cho
           name: "Per-Pair-Per-Pair Sentinel Target",
         }),
       );
-      const anthemR = putOnBattlefield(
-        targetR.state,
-        aliceId,
-        anthem,
-        { chosenProtectionFrom: "white" },
-      );
+      const anthemR = putOnBattlefield(targetR.state, aliceId, anthem, {
+        chosenProtectionFrom: "white",
+      });
       const refreshed = refreshScriptedStatics(anthemR.state);
       const bearInst = refreshed.cards.get(targetR.cardId);
       expect(bearInst).toBeDefined();
@@ -323,8 +322,7 @@ describe("Wave 4.8 follow-up 30 priority 5 — protectionFrom per-pair-with-'cho
           "Creatures you control have protection from red+chosen and blue.",
         statics: [
           {
-            text:
-              "Creatures you control have protection from red+chosen and blue.",
+            text: "Creatures you control have protection from red+chosen and blue.",
             affects: { controller: "you" },
             protectionFrom: [["red", "chosen"], "blue"],
           },
@@ -339,12 +337,9 @@ describe("Wave 4.8 follow-up 30 priority 5 — protectionFrom per-pair-with-'cho
           name: "Per-Pair-Per-Pair Mixed Target",
         }),
       );
-      const anthemR = putOnBattlefield(
-        targetR.state,
-        aliceId,
-        anthem,
-        { chosenProtectionFrom: "white" },
-      );
+      const anthemR = putOnBattlefield(targetR.state, aliceId, anthem, {
+        chosenProtectionFrom: "white",
+      });
       const refreshed = refreshScriptedStatics(anthemR.state);
       const bearInst = refreshed.cards.get(targetR.cardId);
       expect(bearInst).toBeDefined();
@@ -386,8 +381,7 @@ describe("Wave 4.8 follow-up 30 priority 5 — protectionFrom per-pair-with-'cho
           "Creatures you control have protection from red+chosen and green+chosen.",
         statics: [
           {
-            text:
-              "Creatures you control have protection from red+chosen and green+chosen.",
+            text: "Creatures you control have protection from red+chosen and green+chosen.",
             affects: { controller: "you" },
             protectionFrom: [
               ["red", "chosen"],
@@ -411,12 +405,9 @@ describe("Wave 4.8 follow-up 30 priority 5 — protectionFrom per-pair-with-'cho
       // (`"red"` / `"green"`) are still
       // preserved; only the `"chosen"`
       // entries are skipped.
-      const anthemR = putOnBattlefield(
-        targetR.state,
-        aliceId,
-        anthem,
-        { chosenProtectionFrom: null },
-      );
+      const anthemR = putOnBattlefield(targetR.state, aliceId, anthem, {
+        chosenProtectionFrom: null,
+      });
       const refreshed = refreshScriptedStatics(anthemR.state);
       const bearInst = refreshed.cards.get(targetR.cardId);
       expect(bearInst).toBeDefined();
@@ -469,12 +460,9 @@ describe("Wave 4.8 follow-up 30 priority 5 — protectionFrom per-pair-with-'cho
           name: "Per-Pair Only Regression Target",
         }),
       );
-      const anthemR = putOnBattlefield(
-        targetR.state,
-        aliceId,
-        anthem,
-        { chosenProtectionFrom: "green" },
-      );
+      const anthemR = putOnBattlefield(targetR.state, aliceId, anthem, {
+        chosenProtectionFrom: "green",
+      });
       const refreshed = refreshScriptedStatics(anthemR.state);
       const bearInst = refreshed.cards.get(targetR.cardId);
       expect(bearInst).toBeDefined();

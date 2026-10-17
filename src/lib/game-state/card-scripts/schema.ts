@@ -770,10 +770,12 @@ export const CopyPermanentSchema = z
          *     `<set_type> — <set_subtype>`
          *     when both REPLACE forms are
          *     set on the same effect.
-         *   - `set_keyword` (deferred —
-         *     rides follow-up 35+)
-         *   - `set_ability` (deferred —
-         *     rides follow-up 35+)
+         *   - `set_keyword` is unbuilt;
+         *     deferred since follow-up 35+.
+         *     See wave4.8-closed.md §2.
+         *   - `set_ability` is unbuilt;
+         *     deferred since follow-up 35+.
+         *     See wave4.8-closed.md §2.
          *   - `set_supertype` (follow-up 34
          *     piece 3/N, this commit) —
          *     REPLACES the supertype
@@ -929,8 +931,9 @@ export const CopyPermanentSchema = z
          * overrides the identity but leaves
          * the printed colors intact — a
          * `set_color` + `add_color` hybrid)
-         * rides follow-up 32 if any future
-         * priority piece surfaces a need.
+         * is unbuilt; deferred since
+         * follow-up 32. See wave4.8-closed.md
+         * §2.
          */
         add_color: z
           .array(
@@ -1071,9 +1074,9 @@ export const CopyPermanentSchema = z
          * then restore the printed power —
          * a hybrid that mirrors the lane
          * 75c `become_copy` until-eot
-         * shape) rides follow-up 32 if any
-         * future priority piece surfaces a
-         * until-eot semantic. v1 minimum:
+         * shape) is unbuilt; deferred since
+         * follow-up 32. See wave4.8-closed.md
+         * §2. v1 minimum:
          * a single integer field; no
          * `*` / `X+*` printed-power
          * resolution.
@@ -1109,8 +1112,9 @@ export const CopyPermanentSchema = z
          * variant (which would override
          * the power until end of turn and
          * then restore the printed power —
-         * a hybrid that rides follow-up
-         * 32).
+         * a hybrid) is unbuilt; deferred
+         * since follow-up 32. See
+         * wave4.8-closed.md §2.
          */
         set_power: z.number().int().optional(),
         /**
@@ -1218,16 +1222,20 @@ export const CopyPermanentSchema = z
          * CR 205.4. Legacy supertype
          * distinctions (`"World"` /
          * `"Legendary"`-only /
-         * `"Snow"`-only) ride follow-up 32
-         * if any future priority piece
-         * surfaces a legacy variant. The
+         * `"Snow"`-only) are unbuilt; deferred
+         * since follow-up 32. See
+         * wave4.8-closed.md §2. The
          * `add_type` arm is distinct from
          * `add_subtype` (which appends to
          * the SUBTYPES half). A destructive
-         * `set_type` variant rides follow-up
-         * 32 if any future priority piece
-         * surfaces a "exactly [types]"
-         * semantic.
+         * `set_type` variant ("exactly
+         * [types]" semantic) IS the
+         * `set_type` field below; no
+         * further follow-up needed.
+         * (Original marker promised a
+         * future follow-up 32; the field
+         * has shipped in the schema since
+         * wave 4.)
          */
         add_type: z
           .array(
@@ -1277,9 +1285,9 @@ export const CopyPermanentSchema = z
          * deferred since follow-up 32.
          * See wave4.8-closed.md §2. A
          * destructive `set_supertype`
-         * variant rides follow-up 34
-         * piece 3/N (this commit) — see
-         * the `set_supertype` field below.
+         * variant (shipped in follow-up 34
+         * piece 3/N) — see the
+         * `set_supertype` field below.
          */
         add_supertype: z
           .array(z.enum(["Legendary", "Snow", "Basic"]))
@@ -3558,7 +3566,7 @@ export const StaticSchema = z
              * Future lane: deprecating the REPLACE
              * arm (the self-referential case is
              * rare; the summed form covers 90%+ of
-             * use cases) rides follow-up 29.
+             * use cases) is unbuilt; deferred since follow-up 29. See wave4.8-closed.md §2.
              */
             perCounterSummed: z
               .object({
@@ -3599,7 +3607,9 @@ export const StaticSchema = z
          * the +1/+1 counter from the same field — see
          * `evergreen-keywords.ts` line ~973). v1
          * supports a single counter type per arm; a
-         * chosen-counter variant rides follow-up 26+.
+         * chosen-counter variant is unbuilt;
+         * deferred since follow-up 26+. See
+         * wave4.8-closed.md §2.
          *
          * Wave 4.8 follow-up 26 lane 32 piece 1/N
          * (#2614 follow-up): the `"chosen"` sentinel
@@ -3698,7 +3708,9 @@ export const StaticSchema = z
              * pair" read). v1 minimum: the `perPair`
              * ordinal-only cross-type read (no per-pair
              * sentinel extension; the per-pair-with-
-             * sentinel rides follow-up 30).
+             * sentinel is unbuilt; deferred since
+             * follow-up 30. See wave4.8-closed.md
+             * §2.)
              */
             ordinal: z.number().int().min(1).optional(),
             /**
@@ -3720,7 +3732,9 @@ export const StaticSchema = z
              * each unique type" read; a separate arm
              * from the per-counter Nth-counter read).
              * The `andPer.perCounter perPair` parallel
-             * ordinal extension rides follow-up 30.
+             * ordinal extension is unbuilt; deferred
+             * since follow-up 30. See
+             * wave4.8-closed.md §2.
              */
             perPair: z
               .object({
@@ -3885,11 +3899,12 @@ export const StaticSchema = z
             // the flattened list (alongside the
             // literal entries). v1 minimum: a
             // single `"chosen"` entry inside
-            // the nested array (the
-            // per-pair-with-sentinel extension
-            // rides follow-up 30; the
-            // per-pair-with-`"chosen"`-per-pair
-            // extension rides follow-up 30 too).
+            // the nested array. The per-pair-with-sentinel
+            // extension is unbuilt; deferred since
+            // follow-up 30. The per-pair-with-
+            // `"chosen"`-per-pair extension is also
+            // unbuilt; deferred since follow-up 30.
+            // See wave4.8-closed.md §2.
             z.array(z.union([z.string().min(1), z.literal("chosen")])).min(2),
             z.literal("chosen"),
           ]),
