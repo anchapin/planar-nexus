@@ -782,16 +782,67 @@ export const CopyPermanentSchema = z
          * `add_power` arm accepts negative
          * integers (Phyrexian Metamorph-style
          * "create a token that's a copy of
-         * [target] EXCEPT it has -1/-0"); a
-         * destructive `set_power` variant
-         * rides follow-up 31 if any future
-         * priority piece surfaces a
-         * "exactly N" semantic. v1 minimum:
+         * [target] EXCEPT it has -1/-0");
+         * the parallel destructive `set_power`
+         * variant ships in follow-up 31
+         * priority 3 — the engine REPLACES
+         * the printed power with
+         * `String(set_power)` (the integer
+         * stringified; the printed power
+         * string is discarded entirely).
+         * The `set_power` arm takes
+         * PRECEDENCE over `add_power` when
+         * both are set (the destructive
+         * variant always wins; parallel to
+         * the `set_color` PRECEDENCE rule).
+         * A parallel `set_power_until_eot`
+         * variant (which would override
+         * the power until end of turn and
+         * then restore the printed power —
+         * a hybrid that mirrors the lane
+         * 75c `become_copy` until-eot
+         * shape) rides follow-up 32 if any
+         * future priority piece surfaces a
+         * until-eot semantic. v1 minimum:
          * a single integer field; no
          * `*` / `X+*` printed-power
          * resolution.
          */
         add_power: z.number().int().optional(),
+        /**
+         * Wave 4.8 follow-up 31 priority 3
+         * (lane 28, piece 3/N) (#2614
+         * follow-up): OPTIONAL `set_power`
+         * sub-arm. The engine REPLACES the
+         * token's `cardData.power` with
+         * `String(set_power)` (the integer
+         * stringified; the printed power
+         * string is discarded entirely).
+         * v1 minimum: an integer. Negative
+         * values are accepted at the Zod
+         * layer (the engine stringifies
+         * them as `"-" + n`; the additive
+         * `add_power` arm also accepts
+         * negative values, so the
+         * destructive variant mirrors
+         * that). The `set_power` arm takes
+         * PRECEDENCE over `add_power` when
+         * both are set (the destructive
+         * variant always wins; parallel to
+         * the `set_color` PRECEDENCE rule).
+         * The `set_power` arm is DISTINCT
+         * from the priority 2 `add_power`
+         * arm (which MERGES with the
+         * printed power). The `set_power`
+         * arm is also distinct from a
+         * parallel `set_power_until_eot`
+         * variant (which would override
+         * the power until end of turn and
+         * then restore the printed power —
+         * a hybrid that rides follow-up
+         * 32).
+         */
+        set_power: z.number().int().optional(),
         /**
          * Wave 4.8 follow-up 30 priority 3
          * (lane 28, piece 3/N) (#2614

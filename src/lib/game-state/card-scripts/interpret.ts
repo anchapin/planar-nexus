@@ -1442,6 +1442,7 @@ function applyEffect(
               add_type?: string[];
               add_supertype?: string[];
               set_color?: string[];
+              set_power?: number;
             };
           }
         ).exceptions;
@@ -1761,8 +1762,19 @@ function applyEffect(
         // value, and rebuilds
         // `cardData.power` as a string. The
         // arm is ADDITIVE — no overwrite
-        // of the printed power.
-        if (exceptions?.add_power !== undefined) {
+        // of the printed power. The
+        // `add_power` consult is SKIPPED
+        // when the follow-up 31 priority
+        // 3 destructive `set_power`
+        // sub-arm is set — the destructive
+        // variant takes PRECEDENCE (parallel
+        // to the `set_color` PRECEDENCE
+        // rule for the additive vs REPLACE
+        // color form).
+        if (
+          exceptions?.add_power !== undefined &&
+          exceptions?.set_power === undefined
+        ) {
           const printedPower = parseInt(rebuilt.power ?? "0", 10);
           const basePower = Number.isFinite(printedPower)
             ? printedPower
@@ -1771,6 +1783,54 @@ function applyEffect(
           rebuilt = {
             ...rebuilt,
             power: String(nextPower),
+          };
+        }
+        // Wave 4.8 follow-up 31 priority 3
+        // (lane 28, piece 3/N) (#2614
+        // follow-up): the `set_power`
+        // destructive REPLACE. When
+        // `effect.exceptions?.set_power` is
+        // set, the engine REPLACES the
+        // token's `cardData.power` with
+        // `String(set_power)` (the integer
+        // stringified; the printed power
+        // string is discarded entirely).
+        // v1 minimum: a non-negative
+        // integer. Negative values are
+        // accepted at the Zod layer (the
+        // engine stringifies them as
+        // `"-" + n`) — the additive
+        // `add_power` arm also accepts
+        // negative values, so the
+        // destructive variant mirrors
+        // that. The `set_power` arm takes
+        // PRECEDENCE over `add_power` when
+        // both are set (the destructive
+        // variant always wins; parallel to
+        // the `set_color` PRECEDENCE rule
+        // for the additive vs REPLACE
+        // color form). The `set_power` arm
+        // is DISTINCT from the priority 2
+        // `add_power` arm (which MERGES
+        // with the printed power). The
+        // `set_power` arm is also distinct
+        // from a parallel
+        // `set_power_until_eot` variant
+        // (which would override the power
+        // until end of turn and then
+        // restore the printed power — a
+        // hybrid that rides follow-up 32).
+        if (exceptions?.set_power !== undefined) {
+          // Destructive REPLACE — the
+          // printed power string is
+          // discarded entirely; the new
+          // power is `String(set_power)`.
+          // The engine stringifies the
+          // integer verbatim (negative
+          // values yield `"-" + n`).
+          rebuilt = {
+            ...rebuilt,
+            power: String(exceptions.set_power),
           };
         }
         // Wave 4.8 follow-up 30 priority 3

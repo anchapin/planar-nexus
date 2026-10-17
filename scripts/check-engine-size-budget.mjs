@@ -855,7 +855,25 @@ const SCOPES = [
     // to the `andPer.perCounterSummed` precedence
     // rule for the additive vs REPLACE form).
     // schema.ts measured at 5213 (+63 over 5150).
-    budgetLines: 5220,
+    //
+    // Bumping 5220 → 5270 to capture the follow-up 31
+    // priority 3 (lane 28, piece 3/N) —
+    // `CopyPermanent.exceptions.set_power` arm
+    // (`z.number().int().optional()` on the existing
+    // `exceptions` shape — a single integer field,
+    // parallel to the follow-up 30 priority 2
+    // `add_power` sub-arm but with destructive
+    // REPLACE semantics) + the priority 2
+    // `add_power` arm docstring expansion
+    // explaining the `set_power` PRECEDENCE (the
+    // destructive variant wins when both are set —
+    // parallel to the `set_color` PRECEDENCE
+    // rule). The parallel `set_power_until_eot`
+    // variant (which would override the power
+    // until end of turn and then restore the
+    // printed power) rides follow-up 32. schema.ts
+    // measured at 5264 (+44 over 5220).
+    budgetLines: 5270,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),
