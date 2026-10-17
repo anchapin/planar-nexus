@@ -1401,6 +1401,34 @@ function applyEffect(
       // | Battle | Tribal`); supertypes
       // (`Legendary` / `Snow` / `Basic`)
       // ride follow-up 31.
+      //
+      // Wave 4.8 follow-up 31 priority 1
+      // (lane 28, piece 1/N) (#2614
+      // follow-up): the `add_supertype`
+      // type-line prepend. When
+      // `effect.exceptions?.add_supertype`
+      // is set, the engine PREPENDS the
+      // listed supertypes to the OUTER
+      // FRONT of the TYPES half of
+      // `cardData.type_line` (the
+      // supertypes come BEFORE the
+      // `add_type` prepend AND BEFORE
+      // the printed types; e.g.
+      // `"Creature — Bear"` +
+      // `add_supertype: ["Legendary"]` +
+      // `add_type: ["Artifact"]` =
+      // `"Legendary Artifact Creature —
+      // Bear"`). The subtypes half is
+      // preserved. The arm is ADDITIVE
+      // — no overwrite of the printed
+      // supertypes. The `add_supertype`
+      // consult runs FIRST (BEFORE the
+      // `add_subtype` + `add_type`
+      // consults — supertype OUTERMOST,
+      // type INNER, then printed types).
+      // v1 minimum: a list of the three
+      // `SUPERTYPES` enum values
+      // (`Legendary` / `Snow` / `Basic`).
       const applyExceptions = (
         cardData: ScryfallCard,
       ): ScryfallCard => {
@@ -1412,6 +1440,9 @@ function applyEffect(
               add_power?: number;
               add_toughness?: number;
               add_type?: string[];
+              add_supertype?: string[];
+              set_color?: string[];
+              set_power?: number;
             };
           }
         ).exceptions;
@@ -1505,6 +1536,96 @@ function applyEffect(
             }
           }
         }
+        // Wave 4.8 follow-up 31 priority 1
+        // (lane 28, piece 1/N) (#2614
+        // follow-up): the `add_supertype`
+        // supertype-prepend — PREPEND the
+        // added supertypes to the OUTER
+        // FRONT of the TYPES half of
+        // `cardData.type_line` (the
+        // supertypes come BEFORE the
+        // `add_type` prepend AND BEFORE
+        // the printed types; e.g.
+        // `"Creature — Bear"` +
+        // `add_supertype: ["Legendary"]` =
+        // `"Legendary Creature — Bear"` —
+        // the supertype is outermost in
+        // the types half, per CR 205.4:
+        // "[Supertypes] [Types] —
+        // [Subtypes]"). The subtypes half
+        // is preserved. The arm is
+        // ADDITIVE — no overwrite of the
+        // printed supertypes. v1 minimum:
+        // a list of the three `SUPERTYPES`
+        // enum values (`Legendary` / `Snow`
+        // / `Basic`) — the standard MTG
+        // supertypes. The `add_supertype`
+        // consult runs AFTER the
+        // `add_subtype` consult (subtype
+        // append INNER) AND AFTER the
+        // `add_type` consult (type prepend
+        // MIDDLE) — the cross-arm order:
+        // supertype OUTERMOST, type
+        // MIDDLE, subtype INNER, then
+        // printed types. The
+        // `add_supertype` consult
+        // operates on the
+        // post-`add_type` type_line (the
+        // post-type-prepend state). The
+        // supertype prepend rebuilds the
+        // entire types half; the
+        // subtypes half (when present)
+        // is preserved verbatim after
+        // the rebuild.
+        if (exceptions?.add_supertype?.length) {
+          const printed = rebuilt.type_line ?? "";
+          const emDashIdx = printed.indexOf("—");
+          const addedSupertypes =
+            exceptions.add_supertype.join(" ");
+          if (emDashIdx < 0) {
+            // No subtypes half — prepend
+            // the added supertypes to the
+            // printed type_line as a whole
+            // (the post-`add_type`
+            // type_line, which may
+            // include added types + the
+            // printed types).
+            rebuilt = {
+              ...rebuilt,
+              type_line:
+                `${addedSupertypes} ${printed}`.trim(),
+            };
+          } else {
+            const typesHalf = printed
+              .slice(0, emDashIdx)
+              .trimEnd();
+            const subtypesHalf = printed
+              .slice(emDashIdx + 1)
+              .trim();
+            // Prepend the added
+            // supertypes to the existing
+            // types half — the supertypes
+            // come BEFORE the existing
+            // types half (which may
+            // contain the `add_type`
+            // prepended card types + the
+            // printed types). Final order:
+            // [addedSupertypes] [addedTypes]
+            // [printedTypes] — [subtypes].
+            const allTypes = `${addedSupertypes} ${typesHalf}`.trim();
+            if (subtypesHalf) {
+              rebuilt = {
+                ...rebuilt,
+                type_line: `${allTypes} — ${subtypesHalf}`,
+              };
+            } else {
+              rebuilt = {
+                ...rebuilt,
+                type_line: allTypes,
+              };
+            }
+          }
+        }
         // Wave 4.8 follow-up 30 priority 1
         // (lane 28, piece 1/N) (#2614
         // follow-up): the `add_color`
@@ -1516,8 +1637,18 @@ function applyEffect(
         // printed + added (one-pass Set
         // transform). The arm is ADDITIVE
         // — no overwrite of the printed
-        // colors.
-        if (exceptions?.add_color?.length) {
+        // colors. The `add_color` consult
+        // is SKIPPED when the follow-up 31
+        // priority 2 destructive `set_color`
+        // sub-arm is set — the destructive
+        // variant takes PRECEDENCE (parallel
+        // to the `andPer.perCounterSummed`
+        // precedence rule for the additive
+        // vs REPLACE form).
+        if (
+          exceptions?.add_color?.length &&
+          !exceptions?.set_color?.length
+        ) {
           const printedColors = Array.isArray(rebuilt.colors)
             ? rebuilt.colors
             : [];
@@ -1561,6 +1692,64 @@ function applyEffect(
             color_identity: mergedIdentity,
           };
         }
+        // Wave 4.8 follow-up 31 priority 2
+        // (lane 28, piece 2/N) (#2614
+        // follow-up): the `set_color`
+        // destructive REPLACE. When
+        // `effect.exceptions?.set_color` is
+        // set, the engine REPLACES the
+        // token's `colors` array with the
+        // listed color names (deduplicated;
+        // declared order preserved) AND
+        // rebuilds `color_identity` to
+        // match the REPLACED list verbatim
+        // (no merge, no append — the printed
+        // colors are discarded; the listed
+        // colors become the entire `colors`
+        // / `color_identity` arrays). v1
+        // minimum: a list of the six `COLOR`
+        // enum values (`white` / `blue` /
+        // `black` / `red` / `green` /
+        // `colorless`). The `set_color` arm
+        // takes PRECEDENCE over `add_color`
+        // when both are set (the destructive
+        // variant always wins; the additive
+        // `add_color` consult is skipped via
+        // the `&& !set_color?.length` guard
+        // above). The `set_color` arm is
+        // DISTINCT from the priority 1
+        // `add_color` arm (which MERGES
+        // with the printed colors). The
+        // `set_color` arm is also distinct
+        // from a parallel `set_color_identity`
+        // variant (which would override the
+        // identity but leave the printed
+        // colors intact — a hybrid that
+        // rides follow-up 32).
+        if (exceptions?.set_color?.length) {
+          // Deduplicate + preserve declared
+          // order — same transform as the
+          // follow-up 30 priority 1
+          // `add_color` consult's
+          // deduplication. The printed
+          // colors are DISCARDED entirely;
+          // the listed colors become the
+          // entire array.
+          const setColors = Array.from(
+            new Set(exceptions.set_color),
+          );
+          // Rebuild `color_identity` to
+          // match the REPLACED `colors`
+          // verbatim (the destructive
+          // variant — the identity is the
+          // same list, not a transform of
+          // the printed identity).
+          rebuilt = {
+            ...rebuilt,
+            colors: setColors,
+            color_identity: setColors,
+          };
+        }
         // Wave 4.8 follow-up 30 priority 2
         // (lane 28, piece 2/N) (#2614
         // follow-up): the `add_power`
@@ -1573,8 +1762,19 @@ function applyEffect(
         // value, and rebuilds
         // `cardData.power` as a string. The
         // arm is ADDITIVE — no overwrite
-        // of the printed power.
-        if (exceptions?.add_power !== undefined) {
+        // of the printed power. The
+        // `add_power` consult is SKIPPED
+        // when the follow-up 31 priority
+        // 3 destructive `set_power`
+        // sub-arm is set — the destructive
+        // variant takes PRECEDENCE (parallel
+        // to the `set_color` PRECEDENCE
+        // rule for the additive vs REPLACE
+        // color form).
+        if (
+          exceptions?.add_power !== undefined &&
+          exceptions?.set_power === undefined
+        ) {
           const printedPower = parseInt(rebuilt.power ?? "0", 10);
           const basePower = Number.isFinite(printedPower)
             ? printedPower
@@ -1583,6 +1783,54 @@ function applyEffect(
           rebuilt = {
             ...rebuilt,
             power: String(nextPower),
+          };
+        }
+        // Wave 4.8 follow-up 31 priority 3
+        // (lane 28, piece 3/N) (#2614
+        // follow-up): the `set_power`
+        // destructive REPLACE. When
+        // `effect.exceptions?.set_power` is
+        // set, the engine REPLACES the
+        // token's `cardData.power` with
+        // `String(set_power)` (the integer
+        // stringified; the printed power
+        // string is discarded entirely).
+        // v1 minimum: a non-negative
+        // integer. Negative values are
+        // accepted at the Zod layer (the
+        // engine stringifies them as
+        // `"-" + n`) — the additive
+        // `add_power` arm also accepts
+        // negative values, so the
+        // destructive variant mirrors
+        // that. The `set_power` arm takes
+        // PRECEDENCE over `add_power` when
+        // both are set (the destructive
+        // variant always wins; parallel to
+        // the `set_color` PRECEDENCE rule
+        // for the additive vs REPLACE
+        // color form). The `set_power` arm
+        // is DISTINCT from the priority 2
+        // `add_power` arm (which MERGES
+        // with the printed power). The
+        // `set_power` arm is also distinct
+        // from a parallel
+        // `set_power_until_eot` variant
+        // (which would override the power
+        // until end of turn and then
+        // restore the printed power — a
+        // hybrid that rides follow-up 32).
+        if (exceptions?.set_power !== undefined) {
+          // Destructive REPLACE — the
+          // printed power string is
+          // discarded entirely; the new
+          // power is `String(set_power)`.
+          // The engine stringifies the
+          // integer verbatim (negative
+          // values yield `"-" + n`).
+          rebuilt = {
+            ...rebuilt,
+            power: String(exceptions.set_power),
           };
         }
         // Wave 4.8 follow-up 30 priority 3

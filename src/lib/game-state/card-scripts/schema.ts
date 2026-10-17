@@ -535,6 +535,21 @@ export const CopyPermanentSchema = z
      * `add_type` exception variants ride
      * follow-up 30 (parallel to the lane
      * 75c parked-out exception variants).
+     *
+     * Wave 4.8 follow-up 31 priority 1 (lane
+     * 28, piece 1/N) (#2614 follow-up): the
+     * parallel `add_supertype` arm (the
+     * `Legendary` / `Snow` / `Basic`
+     * supertype prepend — the OUTERMOST
+     * position in the types half,
+     * PREPENDED to the `add_type` arm AND
+     * the printed types). v1 minimum: a
+     * list of the three `SUPERTYPES` enum
+     * values; the destructive
+     * `set_supertype` variant rides
+     * follow-up 32 if any future priority
+     * piece surfaces a "exactly
+     * [supertypes]" semantic.
      */
     count: z.number().int().min(1).optional(),
     /**
@@ -663,9 +678,82 @@ export const CopyPermanentSchema = z
          * the matching `color_identity` array
          * to include them (the union is
          * deduplicated; declared order is
-         * preserved).
+         * preserved). v1 minimum: a list of
+         * the six `COLOR` enum values
+         * (`white` / `blue` / `black` / `red`
+         * / `green` / `colorless`).
+         *
+         * Wave 4.8 follow-up 31 priority 2
+         * (lane 28, piece 2/N) (#2614
+         * follow-up): the destructive
+         * `set_color` variant — REPLACES the
+         * token's `colors` array with the
+         * listed color names (deduplicated;
+         * declared order preserved) AND
+         * rebuilds `color_identity` to match
+         * the REPLACED list verbatim (no
+         * merge, no append — the printed
+         * colors are discarded; the listed
+         * colors become the entire `colors`
+         * / `color_identity` arrays). The
+         * `set_color` arm takes PRECEDENCE
+         * over `add_color` when both are set
+         * (the destructive variant always
+         * wins; parallel to the
+         * `andPer.perCounterSummed`
+         * precedence rule for the additive
+         * vs REPLACE form). A separate
+         * `set_color_identity` variant (which
+         * overrides the identity but leaves
+         * the printed colors intact — a
+         * `set_color` + `add_color` hybrid)
+         * rides follow-up 32 if any future
+         * priority piece surfaces a need.
          */
         add_color: z
+          .array(
+            z.enum([
+              "white",
+              "blue",
+              "black",
+              "red",
+              "green",
+              "colorless",
+            ]),
+          )
+          .min(1)
+          .optional(),
+        /**
+         * Wave 4.8 follow-up 31 priority 2
+         * (lane 28, piece 2/N) (#2614
+         * follow-up): OPTIONAL `set_color`
+         * sub-arm. The engine REPLACES the
+         * token's `colors` array with the
+         * listed color names (deduplicated;
+         * declared order preserved) AND
+         * rebuilds `color_identity` to match
+         * the REPLACED list verbatim (no
+         * merge, no append — the printed
+         * colors are discarded; the listed
+         * colors become the entire `colors`
+         * / `color_identity` arrays). v1
+         * minimum: a list of the six `COLOR`
+         * enum values. The `set_color` arm
+         * takes PRECEDENCE over `add_color`
+         * when both are set (the destructive
+         * variant always wins). The
+         * `set_color` arm is DISTINCT from
+         * the priority 1 `add_color` arm
+         * (which MERGES with the printed
+         * colors). The `set_color` arm is
+         * also distinct from a parallel
+         * `set_color_identity` variant
+         * (which would override the identity
+         * but leave the printed colors
+         * intact — a hybrid that rides
+         * follow-up 32).
+         */
+        set_color: z
           .array(
             z.enum([
               "white",
@@ -694,16 +782,67 @@ export const CopyPermanentSchema = z
          * `add_power` arm accepts negative
          * integers (Phyrexian Metamorph-style
          * "create a token that's a copy of
-         * [target] EXCEPT it has -1/-0"); a
-         * destructive `set_power` variant
-         * rides follow-up 31 if any future
-         * priority piece surfaces a
-         * "exactly N" semantic. v1 minimum:
+         * [target] EXCEPT it has -1/-0");
+         * the parallel destructive `set_power`
+         * variant ships in follow-up 31
+         * priority 3 — the engine REPLACES
+         * the printed power with
+         * `String(set_power)` (the integer
+         * stringified; the printed power
+         * string is discarded entirely).
+         * The `set_power` arm takes
+         * PRECEDENCE over `add_power` when
+         * both are set (the destructive
+         * variant always wins; parallel to
+         * the `set_color` PRECEDENCE rule).
+         * A parallel `set_power_until_eot`
+         * variant (which would override
+         * the power until end of turn and
+         * then restore the printed power —
+         * a hybrid that mirrors the lane
+         * 75c `become_copy` until-eot
+         * shape) rides follow-up 32 if any
+         * future priority piece surfaces a
+         * until-eot semantic. v1 minimum:
          * a single integer field; no
          * `*` / `X+*` printed-power
          * resolution.
          */
         add_power: z.number().int().optional(),
+        /**
+         * Wave 4.8 follow-up 31 priority 3
+         * (lane 28, piece 3/N) (#2614
+         * follow-up): OPTIONAL `set_power`
+         * sub-arm. The engine REPLACES the
+         * token's `cardData.power` with
+         * `String(set_power)` (the integer
+         * stringified; the printed power
+         * string is discarded entirely).
+         * v1 minimum: an integer. Negative
+         * values are accepted at the Zod
+         * layer (the engine stringifies
+         * them as `"-" + n`; the additive
+         * `add_power` arm also accepts
+         * negative values, so the
+         * destructive variant mirrors
+         * that). The `set_power` arm takes
+         * PRECEDENCE over `add_power` when
+         * both are set (the destructive
+         * variant always wins; parallel to
+         * the `set_color` PRECEDENCE rule).
+         * The `set_power` arm is DISTINCT
+         * from the priority 2 `add_power`
+         * arm (which MERGES with the
+         * printed power). The `set_power`
+         * arm is also distinct from a
+         * parallel `set_power_until_eot`
+         * variant (which would override
+         * the power until end of turn and
+         * then restore the printed power —
+         * a hybrid that rides follow-up
+         * 32).
+         */
+        set_power: z.number().int().optional(),
         /**
          * Wave 4.8 follow-up 30 priority 3
          * (lane 28, piece 3/N) (#2614
@@ -756,17 +895,41 @@ export const CopyPermanentSchema = z
          * `Artifact`, `Enchantment`, `Land`,
          * `Planeswalker`, `Battle`, and
          * `Tribal`; `Tribal` is a legacy
-         * type that some cards still use);
-         * supertypes (`Legendary`, `Snow`,
-         * `Basic`) ride follow-up 31 via
-         * the parallel `add_supertype` arm.
-         * The `add_type` arm is distinct
-         * from `add_subtype` (which appends
-         * to the SUBTYPES half). A
-         * destructive `set_type` variant
-         * rides follow-up 31 if any future
-         * priority piece surfaces a
-         * "exactly [types]" semantic.
+         * type that some cards still use).
+         *
+         * Wave 4.8 follow-up 31 priority 1
+         * (lane 28, piece 1/N) (#2614
+         * follow-up): the parallel
+         * `add_supertype` arm — the engine
+         * PREPENDS the listed supertypes to
+         * the OUTER FRONT of the types half
+         * (the supertypes come BEFORE the
+         * `add_type` prepend AND BEFORE the
+         * printed types; e.g. `"Creature —
+         * Bear"` + `add_supertype:
+         * ["Legendary"]` + `add_type:
+         * ["Artifact"]` = `"Legendary
+         * Artifact Creature — Bear"`). The
+         * subtypes half is preserved. The
+         * `add_supertype` arm is ADDITIVE —
+         * no overwrite of the printed
+         * supertypes. v1 minimum: a list of
+         * the three `SUPERTYPES` enum values
+         * (`Legendary` / `Snow` / `Basic`)
+         * — the standard MTG supertypes from
+         * CR 205.4. Legacy supertype
+         * distinctions (`"World"` /
+         * `"Legendary"`-only /
+         * `"Snow"`-only) ride follow-up 32
+         * if any future priority piece
+         * surfaces a legacy variant. The
+         * `add_type` arm is distinct from
+         * `add_subtype` (which appends to
+         * the SUBTYPES half). A destructive
+         * `set_type` variant rides follow-up
+         * 32 if any future priority piece
+         * surfaces a "exactly [types]"
+         * semantic.
          */
         add_type: z
           .array(
@@ -779,6 +942,51 @@ export const CopyPermanentSchema = z
               "Battle",
               "Tribal",
             ]),
+          )
+          .min(1)
+          .optional(),
+        /**
+         * Wave 4.8 follow-up 31 priority 1
+         * (lane 28, piece 1/N) (#2614
+         * follow-up): OPTIONAL
+         * `add_supertype` sub-arm. The
+         * engine reads the printed
+         * `cardData.type_line` and
+         * PREPENDS the listed supertypes
+         * to the OUTER FRONT of the types
+         * half (the supertypes come BEFORE
+         * the `add_type` prepend AND BEFORE
+         * the printed types; e.g.
+         * `"Creature — Bear"` +
+         * `add_supertype: ["Legendary"]` =
+         * `"Legendary Creature — Bear"` —
+         * the supertype is outermost). The
+         * subtypes half is preserved. The
+         * `add_supertype` arm is ADDITIVE
+         * — no overwrite of the printed
+         * supertypes. v1 minimum: a list
+         * of the three `SUPERTYPES` enum
+         * values (`"Legendary"`,
+         * `"Snow"`, `"Basic"`). The arm
+         * composes with the follow-up 30
+         * priority 4 `add_type` arm
+         * (parallel cross-arm order:
+         * supertype OUTERMOST, type INNER,
+         * then printed types). Legacy
+         * supertype distinctions
+         * (`"World"` / `"Legendary"`-only
+         * / `"Snow"`-only) ride follow-up
+         * 32 if any future priority piece
+         * surfaces a legacy variant. A
+         * destructive `set_supertype`
+         * variant rides follow-up 32 if
+         * any future priority piece
+         * surfaces a "exactly [supertypes]"
+         * semantic.
+         */
+        add_supertype: z
+          .array(
+            z.enum(["Legendary", "Snow", "Basic"]),
           )
           .min(1)
           .optional(),

@@ -157,6 +157,52 @@ export interface CardInstance {
    */
   chosenProtectionFrom: string | null;
   /**
+   * Wave 4.8 follow-up 31 priority 4
+   * (lane 71) (#2614 follow-up): the
+   * per-pair independent
+   * sentinel-resolution map for
+   * the `protectionFrom` static
+   * arm. The map is keyed by the
+   * index of the nested array in
+   * the outer `protectionFrom`
+   * array (the same index that
+   * `refreshScriptedStatics`
+   * iterates). The value is the
+   * chosen protection quality for
+   * that nested array (a string
+   * like `"white"` / `"red"` /
+   * etc.) or `null` when no
+   * sentinel-resolution is needed
+   * for that nested array (the
+   * consult falls back to the
+   * single-instance
+   * `chosenProtectionFrom` field).
+   *
+   * The per-pair map takes
+   * PRECEDENCE over the
+   * single-instance
+   * `chosenProtectionFrom` field
+   * when set, the index is
+   * present, and the value is
+   * non-null. The per-pair map is
+   * OPTIONAL (parallel to
+   * `chosenTypeAdditions?` /
+   * `chosenColorAdditions?` — set
+   * by a future `resolveEnterChoice`
+   * per-pair stamping path; for
+   * v1, the test file stamps the
+   * map directly). A parallel
+   * `chosenProtectionFromPerPairWithLiteral`
+   * variant (which would resolve
+   * the `"chosen"` entry
+   * differently when the same
+   * nested array also has literal
+   * qualities) rides follow-up 32
+   * if any future priority piece
+   * surfaces a need.
+   */
+  chosenProtectionFromPerPair?: Record<number, string | null>;
+  /**
    * Wave 4.8 lane 52 (#2614 follow-up): the per-instance
    * subtype additions granted by a
    * `StaticSchema.affects.add_creature_type` static on the

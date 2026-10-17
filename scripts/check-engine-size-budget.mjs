@@ -816,7 +816,64 @@ const SCOPES = [
     // `set_type` variant that also rides
     // follow-up 31. schema.ts measured at 5056
     // (+71 over 4985).
-    budgetLines: 5060,
+    //
+    // Bumping 5060 → 5150 to capture the follow-up 31
+    // priority 1 (lane 28, piece 1/N) —
+    // `CopyPermanent.exceptions.add_supertype` arm
+    // (`z.array(z.enum(["Legendary", "Snow",
+    // "Basic"])).min(1).optional()` on the existing
+    // `exceptions` shape — the three `SUPERTYPES`
+    // enum values: `Legendary` / `Snow` / `Basic`,
+    // the standard MTG supertypes from CR 205.4) +
+    // parent `exceptions` docstring expansion
+    // explaining the supertype prepend (the
+    // supertypes-precede-added-types-precede-
+    // printed-types rebuild, per CR 205.4:
+    // "[Supertypes] [Types] — [Subtypes]"), the
+    // parallel `add_type` + `add_subtype` arm
+    // composition (supertype OUTERMOST, type
+    // MIDDLE, subtype INNER), the destructive
+    // `set_supertype` variant that rides follow-up
+    // 32, and the legacy supertype distinctions
+    // (`World` / `Legendary`-only / `Snow`-only)
+    // that also ride follow-up 32. schema.ts
+    // measured at 5140 (+80 over 5060).
+    //
+    // Bumping 5150 → 5220 to capture the follow-up 31
+    // priority 2 (lane 28, piece 2/N) —
+    // `CopyPermanent.exceptions.set_color` arm
+    // (`z.array(z.enum(["white", "blue", "black",
+    // "red", "green", "colorless"])).min(1).
+    // optional()` on the existing `exceptions` shape
+    // — the six `COLOR` enum values, parallel to
+    // the follow-up 30 priority 1 `add_color`
+    // sub-arm but with destructive REPLACE
+    // semantics) + the priority 1 `add_color` arm
+    // docstring expansion explaining the
+    // `set_color` PRECEDENCE (the destructive
+    // variant wins when both are set — parallel
+    // to the `andPer.perCounterSummed` precedence
+    // rule for the additive vs REPLACE form).
+    // schema.ts measured at 5213 (+63 over 5150).
+    //
+    // Bumping 5220 → 5270 to capture the follow-up 31
+    // priority 3 (lane 28, piece 3/N) —
+    // `CopyPermanent.exceptions.set_power` arm
+    // (`z.number().int().optional()` on the existing
+    // `exceptions` shape — a single integer field,
+    // parallel to the follow-up 30 priority 2
+    // `add_power` sub-arm but with destructive
+    // REPLACE semantics) + the priority 2
+    // `add_power` arm docstring expansion
+    // explaining the `set_power` PRECEDENCE (the
+    // destructive variant wins when both are set —
+    // parallel to the `set_color` PRECEDENCE
+    // rule). The parallel `set_power_until_eot`
+    // variant (which would override the power
+    // until end of turn and then restore the
+    // printed power) rides follow-up 32. schema.ts
+    // measured at 5264 (+44 over 5220).
+    budgetLines: 5270,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

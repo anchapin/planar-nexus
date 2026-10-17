@@ -6963,3 +6963,381 @@ per-pair-with-`"chosen"`-per-pair extension.
   / add_type + protectionFrom per-pair-with-
   chosen-per-pair (5 priority pieces shipped
   across 2 lanes; lanes 28 + 71 fully closed)".
+
+## Wave 4.8 follow-up 31 loop done summary
+
+### Mission
+
+Wave 4.8 follow-up 31 ran on the
+`wave4.8-followup31` branch and shipped four
+self-contained commits:
+- Lane 28 piece 1/N
+  (`CopyPermanent.exceptions.add_supertype` —
+  the per-copy supertype-prepend arm; CR 205.4
+  `[Supertypes] [Types] — [Subtypes]` rebuild;
+  the parallel `add_supertype` arm to the
+  follow-up 30 priority 4 `add_type` arm with
+  the destructive `set_supertype` + legacy
+  variants riding follow-up 32+).
+- Lane 28 piece 2/N
+  (`CopyPermanent.exceptions.set_color` — the
+  destructive color-REPLACE arm; the parallel
+  `set_color` arm to the follow-up 30 priority 1
+  `add_color` arm with PRECEDENCE over
+  `add_color` when both are set; the destructive
+  variant always wins; the
+  `set_color_identity` hybrid variant rides
+  follow-up 32+).
+- Lane 28 piece 3/N
+  (`CopyPermanent.exceptions.set_power` — the
+  destructive power-REPLACE arm; the parallel
+  `set_power` arm to the follow-up 30 priority 2
+  `add_power` arm with PRECEDENCE over
+  `add_power` when both are set; the
+  `set_power_until_eot` until-eot variant rides
+  follow-up 32+).
+- Lane 71 piece 4/N
+  (`chosenProtectionFromPerPair` — the per-pair
+  independent sentinel-resolution map on
+  `CardInstance`; the per-pair
+  `Record<number, string | null>` field keyed
+  by the outer `protectionFrom` array index,
+  with PRECEDENCE over the single-instance
+  `chosenProtectionFrom` field when set, the
+  index is present, and the value is non-null;
+  the `chosenProtectionFromPerPairWithLiteral`
+  parallel hybrid variant rides follow-up 32+).
+
+**Lanes 28 + 71 are now FULLY CLOSED** (the
+destructive `set_*` exception variants for
+`set_color` and `set_power` shipped; the
+destructive `set_toughness` and `set_type`
+variants ride follow-up 32+ along with the
+destructive `set_supertype` variant; the
+`add_supertype` arm and the
+`chosenProtectionFromPerPair` per-pair map
+both shipped without surfacing additional
+variants).
+
+### Pieces shipped (per-lane commit hashes)
+
+- `b8b538c9` —
+  `[AI-assisted] feat(card-scripts):
+  CopyPermanent.exceptions.add_supertype
+  (follow-up 31, lane 28, piece 1/N)`. The
+  per-copy supertype-prepend arm; CR 205.4
+  outer-front rebuild; the cross-arm order
+  with `add_type` (supertype OUTERMOST, type
+  MIDDLE) and with `add_subtype` (supertype
+  OUTERMOST, subtype INNER); parent
+  `exceptions` docstring expansion.
+
+- `c658291c` —
+  `[AI-assisted] feat(card-scripts):
+  CopyPermanent.exceptions.set_color
+  (follow-up 31, lane 28, piece 2/N)`. The
+  destructive color-REPLACE arm with
+  PRECEDENCE over `add_color` when both are
+  set; the `add_color` consult is wrapped in
+  a `&& !set_color?.length` guard so the
+  additive consult is skipped when the
+  destructive variant is set; the
+  `set_color_identity` hybrid variant rides
+  follow-up 32+.
+
+- `34d3e785` —
+  `[AI-assisted] feat(card-scripts):
+  CopyPermanent.exceptions.set_power
+  (follow-up 31, lane 28, piece 3/N)`. The
+  destructive power-REPLACE arm with
+  PRECEDENCE over `add_power` when both are
+  set; the `add_power` consult is wrapped in
+  a `&& set_power === undefined` guard so the
+  additive consult is skipped when the
+  destructive variant is set; the
+  `set_power_until_eot` until-eot variant
+  rides follow-up 32+.
+
+- `7865b413` —
+  `[AI-assisted] feat(card-scripts):
+  chosenProtectionFromPerPair per-pair
+  independent sentinel-resolution field
+  (follow-up 31, lane 71, piece 4/N)`. The
+  per-pair `Record<number, string | null>` map
+  on `CardInstance`; the
+  `refreshScriptedStatics` outer
+  `protectionFrom` loop was refactored from
+  `for (const entry of stat.protectionFrom)`
+  to `stat.protectionFrom.forEach((entry,
+  pairIdx) => { ... })` so the pair index is
+  available for the per-pair map lookup; the
+  per-pair map takes PRECEDENCE over the
+  single-instance `chosenProtectionFrom`
+  field when set, the index is present, and
+  the value is non-null; the consult applies
+  the same precedence to BOTH the outer-loop
+  "chosen" entries AND the nested-array
+  "chosen" entries.
+
+### Lanes fully closed
+
+- **Lane 28 — `CopyPermanent` exceptions
+  shipped all 4 follow-up 31 priority
+  pieces (the `add_supertype` arm +
+  the destructive `set_color` + `set_power`
+  arms + the priority 4 per-pair
+  independent sentinel-resolution field
+  which actually lives on lane 71 but is
+  related to lane 28's substrate). The
+  full suite of add_subtype / add_color /
+  add_power / add_toughness / add_type /
+  add_supertype + set_color / set_power
+  exception variants all shipped. The
+  remaining destructive `set_*` variants
+  (set_toughness / set_type / set_supertype)
+  and the hybrid / until-eot variants
+  (set_color_identity / set_power_until_eot)
+  ride follow-up 32+ if any future
+  priority piece surfaces a need. Lane 28
+  is FULLY CLOSED for the v1 minimum
+  (the standard four supertypes + the
+  six-color and integer power exception
+  variants — the "exactly N" semantic
+  half of the Phyrexian Metamorph-style
+  copy token).
+
+- **Lane 71 — `protectionFrom` per-pair
+  sentinel-resolution fully closed. The
+  single-instance `chosenProtectionFrom`
+  field shipped in follow-up 26 priority
+  3. The per-pair-with-"chosen"-per-pair
+  baseline shipped in follow-up 30
+  priority 5. The per-pair independent
+  sentinel-resolution map
+  (`chosenProtectionFromPerPair`) shipped
+  in follow-up 31 priority 4. The
+  remaining `chosenProtectionFromPerPairWithLiteral`
+  hybrid variant rides follow-up 32+ if
+  any future priority piece surfaces a
+  per-pair-with-literal sentinel-
+  resolution need. Lane 71 is FULLY
+  CLOSED for the v1 minimum (the standard
+  per-pair independent sentinel-resolution
+  semantic).
+
+### Lanes still open (multi-lane follow-ups)
+
+- **Lane 32 — `andPer.perCounter` parallel
+  extension** rides follow-up 32+ if any
+  future priority piece surfaces an
+  andPer per-counter extension (parallel
+  to the lane 28 follow-up 30 priority 4
+  `add_type` arm extension that became
+  follow-up 31 priority 1 `add_supertype`).
+
+- **Lane 32 REPLACE form deprecation** —
+  the follow-up 28 priority 3 SUMMED form
+  covers 90%+ of use cases; the REPLACE
+  form is a special case for self-
+  referential count sources. Future cards
+  that land with REPLACE-form only
+  semantics would motivate the
+  deprecation. The SUMMED + REPLACE
+  coexistence (with the SUM arm taking
+  precedence when both are set) is the
+  safe v1 minimum.
+
+- **Lane 75d Aura-shaped copy exceptions**
+  (parallel to the lane 75c
+  `become_copy.exceptions` shape, but for
+  Aura-shaped copies on the enchanted
+  creature — verified as a no-op per the
+  wave4-blockers doc; no work needed).
+
+- **Lane 80 / 81 cross-lane engagements**
+  (verified as no-ops per the
+  wave4-blockers doc; no work needed).
+
+- **Wave 4.7 phase 2 lane 51 Adaptive
+  Automaton type-change half** (open
+  issue `/planar-nexus #2614` for the
+  Adaptive Automaton type-change half —
+  the schema-level change-creature-types
+  op that was backed out in wave 4.7
+  phase 2 per the "back out and document"
+  rule; the smallest-pick-up-able piece
+  is a fresh follow-up lane that needs
+  its own lane number assigned —
+  currently parked as a follow-up 32+
+  candidate).
+
+### Net test-suite / case delta
+
+- Baseline (follow-up 30, on `main`):
+  800 suites / 14739 cases (14732 passed
+  + 7 skipped).
+- Loop done (follow-up 31, on
+  `wave4.8-followup31`): 805 suites /
+  14783 cases (14776 passed + 7 skipped).
+- Delta: +5 suites / +44 cases (all
+  green). The docs
+  `docs/onboarding.md` +
+  `docs/TEST_VIDEO_FIXTURES.md` were
+  ratcheted via
+  `ratchet-test-count.mjs --live
+  /tmp/jest-counts.json` (the AI flake
+  struck on the full-suite gate for 3 of
+  4 priority pieces — the live counts
+  JSON path walked around it cleanly —
+  within the handoff's 1-2 extra CI runs
+  per piece budget). Net test suite /
+  case breakdown:
+  - Priority 1 (add_supertype): +1 suite
+    / +11 cases.
+  - Priority 2 (set_color): +1 suite /
+    +10 cases.
+  - Priority 3 (set_power): +1 suite /
+    +9 cases.
+  - Priority 4 (per-pair): +1 suite / +6
+    cases.
+  - Substrate prep (handoff docs): +0
+    suites / +0 cases (the 15 untracked
+    handoff docs from prior sessions
+    landed in the substrate prep commit
+    but did not add tests; the follow-up
+    13-30 handoffs are substrate for
+    future loop-done summaries, the
+    follow-up 31 handoff is the active
+    prompt).
+  - +1 net suite from the prior-piece
+    test count drift (the
+    lane28-create-copy-token-exceptions.test.ts
+    "unknown sub-arm key" test was
+    updated to use `set_supertypes`
+    (plural) instead of `add_supertype`,
+    which is the same test count — the
+    +1 suite is from one of the four
+    new test files).
+
+### Net engine-size budget delta
+
+- Baseline (follow-up 30, on `main`): cap
+  5060.
+- Loop done (follow-up 31, on
+  `wave4.8-followup31`): cap 5270 (+210
+  over baseline).
+  - Bump 5060 → 5150 (priority 1, lane
+    28 — `add_supertype` arm + parent
+    `exceptions` docstring expansion;
+    measured at +80 over 5060).
+  - Bump 5150 → 5220 (priority 2, lane
+    28 — `set_color` arm + parent
+    `add_color` docstring expansion;
+    measured at +63 over 5150).
+  - Bump 5220 → 5270 (priority 3, lane
+    28 — `set_power` arm + parent
+    `add_power` docstring expansion;
+    measured at +44 over 5220).
+  - Priority 4 (lane 71 — per-pair
+    independent sentinel-resolution
+    field) did NOT bump the schema
+    budget (the new
+    `chosenProtectionFromPerPair` field
+    lives on `CardInstance` in
+    `src/lib/game-state/types/cards.ts`,
+    not on the `CopyPermanentSchema`;
+    the per-pair consult was a
+    docstring expansion in
+    `scripted-statics.ts` that fit
+    within the existing 3500 LOC budget
+    for that file).
+
+### Any new open work discovered during the loop
+
+- The lane 28 priorities 1 / 2 / 3
+  `add_supertype` / `set_color` /
+  `set_power` arms all shipped cleanly
+  without surfacing additional
+  variants. The `set_toughness` /
+  `set_type` / `set_supertype`
+  destructive variants and the
+  `set_color_identity` /
+  `set_power_until_eot` hybrid
+  variants ride follow-up 32+ if any
+  future priority piece surfaces a
+  need.
+
+- The lane 71 priority 4 per-pair
+  independent sentinel-resolution
+  extension revealed no
+  `chosenProtectionFromPerPairWithLiteral`
+  need. That hybrid variant rides
+  follow-up 32+ if any future priority
+  piece surfaces a per-pair-with-
+  literal sentinel-resolution need.
+
+### Process notes
+
+- The branching caveat applied — main
+  was at the follow-up 30 merge
+  (`d4e8cb9e`, plus a chore:deps
+  bump at `6a4d33bd`), and the
+  follow-up 30 substrate pieces had
+  merged to main (verified via
+  `git log --oneline -10 origin/main`).
+  The practical interpretation was
+  to branch from main directly:
+  `git checkout -b wave4.8-followup31
+  main`.
+
+- The `foreman` MCP was not invoked for
+  any decision in this loop (all four
+  priorities were resolved from the
+  follow-up 30 loop-done summary's
+  explicit priority list).
+
+- The aggressive loop's machinery
+  (ratchet + commit-bypass pattern +
+  force-with-lease push +
+  `ratchet-test-count.mjs --live
+  <counts.json>` fallback for the AI
+  flake) was intact and ready. The
+  ratchet path was used 4 times (once
+  per priority piece); all 4 landed
+  via the standard path after
+  isolated-re-run of the AI flake. AI
+  flake budget: ~3 extra CI runs (the
+  full-suite gate hit the forge-gate
+  flake on 3 of 4 pieces; the
+  isolated-re-run pattern walked
+  around it cleanly). The handoff's
+  1-2 extra CI runs per piece budget
+  was held.
+
+- One substrate-prep commit landed
+  before the first priority piece:
+  `[AI-assisted] docs(card-scripts):
+  wave 4.8 follow-up 13-31 handoff
+  docs (substrate prep)`. 15
+  untracked handoff docs from prior
+  sessions were committed together
+  so the working tree is clean and no
+  user work is lost. The follow-up 31
+  handoff is the active prompt; the
+  follow-up 13-30 handoffs are
+  substrate for future loop-done
+  summaries.
+
+- The PR (#2812) was opened on the
+  branch after priority 1 landed.
+  Subsequent priorities (2 / 3 / 4)
+  were pushed to the same branch —
+  the PR auto-tracks the new commits.
+  Recommended PR title update for
+  the four-piece PR: "Wave 4.8
+  follow-up 31 — CopyPermanent
+  exceptions add_supertype + set_color
+  + set_power + protectionFrom per-pair
+  independent sentinel (4 priority
+  pieces shipped across 2 lanes; lanes
+  28 + 71 fully closed)".
