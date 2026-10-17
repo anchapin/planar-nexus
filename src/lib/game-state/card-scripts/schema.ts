@@ -535,6 +535,21 @@ export const CopyPermanentSchema = z
      * `add_type` exception variants ride
      * follow-up 30 (parallel to the lane
      * 75c parked-out exception variants).
+     *
+     * Wave 4.8 follow-up 31 priority 1 (lane
+     * 28, piece 1/N) (#2614 follow-up): the
+     * parallel `add_supertype` arm (the
+     * `Legendary` / `Snow` / `Basic`
+     * supertype prepend — the OUTERMOST
+     * position in the types half,
+     * PREPENDED to the `add_type` arm AND
+     * the printed types). v1 minimum: a
+     * list of the three `SUPERTYPES` enum
+     * values; the destructive
+     * `set_supertype` variant rides
+     * follow-up 32 if any future priority
+     * piece surfaces a "exactly
+     * [supertypes]" semantic.
      */
     count: z.number().int().min(1).optional(),
     /**
@@ -756,17 +771,41 @@ export const CopyPermanentSchema = z
          * `Artifact`, `Enchantment`, `Land`,
          * `Planeswalker`, `Battle`, and
          * `Tribal`; `Tribal` is a legacy
-         * type that some cards still use);
-         * supertypes (`Legendary`, `Snow`,
-         * `Basic`) ride follow-up 31 via
-         * the parallel `add_supertype` arm.
-         * The `add_type` arm is distinct
-         * from `add_subtype` (which appends
-         * to the SUBTYPES half). A
-         * destructive `set_type` variant
-         * rides follow-up 31 if any future
-         * priority piece surfaces a
-         * "exactly [types]" semantic.
+         * type that some cards still use).
+         *
+         * Wave 4.8 follow-up 31 priority 1
+         * (lane 28, piece 1/N) (#2614
+         * follow-up): the parallel
+         * `add_supertype` arm — the engine
+         * PREPENDS the listed supertypes to
+         * the OUTER FRONT of the types half
+         * (the supertypes come BEFORE the
+         * `add_type` prepend AND BEFORE the
+         * printed types; e.g. `"Creature —
+         * Bear"` + `add_supertype:
+         * ["Legendary"]` + `add_type:
+         * ["Artifact"]` = `"Legendary
+         * Artifact Creature — Bear"`). The
+         * subtypes half is preserved. The
+         * `add_supertype` arm is ADDITIVE —
+         * no overwrite of the printed
+         * supertypes. v1 minimum: a list of
+         * the three `SUPERTYPES` enum values
+         * (`Legendary` / `Snow` / `Basic`)
+         * — the standard MTG supertypes from
+         * CR 205.4. Legacy supertype
+         * distinctions (`"World"` /
+         * `"Legendary"`-only /
+         * `"Snow"`-only) ride follow-up 32
+         * if any future priority piece
+         * surfaces a legacy variant. The
+         * `add_type` arm is distinct from
+         * `add_subtype` (which appends to
+         * the SUBTYPES half). A destructive
+         * `set_type` variant rides follow-up
+         * 32 if any future priority piece
+         * surfaces a "exactly [types]"
+         * semantic.
          */
         add_type: z
           .array(
@@ -779,6 +818,51 @@ export const CopyPermanentSchema = z
               "Battle",
               "Tribal",
             ]),
+          )
+          .min(1)
+          .optional(),
+        /**
+         * Wave 4.8 follow-up 31 priority 1
+         * (lane 28, piece 1/N) (#2614
+         * follow-up): OPTIONAL
+         * `add_supertype` sub-arm. The
+         * engine reads the printed
+         * `cardData.type_line` and
+         * PREPENDS the listed supertypes
+         * to the OUTER FRONT of the types
+         * half (the supertypes come BEFORE
+         * the `add_type` prepend AND BEFORE
+         * the printed types; e.g.
+         * `"Creature — Bear"` +
+         * `add_supertype: ["Legendary"]` =
+         * `"Legendary Creature — Bear"` —
+         * the supertype is outermost). The
+         * subtypes half is preserved. The
+         * `add_supertype` arm is ADDITIVE
+         * — no overwrite of the printed
+         * supertypes. v1 minimum: a list
+         * of the three `SUPERTYPES` enum
+         * values (`"Legendary"`,
+         * `"Snow"`, `"Basic"`). The arm
+         * composes with the follow-up 30
+         * priority 4 `add_type` arm
+         * (parallel cross-arm order:
+         * supertype OUTERMOST, type INNER,
+         * then printed types). Legacy
+         * supertype distinctions
+         * (`"World"` / `"Legendary"`-only
+         * / `"Snow"`-only) ride follow-up
+         * 32 if any future priority piece
+         * surfaces a legacy variant. A
+         * destructive `set_supertype`
+         * variant rides follow-up 32 if
+         * any future priority piece
+         * surfaces a "exactly [supertypes]"
+         * semantic.
+         */
+        add_supertype: z
+          .array(
+            z.enum(["Legendary", "Snow", "Basic"]),
           )
           .min(1)
           .optional(),

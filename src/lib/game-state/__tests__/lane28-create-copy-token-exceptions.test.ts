@@ -309,9 +309,12 @@ describe("Wave 4.8 follow-up 29 priority 3 piece 4/4 — CopyPermanent.exception
       // follow-up 30 priority 3; `add_type`
       // shipped in follow-up 30 priority 4.
       // `add_supertype` (Legendary / Snow /
-      // Basic supertype prepend) and the
+      // Basic supertype prepend) shipped in
+      // follow-up 31 priority 1; the
       // destructive `set_*` variants ride
-      // follow-up 31.
+      // follow-up 32. A typo like
+      // `set_supertypes` (plural) is a
+      // different key and is rejected.
       expect(() =>
         CardScriptSchema.parse({
           name: HOST_NAME,
@@ -321,7 +324,7 @@ describe("Wave 4.8 follow-up 29 priority 3 piece 4/4 — CopyPermanent.exception
               op: "CopyPermanent",
               target: { kind: "filter", value: "creature" },
               controller: "any",
-              exceptions: { add_supertype: ["Legendary"] },
+              exceptions: { set_supertypes: ["Legendary"] },
             },
           ],
         }),

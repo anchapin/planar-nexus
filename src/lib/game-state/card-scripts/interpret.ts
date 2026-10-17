@@ -1401,6 +1401,34 @@ function applyEffect(
       // | Battle | Tribal`); supertypes
       // (`Legendary` / `Snow` / `Basic`)
       // ride follow-up 31.
+      //
+      // Wave 4.8 follow-up 31 priority 1
+      // (lane 28, piece 1/N) (#2614
+      // follow-up): the `add_supertype`
+      // type-line prepend. When
+      // `effect.exceptions?.add_supertype`
+      // is set, the engine PREPENDS the
+      // listed supertypes to the OUTER
+      // FRONT of the TYPES half of
+      // `cardData.type_line` (the
+      // supertypes come BEFORE the
+      // `add_type` prepend AND BEFORE
+      // the printed types; e.g.
+      // `"Creature — Bear"` +
+      // `add_supertype: ["Legendary"]` +
+      // `add_type: ["Artifact"]` =
+      // `"Legendary Artifact Creature —
+      // Bear"`). The subtypes half is
+      // preserved. The arm is ADDITIVE
+      // — no overwrite of the printed
+      // supertypes. The `add_supertype`
+      // consult runs FIRST (BEFORE the
+      // `add_subtype` + `add_type`
+      // consults — supertype OUTERMOST,
+      // type INNER, then printed types).
+      // v1 minimum: a list of the three
+      // `SUPERTYPES` enum values
+      // (`Legendary` / `Snow` / `Basic`).
       const applyExceptions = (
         cardData: ScryfallCard,
       ): ScryfallCard => {
@@ -1412,6 +1440,7 @@ function applyEffect(
               add_power?: number;
               add_toughness?: number;
               add_type?: string[];
+              add_supertype?: string[];
             };
           }
         ).exceptions;
@@ -1492,6 +1521,96 @@ function applyEffect(
             // Prepend the added types to
             // the existing types half.
             const allTypes = `${addedTypes} ${typesHalf}`.trim();
+            if (subtypesHalf) {
+              rebuilt = {
+                ...rebuilt,
+                type_line: `${allTypes} — ${subtypesHalf}`,
+              };
+            } else {
+              rebuilt = {
+                ...rebuilt,
+                type_line: allTypes,
+              };
+            }
+          }
+        }
+        // Wave 4.8 follow-up 31 priority 1
+        // (lane 28, piece 1/N) (#2614
+        // follow-up): the `add_supertype`
+        // supertype-prepend — PREPEND the
+        // added supertypes to the OUTER
+        // FRONT of the TYPES half of
+        // `cardData.type_line` (the
+        // supertypes come BEFORE the
+        // `add_type` prepend AND BEFORE
+        // the printed types; e.g.
+        // `"Creature — Bear"` +
+        // `add_supertype: ["Legendary"]` =
+        // `"Legendary Creature — Bear"` —
+        // the supertype is outermost in
+        // the types half, per CR 205.4:
+        // "[Supertypes] [Types] —
+        // [Subtypes]"). The subtypes half
+        // is preserved. The arm is
+        // ADDITIVE — no overwrite of the
+        // printed supertypes. v1 minimum:
+        // a list of the three `SUPERTYPES`
+        // enum values (`Legendary` / `Snow`
+        // / `Basic`) — the standard MTG
+        // supertypes. The `add_supertype`
+        // consult runs AFTER the
+        // `add_subtype` consult (subtype
+        // append INNER) AND AFTER the
+        // `add_type` consult (type prepend
+        // MIDDLE) — the cross-arm order:
+        // supertype OUTERMOST, type
+        // MIDDLE, subtype INNER, then
+        // printed types. The
+        // `add_supertype` consult
+        // operates on the
+        // post-`add_type` type_line (the
+        // post-type-prepend state). The
+        // supertype prepend rebuilds the
+        // entire types half; the
+        // subtypes half (when present)
+        // is preserved verbatim after
+        // the rebuild.
+        if (exceptions?.add_supertype?.length) {
+          const printed = rebuilt.type_line ?? "";
+          const emDashIdx = printed.indexOf("—");
+          const addedSupertypes =
+            exceptions.add_supertype.join(" ");
+          if (emDashIdx < 0) {
+            // No subtypes half — prepend
+            // the added supertypes to the
+            // printed type_line as a whole
+            // (the post-`add_type`
+            // type_line, which may
+            // include added types + the
+            // printed types).
+            rebuilt = {
+              ...rebuilt,
+              type_line:
+                `${addedSupertypes} ${printed}`.trim(),
+            };
+          } else {
+            const typesHalf = printed
+              .slice(0, emDashIdx)
+              .trimEnd();
+            const subtypesHalf = printed
+              .slice(emDashIdx + 1)
+              .trim();
+            // Prepend the added
+            // supertypes to the existing
+            // types half — the supertypes
+            // come BEFORE the existing
+            // types half (which may
+            // contain the `add_type`
+            // prepended card types + the
+            // printed types). Final order:
+            // [addedSupertypes] [addedTypes]
+            // [printedTypes] — [subtypes].
+            const allTypes = `${addedSupertypes} ${typesHalf}`.trim();
             if (subtypesHalf) {
               rebuilt = {
                 ...rebuilt,

@@ -816,7 +816,29 @@ const SCOPES = [
     // `set_type` variant that also rides
     // follow-up 31. schema.ts measured at 5056
     // (+71 over 4985).
-    budgetLines: 5060,
+    //
+    // Bumping 5060 → 5150 to capture the follow-up 31
+    // priority 1 (lane 28, piece 1/N) —
+    // `CopyPermanent.exceptions.add_supertype` arm
+    // (`z.array(z.enum(["Legendary", "Snow",
+    // "Basic"])).min(1).optional()` on the existing
+    // `exceptions` shape — the three `SUPERTYPES`
+    // enum values: `Legendary` / `Snow` / `Basic`,
+    // the standard MTG supertypes from CR 205.4) +
+    // parent `exceptions` docstring expansion
+    // explaining the supertype prepend (the
+    // supertypes-precede-added-types-precede-
+    // printed-types rebuild, per CR 205.4:
+    // "[Supertypes] [Types] — [Subtypes]"), the
+    // parallel `add_type` + `add_subtype` arm
+    // composition (supertype OUTERMOST, type
+    // MIDDLE, subtype INNER), the destructive
+    // `set_supertype` variant that rides follow-up
+    // 32, and the legacy supertype distinctions
+    // (`World` / `Legendary`-only / `Snow`-only)
+    // that also ride follow-up 32. schema.ts
+    // measured at 5140 (+80 over 5060).
+    budgetLines: 5150,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),
