@@ -1245,6 +1245,43 @@ function applyEffect(
       // [X]" (Phyrexian Metamorph), and "named-copy" /
       // "choose-creature-type-copy" filters.
       //
+      // Wave 4.8 follow-up 32 priority 1 (lane 28,
+      // piece 1/N) (#2614 follow-up 32): the
+      // `set_toughness` destructive REPLACE arm.
+      // When `effect.exceptions?.set_toughness` is
+      // set, the engine REPLACES the token's
+      // `cardData.toughness` with
+      // `String(set_toughness)`. The merge is
+      // DESTRUCTIVE — the printed toughness string
+      // is discarded entirely; no integer parse
+      // (the additive variant does the integer
+      // parse, the destructive variant does not).
+      // The `set_toughness` arm takes PRECEDENCE
+      // over the parallel `add_toughness` arm
+      // (REPLACE wins over ADD — parallel to the
+      // `set_color` / `add_color` PRECEDENCE rule
+      // and the `set_power` / `add_power` PRECEDENCE
+      // rule). The `set_toughness` arm is the
+      // complement to the wave 4.8 follow-up 29
+      // `set_power` arm (parallel destructive P/T
+      // merge — each arm consumes its own half of
+      // the printed P/T independently; the engine
+      // does not require both arms to be set). v1
+      // minimum: a single integer field; no `*` /
+      // `X+*` printed-toughness resolution (the
+      // destructive variant bypasses the printed
+      // toughness entirely, so the integer is the
+      // literal final toughness — `set_toughness:
+      // 1` yields `"1"` regardless of the printed
+      // toughness). The arm accepts negative
+      // integers (`set_toughness: -1` yields `"-1"`).
+      // The `set_toughness` arm is distinct from a
+      // parallel `set_toughness_until_eot` variant
+      // (which would set the toughness until end of
+      // turn and then restore the printed toughness
+      // — a hybrid that rides a future follow-up
+      // lane).
+      //
       // Wave 4.8 follow-up 29 priority 1 (lane 28,
       // piece 2/4) (#2614 follow-up): the
       // discriminated-union target selector. The
@@ -1429,9 +1466,7 @@ function applyEffect(
       // v1 minimum: a list of the three
       // `SUPERTYPES` enum values
       // (`Legendary` / `Snow` / `Basic`).
-      const applyExceptions = (
-        cardData: ScryfallCard,
-      ): ScryfallCard => {
+      const applyExceptions = (cardData: ScryfallCard): ScryfallCard => {
         const exceptions = (
           effect as {
             exceptions?: {
@@ -1443,6 +1478,7 @@ function applyEffect(
               add_supertype?: string[];
               set_color?: string[];
               set_power?: number;
+              set_toughness?: number;
             };
           }
         ).exceptions;
@@ -1466,9 +1502,7 @@ function applyEffect(
             };
           } else {
             const typesHalf = printed.slice(0, emDashIdx).trimEnd();
-            const subtypesHalf = printed
-              .slice(emDashIdx + 1)
-              .trim();
+            const subtypesHalf = printed.slice(emDashIdx + 1).trim();
             const existingSubtypes = subtypesHalf
               ? subtypesHalf.split(/\s+/).filter(Boolean)
               : [];
@@ -1517,9 +1551,7 @@ function applyEffect(
             };
           } else {
             const typesHalf = printed.slice(0, emDashIdx).trimEnd();
-            const subtypesHalf = printed
-              .slice(emDashIdx + 1)
-              .trim();
+            const subtypesHalf = printed.slice(emDashIdx + 1).trim();
             // Prepend the added types to
             // the existing types half.
             const allTypes = `${addedTypes} ${typesHalf}`.trim();
@@ -1580,8 +1612,7 @@ function applyEffect(
         if (exceptions?.add_supertype?.length) {
           const printed = rebuilt.type_line ?? "";
           const emDashIdx = printed.indexOf("—");
-          const addedSupertypes =
-            exceptions.add_supertype.join(" ");
+          const addedSupertypes = exceptions.add_supertype.join(" ");
           if (emDashIdx < 0) {
             // No subtypes half — prepend
             // the added supertypes to the
@@ -1592,16 +1623,11 @@ function applyEffect(
             // printed types).
             rebuilt = {
               ...rebuilt,
-              type_line:
-                `${addedSupertypes} ${printed}`.trim(),
+              type_line: `${addedSupertypes} ${printed}`.trim(),
             };
           } else {
-            const typesHalf = printed
-              .slice(0, emDashIdx)
-              .trimEnd();
-            const subtypesHalf = printed
-              .slice(emDashIdx + 1)
-              .trim();
+            const typesHalf = printed.slice(0, emDashIdx).trimEnd();
+            const subtypesHalf = printed.slice(emDashIdx + 1).trim();
             // Prepend the added
             // supertypes to the existing
             // types half — the supertypes
@@ -1645,10 +1671,7 @@ function applyEffect(
         // to the `andPer.perCounterSummed`
         // precedence rule for the additive
         // vs REPLACE form).
-        if (
-          exceptions?.add_color?.length &&
-          !exceptions?.set_color?.length
-        ) {
+        if (exceptions?.add_color?.length && !exceptions?.set_color?.length) {
           const printedColors = Array.isArray(rebuilt.colors)
             ? rebuilt.colors
             : [];
@@ -1735,9 +1758,7 @@ function applyEffect(
           // colors are DISCARDED entirely;
           // the listed colors become the
           // entire array.
-          const setColors = Array.from(
-            new Set(exceptions.set_color),
-          );
+          const setColors = Array.from(new Set(exceptions.set_color));
           // Rebuild `color_identity` to
           // match the REPLACED `colors`
           // verbatim (the destructive
@@ -1770,15 +1791,18 @@ function applyEffect(
         // variant takes PRECEDENCE (parallel
         // to the `set_color` PRECEDENCE
         // rule for the additive vs REPLACE
-        // color form).
+        // color form). The PRECEDENCE rule
+        // is mirrored by the follow-up 32
+        // priority 1 `set_toughness`
+        // destructive arm (REPLACE wins
+        // over the additive `add_toughness`
+        // arm).
         if (
           exceptions?.add_power !== undefined &&
           exceptions?.set_power === undefined
         ) {
           const printedPower = parseInt(rebuilt.power ?? "0", 10);
-          const basePower = Number.isFinite(printedPower)
-            ? printedPower
-            : 0;
+          const basePower = Number.isFinite(printedPower) ? printedPower : 0;
           const nextPower = basePower + exceptions.add_power;
           rebuilt = {
             ...rebuilt,
@@ -1833,6 +1857,60 @@ function applyEffect(
             power: String(exceptions.set_power),
           };
         }
+        // Wave 4.8 follow-up 32 priority 1
+        // (lane 28, piece 1/N) (#2614
+        // follow-up 32): the `set_toughness`
+        // destructive REPLACE. When
+        // `effect.exceptions?.set_toughness`
+        // is set, the engine REPLACES the
+        // token's `cardData.toughness` with
+        // `String(set_toughness)` (the
+        // integer stringified; the printed
+        // toughness string is discarded
+        // entirely). v1 minimum: any
+        // integer. Negative values are
+        // accepted at the Zod layer (the
+        // engine stringifies them as
+        // `"-" + n`) — the additive
+        // `add_toughness` arm also accepts
+        // negative values, so the
+        // destructive variant mirrors that
+        // (Phyrexian Metamorph-style "it has
+        // 0/-1" — REPLACE lets you specify
+        // the literal final toughness,
+        // bypassing the printed value).
+        // The `set_toughness` arm takes
+        // PRECEDENCE over `add_toughness`
+        // when both are set (the destructive
+        // variant always wins; parallel to
+        // the `set_power` / `add_power`
+        // PRECEDENCE rule for the
+        // additive-vs-REPLACE P/T form).
+        // The `set_toughness` arm is
+        // DISTINCT from the priority 3
+        // `add_toughness` arm (which MERGES
+        // with the printed toughness). The
+        // `set_toughness` arm is also
+        // distinct from a parallel
+        // `set_toughness_until_eot` variant
+        // (which would override the
+        // toughness until end of turn and
+        // then restore the printed
+        // toughness — a hybrid that rides a
+        // future follow-up lane).
+        if (exceptions?.set_toughness !== undefined) {
+          // Destructive REPLACE — the
+          // printed toughness string is
+          // discarded entirely; the new
+          // toughness is `String(set_toughness)`.
+          // The engine stringifies the
+          // integer verbatim (negative
+          // values yield `"-" + n`).
+          rebuilt = {
+            ...rebuilt,
+            toughness: String(exceptions.set_toughness),
+          };
+        }
         // Wave 4.8 follow-up 30 priority 3
         // (lane 28, piece 3/N) (#2614
         // follow-up): the `add_toughness`
@@ -1852,14 +1930,40 @@ function applyEffect(
         // additive P/T merge — both arms
         // consume the printed P/T as the
         // base; each arm runs independently
-        // against the printed value).
-        if (exceptions?.add_toughness !== undefined) {
+        // against the printed value). The
+        // `add_toughness` consult is SKIPPED
+        // when the follow-up 32 priority 1
+        // destructive `set_toughness`
+        // sub-arm is set — the destructive
+        // variant takes PRECEDENCE (parallel
+        // to the `set_power` / `add_power`
+        // PRECEDENCE rule for the
+        // additive-vs-REPLACE P/T form).
+        //
+        // PRECEDENCE: when the follow-up 32
+        // priority 1 destructive `set_toughness`
+        // sub-arm is also set, the additive consult
+        // is SKIPPED (parallel to the
+        // `set_power` / `add_power` PRECEDENCE
+        // rule for the parallel destructive P/T
+        // form in piece 4/N; the destructive
+        // variant always wins because it REPLACES
+        // the printed toughness wholesale, so
+        // re-reading `rebuilt.toughness` (already
+        // overwritten by `set_toughness`) as the
+        // additive base would compound the two
+        // P/T forms — a CR 707.2 double-application
+        // that the REPLACE arm alone is meant to
+        // suppress).
+        if (
+          exceptions?.add_toughness !== undefined &&
+          exceptions?.set_toughness === undefined
+        ) {
           const printedToughness = parseInt(rebuilt.toughness ?? "0", 10);
           const baseToughness = Number.isFinite(printedToughness)
             ? printedToughness
             : 0;
-          const nextToughness =
-            baseToughness + exceptions.add_toughness;
+          const nextToughness = baseToughness + exceptions.add_toughness;
           rebuilt = {
             ...rebuilt,
             toughness: String(nextToughness),
@@ -2030,10 +2134,7 @@ function applyEffect(
         if (
           !sourceCard ||
           !isOnBattlefield(state, sourceId) ||
-          !matchTargetType(
-            sourceCard.cardData.type_line ?? "",
-            filterValue,
-          ) ||
+          !matchTargetType(sourceCard.cardData.type_line ?? "", filterValue) ||
           !matchController(sourceCard.controllerId)
         ) {
           sourceId = undefined;
@@ -2064,7 +2165,9 @@ function applyEffect(
           }
         }
       }
-      if (!sourceId) return state;
+      if (!sourceId) {
+        return state;
+      }
       const sourceCard = state.cards.get(sourceId);
       if (!sourceCard) return state;
       // Copy the cardData shallow. The new permanent carries
@@ -3801,9 +3904,11 @@ export function resolveScriptedAbility(
   // arm. The same fallback pattern applies to the
   // lane 98 / 106 / 117 arms below.
   const hasSacrificeCost =
-    ((stackObject as StackObject & {
-      effective_cost?: { sacrifice_self?: boolean };
-    }).effective_cost?.sacrifice_self === true) ||
+    (
+      stackObject as StackObject & {
+        effective_cost?: { sacrifice_self?: boolean };
+      }
+    ).effective_cost?.sacrifice_self === true ||
     (ability as { cost?: { sacrifice_self?: boolean } }).cost
       ?.sacrifice_self === true;
   if (hasSacrificeCost) {
@@ -3862,12 +3967,16 @@ export function resolveScriptedAbility(
   // back to the script's `cost.discard` for the
   // standalone lane 98 substrate.
   const discardCost =
-    (stackObject as StackObject & {
-      effective_cost?: { discard?: { amount: number } };
-    }).effective_cost?.discard ??
-    (ability as {
-      cost?: { discard?: { amount: number } };
-    }).cost?.discard;
+    (
+      stackObject as StackObject & {
+        effective_cost?: { discard?: { amount: number } };
+      }
+    ).effective_cost?.discard ??
+    (
+      ability as {
+        cost?: { discard?: { amount: number } };
+      }
+    ).cost?.discard;
   if (discardCost !== undefined) {
     const stackAny = stackObject as StackObject & {
       cost_paid?: boolean;
@@ -3931,12 +4040,16 @@ export function resolveScriptedAbility(
   // back to the script's `cost.pay_life` for the
   // standalone lane 106 substrate.
   const payLifeCost =
-    (stackObject as StackObject & {
-      effective_cost?: { pay_life?: { amount: number } };
-    }).effective_cost?.pay_life ??
-    (ability as {
-      cost?: { pay_life?: { amount: number } };
-    }).cost?.pay_life;
+    (
+      stackObject as StackObject & {
+        effective_cost?: { pay_life?: { amount: number } };
+      }
+    ).effective_cost?.pay_life ??
+    (
+      ability as {
+        cost?: { pay_life?: { amount: number } };
+      }
+    ).cost?.pay_life;
   if (payLifeCost !== undefined) {
     const stackAny = stackObject as StackObject & {
       cost_paid?: boolean;
@@ -4005,12 +4118,16 @@ export function resolveScriptedAbility(
   // back to the script's `cost.pay_mana` for the
   // standalone lane 117 substrate.
   const payManaCost =
-    (stackObject as StackObject & {
-      effective_cost?: { pay_mana?: { amount: number } };
-    }).effective_cost?.pay_mana ??
-    (ability as {
-      cost?: { pay_mana?: { amount: number } };
-    }).cost?.pay_mana;
+    (
+      stackObject as StackObject & {
+        effective_cost?: { pay_mana?: { amount: number } };
+      }
+    ).effective_cost?.pay_mana ??
+    (
+      ability as {
+        cost?: { pay_mana?: { amount: number } };
+      }
+    ).cost?.pay_mana;
   if (payManaCost !== undefined) {
     const stackAny = stackObject as StackObject & {
       cost_paid?: boolean;

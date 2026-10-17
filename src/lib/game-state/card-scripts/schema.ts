@@ -406,78 +406,75 @@ export const CopyPermanentSchema = z
      * consult consults the `kind` discriminator
      * for resolution.
      */
-    target: z
-      .union([
-        /**
-         * The existing enum filter — the v1 lane
-         * 70 substrate. The engine finds the
-         * first matching permanent on the
-         * battlefield (APNAP-ordered) whose
-         * `cardData.type_line` matches the enum
-         * value. Mirrors the lane 17
-         * `cost.sacrifice_permanents.type` enum
-         * and the lane 63
-         * `additionalCosts.sacrifice.target`
-         * enum.
-         */
-        z
-          .object({
-            kind: z.literal("filter"),
-            value: z.enum([
-              "permanent",
-              "creature",
-              "artifact",
-              "enchantment",
-              "land",
-            ]),
-          })
-          .strict(),
-        /**
-         * The explicit named target — a
-         * `CardInstanceId` on the battlefield.
-         * The engine reads the named target's
-         * `cardData` directly from
-         * `state.cards.get(value)` (validates the
-         * target is on the battlefield; a missing
-         * target is a no-op per the lane 70
-         * substrate's auto-pick fallback).
-         * Parallel to the lane 75a
-         * `CopyUntilEndOfTurn.chosen_permanent`
-         * shape (a literal `CardInstanceId` named
-         * target).
-         */
-        z
-          .object({
-            kind: z.literal("id"),
-            value: z.string().min(1),
-          })
-          .strict(),
-        /**
-         * The named-card variant (Self-Reflection
-         * style — "create a token that's a copy
-         * of [card name]"). This is a STUB in
-         * piece 2/4 (parses, no engine consult
-         * — the engine consult lands in piece
-         * 3/4). The schema union has all three
-         * arms; the engine consults two (filter
-         * + id) in piece 2/4. The named-card arm
-         * is included here so the discriminator
-         * is in place when piece 3/4 lands (no
-         * second schema bump needed). The
-         * `getCardDataByName(value.name)` lookup
-         * is the named card's printed `cardData`;
-         * missing-name is a no-op (see piece
-         * 3/4).
-         */
-        z
-          .object({
-            kind: z.literal("named_card"),
-            value: z
-              .object({ name: z.string().min(1) })
-              .strict(),
-          })
-          .strict(),
-      ]),
+    target: z.union([
+      /**
+       * The existing enum filter — the v1 lane
+       * 70 substrate. The engine finds the
+       * first matching permanent on the
+       * battlefield (APNAP-ordered) whose
+       * `cardData.type_line` matches the enum
+       * value. Mirrors the lane 17
+       * `cost.sacrifice_permanents.type` enum
+       * and the lane 63
+       * `additionalCosts.sacrifice.target`
+       * enum.
+       */
+      z
+        .object({
+          kind: z.literal("filter"),
+          value: z.enum([
+            "permanent",
+            "creature",
+            "artifact",
+            "enchantment",
+            "land",
+          ]),
+        })
+        .strict(),
+      /**
+       * The explicit named target — a
+       * `CardInstanceId` on the battlefield.
+       * The engine reads the named target's
+       * `cardData` directly from
+       * `state.cards.get(value)` (validates the
+       * target is on the battlefield; a missing
+       * target is a no-op per the lane 70
+       * substrate's auto-pick fallback).
+       * Parallel to the lane 75a
+       * `CopyUntilEndOfTurn.chosen_permanent`
+       * shape (a literal `CardInstanceId` named
+       * target).
+       */
+      z
+        .object({
+          kind: z.literal("id"),
+          value: z.string().min(1),
+        })
+        .strict(),
+      /**
+       * The named-card variant (Self-Reflection
+       * style — "create a token that's a copy
+       * of [card name]"). This is a STUB in
+       * piece 2/4 (parses, no engine consult
+       * — the engine consult lands in piece
+       * 3/4). The schema union has all three
+       * arms; the engine consults two (filter
+       * + id) in piece 2/4. The named-card arm
+       * is included here so the discriminator
+       * is in place when piece 3/4 lands (no
+       * second schema bump needed). The
+       * `getCardDataByName(value.name)` lookup
+       * is the named card's printed `cardData`;
+       * missing-name is a no-op (see piece
+       * 3/4).
+       */
+      z
+        .object({
+          kind: z.literal("named_card"),
+          value: z.object({ name: z.string().min(1) }).strict(),
+        })
+        .strict(),
+    ]),
     /** Restrict to the controller's own permanents. */
     controller: z.enum(["you", "opponent", "any"]).optional(),
     /**
@@ -664,10 +661,7 @@ export const CopyPermanentSchema = z
      */
     exceptions: z
       .object({
-        add_subtype: z
-          .array(z.string().min(1))
-          .min(1)
-          .optional(),
+        add_subtype: z.array(z.string().min(1)).min(1).optional(),
         /**
          * Wave 4.8 follow-up 30 priority 1
          * (lane 28, piece 1/N) (#2614
@@ -712,14 +706,7 @@ export const CopyPermanentSchema = z
          */
         add_color: z
           .array(
-            z.enum([
-              "white",
-              "blue",
-              "black",
-              "red",
-              "green",
-              "colorless",
-            ]),
+            z.enum(["white", "blue", "black", "red", "green", "colorless"]),
           )
           .min(1)
           .optional(),
@@ -755,14 +742,7 @@ export const CopyPermanentSchema = z
          */
         set_color: z
           .array(
-            z.enum([
-              "white",
-              "blue",
-              "black",
-              "red",
-              "green",
-              "colorless",
-            ]),
+            z.enum(["white", "blue", "black", "red", "green", "colorless"]),
           )
           .min(1)
           .optional(),
@@ -844,6 +824,38 @@ export const CopyPermanentSchema = z
          */
         set_power: z.number().int().optional(),
         /**
+         * Wave 4.8 follow-up 32 priority 1
+         * (lane 28, piece 1/N) (#2614
+         * follow-up 32): OPTIONAL
+         * `set_toughness` sub-arm. The engine
+         * parses the printed `toughness`
+         * string as an integer (default 0;
+         * non-integer printed toughnesses
+         * like `*` or `1+*` yield 0),
+         * REPLACES the printed toughness with
+         * `String(set_toughness)`, and
+         * rebuilds `cardData.toughness` as a
+         * string. The merge is DESTRUCTIVE —
+         * `set_toughness` OVERRIDES the
+         * printed toughness and any
+         * `add_toughness` value. The
+         * `set_toughness` arm takes
+         * PRECEDENCE over the parallel
+         * `add_toughness` arm (REPLACE wins
+         * over ADD). The arm accepts
+         * negative integers
+         * ("EXCEPT it has 0/-1" — Phyrexian
+         * Metamorph-style); v1 minimum: a
+         * single integer field; no `*` /
+         * `X+*` printed-toughness resolution.
+         * The `set_toughness` arm composes
+         * with the parallel `set_power` arm
+         * (parallel destructive P/T merge —
+         * each arm consumes its own half of
+         * the printed P/T independently).
+         */
+        set_toughness: z.number().int().optional(),
+        /**
          * Wave 4.8 follow-up 30 priority 3
          * (lane 28, piece 3/N) (#2614
          * follow-up): OPTIONAL `add_toughness`
@@ -860,13 +872,9 @@ export const CopyPermanentSchema = z
          * negative integers
          * (Phyrexian Metamorph-style
          * "create a token that's a copy of
-         * [target] EXCEPT it has 0/-1"); a
-         * destructive `set_toughness` variant
-         * rides follow-up 31 if any future
-         * priority piece surfaces a
-         * "exactly N" semantic. v1 minimum:
-         * a single integer field; no
-         * `*` / `X+*` printed-toughness
+         * [target] EXCEPT it has 0/-1"). v1
+         * minimum: a single integer field;
+         * no `*` / `X+*` printed-toughness
          * resolution. The `add_toughness`
          * arm composes with the priority 2
          * `add_power` arm (parallel additive
@@ -985,9 +993,7 @@ export const CopyPermanentSchema = z
          * semantic.
          */
         add_supertype: z
-          .array(
-            z.enum(["Legendary", "Snow", "Basic"]),
-          )
+          .array(z.enum(["Legendary", "Snow", "Basic"]))
           .min(1)
           .optional(),
       })
@@ -2504,10 +2510,12 @@ export const TriggerSchema = z
   .refine(
     (t) =>
       t.cost?.or === undefined ||
-      !(t.cost.sacrifice_self === true ||
+      !(
+        t.cost.sacrifice_self === true ||
         t.cost.discard !== undefined ||
         t.cost.pay_life !== undefined ||
-        t.cost.pay_mana !== undefined),
+        t.cost.pay_mana !== undefined
+      ),
     {
       message:
         "cost.or is mutually exclusive with the standalone cost arms (pay_life, pay_mana, sacrifice_self, discard) — pick one shape",
@@ -3019,12 +3027,7 @@ export const StaticSchema = z
          * the count of this source on the source's
          * controller's battlefield.
          */
-        per: z.enum([
-          "creatures",
-          "treasures",
-          "lands",
-          "other_creatures",
-        ]),
+        per: z.enum(["creatures", "treasures", "lands", "other_creatures"]),
         /**
          * The power contribution per unit. Default 0
          * (matches the integer `power: 0` no-P/T pattern);
@@ -3133,12 +3136,7 @@ export const StaticSchema = z
          */
         andPer: z
           .object({
-            per: z.enum([
-              "creatures",
-              "treasures",
-              "lands",
-              "other_creatures",
-            ]),
+            per: z.enum(["creatures", "treasures", "lands", "other_creatures"]),
             perSubtype: z
               .union([z.string().min(1), z.literal("chosen")])
               .optional(),
@@ -3160,10 +3158,7 @@ export const StaticSchema = z
              */
             perCounter: z
               .object({
-                counter: z.union([
-                  z.string().min(1),
-                  z.literal("chosen"),
-                ]),
+                counter: z.union([z.string().min(1), z.literal("chosen")]),
                 /**
                  * Wave 4.8 follow-up 28 priority 1
                  * (#2614 follow-up): an OPTIONAL
@@ -3219,10 +3214,7 @@ export const StaticSchema = z
              */
             perCounterSummed: z
               .object({
-                counter: z.union([
-                  z.string().min(1),
-                  z.literal("chosen"),
-                ]),
+                counter: z.union([z.string().min(1), z.literal("chosen")]),
                 /**
                  * Wave 4.8 follow-up 28 priority 3
                  * (#2614 follow-up): an OPTIONAL
@@ -3312,8 +3304,7 @@ export const StaticSchema = z
          */
         perCounter: z
           .object({
-            counter: z
-              .union([z.string().min(1), z.literal("chosen")]),
+            counter: z.union([z.string().min(1), z.literal("chosen")]),
             /**
              * Wave 4.8 follow-up 28 priority 1 (#2614
              * follow-up): an OPTIONAL ordinal variant
@@ -3551,14 +3542,7 @@ export const StaticSchema = z
             // rides follow-up 30; the
             // per-pair-with-`"chosen"`-per-pair
             // extension rides follow-up 30 too).
-            z
-              .array(
-                z.union([
-                  z.string().min(1),
-                  z.literal("chosen"),
-                ]),
-              )
-              .min(2),
+            z.array(z.union([z.string().min(1), z.literal("chosen")])).min(2),
             z.literal("chosen"),
           ]),
         ),
@@ -3633,10 +3617,7 @@ export const StaticSchema = z
              * yet applied).
              */
             target: z.string().min(1),
-            until: z.union([
-              z.literal("end_of_turn"),
-              z.literal("permanent"),
-            ]),
+            until: z.union([z.literal("end_of_turn"), z.literal("permanent")]),
             /**
              * Wave 4.8 follow-up 8 lane 75c
              * (#2614 follow-up): copy with
@@ -3733,10 +3714,7 @@ export const StaticSchema = z
              * field; the refresh-pass write rides a
              * follow-up piece.
              */
-            until: z.union([
-              z.literal("end_of_turn"),
-              z.literal("permanent"),
-            ]),
+            until: z.union([z.literal("end_of_turn"), z.literal("permanent")]),
             /**
              * Wave 4.8 follow-up 8 lane 75c
              * (#2614 follow-up): copy-with-exception
@@ -4160,10 +4138,7 @@ export const AuraStaticSchema = z
              * the lane 78 tracked-zone check.
              */
             target: z.string().min(1),
-            until: z.union([
-              z.literal("end_of_turn"),
-              z.literal("permanent"),
-            ]),
+            until: z.union([z.literal("end_of_turn"), z.literal("permanent")]),
           })
           .strict(),
       ])
