@@ -1477,6 +1477,22 @@ function applyEffect(
               add_type?: string[];
               add_supertype?: string[];
               set_color?: string[];
+              /**
+               * Wave 4.8 follow-up 34 priority
+               * 1 (lane 28, piece 4/N) — new
+               * `set_color_identity` HYBRID
+               * REPLACE arm (the
+               * color-identity-only REPLACE
+               * variant — operates only on
+               * the `color_identity` array;
+               * `colors` is preserved
+               * verbatim). Marker is `REPLACE
+               * wins over additive on the
+               * color_identity axis —
+               * INDEPENDENT of the colors
+               * axis`.
+               */
+              set_color_identity?: string[];
               set_power?: number;
               set_toughness?: number;
               /**
@@ -1940,7 +1956,11 @@ function applyEffect(
         // to the `andPer.perCounterSummed`
         // precedence rule for the additive
         // vs REPLACE form).
-        if (exceptions?.add_color?.length && !exceptions?.set_color?.length) {
+        if (
+          exceptions?.add_color?.length &&
+          !exceptions?.set_color?.length &&
+          !exceptions?.set_color_identity?.length
+        ) {
           const printedColors = Array.isArray(rebuilt.colors)
             ? rebuilt.colors
             : [];
@@ -2038,6 +2058,68 @@ function applyEffect(
             ...rebuilt,
             colors: setColors,
             color_identity: setColors,
+          };
+        }
+        // Wave 4.8 follow-up 34 priority 1
+        // (lane 28, piece 4/N) (#2614
+        // follow-up): the
+        // `set_color_identity` HYBRID
+        // REPLACE — REPLACES ONLY the
+        // token's `color_identity` array
+        // (deduplicated; declared order
+        // preserved). The token's
+        // `colors` array is preserved
+        // VERBATIM from whatever the
+        // prior pass left (printed
+        // base, post-`add_color`, or
+        // post-`set_color`). This is the
+        // inverse of `set_color` (which
+        // REPLACES BOTH `colors` AND
+        // `color_identity`). Use case: a
+        // token that's a copy of target
+        // creature except it has the
+        // chosen player's color identity
+        // — commander-deck reconstruct
+        // semantics where the face card's
+        // printed `colors` are preserved
+        // but its `color_identity` is
+        // rebound. When
+        // `set_color_identity` is present,
+        // the `add_color` consult is
+        // SKIPPED (REPLACE wins on the
+        // axis — `set_color_identity` is
+        // a destructive REPLACE on the
+        // `color_identity` axis). Cross
+        // axis interaction with
+        // `set_color`: `set_color` runs
+        // FIRST and sets BOTH `colors`
+        // AND `color_identity`. Then
+        // `set_color_identity` runs and
+        // further REPLACES
+        // `color_identity` to its own
+        // list — the FINAL `color_identity`
+        // is `set_color_identity`'s list,
+        // NOT `set_color`'s. The
+        // `colors` array, however, is
+        // FINALIZED by `set_color` (it
+        // is NOT touched by
+        // `set_color_identity`). Marker
+        // is `REPLACE wins over additive
+        // on the color_identity axis —
+        // INDEPENDENT of the colors
+        // axis`.
+        if (exceptions?.set_color_identity?.length) {
+          const setIdentity = Array.from(
+            new Set(exceptions.set_color_identity),
+          );
+          rebuilt = {
+            ...rebuilt,
+            color_identity: setIdentity,
+            // `colors` is preserved
+            // verbatim (whatever the
+            // prior pass left — printed
+            // base, post-add_color, or
+            // post-set_color).
           };
         }
         // Wave 4.8 follow-up 30 priority 2

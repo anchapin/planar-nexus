@@ -783,12 +783,35 @@ export const CopyPermanentSchema = z
          *     `applyExceptions` for the
          *     REPLACE consult.
          *   - `set_color_identity`
-         *     (deferred — rides follow-up
-         *     35+; smallest of the deferred
-         *     arms; overwrites `color_identity`
-         *     wholesale — closest in shape
-         *     to `set_color` already
-         *     shipped)
+         *     (follow-up 34 piece 4/N,
+         *     this commit) — REPLACES
+         *     ONLY the `color_identity`
+         *     array (the printer-identity
+         *     axis — DISTINCT from the
+         *     printed `colors` axis);
+         *     `colors` is preserved
+         *     unchanged. Cross-axis with
+         *     `set_color`: `set_color`
+         *     REPLACES BOTH `colors` AND
+         *     `color_identity`; if both
+         *     ride together, `set_color`
+         *     sets `colors` first and
+         *     `color_identity`, then
+         *     `set_color_identity` further
+         *     REPLACES `color_identity`
+         *     to its own list. There is
+         *     NO `add_color_identity` arm
+         *     — the additive-color-identity
+         *     semantic is not on the
+         *     road map; the
+         *     `set_color_identity`
+         *     consult skips any additive
+         *     color-identity consult (none
+         *     exists) and the `add_color`
+         *     consult (REPLACE wins on each
+         *     axis independently). See
+         *     `applyExceptions` for the
+         *     REPLACE consult.
          */
         add_subtype: z.array(z.string().min(1)).min(1).optional(),
         /**
@@ -930,9 +953,71 @@ export const CopyPermanentSchema = z
          * (which would override the identity
          * but leave the printed colors
          * intact — a hybrid that rides
-         * follow-up 32).
+         * follow-up 34 piece 4/N — see
+         * the next field below).
          */
         set_color: z
+          .array(
+            z.enum(["white", "blue", "black", "red", "green", "colorless"]),
+          )
+          .min(1)
+          .optional(),
+        /**
+         * Wave 4.8 follow-up 34 priority 1
+         * (lane 28, piece 4/N) (#2614
+         * follow-up): OPTIONAL
+         * `set_color_identity` sub-arm.
+         * The HYBRID variant of the
+         * `set_color` family — REPLACES
+         * ONLY the token's `color_identity`
+         * array (deduplicated; declared
+         * order preserved) WHILE LEAVING
+         * the token's `colors` array
+         * UNTOUCHED. This is the inverse
+         * of `set_color` (which REPLACES
+         * BOTH `colors` AND `color_identity`
+         * to the same listed values).
+         *
+         * v1 minimum: a list of the same
+         * six `COLOR` enum values. The
+         * typical use case is "a token
+         * that's a copy of target creature
+         * except it has the chosen player's
+         * color identity" — commander-deck
+         * reconstruct semantics where the
+         * face card's printed colors are
+         * preserved but its color_identity
+         * is rebound.
+         *
+         * When `set_color_identity` is
+         * present, the `add_color` consult
+         * is SKIPPED entirely. The printed
+         * `colors` array on the token
+         * remains untouched (the engine
+         * does NOT consult `add_color` to
+         * extend the printed `colors` —
+         * REPLACE wins on the axis).
+         * Cross-axis with `set_color`:
+         * `set_color` REPLACES BOTH
+         * `colors` and `color_identity`;
+         * if BOTH `set_color` and
+         * `set_color_identity` ride
+         * together, `set_color` wins on
+         * the `colors` axis (sets
+         * `colors` AND `color_identity`),
+         * and `set_color_identity`'s
+         * further REPLACE on
+         * `color_identity` runs AFTER
+         * — the final `color_identity`
+         * reflects `set_color_identity`,
+         * not `set_color`.
+         *
+         * Marker is `REPLACE wins over
+         * additive on the color_identity
+         * axis — INDEPENDENT of the
+         * colors axis`.
+         */
+        set_color_identity: z
           .array(
             z.enum(["white", "blue", "black", "red", "green", "colorless"]),
           )

@@ -931,7 +931,27 @@ const SCOPES = [
     // `set_supertype` from "deferred" to "this
     // commit". schema.ts measured at 5489
     // (+74 over 5425).
-    budgetLines: 5500,
+    //
+    // Bumping 5500 → 5585 to capture the follow-up 34
+    // priority 1 (lane 28, piece 4/N) —
+    // `CopyPermanent.exceptions.set_color_identity`
+    // arm (the per-copy HYBRID REPLACE — operates
+    // on `color_identity` ONLY, leaving `colors`
+    // verbatim). Strictly typed to the same
+    // `COLOR` enum already used for `add_color`
+    // / `set_color`. The schema bump reflects the
+    // new `set_color_identity` field + its
+    // cross-axis-with-`set_color` + REPLACE-wins
+    // docstring (~58 lines), plus the PRECEDENCE
+    // bullet-list update that flips
+    // `set_color_identity` from "deferred" to
+    // "this commit". This is the LAST of the
+    // deferred REPLACE-axis arms — Lane 28 is now
+    // closed for the `set_<axis>` family across
+    // every per-copy axis: P/T, color,
+    // color_identity, type, subtype, supertype.
+    // schema.ts measured at 5574 (+74 over 5500).
+    budgetLines: 5585,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),
