@@ -17,10 +17,11 @@
  * `--c-scale` sets the search's cScale (default 1); lower values soften the
  * policy target (manamind#96).
  *
- * `--opponent expert` (manamind#96): the net plays the Expert AI and only
- * its own decisions are written. Its seat alternates every two games, so
- * each seed block of four covers both seats with both decks. Prints a
- * one-line throughput summary.
+ * `--opponent expert` (manamind#96): the net plays the Expert AI. Its seat
+ * alternates every two games, so each seed block of four covers both seats
+ * with both decks. `--expert-record both` (manamind#96) also records the
+ * Expert AI's decisions as one-hot targets with `source: "expert"`;
+ * default `net` keeps the old format. Prints a one-line throughput summary.
  */
 import { createWriteStream, readFileSync } from "node:fs";
 import { createGzip } from "node:zlib";
@@ -63,6 +64,9 @@ async function main() {
   const opponent = arg("opponent", "self");
   if (opponent !== "self" && opponent !== "expert")
     throw new Error(`--opponent must be self or expert, not ${opponent}`);
+  const expertRecord = arg("expert-record", "net");
+  if (expertRecord !== "net" && expertRecord !== "both")
+    throw new Error(`--expert-record must be net or both, not ${expertRecord}`);
   await loadCardScripts();
   const model = await createForgePointerModel(
     ortNode as unknown as ForgeOrtLike,
@@ -75,6 +79,7 @@ async function main() {
 
   const t0 = performance.now();
   let decisions = 0;
+  let expertDecisions = 0;
   let turns = 0;
   const attack = { prompts: 0, offered: 0, declared: 0 };
   const wins = [0, 0, 0];
@@ -91,10 +96,14 @@ async function main() {
       maxTurns,
       opponent,
       netSeat,
+      expertRecord,
       pick,
       cScale,
     });
     decisions += game.decisions.length;
+    expertDecisions += game.decisions.filter(
+      (d) => d.source === "expert",
+    ).length;
     turns += game.turns;
     attack.prompts += game.attack.prompts;
     attack.offered += game.attack.offered;
@@ -118,6 +127,7 @@ async function main() {
       games,
       opponent,
       decisions,
+      ...(opponent === "expert" ? { expert_decisions: expertDecisions } : {}),
       seat0_wins: wins[0],
       seat1_wins: wins[1],
       draws: wins[2],

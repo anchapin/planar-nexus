@@ -80,7 +80,42 @@ describe("playSelfPlayGame", () => {
     });
     expect(game.decisions.length).toBeGreaterThan(0);
     expect(game.decisions.every((d) => d.seat === 1)).toBe(true);
+    expect(game.decisions.every((d) => d.source === "net")).toBe(true);
     expect(game.returns).toHaveLength(game.decisions.length);
+  });
+
+  it("records the Expert's decisions when expertRecord is both", async () => {
+    const game = await playSelfPlayGame(model, {
+      seed: 3,
+      deckA: trainingDeck("aggro"),
+      deckB: trainingDeck("midrange"),
+      simulations: 8,
+      maxTurns: 6,
+      opponent: "expert",
+      netSeat: 1,
+      expertRecord: "both",
+    });
+    expect(game.decisions.length).toBeGreaterThan(0);
+    expect(game.decisions.some((d) => d.seat === 0)).toBe(true);
+    expect(game.decisions.some((d) => d.seat === 1)).toBe(true);
+    expect(game.returns).toHaveLength(game.decisions.length);
+    for (const d of game.decisions) {
+      expect(["net", "expert"]).toContain(d.source);
+      if (d.source !== "expert") continue;
+      if (d.t === "priority") {
+        const pi = d.pi as number[];
+        expect(pi.reduce((s, v) => s + v, 0)).toBeCloseTo(1, 6);
+        expect(pi.filter((v) => v === 1)).toHaveLength(1);
+      } else if (d.t === "attack") {
+        const pi = d.pi as number[];
+        for (const v of pi) expect([0, 1]).toContain(v);
+      } else if (d.t === "block") {
+        const pi = d.pi as number[][];
+        expect(pi).toHaveLength((d.blockers ?? []).length);
+        for (const row of pi)
+          expect(row).toHaveLength((d.attackers ?? []).length + 1);
+      }
+    }
   });
 
   it("is deterministic for a seed", async () => {

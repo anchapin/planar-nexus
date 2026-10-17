@@ -951,7 +951,11 @@ const SCOPES = [
     // every per-copy axis: P/T, color,
     // color_identity, type, subtype, supertype.
     // schema.ts measured at 5574 (+74 over 5500).
-    budgetLines: 5585,
+    // (post-merge with origin/main: 5645 lines, after
+    // follow-up 31 #2812 added add_supertype + set_color +
+    // set_power, plus the five new lane28 split test files.
+    // Bumped 5585 → 5800 to absorb the merge.)
+    budgetLines: 5800,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),
