@@ -1,44 +1,59 @@
-# Wave 4.8 — Stale marker cleanup inventory
+# Wave 4.8 — Stale marker cleanup inventory (v2)
 
 ## What this doc is
 
-This is the **decision packet** for cleaning up the 25 "rides follow-up N" markers
-left in the engine after the wave 4.8 follow-up cycle closed.
+This is the **decision packet** for cleaning up the 25 "rides follow-up N"
+markers left in the engine after the wave 4.8 follow-up cycle closed.
 
-The wave 4.8 follow-up cycle (see `wave4.8-closed.md`) ran from followup1
-through followup37 and produced 33 handoff docs. The followup36 handoff
-performed the first stale-marker audit; this doc supersedes that audit with
-**proper feature-presence evidence** for each marker.
+This doc is the **v2 revision** of the original inventory
+(commit `9a9575ff`). The original inventory had six REMOVE verdicts
+(S01, S03, S04, S11, S13, T02) that were wrong: each marker was inside a
+larger documentation/PRECEDENCE block, and removing the marker would
+orphan the surrounding sentences. The v2 inventory collapses the
+REMOVE/CONVERT-TO-TODO/CONVERT-TO-ISSUE distinction into a single
+treatment: **KEEP-AND-REVISE every marker, rewriting the "rides follow-up N"
+sentence to point to the closed-cycle doc while preserving the surrounding
+documentation.**
 
-The previous audit's verdict ("stale" for everything) was based on a
-loose criterion ("multiple follow-up cycles with zero caller = stale")
-that did not actually verify whether the underlying feature shipped.
-This doc reclassifies each marker using direct evidence: **does the
-underlying feature exist in the codebase?** If yes, the marker is a
-leftover artifact and can be removed. If no, the arm is live-deferred
-and the marker should be converted to a `TODO(fixture-needed)` or
-issue-ref.
+## Why the verdicts collapsed
 
-**This doc does not edit any source files.** It is a decision packet for
-human sign-off. Once you stamp decisions on each marker, the mechanical
-edits can be applied as a single PR.
+The original audit's three-way classification assumed:
 
-## How to read this doc
+- REMOVE = marker text is a leftover artifact, safe to delete.
+- CONVERT-TO-TODO = live-deferred arm, convert to `TODO(fixture-needed):`.
+- CONVERT-TO-ISSUE = live-deferred arm with external issue reference.
 
-Each marker entry has:
+But in practice, **every marker is part of a larger comment block** (PRECEDENCE
+summary, test docstring, or schema description). The marker text is one
+sentence in a multi-sentence description of what the surrounding code does
+and doesn't support. Removing the marker — or replacing it with a TODO —
+breaks the surrounding documentation's logic flow: it leaves sentences
+referring to a "follow-up N" that no longer exists, or referring to a
+feature that no longer has documentation.
 
-- **ID**: a stable identifier (S01, S02, I01, T01, C01).
-- **File + line** (verified by `grep -n` against `wave4.8-followup37` HEAD).
-- **Window**: the follow-up window the marker references (when known).
-- **Subject**: the underlying feature the marker comments on.
-- **Full context**: 8–12 lines around the marker.
-- **Evidence**: schema/interpret/ops reference counts proving whether the
-  underlying feature shipped.
-- **Verdict**: REMOVE / CONVERT-TO-TODO / CONVERT-TO-ISSUE.
-- **Rationale**: short explanation tying verdict to evidence.
+The right edit is **rewrite the marker sentence in place** to point at
+`wave4.8-closed.md §2` (the cycle's resumption conditions) while preserving
+the rest of the comment block. This keeps the documentation coherent and
+gives future readers a single destination to learn why the arm is deferred
+and what would unblock it.
 
-If you disagree with any verdict, change the verdict and rationale;
-don't change the evidence.
+## What this doc does
+
+For each of the 25 markers, this v2 inventory records:
+
+- **File + line + window** (where the marker is).
+- **The marker sentence verbatim** (the line(s) that say "rides follow-up N").
+- **The proposed replacement sentence** (a rewrite that points at the
+  closed-cycle doc and preserves the surrounding semantic).
+- **The replacement's destination** (issue-ref vs cycle-doc-ref vs plain
+  cycle-doc-ref).
+
+## What this doc does NOT do
+
+- **No source files are edited by this commit.** The doc is the decision
+  packet. Edits land in the next commit.
+- **No new tests added.** Test-file marker rewrites are docstring edits.
+- **No schema changes.** All edits are comment-only.
 
 ---
 
@@ -47,281 +62,347 @@ don't change the evidence.
 ### S01 — schema.ts:512
 
 - **Window**: pre-wave-4.8 (follow-up 4 of the original wave 4)
-- **Subject**: `CopyPermanent` copy-with-exception variant
-  (Phyrexian Metamorph-style)
-- **Full context**:
+- **Subject**: `CopyPermanent` copy-with-exception variant (Phyrexian
+  Metamorph-style)
+- **Marker text** (lines 511–517):
   ```text
-  509:     * that's a copy of [card name]"); the
-  510:     * copy-with-exception variant (Phyrexian
-  511:     * Metamorph-style — name + types +
-  512:     * color, but not text/abilities/loyalty)
-  513:     * rides follow-up 4 piece 2/N + 3/N + 4/N
-  514:     * (this commit). Lane 28 owns the parent
-  515:     * shape; the exception mask rides
-  516:     * `copy_with_exception_mask` once a
-  517:     * priority piece surfaces.
+  * copy-with-exception variant (Phyrexian
+  * Metamorph-style — name + types +
+  * color, but not text/abilities/loyalty)
+  * rides follow-up 4 piece 2/N + 3/N + 4/N
+  * (this commit). Lane 28 owns the parent
+  * shape; the exception mask rides
+  * `copy_with_exception_mask` once a
+  * priority piece surfaces.
   ```
-- **Evidence**:
-  - `CopyPermanent` in schema.ts: **3 refs** (shipped)
-  - `CopyPermanent` in interpret.ts: **4 refs** (shipped)
-  - `CopyPermanent` in ops/: **2 refs** (shipped)
-- **Verdict**: **REMOVE**
-- **Rationale**: Base `CopyPermanent` is fully shipped (schema + interpret + ops). The marker text ("this commit") indicates the work was committed in the window it references. The "exception mask" reference is a hypothetical further extension that's never been specified; the marker text is leftover from the original wave 4 cycle and serves no current purpose.
+- **Proposed rewrite**:
+  ```text
+  * copy-with-exception variant (Phyrexian
+  * Metamorph-style — name + types +
+  * color, but not text/abilities/loyalty)
+  * is unbuilt. Lane 28 owns the parent shape;
+  * the exception mask rides
+  * `copy_with_exception_mask` if a future
+  * fixture surfaces a need. See
+  * docs/card-scripts/wave4.8-closed.md
+  * §2 (resumption conditions).
+  ```
+- **Notes**: This marker is the closing sentence of a 30-line "Out of
+  scope (each a follow-up lane)" comment block listing deferred lanes.
+  The new wording preserves the listing semantics without claiming a
+  follow-up that will happen.
 
 ### S02 — schema.ts:581
 
 - **Window**: 31
 - **Subject**: Destructive `set_color` variant ("only [colors]" semantic)
-- **Full context**:
+- **Marker text** (lines 579–582):
   ```text
-  577:     * of the printed colors). The `add_color`
-  578:     * arm is ADDITIVE (no overwrite of the
-  579:     * printed colors); a destructive
-  580:     * `set_color` variant rides follow-up
-  581:     * 31 if any future priority piece
-  582:     * surfaces a "only [colors]" semantic.
-  583:     * The color names use the engine's
+  * a destructive
+  * `set_color` variant rides follow-up
+  * 31 if any future priority piece
+  * surfaces a "only [colors]" semantic.
   ```
-- **Evidence**:
-  - `set_color` in schema.ts: **20 refs** (base feature shipped)
-  - Destructive variant: **no separate schema entry, no interpret handler**
-  - Search for "only [colors]" semantic: no matches in code
-- **Verdict**: **CONVERT-TO-TODO**
-- **Rationale**: The base `set_color` shipped (20 refs). The destructive variant was NEVER built — no schema entry, no interpret handler, no test. The followup36 audit misclassified this as "stale." It is a live-deferred arm: the marker is documenting a known gap that should be `TODO(fixture-needed):` so future readers know the destructive variant is waiting on a fixture.
+- **Proposed rewrite**:
+  ```text
+  * a destructive
+  * `set_color` variant ("only [colors]"
+  * semantic) is unbuilt; deferred since
+  * follow-up 31. See wave4.8-closed.md
+  * §2.
+  ```
+- **Notes**: Base `set_color` shipped (20 refs in schema.ts); the
+  destructive variant never built.
 
 ### S03 — schema.ts:625
 
-- **Window**: 31
-- **Subject**: `set_supertype` "World" / "Legendary" / "Snow" exclusive variant
-- **Full context**:
+- **Window**: 34 (this commit)
+- **Subject**: `set_supertype` exclusive "World" / "Legendary" / "Snow" variants
+- **Marker text** (lines 623–627):
   ```text
-  622:     * The base `set_supertype` REPLACE shape
-  623:     * ships in follow-up 34 piece 2/N. The
-  624:     * exclusive variants
-  625:     * (`"World"` / `"Legendary"`-only
-  626:     * / `"Snow"`-only) ride follow-up
-  627:     * 34 piece 3/N (this commit).
+  * ships in follow-up 34 piece 2/N. The
+  * exclusive variants
+  * (`"World"` / `"Legendary"`-only
+  * / `"Snow"`-only) ride follow-up
+  * 34 piece 3/N (this commit).
   ```
-- **Evidence**:
-  - `set_supertype` in schema.ts: **10 refs** (shipped)
-  - "World" / "Legendary" / "Snow" exclusive variants: search did not surface a dedicated schema entry
-- **Verdict**: **REMOVE**
-- **Rationale**: Marker text says "(this commit)" — the work either shipped in followup34 piece 3/N or was deliberately abandoned in the same commit. Either way, the marker references its own window, making it cycle metadata. The base `set_supertype` shipped (10 refs); the exclusive variants are not in code, but the marker text style ("this commit") is the cleanup signal. Confirmed: wave 4.8 followup34c (`86c57145`) is the parent of all four no-ship branches and is the "LANE 28 CLOSED" commit. The exclusive variants were either shipped or closed in that commit. **If you disagree, change to CONVERT-TO-TODO.**
+- **Proposed rewrite**:
+  ```text
+  * ships in follow-up 34 piece 2/N. The
+  * exclusive variants
+  * (`"World"` / `"Legendary"`-only
+  * / `"Snow"`-only) are unbuilt; deferred
+  * since follow-up 34. See
+  * wave4.8-closed.md §2.
+  ```
+- **Notes**: This marker is the closing sentence of a 60-line PRECEDENCE
+  summary for `CopyPermanentSchema.exceptions`. The "this commit" tag in
+  the original marker was misleading: the work did not ship with
+  followup34 piece 3/N. The new wording reflects that.
 
 ### S04 — schema.ts:658
 
-- **Window**: 31
-- **Subject**: (same family as S03) `set_supertype` exclusive variants
-- **Full context**: similar shape to S03; line 658 is the closing remark
-  of the same comment block.
-- **Evidence**: same as S03.
-- **Verdict**: **REMOVE** (paired with S03)
+- **Window**: 34 (this commit)
+- **Subject**: `set_supertype` exclusive variants (paired closing remark)
+- **Marker text**: closing remark of the same comment block as S03.
+- **Proposed rewrite**: paired with S03.
+- **Notes**: Lines 658 onward are a continuation of the same PRECEDENCE
+  block; the marker line 658 is one sentence in the closing remarks.
 
 ### S05 — schema.ts:761
 
 - **Window**: 35+
 - **Subject**: `set_keyword` REPLACE arm
-- **Full context**:
+- **Marker text** (lines 758–760):
   ```text
-  758:         *   - `set_keyword` (deferred —
-  759:         *     rides follow-up 35+ if any future priority
-  760:         *     piece surfaces a need)
+  *   - `set_keyword` (deferred —
+  *     rides follow-up 35+ if any future priority
+  *     piece surfaces a need)
   ```
-- **Evidence**:
-  - `set_keyword` in schema.ts: **1 ref** (the marker itself only)
-  - `set_keyword` in interpret.ts: **0 refs**
-  - `set_keyword` in ops/: **0 refs**
-- **Verdict**: **CONVERT-TO-ISSUE** (or keep as-is with TODO)
-- **Rationale**: `set_keyword` was NEVER built. It is one of the two candidates on the closed-out priority list (the other is lane 71 piece 6/N). This is a live-deferred arm; the cleanup should convert it to `TODO(fixture-needed):` or reference the closed cycle's doc directly. **Recommended: reference `wave4.8-closed.md` §2 (resumption triggers) inline.**
+- **Proposed rewrite**:
+  ```text
+  *   - `set_keyword` (deferred —
+  *     unbuilt; cycle closed without
+  *     a fixture surfacing this need.
+  *     See wave4.8-closed.md §2)
+  ```
+- **Notes**: This was the closed-out priority list's top item. Base
+  `set_keyword` was never built (1 ref = the marker itself only).
 
 ### S06 — schema.ts:763
 
 - **Window**: 35+
 - **Subject**: `set_ability` REPLACE arm
-- **Full context**: same comment block as S05.
-- **Evidence**:
-  - `set_ability` in schema.ts: **1 ref** (the marker itself only)
-  - `set_ability` in interpret.ts: **0 refs**
-- **Verdict**: **CONVERT-TO-ISSUE** (paired with S05)
+- **Marker text**: paired with S05.
+- **Proposed rewrite**: paired with S05.
+- **Notes**: Same shape; same evidence (1 ref = marker only).
 
 ### S07 — schema.ts:919
 
 - **Window**: 32
-- **Subject**: `set_color_identity` hybrid variant (overrides identity, leaves printed colors)
-- **Full context**:
+- **Subject**: `set_color_identity` hybrid variant
+- **Marker text** (lines 919–925):
   ```text
-  916:         *    The `add_color_identity` arm is
-  917:         *    ADDITIVE (REPLACE wins only if both
-  918:         *    REPLACE forms are
-  919:         *    set on the same effect.
-  920:         *    A separate `set_color_identity`
-  921:         *    variant (which overrides identity
-  922:         *    but leaves printed colors intact)
-  923:         *    rides follow-up 32. The base
-  924:         *    `set_color_identity` form ships in
-  925:         *    follow-up 34 piece 3/N.
+  *    set on the same effect.
+  *    A separate `set_color_identity`
+  *    variant (which overrides identity
+  *    but leaves printed colors intact)
+  *    rides follow-up 32. The base
+  *    `set_color_identity` form ships in
+  *    follow-up 34 piece 3/N.
   ```
-- **Evidence**:
-  - `set_color_identity` in schema.ts: **11 refs** (base shipped in followup34 piece 3/N)
-  - "Hybrid variant overrides identity, leaves printed colors": no dedicated schema entry, no test
-- **Verdict**: **CONVERT-TO-TODO**
-- **Rationale**: Base `set_color_identity` shipped. The hybrid variant is a known gap with a specific semantic ("overrides identity but leaves printed colors intact") that no fixture has surfaced. Convert to `TODO(fixture-needed):` with the semantic preserved.
+- **Proposed rewrite**:
+  ```text
+  *    set on the same effect.
+  *    A separate `set_color_identity`
+  *    variant (which overrides identity
+  *    but leaves printed colors intact)
+  *    is unbuilt; deferred since follow-up 32.
+  *    The base `set_color_identity` form
+  *    ships in follow-up 34 piece 3/N.
+  *    See wave4.8-closed.md §2.
+  ```
 
 ### S08 — schema.ts:1061
 
 - **Window**: 32
-- **Subject**: `set_power` until-eot variant (mirrors lane 75c `become_copy` until-eot)
-- **Full context**:
+- **Subject**: `set_power` until-eot variant
+- **Marker text** (lines 1058–1063):
   ```text
-  1058:         *     until-eot axis: a destructive
-  1059:         *     `set_power` variant (REPLACE
-  1060:         *     wins, but only for the
-  1061:         *     duration) rides follow-up 32
-  1062:         *     (hybrid that mirrors lane 75c
-  1063:         *     `become_copy` until-eot shape).
+  *     until-eot axis: a destructive
+  *     `set_power` variant (REPLACE
+  *     wins, but only for the
+  *     duration) rides follow-up 32
+  *     (hybrid that mirrors lane 75c
+  *     `become_copy` until-eot shape).
   ```
-- **Evidence**:
-  - `set_power` in schema.ts: **14 refs** (shipped)
-  - Until-eot variant: no dedicated schema entry
-- **Verdict**: **CONVERT-TO-TODO**
-- **Rationale**: Same shape as S07 — base shipped, until-eot variant is a live-deferred arm. Convert to TODO.
+- **Proposed rewrite**:
+  ```text
+  *     until-eot axis: a destructive
+  *     `set_power` variant (REPLACE
+  *     wins, but only for the
+  *     duration) is unbuilt; deferred since
+  *     follow-up 32. Hybrid mirrors lane 75c
+  *     `become_copy` until-eot shape.
+  *     See wave4.8-closed.md §2.
+  ```
 
 ### S09 — schema.ts:1099
 
 - **Window**: 32
 - **Subject**: Destructive `set_type` variant
-- **Full context**:
+- **Marker text** (lines 1096–1099):
   ```text
-  1096:         * printed types); a destructive
-  1097:         * `set_type` variant rides
-  1098:         * follow-up 32 if any future
-  1099:         * priority piece surfaces a need.
+  * printed types); a destructive
+  * `set_type` variant rides
+  * follow-up 32 if any future
+  * priority piece surfaces a need.
   ```
-- **Evidence**:
-  - `set_type` in schema.ts: **16 refs** (shipped)
-  - Destructive variant: no dedicated entry
-- **Verdict**: **CONVERT-TO-TODO**
+- **Proposed rewrite**:
+  ```text
+  * printed types); a destructive
+  * `set_type` variant is unbuilt;
+  * deferred since follow-up 32.
+  * See wave4.8-closed.md §2.
+  ```
 
 ### S10 — schema.ts:1214
 
 - **Window**: 32
 - **Subject**: Destructive `set_toughness` variant
-- **Full context**:
-  ```text
-  1211:         * printed toughness); a destructive
-  1212:         * `set_toughness` variant rides
-  1213:         * follow-up 32 if any future
-  1214:         * priority piece surfaces a need.
-  ```
-- **Evidence**:
-  - `set_toughness` in schema.ts: **9 refs** (shipped)
-  - Destructive variant: no dedicated entry
-- **Verdict**: **CONVERT-TO-TODO**
+- **Marker text**: same shape as S09.
+- **Proposed rewrite**: same shape as S09, with `set_toughness`.
 
 ### S11 — schema.ts:1267
 
 - **Window**: 34 (this commit)
 - **Subject**: Destructive `set_supertype` variant
-- **Full context**:
+- **Marker text** (lines 1264–1267):
   ```text
-  1264:         * printed supertypes); a destructive
-  1265:         * `set_supertype` variant rides
-  1266:         * follow-up 34 piece 3/N (this
-  1267:         * commit).
+  * printed supertypes); a destructive
+  * `set_supertype` variant rides
+  * follow-up 34 piece 3/N (this
+  * commit).
   ```
-- **Evidence**: marker text "(this commit)". Same shape as S03/S04.
-- **Verdict**: **REMOVE** (paired with S03/S04 cycle-metadata pattern)
+- **Proposed rewrite**:
+  ```text
+  * printed supertypes); a destructive
+  * `set_supertype` variant is unbuilt;
+  * deferred since follow-up 34.
+  * See wave4.8-closed.md §2.
+  ```
+- **Notes**: Paired with S03/S04. Same "this commit" marker style.
 
 ### S12 — schema.ts:3548
 
 - **Window**: 29
-- **Subject**: `chosenProtectionFromPerPair` extension (per-pair-with-"chosen")
-- **Full context**:
+- **Subject**: `chosenProtectionFromPerPair` extension
+- **Marker text** (lines 3545–3549):
   ```text
-  3545:         * extension of the per-pair-with-
-  3546:         * `"chosen"` extension rides
-  3547:         * follow-up 29 (the
-  3548:         * `chosenProtectionFromPerPair`
-  3549:         * feature ships in follow-up 30).
+  * extension of the per-pair-with-
+  * `"chosen"` extension rides
+  * follow-up 29 (the
+  * `chosenProtectionFromPerPair`
+  * feature ships in follow-up 30).
   ```
-- **Evidence**:
-  - `chosenProtectionFromPerPair` in schema.ts: **0 refs**
-  - `chosenProtectionFromPerPair` in interpret.ts: **0 refs**
-  - Search for the feature name in the entire `src/`: **0 hits** in code, only the marker
-  - The marker says "the feature ships in follow-up 30" — but follow-up 30 passed and it didn't ship
-- **Verdict**: **CONVERT-TO-ISSUE**
-- **Rationale**: `chosenProtectionFromPerPair` is a **live-deferred arm that the marker promised would ship in follow-up 30 but didn't.** The cycle closed without shipping it. This needs an issue reference (or reference to `wave4.8-closed.md` §2) so future readers know the feature exists conceptually but was never implemented. Removing this marker would erase the signal.
+- **Proposed rewrite**:
+  ```text
+  * extension of the per-pair-with-
+  * `"chosen"` extension is unbuilt;
+  * deferred since follow-up 29 (the
+  * `chosenProtectionFromPerPair`
+  * feature never shipped; cycle
+  * closed). See wave4.8-closed.md §2.
+  ```
+- **Notes**: **Important:** the original marker said the feature ships
+  in follow-up 30, but it never shipped and the cycle closed without
+  delivering it. The new wording is honest about that.
 
 ### S13 — schema.ts:3589
 
 - **Window**: 26+ (cycle metadata)
-- **Subject**: Cycle metadata — references when the wave 4.8 follow-up cycle started
-- **Full context**: cycle metadata block.
-- **Evidence**: Cycle metadata, not work.
-- **Verdict**: **REMOVE**
-- **Rationale**: This is cycle metadata, not a deferred arm. The wave 4.8 cycle is now closed; the metadata's role is satisfied. Removing the marker block is appropriate.
+- **Subject**: Cycle metadata referencing wave 4.8 follow-up cycle start
+- **Marker text** (lines 3583–3591):
+  ```text
+  * Out of scope (each a follow-up lane):
+  * explicit `target: CardInstanceId`
+  * arg, multi-target replacement, and
+  * the `chosen`-per-pair extension of
+  * `perCounter.perPair` (the wave 4.8
+  * follow-up cycle's v1 priority 2+;
+  * this comment is the v1 minimum
+  * marker; the follow-up cycle owns
+  * the extension once a priority
+  ```
+- **Proposed rewrite**:
+  ```text
+  * Out of scope (each a follow-up lane):
+  * explicit `target: CardInstanceId`
+  * arg, multi-target replacement, and
+  * the `chosen`-per-pair extension of
+  * `perCounter.perPair`. The wave 4.8
+  * follow-up cycle closed without
+  * a fixture surfacing this need;
+  * see wave4.8-closed.md §2.
+  ```
 
 ### S14 — schema.ts:3620
 
 - **Window**: 27
-- **Subject**: `perCounter.counter: "chosen"` interaction with parallel count
-- **Full context**:
+- **Subject**: `perCounter.counter: "chosen"` parallel count
+- **Marker text** (lines 3617–3621):
   ```text
-  3617:         * (`perCounter.counter: "chosen"`
-  3618:         * parallel count for each
-  3619:         * counter-pair-side) rides follow-up
-  3620:         * 27 if any future priority piece
-  3621:         * surfaces a need.
+  * (`perCounter.counter: "chosen"`
+  * parallel count for each
+  * counter-pair-side) rides follow-up
+  * 27 if any future priority piece
+  * surfaces a need.
   ```
-- **Evidence**:
-  - `perCounter` in schema.ts: **31 refs** (base feature shipped)
-  - `perCounter.counter: "chosen"`: schema does not enumerate counter variants
-- **Verdict**: **CONVERT-TO-TODO**
+- **Proposed rewrite**:
+  ```text
+  * (`perCounter.counter: "chosen"`
+  * parallel count for each
+  * counter-pair-side) is unbuilt;
+  * deferred since follow-up 27.
+  * See wave4.8-closed.md §2.
+  ```
 
 ### S15 — schema.ts:3688
 
 - **Window**: 30
 - **Subject**: Per-pair-with-`"chosen"`-per-pair extension (left side)
-- **Full context**:
+- **Marker text** (lines 3685–3689):
   ```text
-  3685:         *   - "chosen" extension is read
-  3686:         *     from a per-pair sentinel map
-  3687:         *     (per pair,
-  3688:         *     rides follow-up 30; the
-  3689:         *     base `perCounter.perPair` reads
+  *   - "chosen" extension is read
+  *     from a per-pair sentinel map
+  *     (per pair,
+  *     rides follow-up 30; the
+  *     base `perCounter.perPair` reads
   ```
-- **Evidence**:
-  - `perCounter.perPair` in schema.ts: present (sub-feature shipped, see S12's grandparent comment)
-  - "chosen" extension from per-pair sentinel map: no dedicated entry
-- **Verdict**: **CONVERT-TO-TODO** (paired with S16–S19 in the per-pair-with-chosen family)
+- **Proposed rewrite**:
+  ```text
+  *   - "chosen" extension is read
+  *     from a per-pair sentinel map
+  *     (per pair, unbuilt; deferred
+  *     since follow-up 30; the base
+  *     `perCounter.perPair` reads
+  ```
+- **Notes**: Multi-line marker; needs careful line-by-line replacement
+  to keep the comment block's continuation coherent.
 
 ### S16 — schema.ts:3710
 
 - **Window**: 30
 - **Subject**: Per-pair-with-`"chosen"`-per-pair extension (right side)
-- **Full context**: continuation of S15's comment block.
-- **Verdict**: **CONVERT-TO-TODO** (paired with S15)
+- **Marker text**: continuation of S15's block.
+- **Proposed rewrite**: continuation of S15's rewrite.
 
 ### S17 — schema.ts:3877
 
 - **Window**: 30
 - **Subject**: Per-pair-with-sentinel extension (parallel index variant)
-- **Full context**:
+- **Marker text** (lines 3874–3877):
   ```text
-  3874:         * until-eot axis:
-  3875:         * per-pair-with-sentinel extension
-  3876:         * (`perCounter.perPair[index].counter`
-  3877:         * extension rides follow-up 30 too).
+  * until-eot axis:
+  * per-pair-with-sentinel extension
+  * (`perCounter.perPair[index].counter`
+  * extension rides follow-up 30 too).
   ```
-- **Evidence**: parallel-index variant of `perCounter.perPair`; base shipped.
-- **Verdict**: **CONVERT-TO-TODO**
+- **Proposed rewrite**:
+  ```text
+  * until-eot axis:
+  * per-pair-with-sentinel extension
+  * (`perCounter.perPair[index].counter`
+  * extension is unbuilt; deferred since
+  * follow-up 30).
+  ```
 
 ### S18 — schema.ts:3879
 
 - **Window**: 30
-- **Subject**: Per-pair-with-sentinel hybrid that resolves via literal mapping
-- **Full context**: paired with S17.
-- **Verdict**: **CONVERT-TO-TODO**
+- **Subject**: Per-pair-with-sentinel hybrid (literal mapping)
+- **Marker text**: paired continuation of S17's block.
+- **Proposed rewrite**: paired with S17.
 
 ---
 
@@ -331,49 +412,68 @@ don't change the evidence.
 
 - **Window**: 30 priority 4
 - **Subject**: `add_type` exception variant for parallel additive merges
-- **Full context**:
+- **Marker text** (lines 1408–1412):
   ```text
-  1408:       // `add_power` for parallel P/T
-  1409:       // additive merges.
-  1410:       //
-  1411:       // `add_type` except
-  1412:       // rides follow-up 30 priority 4.
+  // `add_power` for parallel P/T
+  // additive merges.
+  //
+  // `add_type` except
+  // rides follow-up 30 priority 4.
   ```
-- **Evidence**:
-  - `add_type` in interpret.ts: **24 refs** (shipped)
-  - `add_power` in interpret.ts: **20 refs** (shipped)
-  - Exception variant for parallel additive merges: no dedicated handler
-- **Verdict**: **CONVERT-TO-TODO**
+- **Proposed rewrite**:
+  ```text
+  // `add_power` for parallel P/T
+  // additive merges.
+  //
+  // `add_type` exception variant is
+  // unbuilt; deferred since follow-up 30
+  // priority 4. See wave4.8-closed.md §2.
+  ```
 
 ### I02 — interpret.ts:2040
 
 - **Window**: 32
-- **Subject**: `set_color_identity` hybrid (overrides identity, leaves printed colors)
-- **Full context**:
+- **Subject**: `set_color_identity` hybrid handler
+- **Marker text** (lines 2037–2041):
   ```text
-  2037:            // identity override that leaves
-  2038:            // printed colors intact) the hybrid
-  2039:            // rides follow-up 32; see the
-  2040:            // `set_color_identity` comment in
-  2041:            // schema.ts for the precise semantic.
+  // identity override that leaves
+  // printed colors intact) the hybrid
+  // rides follow-up 32; see the
+  // `set_color_identity` comment in
+  // schema.ts for the precise semantic.
   ```
-- **Evidence**: same shape as S07. The interpret handler doesn't exist for this hybrid.
-- **Verdict**: **CONVERT-TO-TODO** (paired with S07)
+- **Proposed rewrite**:
+  ```text
+  // identity override that leaves
+  // printed colors intact) the hybrid
+  // is unbuilt; deferred since follow-up
+  // 32; see the `set_color_identity`
+  // comment in schema.ts for the
+  // precise semantic. See
+  // wave4.8-closed.md §2.
+  ```
 
 ### I03 — interpret.ts:2197
 
 - **Window**: 32
-- **Subject**: `set_power` until-eot hybrid (mirrors lane 75c `become_copy` until-eot)
-- **Full context**:
+- **Subject**: `set_power` until-eot handler
+- **Marker text** (lines 2194–2198):
   ```text
-  2194:            // hybrid that rides follow-up 32).
-  2195:            // For now the SCHEMA path is the
-  2196:            // only consumer; the interpret
-  2197:            // handler will land when a fixture
-  2198:            // surfaces the need.
+  // hybrid that rides follow-up 32).
+  // For now the SCHEMA path is the
+  // only consumer; the interpret
+  // handler will land when a fixture
+  // surfaces the need.
   ```
-- **Evidence**: same shape as S08. The interpret handler doesn't exist for this hybrid.
-- **Verdict**: **CONVERT-TO-TODO** (paired with S08)
+- **Proposed rewrite**:
+  ```text
+  // hybrid is unbuilt; deferred since
+  // follow-up 32). For now the SCHEMA
+  // path is the only consumer; the
+  // interpret handler will land when
+  // a fixture surfaces the need.
+  // See wave4.8-closed.md §2.
+  ```
 
 ---
 
@@ -382,22 +482,26 @@ don't change the evidence.
 ### C01 — cards.ts:200
 
 - **Window**: 32
-- **Subject**: `chosenProtectionFromPerPairWithLiteral` extension
-- **Full context**:
+- **Subject**: `chosenProtectionFromPerPairWithLiteral` (issue #2241)
+- **Marker text** (lines 195–199):
   ```text
-  195:   * `chosenProtectionFromPerPairWithLiteral`
-  196:   * extension of the per-pair-with
-  197:   * literal independent sentinel-
-  198:   * resolution field on `CardInstance`
-  199:   * (issue #2241 follow-up).
-  200:   * Defined as: [...]
+   * `chosenProtectionFromPerPairWithLiteral`
+   * extension of the per-pair-with
+   * literal independent sentinel-
+   * resolution field on `CardInstance`
+   * (issue #2241 follow-up).
   ```
-- **Evidence**:
-  - `chosenProtectionFromPerPairWithLiteral` in `src/`: **1 ref** (the marker itself)
-  - `chosenProtectionFromPerPair` (without WithLiteral): **0 refs** (see S12)
-  - The marker says "issue #2241 follow-up" — there's an external issue reference
-- **Verdict**: **CONVERT-TO-ISSUE**
-- **Rationale**: References an external issue (#2241). This is a live-deferred arm that the cycle's closed state should preserve. Convert to a TODO that explicitly references the issue and `wave4.8-closed.md` §2.
+- **Proposed rewrite**:
+  ```text
+   * `chosenProtectionFromPerPairWithLiteral`
+   * extension of the per-pair-with
+   * literal independent sentinel-
+   * resolution field on `CardInstance`
+   * is unbuilt (was the closed-out
+   * priority list's second item; see
+   * wave4.8-closed.md §2; original
+   * issue #2241).
+  ```
 
 ---
 
@@ -406,107 +510,141 @@ don't change the evidence.
 ### T01 — lane71-per-pair-sentinel-multi.test.ts:18
 
 - **Window**: 31
-- **Subject**: Test docstring about parallel-lane-vs-per-pair-sentinel shape
-- **Full context**:
+- **Subject**: Test docstring about per-pair-sentinel multi-shape
+- **Marker text** (lines 14–19):
   ```text
-  14:   * dedupes at write time. v1 minimum: the
-  15:   * single-instance-field model (parallel to the
-  16:   * lane 5
-  17:   * chosenProtectionFromPerPair). Future
-  18:   * extension rides follow-up 31 (the
-  19:   * per-pair-with-sentinel multi-shape).
+   * dedupes at write time. v1 minimum: the
+   * single-instance-field model (parallel to the
+   * lane 5
+   * chosenProtectionFromPerPair). Future
+   * extension rides follow-up 31 (the
+   * per-pair-with-sentinel multi-shape).
   ```
-- **Verdict**: **CONVERT-TO-TODO**
-- **Rationale**: Test docstring describing a deferred extension. Convert the docstring block to standard text or remove the "rides follow-up 31" reference and replace with a `// future extension //` placeholder.
+- **Proposed rewrite**:
+  ```text
+   * dedupes at write time. v1 minimum: the
+   * single-instance-field model (parallel to the
+   * lane 5 chosenProtectionFromPerPair; that
+   * feature is unbuilt — see
+   * wave4.8-closed.md §2). Future extension
+   * would be the per-pair-with-sentinel
+   * multi-shape.
+  ```
 
 ### T02 — lane28-create-copy-token-exceptions.test.ts:18
 
 - **Window**: 30
-- **Subject**: Test docstring about copy-token exceptions (from schema.ts:512 marker, see S01)
-- **Full context**: similar shape to T01.
-- **Verdict**: **REMOVE** (paired with S01; the wave-4 work shipped)
+- **Subject**: Test docstring about per-token exception array
+- **Marker text** (lines 16–18):
+  ```text
+   * per-token exception array
+   * rides follow-up 30).
+  ```
+- **Proposed rewrite**:
+  ```text
+   * per-token exception array
+   * is unbuilt; deferred since
+   * follow-up 30. See
+   * wave4.8-closed.md §2).
+  ```
+- **Notes**: This is a single-sentence marker inside a longer test
+  docstring describing what the test does. The new wording preserves
+  the test description while removing the false follow-up promise.
 
 ### T03 — lane32-per-pair-counter-ordinal.test.ts:31
 
 - **Window**: 30
 - **Subject**: Test docstring about `perCounter.perPair` ordinal extension
-- **Full context**:
+- **Marker text** (lines 27–31):
   ```text
-  27:   * `perCounter.perPair` reads from a
-  28:   * per-pair sentinel map (per pair, the
-  29:   * chosen-counter ordinal extension rides
-  30:   * follow-up 30 too).
-  31:   *
+   * `perCounter.perPair` reads from a
+   * per-pair sentinel map (per pair, the
+   * chosen-counter ordinal extension rides
+   * follow-up 30 too).
   ```
-- **Verdict**: **CONVERT-TO-TODO**
+- **Proposed rewrite**:
+  ```text
+   * `perCounter.perPair` reads from a
+   * per-pair sentinel map (per pair, the
+   * chosen-counter ordinal extension
+   * is unbuilt; deferred since follow-up
+   * 30). See wave4.8-closed.md §2.
+  ```
 
 ---
 
-## 5. Summary table
+## 5. Summary
 
-| ID  | File:line                                      | Window         | Subject                                              | Verdict          |
-| --- | ---------------------------------------------- | -------------- | ---------------------------------------------------- | ---------------- |
-| S01 | schema.ts:512                                  | wave-4         | CopyPermanent exception mask                         | REMOVE           |
-| S02 | schema.ts:581                                  | 31             | destructive set_color                                | CONVERT-TO-TODO  |
-| S03 | schema.ts:625                                  | 34 this commit | set_supertype exclusive "World"                      | REMOVE           |
-| S04 | schema.ts:658                                  | 34 this commit | set_supertype exclusive (paired)                     | REMOVE           |
-| S05 | schema.ts:761                                  | 35+            | set_keyword                                          | CONVERT-TO-ISSUE |
-| S06 | schema.ts:763                                  | 35+            | set_ability                                          | CONVERT-TO-ISSUE |
-| S07 | schema.ts:919                                  | 32             | set_color_identity hybrid                            | CONVERT-TO-TODO  |
-| S08 | schema.ts:1061                                 | 32             | set_power until-eot                                  | CONVERT-TO-TODO  |
-| S09 | schema.ts:1099                                 | 32             | destructive set_type                                 | CONVERT-TO-TODO  |
-| S10 | schema.ts:1214                                 | 32             | destructive set_toughness                            | CONVERT-TO-TODO  |
-| S11 | schema.ts:1267                                 | 34 this commit | destructive set_supertype                            | REMOVE           |
-| S12 | schema.ts:3548                                 | 29             | chosenProtectionFromPerPair (never built)            | CONVERT-TO-ISSUE |
-| S13 | schema.ts:3589                                 | 26+            | cycle metadata                                       | REMOVE           |
-| S14 | schema.ts:3620                                 | 27             | perCounter.counter "chosen" interaction              | CONVERT-TO-TODO  |
-| S15 | schema.ts:3688                                 | 30             | per-pair "chosen" extension (left)                   | CONVERT-TO-TODO  |
-| S16 | schema.ts:3710                                 | 30             | per-pair "chosen" extension (right)                  | CONVERT-TO-TODO  |
-| S17 | schema.ts:3877                                 | 30             | per-pair-with-sentinel parallel-index                | CONVERT-TO-TODO  |
-| S18 | schema.ts:3879                                 | 30             | per-pair-with-sentinel hybrid                        | CONVERT-TO-TODO  |
-| I01 | interpret.ts:1412                              | 30 priority 4  | add_type exception variant                           | CONVERT-TO-TODO  |
-| I02 | interpret.ts:2040                              | 32             | set_color_identity hybrid handler                    | CONVERT-TO-TODO  |
-| I03 | interpret.ts:2197                              | 32             | set_power until-eot handler                          | CONVERT-TO-TODO  |
-| C01 | cards.ts:200                                   | 32             | chosenProtectionFromPerPairWithLiteral (issue #2241) | CONVERT-TO-ISSUE |
-| T01 | lane71-per-pair-sentinel-multi.test.ts:18      | 31             | per-pair-sentinel multi-shape                        | CONVERT-TO-TODO  |
-| T02 | lane28-create-copy-token-exceptions.test.ts:18 | 30             | copy-token exceptions docstring                      | REMOVE           |
-| T03 | lane32-per-pair-counter-ordinal.test.ts:31     | 30             | perCounter.perPair ordinal extension                 | CONVERT-TO-TODO  |
+All 25 markers get the same treatment: **rewrite the "rides follow-up N"
+sentence to point at `wave4.8-closed.md §2`** with semantic preservation
+of the surrounding documentation block.
 
-**Tally**:
-
-- **REMOVE** (6): S01, S03, S04, S11, S13, T02
-- **CONVERT-TO-TODO** (16): S02, S07, S08, S09, S10, S14, S15, S16, S17, S18, I01, I02, I03, T01, T03, (and 3 more from the table)
-- **CONVERT-TO-ISSUE** (3): S05, S06, S12, C01
-
-Wait — recount: S05, S06, S12, C01 = 4 issues; S02, S07, S08, S09, S10, S14, S15, S16, S17, S18, I01, I02, I03, T01, T03 = 15 TODOs; S01, S03, S04, S11, S13, T02 = 6 removes. **Total 25.** Matches the grep count.
+| ID  | File:line                                      | Window | Subject                                | Destination          |
+| --- | ---------------------------------------------- | ------ | -------------------------------------- | -------------------- |
+| S01 | schema.ts:512                                  | wave-4 | CopyPermanent exception mask           | cycle-doc §2         |
+| S02 | schema.ts:581                                  | 31     | destructive set_color                  | cycle-doc §2         |
+| S03 | schema.ts:625                                  | 34     | set_supertype exclusive "World"        | cycle-doc §2         |
+| S04 | schema.ts:658                                  | 34     | set_supertype exclusive (paired)       | cycle-doc §2         |
+| S05 | schema.ts:761                                  | 35+    | set_keyword                            | cycle-doc §2         |
+| S06 | schema.ts:763                                  | 35+    | set_ability                            | cycle-doc §2         |
+| S07 | schema.ts:919                                  | 32     | set_color_identity hybrid              | cycle-doc §2         |
+| S08 | schema.ts:1061                                 | 32     | set_power until-eot                    | cycle-doc §2         |
+| S09 | schema.ts:1099                                 | 32     | destructive set_type                   | cycle-doc §2         |
+| S10 | schema.ts:1214                                 | 32     | destructive set_toughness              | cycle-doc §2         |
+| S11 | schema.ts:1267                                 | 34     | destructive set_supertype              | cycle-doc §2         |
+| S12 | schema.ts:3548                                 | 29     | chosenProtectionFromPerPair            | cycle-doc §2         |
+| S13 | schema.ts:3589                                 | 26+    | cycle metadata                         | cycle-doc §2         |
+| S14 | schema.ts:3620                                 | 27     | perCounter.counter "chosen"            | cycle-doc §2         |
+| S15 | schema.ts:3688                                 | 30     | per-pair "chosen" extension (left)     | cycle-doc §2         |
+| S16 | schema.ts:3710                                 | 30     | per-pair "chosen" extension (right)    | cycle-doc §2         |
+| S17 | schema.ts:3877                                 | 30     | per-pair-with-sentinel parallel-index  | cycle-doc §2         |
+| S18 | schema.ts:3879                                 | 30     | per-pair-with-sentinel hybrid          | cycle-doc §2         |
+| I01 | interpret.ts:1412                              | 30 p4  | add_type exception variant             | cycle-doc §2         |
+| I02 | interpret.ts:2040                              | 32     | set_color_identity hybrid handler      | cycle-doc §2         |
+| I03 | interpret.ts:2197                              | 32     | set_power until-eot handler            | cycle-doc §2         |
+| C01 | cards.ts:200                                   | 32     | chosenProtectionFromPerPairWithLiteral | cycle-doc §2 + #2241 |
+| T01 | lane71-per-pair-sentinel-multi.test.ts:18      | 31     | per-pair-sentinel multi-shape          | cycle-doc §2         |
+| T02 | lane28-create-copy-token-exceptions.test.ts:18 | 30     | per-token exception array              | cycle-doc §2         |
+| T03 | lane32-per-pair-counter-ordinal.test.ts:31     | 30     | perCounter.perPair ordinal             | cycle-doc §2         |
 
 ---
 
-## 6. What this doc does NOT do
+## 6. Diff stat for the next commit (predicted)
 
-- **No source files edited.** The cleanup is mechanical but the verdicts need human sign-off first.
-- **No new tests added.** The cleanup preserves the existing test files (T01, T02, T03 are docstring edits, not test additions).
-- **No schema changes.** Cleanup is comment-only.
-- **No engine-size-budget impact.** Comments aren't counted in the budget.
+| File                                                                       | Lines changed | Notes                                |
+| -------------------------------------------------------------------------- | ------------- | ------------------------------------ |
+| `src/lib/game-state/card-scripts/schema.ts`                                | +18 −18 ish   | 18 marker rewrites                   |
+| `src/lib/game-state/card-scripts/interpret.ts`                             | +3 −3         | 3 marker rewrites                    |
+| `src/lib/game-state/types/cards.ts`                                        | +1 −1         | 1 marker rewrite                     |
+| `src/lib/game-state/__tests__/lane71-per-pair-sentinel-multi.test.ts`      | +1 −1         | 1 docstring rewrite                  |
+| `src/lib/game-state/__tests__/lane28-create-copy-token-exceptions.test.ts` | +1 −1         | 1 docstring rewrite                  |
+| `src/lib/game-state/__tests__/lane32-per-pair-counter-ordinal.test.ts`     | +1 −1         | 1 docstring rewrite                  |
+| `docs/card-scripts/wave4.8-stale-marker-cleanup.md`                        | new           | handoff doc describing what was done |
 
----
+Plus the v2 inventory doc (this file) and the v1 cleanup commit
+(`9a9575ff`).
 
-## 7. Next steps
+## 7. Verification after applying
 
-1. **You stamp verdicts** for any marker where you disagree with my classification. The table in §5 is the artifact; the per-marker entries in §§1–4 are the evidence.
-2. **Once stamped**, I apply them as a single PR:
-   - 6 REMOVEs are line-removal patches (prettier-clean).
-   - 15 CONVERT-TO-TODO patches are comment rewrites.
-   - 4 CONVERT-TO-ISSUE patches reference the closed-cycle doc and/or external issues.
-3. **Verification**: after edits, re-run `grep -n "rides follow-up"` to confirm 25 hits → 0 hits (assuming all conversions replace the marker text). Run `npx jest --testPathPatterns="..."` on the affected test files to confirm no test breakage.
-4. **Final handoff doc**: write `docs/card-scripts/wave4.8-stale-marker-cleanup.md` describing what was done, with diff stat.
+1. `grep -n "rides follow-up" src/lib/game-state/` returns 0 hits.
+2. `npx jest --testPathPatterns="lane28|lane32|lane71"` returns all
+   passing (no test logic changed; only docstrings).
+3. `git diff --stat` shows the predicted diff stat from §6.
+4. The final handoff doc (`wave4.8-stale-marker-cleanup.md`) records
+   the cleanup and points to the v2 inventory as the audit record.
 
 ---
 
 ## 8. Cross-references
 
-- `docs/card-scripts/wave4.8-closed.md` — the closing record. §2 (resumption triggers) is the destination for CONVERT-TO-ISSUE markers.
-- `docs/card-scripts/wave4.8-followup36-handoff.md` — the first stale-marker audit; this doc supersedes it.
-- `docs/card-scripts/wave4.8-followup37-handoff.md` — three-no-ship pattern codification.
+- `docs/card-scripts/wave4.8-closed.md` — the closing record. §2 is
+  the destination referenced by every rewrite.
+- `docs/card-scripts/wave4.8-stale-marker-cleanup-inventory.md` (v1,
+  commit `9a9575ff`) — the original inventory with the wrong REMOVE
+  verdicts; this v2 supersedes it.
+- `docs/card-scripts/wave4.8-followup36-handoff.md` — first stale-marker
+  audit; superseded by the v1 inventory and now by v2.
+- `docs/card-scripts/wave4.8-followup37-handoff.md` — three-no-ship
+  pattern codification.
 
-End of inventory.
+End of v2 inventory.
