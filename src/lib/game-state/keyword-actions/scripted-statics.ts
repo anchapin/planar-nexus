@@ -1347,18 +1347,54 @@ export function refreshScriptedStatics(input: GameState): GameState {
             // still iterates, contributing zero
             // qualities).
             const resolved: string[] = [];
-            for (const entry of stat.protectionFrom as readonly (
-              | string
-              | string[]
-            )[]) {
-              if (entry === "chosen") {
-                if (
-                  card.chosenProtectionFrom !== null &&
-                  card.chosenProtectionFrom !== undefined
-                ) {
-                  resolved.push(card.chosenProtectionFrom);
-                }
-              } else if (Array.isArray(entry)) {
+            // Track the index of the
+            // OUTER `protectionFrom` array
+            // entries. The follow-up 31
+            // priority 4 per-pair
+            // independent sentinel-
+            // resolution field
+            // (`chosenProtectionFromPerPair`)
+            // is keyed by the OUTER
+            // index (the index of the
+            // nested array in the outer
+            // `protectionFrom` array).
+            stat.protectionFrom.forEach(
+              (entry, pairIdx) => {
+                // The per-pair map
+                // takes PRECEDENCE over
+                // the single-instance
+                // `chosenProtectionFrom`
+                // field when set, the
+                // index is present, and
+                // the value is non-null.
+                const perPairMap =
+                  card.chosenProtectionFromPerPair;
+                const perPairValue =
+                  perPairMap && pairIdx in perPairMap
+                    ? perPairMap[pairIdx]
+                    : null;
+                const hasPerPairValue =
+                  perPairValue !== null &&
+                  perPairValue !== undefined;
+                if (entry === "chosen") {
+                  if (hasPerPairValue) {
+                    // Per-pair map wins
+                    // for this entry.
+                    resolved.push(perPairValue);
+                  } else if (
+                    card.chosenProtectionFrom !== null &&
+                    card.chosenProtectionFrom !== undefined
+                  ) {
+                    // Fallback to the
+                    // single-instance
+                    // field (the follow-up
+                    // 30 priority 5
+                    // semantic).
+                    resolved.push(
+                      card.chosenProtectionFrom,
+                    );
+                  }
+                } else if (Array.isArray(entry)) {
                 // Wave 4.8 follow-up 28 priority 2
                 // (#2614 follow-up): the
                 // array-aware entry shape (nested-
@@ -1423,7 +1459,21 @@ export function refreshScriptedStatics(input: GameState): GameState {
                 // `source.chosenProtectionFromPerPair`).
                 for (const q of entry) {
                   if (q === "chosen") {
-                    if (
+                    // Per-pair map takes
+                    // PRECEDENCE for
+                    // nested-array "chosen"
+                    // entries too (the
+                    // follow-up 31 priority 4
+                    // per-pair map consults
+                    // the same field for both
+                    // the outer-loop "chosen"
+                    // entry AND the
+                    // nested-array "chosen"
+                    // entry, keyed by the
+                    // outer-array index).
+                    if (hasPerPairValue) {
+                      resolved.push(perPairValue);
+                    } else if (
                       card.chosenProtectionFrom !== null &&
                       card.chosenProtectionFrom !== undefined
                     ) {
@@ -1436,7 +1486,8 @@ export function refreshScriptedStatics(input: GameState): GameState {
               } else {
                 resolved.push(entry);
               }
-            }
+              },
+            );
             resolvedProtFromQualities = resolved;
           } else {
             resolvedProtFromQualities = stat.protectionFrom as readonly string[];
