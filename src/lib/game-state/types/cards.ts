@@ -197,9 +197,9 @@ export interface CardInstance {
    * the `"chosen"` entry
    * differently when the same
    * nested array also has literal
-   * qualities) rides follow-up 32
-   * if any future priority piece
-   * surfaces a need.
+   * qualities) is unbuilt; deferred
+   * since follow-up 32. See
+   * wave4.8-closed.md §2.
    */
   chosenProtectionFromPerPair?: Record<number, string | null>;
   /**

@@ -28,9 +28,10 @@
  * sum of the FIRST counter of each unique type — a
  * "first counter per pair" read). The
  * `andPer.perCounter perPair` parallel ordinal
- * extension rides follow-up 30 (the
+ * extension is unbuilt; deferred since follow-up 30.
+ * See wave4.8-closed.md §2. (The
  * per-pair-with-sentinel extension also rides
- * follow-up 30).
+ * follow-up 30.)
  *
  * Three test groups:
  *   1. schema — `perCounter.perPair` parses with
@@ -48,10 +49,7 @@
  *      takes precedence ONLY when set).
  */
 import { describe, it, expect, beforeEach, afterAll } from "@jest/globals";
-import {
-  CardScriptSchema,
-  type CardScript,
-} from "../card-scripts/schema";
+import { CardScriptSchema, type CardScript } from "../card-scripts/schema";
 import {
   registerCardScripts,
   resetCardScriptsForTests,
@@ -67,8 +65,7 @@ import type {
   ScryfallCard,
 } from "../types";
 
-const SOURCE_NAME =
-  "Test Per-Pair Counter Ordinal Anthem (lane 32 priority 4)";
+const SOURCE_NAME = "Test Per-Pair Counter Ordinal Anthem (lane 32 priority 4)";
 
 function makeSourceCardDef(
   overrides: Partial<ScryfallCard> & { id: string },
@@ -102,7 +99,12 @@ function setupGame(): SetupResult {
   state = startGame(state);
   const playerIds = Array.from(state.players.keys()) as PlayerId[];
   const aliceId = playerIds[0];
-  return { state, aliceId, sourceId: "" as CardInstanceId, source: undefined as unknown as CardInstance };
+  return {
+    state,
+    aliceId,
+    sourceId: "" as CardInstanceId,
+    source: undefined as unknown as CardInstance,
+  };
 }
 
 function putOnBattlefield(
@@ -159,8 +161,7 @@ function registerPerPairOrdinalAnthem(): void {
       "This creature gets +1/+1 for the first 2 of each unique counter type on it.",
     statics: [
       {
-        text:
-          "This creature gets +1/+1 for the first 2 of each unique counter type on it.",
+        text: "This creature gets +1/+1 for the first 2 of each unique counter type on it.",
         affects: { self: true, controller: "you" },
         anthemScaling: {
           per: "creatures",
@@ -193,8 +194,7 @@ function registerPerPairDefaultAnthem(): void {
       "This creature gets +1/+1 for the first counter of each unique counter type on it.",
     statics: [
       {
-        text:
-          "This creature gets +1/+1 for the first counter of each unique counter type on it.",
+        text: "This creature gets +1/+1 for the first counter of each unique counter type on it.",
         affects: { self: true, controller: "you" },
         anthemScaling: {
           per: "creatures",
@@ -242,9 +242,9 @@ describe("Wave 4.8 follow-up 29 priority 4 — perCounter.perPair cross-type var
           },
         ],
       });
-      expect(
-        parsed.statics![0]?.anthemScaling?.perCounter?.perPair,
-      ).toEqual({ ordinal: 2 });
+      expect(parsed.statics![0]?.anthemScaling?.perCounter?.perPair).toEqual({
+        ordinal: 2,
+      });
     });
 
     it("accepts the perPair arm without an ordinal (defaults to 1 — 'first counter per pair')", () => {
@@ -267,9 +267,9 @@ describe("Wave 4.8 follow-up 29 priority 4 — perCounter.perPair cross-type var
           },
         ],
       });
-      expect(
-        parsed.statics![0]?.anthemScaling?.perCounter?.perPair,
-      ).toEqual({});
+      expect(parsed.statics![0]?.anthemScaling?.perCounter?.perPair).toEqual(
+        {},
+      );
     });
 
     it("accepts perCounter with both ordinal AND perPair (perPair takes precedence at consult time)", () => {
@@ -366,20 +366,15 @@ describe("Wave 4.8 follow-up 29 priority 4 — perCounter.perPair cross-type var
         id: "perpair-source",
         name: SOURCE_NAME,
       });
-      const placed = putOnBattlefield(
-        setup.state,
-        setup.aliceId,
-        sourceDef,
-        {
-          counters: [
-            { type: "+1/+1", count: 1 },
-            { type: "+1/+1", count: 1 },
-            { type: "+1/+1", count: 1 },
-            { type: "-1/-1", count: 1 },
-            { type: "-1/-1", count: 1 },
-          ],
-        },
-      );
+      const placed = putOnBattlefield(setup.state, setup.aliceId, sourceDef, {
+        counters: [
+          { type: "+1/+1", count: 1 },
+          { type: "+1/+1", count: 1 },
+          { type: "+1/+1", count: 1 },
+          { type: "-1/-1", count: 1 },
+          { type: "-1/-1", count: 1 },
+        ],
+      });
       const refreshed = refreshScriptedStatics(placed.state);
       const sourceInst = refreshed.cards.get(placed.cardId);
       expect(sourceInst).toBeDefined();
@@ -408,20 +403,15 @@ describe("Wave 4.8 follow-up 29 priority 4 — perCounter.perPair cross-type var
         id: "perpair-default-source",
         name: SOURCE_NAME,
       });
-      const placed = putOnBattlefield(
-        setup.state,
-        setup.aliceId,
-        sourceDef,
-        {
-          counters: [
-            { type: "+1/+1", count: 1 },
-            { type: "+1/+1", count: 1 },
-            { type: "+1/+1", count: 1 },
-            { type: "-1/-1", count: 1 },
-            { type: "-1/-1", count: 1 },
-          ],
-        },
-      );
+      const placed = putOnBattlefield(setup.state, setup.aliceId, sourceDef, {
+        counters: [
+          { type: "+1/+1", count: 1 },
+          { type: "+1/+1", count: 1 },
+          { type: "+1/+1", count: 1 },
+          { type: "-1/-1", count: 1 },
+          { type: "-1/-1", count: 1 },
+        ],
+      });
       const refreshed = refreshScriptedStatics(placed.state);
       const sourceInst = refreshed.cards.get(placed.cardId);
       expect(sourceInst).toBeDefined();
@@ -442,11 +432,7 @@ describe("Wave 4.8 follow-up 29 priority 4 — perCounter.perPair cross-type var
         id: "perpair-empty-source",
         name: SOURCE_NAME,
       });
-      const placed = putOnBattlefield(
-        setup.state,
-        setup.aliceId,
-        sourceDef,
-      );
+      const placed = putOnBattlefield(setup.state, setup.aliceId, sourceDef);
       const refreshed = refreshScriptedStatics(placed.state);
       const sourceInst = refreshed.cards.get(placed.cardId);
       expect(sourceInst).toBeDefined();
@@ -470,22 +456,17 @@ describe("Wave 4.8 follow-up 29 priority 4 — perCounter.perPair cross-type var
         id: "perpair-three-types-source",
         name: SOURCE_NAME,
       });
-      const placed = putOnBattlefield(
-        setup.state,
-        setup.aliceId,
-        sourceDef,
-        {
-          counters: [
-            { type: "+1/+1", count: 1 },
-            { type: "+1/+1", count: 1 },
-            { type: "-1/-1", count: 1 },
-            { type: "-1/-1", count: 1 },
-            { type: "charge", count: 1 },
-            { type: "charge", count: 1 },
-            { type: "charge", count: 1 },
-          ],
-        },
-      );
+      const placed = putOnBattlefield(setup.state, setup.aliceId, sourceDef, {
+        counters: [
+          { type: "+1/+1", count: 1 },
+          { type: "+1/+1", count: 1 },
+          { type: "-1/-1", count: 1 },
+          { type: "-1/-1", count: 1 },
+          { type: "charge", count: 1 },
+          { type: "charge", count: 1 },
+          { type: "charge", count: 1 },
+        ],
+      });
       const refreshed = refreshScriptedStatics(placed.state);
       const sourceInst = refreshed.cards.get(placed.cardId);
       expect(sourceInst).toBeDefined();
@@ -511,8 +492,7 @@ describe("Wave 4.8 follow-up 29 priority 4 — perCounter.perPair cross-type var
           "This creature gets +1/+1 for the first 2 +1/+1 counters on it.",
         statics: [
           {
-            text:
-              "This creature gets +1/+1 for the first 2 +1/+1 counters on it.",
+            text: "This creature gets +1/+1 for the first 2 +1/+1 counters on it.",
             affects: { self: true, controller: "you" },
             anthemScaling: {
               per: "creatures",
@@ -530,19 +510,14 @@ describe("Wave 4.8 follow-up 29 priority 4 — perCounter.perPair cross-type var
         id: "no-perpair-source",
         name: SOURCE_NAME,
       });
-      const placed = putOnBattlefield(
-        setup.state,
-        setup.aliceId,
-        sourceDef,
-        {
-          counters: [
-            { type: "+1/+1", count: 1 },
-            { type: "+1/+1", count: 1 },
-            { type: "+1/+1", count: 1 },
-            { type: "-1/-1", count: 5 },
-          ],
-        },
-      );
+      const placed = putOnBattlefield(setup.state, setup.aliceId, sourceDef, {
+        counters: [
+          { type: "+1/+1", count: 1 },
+          { type: "+1/+1", count: 1 },
+          { type: "+1/+1", count: 1 },
+          { type: "-1/-1", count: 5 },
+        ],
+      });
       const refreshed = refreshScriptedStatics(placed.state);
       const sourceInst = refreshed.cards.get(placed.cardId);
       expect(sourceInst).toBeDefined();

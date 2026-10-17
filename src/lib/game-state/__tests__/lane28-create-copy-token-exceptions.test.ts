@@ -15,7 +15,8 @@
  * exceptions are PER-COPY (each token receives the
  * same `add_subtype` list — the exceptions are NOT
  * per-token in v1; a per-token exception array
- * rides follow-up 30).
+ * is unbuilt; deferred since follow-up 30. See
+ * wave4.8-closed.md §2.
  *
  * Three test groups:
  *   1. schema — `CopyPermanent.exceptions` parses
@@ -33,7 +34,14 @@
  *      printed type_line is the token's
  *      type_line).
  */
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "@jest/globals";
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  beforeEach,
+} from "@jest/globals";
 import {
   CardScriptSchema,
   type CardEffect,
@@ -56,8 +64,7 @@ import type {
   ScryfallCard,
 } from "../types";
 
-const HOST_NAME =
-  "Test Copy Permanent Exceptions (lane 28 piece 4/4)";
+const HOST_NAME = "Test Copy Permanent Exceptions (lane 28 piece 4/4)";
 
 function makeCard(
   overrides: Partial<ScryfallCard> & { id: string },
@@ -105,7 +112,8 @@ function putOnBattlefield(
   controllerId: PlayerId,
   cardDef: ScryfallCard,
 ): { state: GameState; cardId: CardInstanceId } {
-  const cardId = `card-${cardDef.id}-${Math.random().toString(36).slice(2)}` as CardInstanceId;
+  const cardId =
+    `card-${cardDef.id}-${Math.random().toString(36).slice(2)}` as CardInstanceId;
   const card = createCardInstance(cardDef, controllerId, controllerId, {
     id: cardId,
     currentZoneKey: `${controllerId}-battlefield`,
@@ -152,7 +160,8 @@ function castScript(
     id: `host-${HOST_NAME.replace(/\s+/g, "-")}`,
     name: HOST_NAME,
   });
-  const cardId = `card-host-${Math.random().toString(36).slice(2)}` as CardInstanceId;
+  const cardId =
+    `card-host-${Math.random().toString(36).slice(2)}` as CardInstanceId;
   const card = createCardInstance(cardDef, aliceId, aliceId, {
     id: cardId,
     currentZoneKey: `${aliceId}-hand`,
@@ -162,10 +171,7 @@ function castScript(
     cards: new Map(state.cards).set(cardId, card),
     zones: new Map(state.zones).set(`${aliceId}-hand`, {
       ...state.zones.get(`${aliceId}-hand`)!,
-      cardIds: [
-        ...(state.zones.get(`${aliceId}-hand`)!.cardIds ?? []),
-        cardId,
-      ],
+      cardIds: [...(state.zones.get(`${aliceId}-hand`)!.cardIds ?? []), cardId],
     }),
     turn: {
       ...state.turn,
@@ -390,15 +396,11 @@ describe("Wave 4.8 follow-up 29 priority 3 piece 4/4 — CopyPermanent.exception
       // token's type_line is rebuilt to
       // append "Artifact" to the printed
       // subtypes.
-      expect(tokenInst.cardData.type_line).toBe(
-        "Creature — Bear Artifact",
-      );
+      expect(tokenInst.cardData.type_line).toBe("Creature — Bear Artifact");
       // The other printed fields are
       // preserved (CR 707.2 "all
       // characteristics copied" semantics).
-      expect(tokenInst.cardData.name).toBe(
-        "Grizzly Bears (metamorph source)",
-      );
+      expect(tokenInst.cardData.name).toBe("Grizzly Bears (metamorph source)");
       expect(tokenInst.cardData.power).toBe("2");
       expect(tokenInst.cardData.toughness).toBe("2");
     });
@@ -447,9 +449,7 @@ describe("Wave 4.8 follow-up 29 priority 3 piece 4/4 — CopyPermanent.exception
         const inst = after.state.cards.get(id);
         expect(inst).toBeDefined();
         if (!inst) return;
-        expect(inst.cardData.type_line).toBe(
-          "Creature — Bear Artifact",
-        );
+        expect(inst.cardData.type_line).toBe("Creature — Bear Artifact");
       }
     });
 

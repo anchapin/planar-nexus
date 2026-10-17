@@ -873,7 +873,89 @@ const SCOPES = [
     // until end of turn and then restore the
     // printed power) rides follow-up 32. schema.ts
     // measured at 5264 (+44 over 5220).
-    budgetLines: 5270,
+    //
+    // Bumping 5270 → 5360 to capture the follow-up 33
+    // priority 1 (lane 28, piece 1/N) —
+    // `CopyPermanent.exceptions.set_subtype` arm
+    // (the per-copy subtypes-half REPLACE arm —
+    // `z.array(z.string().min(1)).min(1).optional()`,
+    // parallel in shape to the existing
+    // `set_color` REPLACE arm). The schema bump is
+    // dominated by the new PRECEDENCE doc-block
+    // that codifies the REPLACE-wins-over-additive
+    // rule across every per-copy axis (P/T, color,
+    // type, subtype, keywords, abilities) — a
+    // one-time documentation pass that the next
+    // `set_<axis>` arm-lander benefits from
+    // directly (no further doc-block needed; the
+    // rule is declarative end-to-end). The
+    // `set_<axis>`-vs-`add_<axis>` PRECEDENCE
+    // semantics are now mechanically derivable
+    // from the doc-block + the `applyExceptions`
+    // consult. schema.ts measured at 5354 (+84
+    // over 5270).
+    //
+    // Bumping 5360 → 5425 to capture the follow-up 34
+    // priority 1 (lane 28, piece 2/N) —
+    // `CopyPermanent.exceptions.set_type` arm
+    // (the per-copy types-half REPLACE arm —
+    // `z.array(z.string().min(1)).min(1).optional()`,
+    // parallel in shape to `set_subtype` but
+    // operating on the TYPES half of `type_line`).
+    // The schema bump reflects the new
+    // `set_type` field + its multi-line comment
+    // (~31 lines for cross-axis interaction
+    // with `set_subtype` REPLACE), plus the
+    // PRECEDENCE doc-block update that flips
+    // `set_type` from "deferred" to "this
+    // commit" and adds a small entry for the
+    // remaining deferred arms. schema.ts
+    // measured at 5415 (+61 over 5360).
+    //
+    // Bumping 5425 → 5500 to capture the follow-up 34
+    // priority 1 (lane 28, piece 3/N) —
+    // `CopyPermanent.exceptions.set_supertype`
+    // arm (the per-copy supertype-prefix
+    // REPLACE arm —
+    // `z.array(z.enum(["Legendary", "Snow",
+    // "Basic"])).min(1).optional()`,
+    // parallel in shape to `set_subtype` /
+    // `set_type` but operating on the supertype
+    // segment of the types half — a strictly
+    // typed enum because the legal supertype
+    // set per CR 205.4 is finite). The schema
+    // bump reflects the new `set_supertype`
+    // field + its cross-axis + REPLACE-wins
+    // docstring (~62 lines), plus the
+    // PRECEDENCE bullet-list update that flips
+    // `set_supertype` from "deferred" to "this
+    // commit". schema.ts measured at 5489
+    // (+74 over 5425).
+    //
+    // Bumping 5500 → 5585 to capture the follow-up 34
+    // priority 1 (lane 28, piece 4/N) —
+    // `CopyPermanent.exceptions.set_color_identity`
+    // arm (the per-copy HYBRID REPLACE — operates
+    // on `color_identity` ONLY, leaving `colors`
+    // verbatim). Strictly typed to the same
+    // `COLOR` enum already used for `add_color`
+    // / `set_color`. The schema bump reflects the
+    // new `set_color_identity` field + its
+    // cross-axis-with-`set_color` + REPLACE-wins
+    // docstring (~58 lines), plus the PRECEDENCE
+    // bullet-list update that flips
+    // `set_color_identity` from "deferred" to
+    // "this commit". This is the LAST of the
+    // deferred REPLACE-axis arms — Lane 28 is now
+    // closed for the `set_<axis>` family across
+    // every per-copy axis: P/T, color,
+    // color_identity, type, subtype, supertype.
+    // schema.ts measured at 5574 (+74 over 5500).
+    // (post-merge with origin/main: 5645 lines, after
+    // follow-up 31 #2812 added add_supertype + set_color +
+    // set_power, plus the five new lane28 split test files.
+    // Bumped 5585 → 5800 to absorb the merge.)
+    budgetLines: 5800,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

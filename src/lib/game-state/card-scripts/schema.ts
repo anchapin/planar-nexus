@@ -406,78 +406,75 @@ export const CopyPermanentSchema = z
      * consult consults the `kind` discriminator
      * for resolution.
      */
-    target: z
-      .union([
-        /**
-         * The existing enum filter — the v1 lane
-         * 70 substrate. The engine finds the
-         * first matching permanent on the
-         * battlefield (APNAP-ordered) whose
-         * `cardData.type_line` matches the enum
-         * value. Mirrors the lane 17
-         * `cost.sacrifice_permanents.type` enum
-         * and the lane 63
-         * `additionalCosts.sacrifice.target`
-         * enum.
-         */
-        z
-          .object({
-            kind: z.literal("filter"),
-            value: z.enum([
-              "permanent",
-              "creature",
-              "artifact",
-              "enchantment",
-              "land",
-            ]),
-          })
-          .strict(),
-        /**
-         * The explicit named target — a
-         * `CardInstanceId` on the battlefield.
-         * The engine reads the named target's
-         * `cardData` directly from
-         * `state.cards.get(value)` (validates the
-         * target is on the battlefield; a missing
-         * target is a no-op per the lane 70
-         * substrate's auto-pick fallback).
-         * Parallel to the lane 75a
-         * `CopyUntilEndOfTurn.chosen_permanent`
-         * shape (a literal `CardInstanceId` named
-         * target).
-         */
-        z
-          .object({
-            kind: z.literal("id"),
-            value: z.string().min(1),
-          })
-          .strict(),
-        /**
-         * The named-card variant (Self-Reflection
-         * style — "create a token that's a copy
-         * of [card name]"). This is a STUB in
-         * piece 2/4 (parses, no engine consult
-         * — the engine consult lands in piece
-         * 3/4). The schema union has all three
-         * arms; the engine consults two (filter
-         * + id) in piece 2/4. The named-card arm
-         * is included here so the discriminator
-         * is in place when piece 3/4 lands (no
-         * second schema bump needed). The
-         * `getCardDataByName(value.name)` lookup
-         * is the named card's printed `cardData`;
-         * missing-name is a no-op (see piece
-         * 3/4).
-         */
-        z
-          .object({
-            kind: z.literal("named_card"),
-            value: z
-              .object({ name: z.string().min(1) })
-              .strict(),
-          })
-          .strict(),
-      ]),
+    target: z.union([
+      /**
+       * The existing enum filter — the v1 lane
+       * 70 substrate. The engine finds the
+       * first matching permanent on the
+       * battlefield (APNAP-ordered) whose
+       * `cardData.type_line` matches the enum
+       * value. Mirrors the lane 17
+       * `cost.sacrifice_permanents.type` enum
+       * and the lane 63
+       * `additionalCosts.sacrifice.target`
+       * enum.
+       */
+      z
+        .object({
+          kind: z.literal("filter"),
+          value: z.enum([
+            "permanent",
+            "creature",
+            "artifact",
+            "enchantment",
+            "land",
+          ]),
+        })
+        .strict(),
+      /**
+       * The explicit named target — a
+       * `CardInstanceId` on the battlefield.
+       * The engine reads the named target's
+       * `cardData` directly from
+       * `state.cards.get(value)` (validates the
+       * target is on the battlefield; a missing
+       * target is a no-op per the lane 70
+       * substrate's auto-pick fallback).
+       * Parallel to the lane 75a
+       * `CopyUntilEndOfTurn.chosen_permanent`
+       * shape (a literal `CardInstanceId` named
+       * target).
+       */
+      z
+        .object({
+          kind: z.literal("id"),
+          value: z.string().min(1),
+        })
+        .strict(),
+      /**
+       * The named-card variant (Self-Reflection
+       * style — "create a token that's a copy
+       * of [card name]"). This is a STUB in
+       * piece 2/4 (parses, no engine consult
+       * — the engine consult lands in piece
+       * 3/4). The schema union has all three
+       * arms; the engine consults two (filter
+       * + id) in piece 2/4. The named-card arm
+       * is included here so the discriminator
+       * is in place when piece 3/4 lands (no
+       * second schema bump needed). The
+       * `getCardDataByName(value.name)` lookup
+       * is the named card's printed `cardData`;
+       * missing-name is a no-op (see piece
+       * 3/4).
+       */
+      z
+        .object({
+          kind: z.literal("named_card"),
+          value: z.object({ name: z.string().min(1) }).strict(),
+        })
+        .strict(),
+    ]),
     /** Restrict to the controller's own permanents. */
     controller: z.enum(["you", "opponent", "any"]).optional(),
     /**
@@ -512,8 +509,9 @@ export const CopyPermanentSchema = z
      * copy-with-exception variant (Phyrexian
      * Metamorph-style "create a token that's a
      * copy of [target] EXCEPT it has no
-     * abilities"). Each rides follow-up
-     * 4 piece 2/N + 3/N + 4/N.
+     * abilities"). The variant is unbuilt;
+     * deferred since follow-up 4 piece 2/N +
+     * 3/N + 4/N. See wave4.8-closed.md §2.
      *
      * Wave 4.8 follow-up 29 priority 3 (lane
      * 28, piece 4/4) (#2614 follow-up): the
@@ -581,9 +579,12 @@ export const CopyPermanentSchema = z
      * of the printed colors). The `add_color`
      * arm is ADDITIVE (no overwrite of the
      * printed colors); a destructive
-     * `set_color` variant rides follow-up
-     * 31 if any future priority piece
-     * surfaces a "only [colors]" semantic.
+     * `set_color` variant ("only [colors]"
+     * semantic) IS the `set_color` field
+     * below; no further follow-up needed.
+     * (Original marker promised a future
+     * follow-up 31; the field has shipped
+     * in the schema since wave 4.)
      * The color names use the engine's
      * full-name convention (`"white" |
      * "blue" | "black" | "red" | "green" |
@@ -625,9 +626,15 @@ export const CopyPermanentSchema = z
      * single integer field; non-integer
      * printed toughnesses (`*` / `1+*`)
      * yield 0. A destructive `set_toughness`
-     * variant rides follow-up 31 if any
-     * future priority piece surfaces a
-     * "exactly N" semantic. The
+     * variant ("exactly N" semantic) IS
+     * the `set_toughness` field below; no
+     * further follow-up needed. (Original
+     * marker promised a future follow-up 31;
+     * the field has shipped in the schema
+     * since wave 4. The non-integer `*` /
+     * `1+*` printed-toughness case is a
+     * separate limitation, not addressed
+     * here.) The
      * `add_toughness` arm composes with the
      * priority 2 `add_power` arm (parallel
      * additive P/T merge — both arms
@@ -658,16 +665,233 @@ export const CopyPermanentSchema = z
      * The `add_type` arm is distinct from
      * `add_subtype` (which appends to the
      * SUBTYPES half). A destructive
-     * `set_type` variant rides follow-up 31
-     * if any future priority piece surfaces
-     * a "exactly [types]" semantic.
+     * `set_type` variant ("exactly [types]"
+     * semantic) IS the `set_type` field
+     * below; no further follow-up needed.
+     * (Original marker promised a future
+     * follow-up 31; the field has shipped
+     * in the schema since wave 4.)
      */
     exceptions: z
       .object({
-        add_subtype: z
-          .array(z.string().min(1))
-          .min(1)
-          .optional(),
+        /**
+         * PRECEDENCE summary for every
+         * `CopyPermanentSchema.exceptions`
+         * axis (lane 28 — locked in follow-ups
+         * 24…28, codified by this comment in
+         * follow-up 33 across the P/T, color,
+         * type, and subtype axes):
+         *
+         *   1. On every identity axis (power,
+         *      toughness, color, type,
+         *      subtype, keywords, abilities),
+         *      a `set_<axis>` arm
+         *      OVERWRITES the printed value
+         *      to its listed values (the
+         *      printed value is the BASE only
+         *      when no `set_<axis>` is
+         *      present).
+         *
+         *   2. An `add_<axis>` arm is
+         *      ADDITIVE — it merges its
+         *      listed values into the
+         *      EFFECTIVE value (printed
+         *      base, or the latest
+         *      `set_<axis>` result), never
+         *      overwriting.
+         *
+         *   3. When BOTH `set_<axis>` and
+         *      `add_<axis>` ride the same
+         *      axis on the same effect, the
+         *      `set_<axis>` value is the
+         *      EFFECTIVE base, and the
+         *      `add_<axis>` is appended (or
+         *      applied) ON TOP of it. The
+         *      REPLACE form wins; additive
+         *      overlays never replace.
+         *
+         *   4. On cross-axis axes (e.g. P/T
+         *      where `set_power` and
+         *      `add_toughness` ride together)
+         *      each axis follows its own
+         *      sub-rule — `set_power` REPLACES
+         *      the printed power independently
+         *      of whether `add_toughness` is
+         *      also present (and vice versa),
+         *      because they modify independent
+         *      printed values.
+         *
+         *   5. When NEITHER `set_<axis>` NOR
+         *      `add_<axis>` is present, the
+         *      effect leaves the printed axis
+         *      value untouched.
+         *
+         * Engine consult precedence lives in
+         * `src/lib/game-state/card-scripts/interpret.ts`
+         * `applyExceptions` — `set_<axis>`
+         * arms are evaluated first, and
+         * `add_<axis>` is skipped when its
+         * corresponding `set_<axis>` arm is
+         * present (the REPLACE form is the
+         * final word on the axis).
+         *
+         * Per-axis current scheme — locked
+         * `add_*` arms (follow-ups 28-31):
+         *   - `add_color` (follow-up 30)
+         *   - `add_type` (follow-up 30)
+         *   - `add_subtype` (follow-up 29)
+         *   - `add_power` (follow-up 25)
+         *   - `add_toughness` (follow-up 32,
+         *     wired 41b3ad3a)
+         *   - `add_ability` (follow-up 27)
+         *   - `add_keyword` (follow-up 27)
+         *
+         * Per-axis current scheme — `set_*`
+         * arms (follow-ups 28-34):
+         *   - `set_power` (follow-up 28)
+         *   - `set_toughness` (follow-up 32)
+         *   - `set_subtype` (follow-up 33
+         *     piece 1/N, shipped) — REPLACES
+         *     the subtypes half of
+         *     `type_line`; `add_subtype`
+         *     consult SKIPPED on the same
+         *     effect (REPLACE wins). See
+         *     commit e2d5070f.
+         *   - `set_type` (follow-up 34
+         *     piece 2/N, this commit) —
+         *     REPLACES the types half of
+         *     `type_line`; `add_type`
+         *     consult SKIPPED on the same
+         *     effect (REPLACE wins — same
+         *     pattern as `set_subtype`).
+         *     Cross-axis with `set_subtype`
+         *     is allowed: the engine
+         *     rebuilds the type_line as
+         *     `<set_type> — <set_subtype>`
+         *     when both REPLACE forms are
+         *     set on the same effect.
+         *   - `set_keyword` is unbuilt;
+         *     deferred since follow-up 35+.
+         *     See wave4.8-closed.md §2.
+         *   - `set_ability` is unbuilt;
+         *     deferred since follow-up 35+.
+         *     See wave4.8-closed.md §2.
+         *   - `set_supertype` (follow-up 34
+         *     piece 3/N, this commit) —
+         *     REPLACES the supertype
+         *     segment of the types half
+         *     with the listed supertypes
+         *     (the outermost tokens
+         *     `Legendary` / `Snow` /
+         *     `Basic` are dropped and
+         *     replaced by the listed
+         *     supertypes in declared
+         *     order); `add_supertype`
+         *     consult SKIPPED on the same
+         *     effect (REPLACE wins). The
+         *     rest of the types half
+         *     (post-`add_type` /
+         *     post-`set_type`) is
+         *     preserved verbatim; the
+         *     subtypes half is preserved
+         *     unchanged. See
+         *     `applyExceptions` for the
+         *     REPLACE consult.
+         *   - `set_color_identity`
+         *     (follow-up 34 piece 4/N,
+         *     this commit) — REPLACES
+         *     ONLY the `color_identity`
+         *     array (the printer-identity
+         *     axis — DISTINCT from the
+         *     printed `colors` axis);
+         *     `colors` is preserved
+         *     unchanged. Cross-axis with
+         *     `set_color`: `set_color`
+         *     REPLACES BOTH `colors` AND
+         *     `color_identity`; if both
+         *     ride together, `set_color`
+         *     sets `colors` first and
+         *     `color_identity`, then
+         *     `set_color_identity` further
+         *     REPLACES `color_identity`
+         *     to its own list. There is
+         *     NO `add_color_identity` arm
+         *     — the additive-color-identity
+         *     semantic is not on the
+         *     road map; the
+         *     `set_color_identity`
+         *     consult skips any additive
+         *     color-identity consult (none
+         *     exists) and the `add_color`
+         *     consult (REPLACE wins on each
+         *     axis independently). See
+         *     `applyExceptions` for the
+         *     REPLACE consult.
+         */
+        add_subtype: z.array(z.string().min(1)).min(1).optional(),
+        /**
+         * Wave 4.8 follow-up 33 priority 1
+         * (lane 28, piece 1/2) (#2614
+         * follow-up): OPTIONAL `set_subtype`
+         * sub-arm. The engine REPLACES the
+         * subtypes half of `type_line` with
+         * the listed subtype names (printed
+         * base is dropped). When
+         * `set_subtype` is present, the
+         * `add_subtype` append-consult is
+         * SKIPPED — the REPLACE form wins
+         * on the same axis (see PRECEDENCE
+         * block above).
+         *
+         * Marker is `REPLACE wins over
+         * additive on the subtype axis`.
+         */
+        set_subtype: z.array(z.string().min(1)).min(1).optional(),
+        /**
+         * Wave 4.8 follow-up 34 priority 1
+         * (lane 28, piece 2/N) (#2614
+         * follow-up): OPTIONAL `set_type`
+         * sub-arm. The engine REPLACES the
+         * TYPES half of `type_line` with the
+         * listed type names (printed types
+         * half is dropped; the subtypes half
+         * is preserved unchanged). When
+         * `set_type` is present, the
+         * `add_type` prepend-consult is
+         * SKIPPED — REPLACE wins on the same
+         * axis (parallel to `set_subtype` vs
+         * `add_subtype` from follow-up 33 —
+         * the REPLACE form is the final word
+         * on the axis; see PRECEDENCE block
+         * above).
+         *
+         * Note the cross-axis interaction:
+         * if BOTH `set_type` (types-half
+         * REPLACE) and `set_subtype`
+         * (subtypes-half REPLACE) are set
+         * on the same effect, the engine
+         * rebuilds the entire type_line as
+         * `<set_type> — <set_subtype>` and
+         * preserves no printed half. The
+         * `add_type` consult runs BEFORE
+         * `set_type` (in source order) and
+         * is skipped only when `set_type` is
+         * also present. The `add_subtype`
+         * consult runs BEFORE `set_subtype`
+         * and is skipped only when
+         * `set_subtype` is also present.
+         * Cross-axis `add_subtype` still
+         * runs even when `set_type` is set
+         * (and vice versa) — additive
+         * overlays on independent axes do
+         * not block each other; only the
+         * REPLACE form on the SAME axis
+         * blocks the additive form.
+         *
+         * Marker is `REPLACE wins over
+         * additive on the type axis`.
+         */
+        set_type: z.array(z.string().min(1)).min(1).optional(),
         /**
          * Wave 4.8 follow-up 30 priority 1
          * (lane 28, piece 1/N) (#2614
@@ -707,19 +931,13 @@ export const CopyPermanentSchema = z
          * overrides the identity but leaves
          * the printed colors intact — a
          * `set_color` + `add_color` hybrid)
-         * rides follow-up 32 if any future
-         * priority piece surfaces a need.
+         * is unbuilt; deferred since
+         * follow-up 32. See wave4.8-closed.md
+         * §2.
          */
         add_color: z
           .array(
-            z.enum([
-              "white",
-              "blue",
-              "black",
-              "red",
-              "green",
-              "colorless",
-            ]),
+            z.enum(["white", "blue", "black", "red", "green", "colorless"]),
           )
           .min(1)
           .optional(),
@@ -751,18 +969,73 @@ export const CopyPermanentSchema = z
          * (which would override the identity
          * but leave the printed colors
          * intact — a hybrid that rides
-         * follow-up 32).
+         * follow-up 34 piece 4/N — see
+         * the next field below).
          */
         set_color: z
           .array(
-            z.enum([
-              "white",
-              "blue",
-              "black",
-              "red",
-              "green",
-              "colorless",
-            ]),
+            z.enum(["white", "blue", "black", "red", "green", "colorless"]),
+          )
+          .min(1)
+          .optional(),
+        /**
+         * Wave 4.8 follow-up 34 priority 1
+         * (lane 28, piece 4/N) (#2614
+         * follow-up): OPTIONAL
+         * `set_color_identity` sub-arm.
+         * The HYBRID variant of the
+         * `set_color` family — REPLACES
+         * ONLY the token's `color_identity`
+         * array (deduplicated; declared
+         * order preserved) WHILE LEAVING
+         * the token's `colors` array
+         * UNTOUCHED. This is the inverse
+         * of `set_color` (which REPLACES
+         * BOTH `colors` AND `color_identity`
+         * to the same listed values).
+         *
+         * v1 minimum: a list of the same
+         * six `COLOR` enum values. The
+         * typical use case is "a token
+         * that's a copy of target creature
+         * except it has the chosen player's
+         * color identity" — commander-deck
+         * reconstruct semantics where the
+         * face card's printed colors are
+         * preserved but its color_identity
+         * is rebound.
+         *
+         * When `set_color_identity` is
+         * present, the `add_color` consult
+         * is SKIPPED entirely. The printed
+         * `colors` array on the token
+         * remains untouched (the engine
+         * does NOT consult `add_color` to
+         * extend the printed `colors` —
+         * REPLACE wins on the axis).
+         * Cross-axis with `set_color`:
+         * `set_color` REPLACES BOTH
+         * `colors` and `color_identity`;
+         * if BOTH `set_color` and
+         * `set_color_identity` ride
+         * together, `set_color` wins on
+         * the `colors` axis (sets
+         * `colors` AND `color_identity`),
+         * and `set_color_identity`'s
+         * further REPLACE on
+         * `color_identity` runs AFTER
+         * — the final `color_identity`
+         * reflects `set_color_identity`,
+         * not `set_color`.
+         *
+         * Marker is `REPLACE wins over
+         * additive on the color_identity
+         * axis — INDEPENDENT of the
+         * colors axis`.
+         */
+        set_color_identity: z
+          .array(
+            z.enum(["white", "blue", "black", "red", "green", "colorless"]),
           )
           .min(1)
           .optional(),
@@ -801,9 +1074,9 @@ export const CopyPermanentSchema = z
          * then restore the printed power —
          * a hybrid that mirrors the lane
          * 75c `become_copy` until-eot
-         * shape) rides follow-up 32 if any
-         * future priority piece surfaces a
-         * until-eot semantic. v1 minimum:
+         * shape) is unbuilt; deferred since
+         * follow-up 32. See wave4.8-closed.md
+         * §2. v1 minimum:
          * a single integer field; no
          * `*` / `X+*` printed-power
          * resolution.
@@ -839,10 +1112,43 @@ export const CopyPermanentSchema = z
          * variant (which would override
          * the power until end of turn and
          * then restore the printed power —
-         * a hybrid that rides follow-up
-         * 32).
+         * a hybrid) is unbuilt; deferred
+         * since follow-up 32. See
+         * wave4.8-closed.md §2.
          */
         set_power: z.number().int().optional(),
+        /**
+         * Wave 4.8 follow-up 32 priority 1
+         * (lane 28, piece 1/N) (#2614
+         * follow-up 32): OPTIONAL
+         * `set_toughness` sub-arm. The engine
+         * parses the printed `toughness`
+         * string as an integer (default 0;
+         * non-integer printed toughnesses
+         * like `*` or `1+*` yield 0),
+         * REPLACES the printed toughness with
+         * `String(set_toughness)`, and
+         * rebuilds `cardData.toughness` as a
+         * string. The merge is DESTRUCTIVE —
+         * `set_toughness` OVERRIDES the
+         * printed toughness and any
+         * `add_toughness` value. The
+         * `set_toughness` arm takes
+         * PRECEDENCE over the parallel
+         * `add_toughness` arm (REPLACE wins
+         * over ADD). The arm accepts
+         * negative integers
+         * ("EXCEPT it has 0/-1" — Phyrexian
+         * Metamorph-style); v1 minimum: a
+         * single integer field; no `*` /
+         * `X+*` printed-toughness resolution.
+         * The `set_toughness` arm composes
+         * with the parallel `set_power` arm
+         * (parallel destructive P/T merge —
+         * each arm consumes its own half of
+         * the printed P/T independently).
+         */
+        set_toughness: z.number().int().optional(),
         /**
          * Wave 4.8 follow-up 30 priority 3
          * (lane 28, piece 3/N) (#2614
@@ -860,13 +1166,9 @@ export const CopyPermanentSchema = z
          * negative integers
          * (Phyrexian Metamorph-style
          * "create a token that's a copy of
-         * [target] EXCEPT it has 0/-1"); a
-         * destructive `set_toughness` variant
-         * rides follow-up 31 if any future
-         * priority piece surfaces a
-         * "exactly N" semantic. v1 minimum:
-         * a single integer field; no
-         * `*` / `X+*` printed-toughness
+         * [target] EXCEPT it has 0/-1"). v1
+         * minimum: a single integer field;
+         * no `*` / `X+*` printed-toughness
          * resolution. The `add_toughness`
          * arm composes with the priority 2
          * `add_power` arm (parallel additive
@@ -920,16 +1222,20 @@ export const CopyPermanentSchema = z
          * CR 205.4. Legacy supertype
          * distinctions (`"World"` /
          * `"Legendary"`-only /
-         * `"Snow"`-only) ride follow-up 32
-         * if any future priority piece
-         * surfaces a legacy variant. The
+         * `"Snow"`-only) are unbuilt; deferred
+         * since follow-up 32. See
+         * wave4.8-closed.md §2. The
          * `add_type` arm is distinct from
          * `add_subtype` (which appends to
          * the SUBTYPES half). A destructive
-         * `set_type` variant rides follow-up
-         * 32 if any future priority piece
-         * surfaces a "exactly [types]"
-         * semantic.
+         * `set_type` variant ("exactly
+         * [types]" semantic) IS the
+         * `set_type` field below; no
+         * further follow-up needed.
+         * (Original marker promised a
+         * future follow-up 32; the field
+         * has shipped in the schema since
+         * wave 4.)
          */
         add_type: z
           .array(
@@ -975,19 +1281,75 @@ export const CopyPermanentSchema = z
          * then printed types). Legacy
          * supertype distinctions
          * (`"World"` / `"Legendary"`-only
-         * / `"Snow"`-only) ride follow-up
-         * 32 if any future priority piece
-         * surfaces a legacy variant. A
+         * / `"Snow"`-only) are unbuilt;
+         * deferred since follow-up 32.
+         * See wave4.8-closed.md §2. A
          * destructive `set_supertype`
-         * variant rides follow-up 32 if
-         * any future priority piece
-         * surfaces a "exactly [supertypes]"
-         * semantic.
+         * variant (shipped in follow-up 34
+         * piece 3/N) — see the
+         * `set_supertype` field below.
          */
         add_supertype: z
-          .array(
-            z.enum(["Legendary", "Snow", "Basic"]),
-          )
+          .array(z.enum(["Legendary", "Snow", "Basic"]))
+          .min(1)
+          .optional(),
+        /**
+         * Wave 4.8 follow-up 34 priority 1
+         * (lane 28, piece 3/N) (#2614
+         * follow-up): OPTIONAL
+         * `set_supertype` sub-arm. The
+         * engine REPLACES the supertype
+         * segment of the types half: the
+         * listed supertype names are
+         * placed at the outer-most edge
+         * of the types half, and any
+         * existing supertype-prefix words
+         * (`"Legendary"`, `"Snow"`,
+         * `"Basic"`) are dropped. The rest
+         * of the types half (which may
+         * include `add_type`-added types
+         * + the printed types) is
+         * preserved verbatim. The subtypes
+         * half is preserved unchanged.
+         *
+         * Concrete rebuild: the engine
+         * drops any existing supertype
+         * prefix from the types half, then
+         * rebuilds the types half as
+         * `<set_supertype> <existing-types-half-without-supertype-prefix>`.
+         * The subtypes half (when present)
+         * is preserved verbatim after the
+         * rebuild.
+         *
+         * When `set_supertype` is present,
+         * the `add_supertype` prepend-consult
+         * is SKIPPED — REPLACE wins on the
+         * same axis (parallel to
+         * `set_subtype` vs `add_subtype`
+         * from follow-up 33, `set_type` vs
+         * `add_type` from follow-up 34
+         * piece 2/N, and `set_toughness` vs
+         * `add_toughness` from follow-up 32
+         * / commit 41b3ad3a).
+         *
+         * Cross-axis with `set_type` /
+         * `set_subtype`: the per-axis pair
+         * rule still applies — cross-axis
+         * REPLACE forms on the same effect
+         * do NOT cancel the `set_supertype`
+         * consult; each axis follows its
+         * own sub-rule. The `set_supertype`
+         * consult runs LAST in the per-pass
+         * order — it operates on the final
+         * types half (post-`add_type` /
+         * post-`set_type` / post-
+         * `add_supertype` cancellations).
+         *
+         * Marker is `REPLACE wins over
+         * additive on the supertype axis`.
+         */
+        set_supertype: z
+          .array(z.enum(["Legendary", "Snow", "Basic"]))
           .min(1)
           .optional(),
       })
@@ -2504,10 +2866,12 @@ export const TriggerSchema = z
   .refine(
     (t) =>
       t.cost?.or === undefined ||
-      !(t.cost.sacrifice_self === true ||
+      !(
+        t.cost.sacrifice_self === true ||
         t.cost.discard !== undefined ||
         t.cost.pay_life !== undefined ||
-        t.cost.pay_mana !== undefined),
+        t.cost.pay_mana !== undefined
+      ),
     {
       message:
         "cost.or is mutually exclusive with the standalone cost arms (pay_life, pay_mana, sacrifice_self, discard) — pick one shape",
@@ -3019,12 +3383,7 @@ export const StaticSchema = z
          * the count of this source on the source's
          * controller's battlefield.
          */
-        per: z.enum([
-          "creatures",
-          "treasures",
-          "lands",
-          "other_creatures",
-        ]),
+        per: z.enum(["creatures", "treasures", "lands", "other_creatures"]),
         /**
          * The power contribution per unit. Default 0
          * (matches the integer `power: 0` no-P/T pattern);
@@ -3133,12 +3492,7 @@ export const StaticSchema = z
          */
         andPer: z
           .object({
-            per: z.enum([
-              "creatures",
-              "treasures",
-              "lands",
-              "other_creatures",
-            ]),
+            per: z.enum(["creatures", "treasures", "lands", "other_creatures"]),
             perSubtype: z
               .union([z.string().min(1), z.literal("chosen")])
               .optional(),
@@ -3160,10 +3514,7 @@ export const StaticSchema = z
              */
             perCounter: z
               .object({
-                counter: z.union([
-                  z.string().min(1),
-                  z.literal("chosen"),
-                ]),
+                counter: z.union([z.string().min(1), z.literal("chosen")]),
                 /**
                  * Wave 4.8 follow-up 28 priority 1
                  * (#2614 follow-up): an OPTIONAL
@@ -3215,14 +3566,11 @@ export const StaticSchema = z
              * Future lane: deprecating the REPLACE
              * arm (the self-referential case is
              * rare; the summed form covers 90%+ of
-             * use cases) rides follow-up 29.
+             * use cases) is unbuilt; deferred since follow-up 29. See wave4.8-closed.md §2.
              */
             perCounterSummed: z
               .object({
-                counter: z.union([
-                  z.string().min(1),
-                  z.literal("chosen"),
-                ]),
+                counter: z.union([z.string().min(1), z.literal("chosen")]),
                 /**
                  * Wave 4.8 follow-up 28 priority 3
                  * (#2614 follow-up): an OPTIONAL
@@ -3259,7 +3607,9 @@ export const StaticSchema = z
          * the +1/+1 counter from the same field — see
          * `evergreen-keywords.ts` line ~973). v1
          * supports a single counter type per arm; a
-         * chosen-counter variant rides follow-up 26+.
+         * chosen-counter variant is unbuilt;
+         * deferred since follow-up 26+. See
+         * wave4.8-closed.md §2.
          *
          * Wave 4.8 follow-up 26 lane 32 piece 1/N
          * (#2614 follow-up): the `"chosen"` sentinel
@@ -3312,8 +3662,7 @@ export const StaticSchema = z
          */
         perCounter: z
           .object({
-            counter: z
-              .union([z.string().min(1), z.literal("chosen")]),
+            counter: z.union([z.string().min(1), z.literal("chosen")]),
             /**
              * Wave 4.8 follow-up 28 priority 1 (#2614
              * follow-up): an OPTIONAL ordinal variant
@@ -3359,7 +3708,9 @@ export const StaticSchema = z
              * pair" read). v1 minimum: the `perPair`
              * ordinal-only cross-type read (no per-pair
              * sentinel extension; the per-pair-with-
-             * sentinel rides follow-up 30).
+             * sentinel is unbuilt; deferred since
+             * follow-up 30. See wave4.8-closed.md
+             * §2.)
              */
             ordinal: z.number().int().min(1).optional(),
             /**
@@ -3381,7 +3732,9 @@ export const StaticSchema = z
              * each unique type" read; a separate arm
              * from the per-counter Nth-counter read).
              * The `andPer.perCounter perPair` parallel
-             * ordinal extension rides follow-up 30.
+             * ordinal extension is unbuilt; deferred
+             * since follow-up 30. See
+             * wave4.8-closed.md §2.
              */
             perPair: z
               .object({
@@ -3546,19 +3899,13 @@ export const StaticSchema = z
             // the flattened list (alongside the
             // literal entries). v1 minimum: a
             // single `"chosen"` entry inside
-            // the nested array (the
-            // per-pair-with-sentinel extension
-            // rides follow-up 30; the
-            // per-pair-with-`"chosen"`-per-pair
-            // extension rides follow-up 30 too).
-            z
-              .array(
-                z.union([
-                  z.string().min(1),
-                  z.literal("chosen"),
-                ]),
-              )
-              .min(2),
+            // the nested array. The per-pair-with-sentinel
+            // extension is unbuilt; deferred since
+            // follow-up 30. The per-pair-with-
+            // `"chosen"`-per-pair extension is also
+            // unbuilt; deferred since follow-up 30.
+            // See wave4.8-closed.md §2.
+            z.array(z.union([z.string().min(1), z.literal("chosen")])).min(2),
             z.literal("chosen"),
           ]),
         ),
@@ -3633,10 +3980,7 @@ export const StaticSchema = z
              * yet applied).
              */
             target: z.string().min(1),
-            until: z.union([
-              z.literal("end_of_turn"),
-              z.literal("permanent"),
-            ]),
+            until: z.union([z.literal("end_of_turn"), z.literal("permanent")]),
             /**
              * Wave 4.8 follow-up 8 lane 75c
              * (#2614 follow-up): copy with
@@ -3733,10 +4077,7 @@ export const StaticSchema = z
              * field; the refresh-pass write rides a
              * follow-up piece.
              */
-            until: z.union([
-              z.literal("end_of_turn"),
-              z.literal("permanent"),
-            ]),
+            until: z.union([z.literal("end_of_turn"), z.literal("permanent")]),
             /**
              * Wave 4.8 follow-up 8 lane 75c
              * (#2614 follow-up): copy-with-exception
@@ -4160,10 +4501,7 @@ export const AuraStaticSchema = z
              * the lane 78 tracked-zone check.
              */
             target: z.string().min(1),
-            until: z.union([
-              z.literal("end_of_turn"),
-              z.literal("permanent"),
-            ]),
+            until: z.union([z.literal("end_of_turn"), z.literal("permanent")]),
           })
           .strict(),
       ])
