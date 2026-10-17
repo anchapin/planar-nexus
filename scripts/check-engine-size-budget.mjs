@@ -838,7 +838,24 @@ const SCOPES = [
     // (`World` / `Legendary`-only / `Snow`-only)
     // that also ride follow-up 32. schema.ts
     // measured at 5140 (+80 over 5060).
-    budgetLines: 5150,
+    //
+    // Bumping 5150 → 5220 to capture the follow-up 31
+    // priority 2 (lane 28, piece 2/N) —
+    // `CopyPermanent.exceptions.set_color` arm
+    // (`z.array(z.enum(["white", "blue", "black",
+    // "red", "green", "colorless"])).min(1).
+    // optional()` on the existing `exceptions` shape
+    // — the six `COLOR` enum values, parallel to
+    // the follow-up 30 priority 1 `add_color`
+    // sub-arm but with destructive REPLACE
+    // semantics) + the priority 1 `add_color` arm
+    // docstring expansion explaining the
+    // `set_color` PRECEDENCE (the destructive
+    // variant wins when both are set — parallel
+    // to the `andPer.perCounterSummed` precedence
+    // rule for the additive vs REPLACE form).
+    // schema.ts measured at 5213 (+63 over 5150).
+    budgetLines: 5220,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

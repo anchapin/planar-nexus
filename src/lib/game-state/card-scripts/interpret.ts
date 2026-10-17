@@ -1441,6 +1441,7 @@ function applyEffect(
               add_toughness?: number;
               add_type?: string[];
               add_supertype?: string[];
+              set_color?: string[];
             };
           }
         ).exceptions;
@@ -1635,8 +1636,18 @@ function applyEffect(
         // printed + added (one-pass Set
         // transform). The arm is ADDITIVE
         // — no overwrite of the printed
-        // colors.
-        if (exceptions?.add_color?.length) {
+        // colors. The `add_color` consult
+        // is SKIPPED when the follow-up 31
+        // priority 2 destructive `set_color`
+        // sub-arm is set — the destructive
+        // variant takes PRECEDENCE (parallel
+        // to the `andPer.perCounterSummed`
+        // precedence rule for the additive
+        // vs REPLACE form).
+        if (
+          exceptions?.add_color?.length &&
+          !exceptions?.set_color?.length
+        ) {
           const printedColors = Array.isArray(rebuilt.colors)
             ? rebuilt.colors
             : [];
@@ -1678,6 +1689,64 @@ function applyEffect(
             ...rebuilt,
             colors: mergedColors,
             color_identity: mergedIdentity,
+          };
+        }
+        // Wave 4.8 follow-up 31 priority 2
+        // (lane 28, piece 2/N) (#2614
+        // follow-up): the `set_color`
+        // destructive REPLACE. When
+        // `effect.exceptions?.set_color` is
+        // set, the engine REPLACES the
+        // token's `colors` array with the
+        // listed color names (deduplicated;
+        // declared order preserved) AND
+        // rebuilds `color_identity` to
+        // match the REPLACED list verbatim
+        // (no merge, no append — the printed
+        // colors are discarded; the listed
+        // colors become the entire `colors`
+        // / `color_identity` arrays). v1
+        // minimum: a list of the six `COLOR`
+        // enum values (`white` / `blue` /
+        // `black` / `red` / `green` /
+        // `colorless`). The `set_color` arm
+        // takes PRECEDENCE over `add_color`
+        // when both are set (the destructive
+        // variant always wins; the additive
+        // `add_color` consult is skipped via
+        // the `&& !set_color?.length` guard
+        // above). The `set_color` arm is
+        // DISTINCT from the priority 1
+        // `add_color` arm (which MERGES
+        // with the printed colors). The
+        // `set_color` arm is also distinct
+        // from a parallel `set_color_identity`
+        // variant (which would override the
+        // identity but leave the printed
+        // colors intact — a hybrid that
+        // rides follow-up 32).
+        if (exceptions?.set_color?.length) {
+          // Deduplicate + preserve declared
+          // order — same transform as the
+          // follow-up 30 priority 1
+          // `add_color` consult's
+          // deduplication. The printed
+          // colors are DISCARDED entirely;
+          // the listed colors become the
+          // entire array.
+          const setColors = Array.from(
+            new Set(exceptions.set_color),
+          );
+          // Rebuild `color_identity` to
+          // match the REPLACED `colors`
+          // verbatim (the destructive
+          // variant — the identity is the
+          // same list, not a transform of
+          // the printed identity).
+          rebuilt = {
+            ...rebuilt,
+            colors: setColors,
+            color_identity: setColors,
           };
         }
         // Wave 4.8 follow-up 30 priority 2

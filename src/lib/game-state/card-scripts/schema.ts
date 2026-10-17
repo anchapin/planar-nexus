@@ -678,9 +678,82 @@ export const CopyPermanentSchema = z
          * the matching `color_identity` array
          * to include them (the union is
          * deduplicated; declared order is
-         * preserved).
+         * preserved). v1 minimum: a list of
+         * the six `COLOR` enum values
+         * (`white` / `blue` / `black` / `red`
+         * / `green` / `colorless`).
+         *
+         * Wave 4.8 follow-up 31 priority 2
+         * (lane 28, piece 2/N) (#2614
+         * follow-up): the destructive
+         * `set_color` variant — REPLACES the
+         * token's `colors` array with the
+         * listed color names (deduplicated;
+         * declared order preserved) AND
+         * rebuilds `color_identity` to match
+         * the REPLACED list verbatim (no
+         * merge, no append — the printed
+         * colors are discarded; the listed
+         * colors become the entire `colors`
+         * / `color_identity` arrays). The
+         * `set_color` arm takes PRECEDENCE
+         * over `add_color` when both are set
+         * (the destructive variant always
+         * wins; parallel to the
+         * `andPer.perCounterSummed`
+         * precedence rule for the additive
+         * vs REPLACE form). A separate
+         * `set_color_identity` variant (which
+         * overrides the identity but leaves
+         * the printed colors intact — a
+         * `set_color` + `add_color` hybrid)
+         * rides follow-up 32 if any future
+         * priority piece surfaces a need.
          */
         add_color: z
+          .array(
+            z.enum([
+              "white",
+              "blue",
+              "black",
+              "red",
+              "green",
+              "colorless",
+            ]),
+          )
+          .min(1)
+          .optional(),
+        /**
+         * Wave 4.8 follow-up 31 priority 2
+         * (lane 28, piece 2/N) (#2614
+         * follow-up): OPTIONAL `set_color`
+         * sub-arm. The engine REPLACES the
+         * token's `colors` array with the
+         * listed color names (deduplicated;
+         * declared order preserved) AND
+         * rebuilds `color_identity` to match
+         * the REPLACED list verbatim (no
+         * merge, no append — the printed
+         * colors are discarded; the listed
+         * colors become the entire `colors`
+         * / `color_identity` arrays). v1
+         * minimum: a list of the six `COLOR`
+         * enum values. The `set_color` arm
+         * takes PRECEDENCE over `add_color`
+         * when both are set (the destructive
+         * variant always wins). The
+         * `set_color` arm is DISTINCT from
+         * the priority 1 `add_color` arm
+         * (which MERGES with the printed
+         * colors). The `set_color` arm is
+         * also distinct from a parallel
+         * `set_color_identity` variant
+         * (which would override the identity
+         * but leave the printed colors
+         * intact — a hybrid that rides
+         * follow-up 32).
+         */
+        set_color: z
           .array(
             z.enum([
               "white",
