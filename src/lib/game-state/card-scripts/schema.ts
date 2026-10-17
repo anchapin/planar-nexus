@@ -1261,9 +1261,9 @@ export const CopyPermanentSchema = z
          * then printed types). Legacy
          * supertype distinctions
          * (`"World"` / `"Legendary"`-only
-         * / `"Snow"`-only) ride follow-up
-         * 32 if any future priority piece
-         * surfaces a legacy variant. A
+         * / `"Snow"`-only) are unbuilt;
+         * deferred since follow-up 32.
+         * See wave4.8-closed.md §2. A
          * destructive `set_supertype`
          * variant rides follow-up 34
          * piece 3/N (this commit) — see
