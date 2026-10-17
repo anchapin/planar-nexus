@@ -509,8 +509,9 @@ export const CopyPermanentSchema = z
      * copy-with-exception variant (Phyrexian
      * Metamorph-style "create a token that's a
      * copy of [target] EXCEPT it has no
-     * abilities"). Each rides follow-up
-     * 4 piece 2/N + 3/N + 4/N.
+     * abilities"). The variant is unbuilt;
+     * deferred since follow-up 4 piece 2/N +
+     * 3/N + 4/N. See wave4.8-closed.md §2.
      *
      * Wave 4.8 follow-up 29 priority 3 (lane
      * 28, piece 4/4) (#2614 follow-up): the
@@ -578,9 +579,9 @@ export const CopyPermanentSchema = z
      * of the printed colors). The `add_color`
      * arm is ADDITIVE (no overwrite of the
      * printed colors); a destructive
-     * `set_color` variant rides follow-up
-     * 31 if any future priority piece
-     * surfaces a "only [colors]" semantic.
+     * `set_color` variant ("only [colors]"
+     * semantic) is unbuilt; deferred since
+     * follow-up 31. See wave4.8-closed.md §2.
      * The color names use the engine's
      * full-name convention (`"white" |
      * "blue" | "black" | "red" | "green" |
@@ -622,9 +623,9 @@ export const CopyPermanentSchema = z
      * single integer field; non-integer
      * printed toughnesses (`*` / `1+*`)
      * yield 0. A destructive `set_toughness`
-     * variant rides follow-up 31 if any
-     * future priority piece surfaces a
-     * "exactly N" semantic. The
+     * variant ("exactly N" semantic) is
+     * unbuilt; deferred since follow-up 31.
+     * See wave4.8-closed.md §2. The
      * `add_toughness` arm composes with the
      * priority 2 `add_power` arm (parallel
      * additive P/T merge — both arms
@@ -655,9 +656,9 @@ export const CopyPermanentSchema = z
      * The `add_type` arm is distinct from
      * `add_subtype` (which appends to the
      * SUBTYPES half). A destructive
-     * `set_type` variant rides follow-up 31
-     * if any future priority piece surfaces
-     * a "exactly [types]" semantic.
+     * `set_type` variant ("exactly [types]"
+     * semantic) is unbuilt; deferred since
+     * follow-up 31. See wave4.8-closed.md §2.
      */
     exceptions: z
       .object({
