@@ -761,11 +761,27 @@ export const CopyPermanentSchema = z
          *     rides follow-up 35+)
          *   - `set_ability` (deferred —
          *     rides follow-up 35+)
-         *   - `set_supertype` (deferred —
-         *     rides follow-up 35+; same
-         *     shape as `set_subtype` but
-         *     overwrites the supertypes
-         *     half of `type_line`)
+         *   - `set_supertype` (follow-up 34
+         *     piece 3/N, this commit) —
+         *     REPLACES the supertype
+         *     segment of the types half
+         *     with the listed supertypes
+         *     (the outermost tokens
+         *     `Legendary` / `Snow` /
+         *     `Basic` are dropped and
+         *     replaced by the listed
+         *     supertypes in declared
+         *     order); `add_supertype`
+         *     consult SKIPPED on the same
+         *     effect (REPLACE wins). The
+         *     rest of the types half
+         *     (post-`add_type` /
+         *     post-`set_type`) is
+         *     preserved verbatim; the
+         *     subtypes half is preserved
+         *     unchanged. See
+         *     `applyExceptions` for the
+         *     REPLACE consult.
          *   - `set_color_identity`
          *     (deferred — rides follow-up
          *     35+; smallest of the deferred
@@ -1163,12 +1179,70 @@ export const CopyPermanentSchema = z
          * 32 if any future priority piece
          * surfaces a legacy variant. A
          * destructive `set_supertype`
-         * variant rides follow-up 32 if
-         * any future priority piece
-         * surfaces a "exactly [supertypes]"
-         * semantic.
+         * variant rides follow-up 34
+         * piece 3/N (this commit) — see
+         * the `set_supertype` field below.
          */
         add_supertype: z
+          .array(z.enum(["Legendary", "Snow", "Basic"]))
+          .min(1)
+          .optional(),
+        /**
+         * Wave 4.8 follow-up 34 priority 1
+         * (lane 28, piece 3/N) (#2614
+         * follow-up): OPTIONAL
+         * `set_supertype` sub-arm. The
+         * engine REPLACES the supertype
+         * segment of the types half: the
+         * listed supertype names are
+         * placed at the outer-most edge
+         * of the types half, and any
+         * existing supertype-prefix words
+         * (`"Legendary"`, `"Snow"`,
+         * `"Basic"`) are dropped. The rest
+         * of the types half (which may
+         * include `add_type`-added types
+         * + the printed types) is
+         * preserved verbatim. The subtypes
+         * half is preserved unchanged.
+         *
+         * Concrete rebuild: the engine
+         * drops any existing supertype
+         * prefix from the types half, then
+         * rebuilds the types half as
+         * `<set_supertype> <existing-types-half-without-supertype-prefix>`.
+         * The subtypes half (when present)
+         * is preserved verbatim after the
+         * rebuild.
+         *
+         * When `set_supertype` is present,
+         * the `add_supertype` prepend-consult
+         * is SKIPPED — REPLACE wins on the
+         * same axis (parallel to
+         * `set_subtype` vs `add_subtype`
+         * from follow-up 33, `set_type` vs
+         * `add_type` from follow-up 34
+         * piece 2/N, and `set_toughness` vs
+         * `add_toughness` from follow-up 32
+         * / commit 41b3ad3a).
+         *
+         * Cross-axis with `set_type` /
+         * `set_subtype`: the per-axis pair
+         * rule still applies — cross-axis
+         * REPLACE forms on the same effect
+         * do NOT cancel the `set_supertype`
+         * consult; each axis follows its
+         * own sub-rule. The `set_supertype`
+         * consult runs LAST in the per-pass
+         * order — it operates on the final
+         * types half (post-`add_type` /
+         * post-`set_type` / post-
+         * `add_supertype` cancellations).
+         *
+         * Marker is `REPLACE wins over
+         * additive on the supertype axis`.
+         */
+        set_supertype: z
           .array(z.enum(["Legendary", "Snow", "Basic"]))
           .min(1)
           .optional(),

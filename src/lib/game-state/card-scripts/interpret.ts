@@ -1515,6 +1515,24 @@ function applyEffect(
                * additive on the type axis`.
                */
               set_type?: string[];
+              /**
+               * Wave 4.8 follow-up 34 priority
+               * 1 (lane 28, piece 3/N) — new
+               * `set_supertype` REPLACE arm
+               * (the outermost-prefix REPLACE
+               * variant — drops any existing
+               * supertype prefix from the
+               * types half and rebuilds as
+               * `<set_supertype> <rest>`).
+               * When `set_supertype` is
+               * present, the `add_supertype`
+               * prepend-consult is SKIPPED
+               * (REPLACE wins on the same
+               * axis). Marker is `REPLACE
+               * wins over additive on the
+               * supertype axis`.
+               */
+              set_supertype?: Array<"Legendary" | "Snow" | "Basic">;
             };
           }
         ).exceptions;
@@ -1751,7 +1769,116 @@ function applyEffect(
         // subtypes half (when present)
         // is preserved verbatim after
         // the rebuild.
-        if (exceptions?.add_supertype?.length) {
+        // Wave 4.8 follow-up 34 priority 1
+        // (lane 28, piece 3/N) (#2614
+        // follow-up): the `set_supertype`
+        // REPLACE-consult — REPLACE the
+        // supertype segment of the types
+        // half with the listed supertype
+        // names (existing supertype-prefix
+        // words `"Legendary"`, `"Snow"`,
+        // `"Basic"` are DROPPED; the rest
+        // of the types half — which may
+        // include `add_type`-added types
+        // and the printed types — is
+        // preserved verbatim). The subtypes
+        // half is preserved unchanged.
+        // When `set_supertype` is present,
+        // the `add_supertype` prepend-consult
+        // is SKIPPED (REPLACE wins on the
+        // same axis — exactly parallel to
+        // `set_subtype` vs `add_subtype`
+        // from follow-up 33, `set_type` vs
+        // `add_type` from follow-up 34
+        // piece 2/N, and `set_toughness` vs
+        // `add_toughness` from follow-up 32
+        // / commit 41b3ad3a).
+        if (exceptions?.set_supertype?.length) {
+          const printed = rebuilt.type_line ?? "";
+          const emDashIdx = printed.indexOf("—");
+          const newSupertypes = exceptions.set_supertype.join(" ");
+          // STEP 1: pull the existing types
+          // half (or the whole type_line if
+          // no em-dash) and STRIP any
+          // supertype-prefix words from it.
+          let currentTypes: string;
+          let subtypesHalf: string;
+          if (emDashIdx < 0) {
+            currentTypes = printed;
+            subtypesHalf = "";
+          } else {
+            currentTypes = printed.slice(0, emDashIdx).trimEnd();
+            subtypesHalf = printed.slice(emDashIdx + 1).trim();
+          }
+          // STRIP any leading supertype
+          // words ("Legendary" / "Snow" /
+          // "Basic") from `currentTypes`.
+          // Multi-word supertypes don't
+          // exist in this enum (each entry
+          // is a single word), so a leading
+          // token filter is sufficient.
+          const SUPERTYPE_TOKEN = new Set([
+            "Legendary",
+            "Snow",
+            "Basic",
+          ]);
+          const tokens = currentTypes.split(/\s+/).filter(Boolean);
+          // Drop leading tokens that are
+          // supertypes until we hit a
+          // non-supertype token.
+          let i = 0;
+          while (
+            i < tokens.length &&
+            SUPERTYPE_TOKEN.has(tokens[i])
+          ) {
+            i++;
+          }
+          const remainingTypes = tokens.slice(i).join(" ");
+          // STEP 2: rebuild the types half
+          // as `<set_supertype> <remainingTypes>`.
+          const allTypes =
+            remainingTypes.length > 0
+              ? `${newSupertypes} ${remainingTypes}`.trim()
+              : newSupertypes;
+          // STEP 3: append the subtypes
+          // half (preserved verbatim) if
+          // present.
+          if (subtypesHalf) {
+            rebuilt = {
+              ...rebuilt,
+              type_line: `${allTypes} — ${subtypesHalf}`,
+            };
+          } else {
+            rebuilt = {
+              ...rebuilt,
+              type_line: allTypes,
+            };
+          }
+        } else if (exceptions?.add_supertype?.length) {
+          // Wave 4.8 follow-up 31 priority 1
+          // (lane 28, piece 5/N) (#2614
+          // follow-up): the `add_supertype`
+          // prepend-consult — PREPEND the
+          // added supertype names to the
+          // existing types half of the
+          // post-`add_type` type_line (the
+          // existing types half may include
+          // add_type prepended types + the
+          // printed types). The supertypes
+          // go BEFORE the existing types
+          // half (the outermost position per
+          // CR 205.4: "[Supertypes] [Types]
+          // — [Subtypes]"). The subtypes
+          // half is preserved verbatim. The
+          // consult is SKIPPED when
+          // `set_supertype` is present
+          // (REPLACE wins — same pattern as
+          // `set_subtype` vs `add_subtype`
+          // from follow-up 33, `set_type`
+          // vs `add_type` from follow-up 34
+          // piece 2/N, and `set_toughness`
+          // vs `add_toughness` from
+          // follow-up 32 / commit 41b3ad3a).
           const printed = rebuilt.type_line ?? "";
           const emDashIdx = printed.indexOf("—");
           const addedSupertypes = exceptions.add_supertype.join(" ");

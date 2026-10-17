@@ -911,7 +911,27 @@ const SCOPES = [
     // commit" and adds a small entry for the
     // remaining deferred arms. schema.ts
     // measured at 5415 (+61 over 5360).
-    budgetLines: 5425,
+    //
+    // Bumping 5425 → 5500 to capture the follow-up 34
+    // priority 1 (lane 28, piece 3/N) —
+    // `CopyPermanent.exceptions.set_supertype`
+    // arm (the per-copy supertype-prefix
+    // REPLACE arm —
+    // `z.array(z.enum(["Legendary", "Snow",
+    // "Basic"])).min(1).optional()`,
+    // parallel in shape to `set_subtype` /
+    // `set_type` but operating on the supertype
+    // segment of the types half — a strictly
+    // typed enum because the legal supertype
+    // set per CR 205.4 is finite). The schema
+    // bump reflects the new `set_supertype`
+    // field + its cross-axis + REPLACE-wins
+    // docstring (~62 lines), plus the
+    // PRECEDENCE bullet-list update that flips
+    // `set_supertype` from "deferred" to "this
+    // commit". schema.ts measured at 5489
+    // (+74 over 5425).
+    budgetLines: 5500,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),
