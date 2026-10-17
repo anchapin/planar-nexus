@@ -183,4 +183,107 @@ Diff: <predicted>, no schema changes, no test logic changes.
 - `docs/card-scripts/wave4.8-followup37-handoff.md` — three-no-ship
   pattern codification.
 
+## Addendum (post-handoff corrections)
+
+This handoff was written assuming the v2 inventory was correct. The
+implementation phase found it was not. The corrections below are
+already committed; they are recorded here so the doc tells the truth.
+
+### Inventory corrections (the v2 inventory had factual errors)
+
+The v2 inventory (and the prior partial cleanup at commit `282a4900`)
+**misclassified six markers** by treating "the destructive `set_X`
+variant field exists in the schema" as equivalent to "the destructive
+`set_X` variant is built." These conflate two distinct questions:
+
+- Is the `set_X` schema field shipped? — **yes** for every `set_*` field
+  the inventory listed.
+- Is some _future extension_ of that variant built? — sometimes no,
+  and that is the only genuine deferral.
+
+Six markers needed honest rewrites that preserve shipping attribution
+and only flag the actual unbuilt extension:
+
+| Marker | Variant                                  | Status                                                                       |
+| ------ | ---------------------------------------- | ---------------------------------------------------------------------------- |
+| S02    | `set_color`                              | shipped; §1b                                                                 |
+| S09    | `set_type`                               | shipped; §1b                                                                 |
+| S10    | `set_toughness`                          | shipped; §1b                                                                 |
+| S11    | `set_supertype` (legacy distinctions)    | partial — variant field shipped, legacy distinctions genuinely deferred; §1b |
+| I01    | chosenProtectionFromPerPair              | shipped; §1b                                                                 |
+| T01    | chosenProtectionFromPerPair (test block) | shipped; §1b                                                                 |
+
+S01 (`set_type` exclusive variants "World"/"Legendary"-only/"Snow"-only)
+was NOT a misclassification — the enum is just
+`Legendary | Snow | Basic`, the "World" claim was incorrect, and the
+exclusive variants are genuinely unbuilt. Commit `282a4900` got S01
+right.
+
+The §1b block in `wave4.8-stale-marker-cleanup-inventory.md` is the
+authoritative correction; this addendum points at it.
+
+### Commits beyond the original handoff
+
+The original handoff shipped at `8b9fc848`. Four follow-up commits
+landed the corrections and the remaining 14 rewrites:
+
+1. `cdf779eb` — added §1b to the inventory (the six corrections above).
+2. `149a9607` — rewrote the S11 deferral sentence in `schema.ts`
+   (lines 1261–1266), preserving shipping attribution on line 1268.
+3. `e6426c7f` — replaced the factually-wrong "is unbuilt" rewrites from
+   `282a4900` with honest "IS the `set_X` field below; no further
+   follow-up needed" text for S02 (`schema.ts:583`), S09
+   (`schema.ts:669`), and S10 (`schema.ts:628-630`).
+4. `c7a02f38` — rewrote the 14 remaining genuine deferrals (S05, S06,
+   S07, S08, S12, S13, S15, S16, S17, S18 in `schema.ts`; I01, I02, I03
+   in `interpret.ts`; C01 in `cards.ts`; T01, T02, T03 in the three
+   test files) to the standard
+   `is unbuilt; deferred since follow-up N. See wave4.8-closed.md §2`
+   form. T01 used the §1b-corrected honest rewrite (the example field
+   `chosenProtectionFromPerPair` IS shipped; the deferral is for a
+   per-pair INDEPENDENT map that no priority piece has surfaced).
+   Two further catches in the same pass: lines 1225–1233 (S03 + S09
+   duplicates in the `add_type` block, missed in the earlier scan) —
+   S03 rewritten to the standard form, S09 rewritten to honest
+   "IS the `set_type` field below" form; line 1288 (S11 this-commit
+   attribution) rephrased from `rides follow-up 34 piece 3/N (this
+commit)` to `shipped in follow-up 34 piece 3/N` so the verification
+   grep returns 0 hits.
+
+### Verification (end of cleanup)
+
+```
+$ grep -rnE "rides follow-up [0-9]+|if any future priority piece surfaces|deferred —" src/lib/game-state/
+(0 hits)
+```
+
+- 5439 tests pass, 1 skipped, 0 failing
+  (`src/lib/game-state/__tests__/`, full Jest run).
+- `npx tsc --noEmit` clean.
+- `npx prettier --check` clean on the six files that received
+  comment/docstring edits (`schema.ts`, `interpret.ts`, `cards.ts`, and
+  three test files).
+- `it`/`test`/`it.todo` counts in the three touched test files
+  unchanged from `8b9fc848` (lane71: 6→6; lane28: 10→10;
+  lane32: 10→10), so `test-count-docs-guard` is a no-op.
+
+### Final state
+
+All 25 v2-inventory markers resolved; 0 grep hits; final commit
+`c7a02f38`. **No additional source rewrites are needed.** The next
+session's job was just this addendum, the docs-guard checks, the
+push, and the PR — all of which are now complete.
+
+### A class of error worth preventing (for the next audit)
+
+The v2 inventory's failure mode was answering "is this variant field
+present in the schema?" when the question was "is this variant built
+_as a runtime operation_?" For every `set_*` variant, the schema field
+exists (the field is the variant — the variant is what the field does
+when you write to it). Any future audit that wants to know "is X
+built?" should treat the **schema field inventory** as authoritative
+for "the field exists" and the **runtime handlers / interpreter
+entries** as authoritative for "the operation works." Conflating the
+two is what produced the six §1b corrections.
+
 End of cleanup handoff.
