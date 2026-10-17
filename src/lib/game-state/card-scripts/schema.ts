@@ -580,8 +580,11 @@ export const CopyPermanentSchema = z
      * arm is ADDITIVE (no overwrite of the
      * printed colors); a destructive
      * `set_color` variant ("only [colors]"
-     * semantic) is unbuilt; deferred since
-     * follow-up 31. See wave4.8-closed.md §2.
+     * semantic) IS the `set_color` field
+     * below; no further follow-up needed.
+     * (Original marker promised a future
+     * follow-up 31; the field has shipped
+     * in the schema since wave 4.)
      * The color names use the engine's
      * full-name convention (`"white" |
      * "blue" | "black" | "red" | "green" |
@@ -623,9 +626,15 @@ export const CopyPermanentSchema = z
      * single integer field; non-integer
      * printed toughnesses (`*` / `1+*`)
      * yield 0. A destructive `set_toughness`
-     * variant ("exactly N" semantic) is
-     * unbuilt; deferred since follow-up 31.
-     * See wave4.8-closed.md §2. The
+     * variant ("exactly N" semantic) IS
+     * the `set_toughness` field below; no
+     * further follow-up needed. (Original
+     * marker promised a future follow-up 31;
+     * the field has shipped in the schema
+     * since wave 4. The non-integer `*` /
+     * `1+*` printed-toughness case is a
+     * separate limitation, not addressed
+     * here.) The
      * `add_toughness` arm composes with the
      * priority 2 `add_power` arm (parallel
      * additive P/T merge — both arms
@@ -657,8 +666,11 @@ export const CopyPermanentSchema = z
      * `add_subtype` (which appends to the
      * SUBTYPES half). A destructive
      * `set_type` variant ("exactly [types]"
-     * semantic) is unbuilt; deferred since
-     * follow-up 31. See wave4.8-closed.md §2.
+     * semantic) IS the `set_type` field
+     * below; no further follow-up needed.
+     * (Original marker promised a future
+     * follow-up 31; the field has shipped
+     * in the schema since wave 4.)
      */
     exceptions: z
       .object({
