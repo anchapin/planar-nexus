@@ -107,6 +107,14 @@ This is the path this doc takes. The cycle is closed. Reopening it
 requires one of 2a or 2b above, OR a new meta-decision recorded as an
 amendment to this doc.
 
+**Closing PR: #2814** (`docs(card-scripts): wave 4.8 stale-marker
+cleanup`). Merged 2026-10-17. The 25 v2-inventory stale markers were
+all resolved; the verification grep
+(`grep -rnE "rides follow-up [0-9]+|if any future priority piece surfaces|deferred —" src/lib/game-state/`)
+returns 0 hits on `main`. A follow-up audit-methodology fixup issue
+(#2815) tracks the schema-field-vs-runtime-handler distinction for the
+next cycle.
+
 ### 2d. A new priority list entirely
 
 If a future card-script initiative surfaces work that is **not on the
@@ -188,7 +196,8 @@ reading order.
 
 ### Closed-out
 
-The wave is closed as of this doc. There is no followup38.
+The wave is closed as of this doc. There is no followup38. The
+stale-marker cleanup (PR #2814) was the closing PR, merged 2026-10-17.
 
 ---
 
