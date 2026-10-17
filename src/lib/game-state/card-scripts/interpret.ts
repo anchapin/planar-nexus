@@ -1491,6 +1491,30 @@ function applyEffect(
                * across every per-copy axis.
                */
               set_subtype?: string[];
+              /**
+               * Wave 4.8 follow-up 34 priority
+               * 1 (lane 28, piece 2/N) — new
+               * `set_type` REPLACE arm (the
+               * types-half counterpart of
+               * `set_subtype`). REPLACES the
+               * types half of `type_line` with
+               * the listed type names (printed
+               * types half is dropped; the
+               * subtypes half is preserved
+               * unchanged). When `set_type`
+               * is present, the `add_type`
+               * prepend-consult is SKIPPED
+               * (REPLACE wins on the same
+               * axis). Cross-axis with
+               * `set_subtype` is allowed: when
+               * both REPLACE forms ride
+               * together, the engine rebuilds
+               * the type_line as
+               * `<set_type> — <set_subtype>`.
+               * Marker is `REPLACE wins over
+               * additive on the type axis`.
+               */
+              set_type?: string[];
             };
           }
         ).exceptions;
@@ -1577,7 +1601,85 @@ function applyEffect(
         // types are prepended to the
         // entire printed type_line (no
         // subtypes half to preserve).
-        if (exceptions?.add_type?.length) {
+        // Wave 4.8 follow-up 34 priority 1
+        // (lane 28, piece 2/N) (#2614
+        // follow-up): the `set_type`
+        // REPLACE-consult — REPLACE the
+        // TYPES half of `type_line` with
+        // the listed type names (printed
+        // types half is dropped). The
+        // subtypes half is preserved
+        // unchanged. Cross-axis with
+        // `set_subtype` is allowed: when
+        // both REPLACE forms ride
+        // together, the engine rebuilds
+        // the entire type_line as
+        // `<set_type> — <set_subtype>` —
+        // both printed halves are dropped.
+        // When `set_type` is present, the
+        // `add_type` prepend-consult below
+        // is SKIPPED (REPLACE wins on the
+        // same axis — exactly parallel to
+        // `set_subtype` vs `add_subtype`
+        // from follow-up 33, and
+        // `set_toughness` vs
+        // `add_toughness` from follow-up
+        // 32 / commit 41b3ad3a). Marker is
+        // `REPLACE wins over additive on
+        // the type axis`.
+        if (exceptions?.set_type?.length) {
+          const printed = rebuilt.type_line ?? "";
+          const emDashIdx = printed.indexOf("—");
+          const newTypes = exceptions.set_type.join(" ");
+          if (emDashIdx < 0) {
+            // No subtypes half — the
+            // type_line becomes the listed
+            // types (with no em-dash
+            // separator since there was no
+            // subtypes half to preserve).
+            rebuilt = {
+              ...rebuilt,
+              type_line: newTypes,
+            };
+          } else {
+            // Preserve the subtypes half
+            // verbatim — REPLACE only the
+            // types half. (If `set_subtype`
+            // is also set, it has already
+            // been applied earlier on this
+            // pass; the subtypes half here
+            // is the post-`set_subtype`
+            // value, which is what we want
+            // to keep.)
+            const subtypesHalf = printed.slice(emDashIdx + 1).trim();
+            if (subtypesHalf) {
+              rebuilt = {
+                ...rebuilt,
+                type_line: `${newTypes} — ${subtypesHalf}`,
+              };
+            } else {
+              rebuilt = {
+                ...rebuilt,
+                type_line: newTypes,
+              };
+            }
+          }
+        } else if (exceptions?.add_type?.length) {
+          // Wave 4.8 follow-up 30 priority 1
+          // (lane 28, piece 1/N) (#2614
+          // follow-up): the `add_type`
+          // prepend-consult — PREPEND the
+          // added types to the existing
+          // types half of
+          // `cardData.type_line` (printed
+          // types half is the base; the
+          // added types go BEFORE the
+          // printed types; the subtypes
+          // half is preserved). SKIPPED
+          // when `set_type` is present
+          // (REPLACE wins — same pattern as
+          // `set_subtype` vs `add_subtype`
+          // from follow-up 33).
           const printed = rebuilt.type_line ?? "";
           const emDashIdx = printed.indexOf("—");
           const addedTypes = exceptions.add_type.join(" ");

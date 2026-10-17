@@ -894,7 +894,24 @@ const SCOPES = [
     // from the doc-block + the `applyExceptions`
     // consult. schema.ts measured at 5354 (+84
     // over 5270).
-    budgetLines: 5360,
+    //
+    // Bumping 5360 → 5425 to capture the follow-up 34
+    // priority 1 (lane 28, piece 2/N) —
+    // `CopyPermanent.exceptions.set_type` arm
+    // (the per-copy types-half REPLACE arm —
+    // `z.array(z.string().min(1)).min(1).optional()`,
+    // parallel in shape to `set_subtype` but
+    // operating on the TYPES half of `type_line`).
+    // The schema bump reflects the new
+    // `set_type` field + its multi-line comment
+    // (~31 lines for cross-axis interaction
+    // with `set_subtype` REPLACE), plus the
+    // PRECEDENCE doc-block update that flips
+    // `set_type` from "deferred" to "this
+    // commit" and adds a small entry for the
+    // remaining deferred arms. schema.ts
+    // measured at 5415 (+61 over 5360).
+    budgetLines: 5425,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),

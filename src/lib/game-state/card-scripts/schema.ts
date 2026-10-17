@@ -734,29 +734,45 @@ export const CopyPermanentSchema = z
          *   - `add_keyword` (follow-up 27)
          *
          * Per-axis current scheme — `set_*`
-         * arms (follow-ups 32-33):
+         * arms (follow-ups 28-34):
          *   - `set_power` (follow-up 28)
          *   - `set_toughness` (follow-up 32)
-         *   - `set_keyword` (deferred — see
-         *     follow-up 33 piece 5)
-         *   - `set_ability` (deferred — see
-         *     follow-up 33 piece 5)
-         *   - `set_type` (deferred — would
-         *     overwrite the types half
-         *     outright; not on the road map
-         *     this wave — follow-up 31)
-         *   - `set_subtype` — THIS follow-up
-         *     33 piece 1: REPLACES the
-         *     subtypes half of `type_line`
-         *     with the listed subtype names;
-         *     `add_subtype` is SKIPPED when
-         *     `set_subtype` is present on
-         *     the same effect (REPLACE wins
-         *     over additive on the subtype
-         *     axis — same pattern as
-         *     `set_toughness` vs
-         *     `add_toughness` from
-         *     follow-up 32).
+         *   - `set_subtype` (follow-up 33
+         *     piece 1/N, shipped) — REPLACES
+         *     the subtypes half of
+         *     `type_line`; `add_subtype`
+         *     consult SKIPPED on the same
+         *     effect (REPLACE wins). See
+         *     commit e2d5070f.
+         *   - `set_type` (follow-up 34
+         *     piece 2/N, this commit) —
+         *     REPLACES the types half of
+         *     `type_line`; `add_type`
+         *     consult SKIPPED on the same
+         *     effect (REPLACE wins — same
+         *     pattern as `set_subtype`).
+         *     Cross-axis with `set_subtype`
+         *     is allowed: the engine
+         *     rebuilds the type_line as
+         *     `<set_type> — <set_subtype>`
+         *     when both REPLACE forms are
+         *     set on the same effect.
+         *   - `set_keyword` (deferred —
+         *     rides follow-up 35+)
+         *   - `set_ability` (deferred —
+         *     rides follow-up 35+)
+         *   - `set_supertype` (deferred —
+         *     rides follow-up 35+; same
+         *     shape as `set_subtype` but
+         *     overwrites the supertypes
+         *     half of `type_line`)
+         *   - `set_color_identity`
+         *     (deferred — rides follow-up
+         *     35+; smallest of the deferred
+         *     arms; overwrites `color_identity`
+         *     wholesale — closest in shape
+         *     to `set_color` already
+         *     shipped)
          */
         add_subtype: z.array(z.string().min(1)).min(1).optional(),
         /**
@@ -777,6 +793,51 @@ export const CopyPermanentSchema = z
          * additive on the subtype axis`.
          */
         set_subtype: z.array(z.string().min(1)).min(1).optional(),
+        /**
+         * Wave 4.8 follow-up 34 priority 1
+         * (lane 28, piece 2/N) (#2614
+         * follow-up): OPTIONAL `set_type`
+         * sub-arm. The engine REPLACES the
+         * TYPES half of `type_line` with the
+         * listed type names (printed types
+         * half is dropped; the subtypes half
+         * is preserved unchanged). When
+         * `set_type` is present, the
+         * `add_type` prepend-consult is
+         * SKIPPED — REPLACE wins on the same
+         * axis (parallel to `set_subtype` vs
+         * `add_subtype` from follow-up 33 —
+         * the REPLACE form is the final word
+         * on the axis; see PRECEDENCE block
+         * above).
+         *
+         * Note the cross-axis interaction:
+         * if BOTH `set_type` (types-half
+         * REPLACE) and `set_subtype`
+         * (subtypes-half REPLACE) are set
+         * on the same effect, the engine
+         * rebuilds the entire type_line as
+         * `<set_type> — <set_subtype>` and
+         * preserves no printed half. The
+         * `add_type` consult runs BEFORE
+         * `set_type` (in source order) and
+         * is skipped only when `set_type` is
+         * also present. The `add_subtype`
+         * consult runs BEFORE `set_subtype`
+         * and is skipped only when
+         * `set_subtype` is also present.
+         * Cross-axis `add_subtype` still
+         * runs even when `set_type` is set
+         * (and vice versa) — additive
+         * overlays on independent axes do
+         * not block each other; only the
+         * REPLACE form on the SAME axis
+         * blocks the additive form.
+         *
+         * Marker is `REPLACE wins over
+         * additive on the type axis`.
+         */
+        set_type: z.array(z.string().min(1)).min(1).optional(),
         /**
          * Wave 4.8 follow-up 30 priority 1
          * (lane 28, piece 1/N) (#2614
