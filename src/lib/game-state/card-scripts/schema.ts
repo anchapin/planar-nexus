@@ -661,7 +661,122 @@ export const CopyPermanentSchema = z
      */
     exceptions: z
       .object({
+        /**
+         * PRECEDENCE summary for every
+         * `CopyPermanentSchema.exceptions`
+         * axis (lane 28 — locked in follow-ups
+         * 24…28, codified by this comment in
+         * follow-up 33 across the P/T, color,
+         * type, and subtype axes):
+         *
+         *   1. On every identity axis (power,
+         *      toughness, color, type,
+         *      subtype, keywords, abilities),
+         *      a `set_<axis>` arm
+         *      OVERWRITES the printed value
+         *      to its listed values (the
+         *      printed value is the BASE only
+         *      when no `set_<axis>` is
+         *      present).
+         *
+         *   2. An `add_<axis>` arm is
+         *      ADDITIVE — it merges its
+         *      listed values into the
+         *      EFFECTIVE value (printed
+         *      base, or the latest
+         *      `set_<axis>` result), never
+         *      overwriting.
+         *
+         *   3. When BOTH `set_<axis>` and
+         *      `add_<axis>` ride the same
+         *      axis on the same effect, the
+         *      `set_<axis>` value is the
+         *      EFFECTIVE base, and the
+         *      `add_<axis>` is appended (or
+         *      applied) ON TOP of it. The
+         *      REPLACE form wins; additive
+         *      overlays never replace.
+         *
+         *   4. On cross-axis axes (e.g. P/T
+         *      where `set_power` and
+         *      `add_toughness` ride together)
+         *      each axis follows its own
+         *      sub-rule — `set_power` REPLACES
+         *      the printed power independently
+         *      of whether `add_toughness` is
+         *      also present (and vice versa),
+         *      because they modify independent
+         *      printed values.
+         *
+         *   5. When NEITHER `set_<axis>` NOR
+         *      `add_<axis>` is present, the
+         *      effect leaves the printed axis
+         *      value untouched.
+         *
+         * Engine consult precedence lives in
+         * `src/lib/game-state/card-scripts/interpret.ts`
+         * `applyExceptions` — `set_<axis>`
+         * arms are evaluated first, and
+         * `add_<axis>` is skipped when its
+         * corresponding `set_<axis>` arm is
+         * present (the REPLACE form is the
+         * final word on the axis).
+         *
+         * Per-axis current scheme — locked
+         * `add_*` arms (follow-ups 28-31):
+         *   - `add_color` (follow-up 30)
+         *   - `add_type` (follow-up 30)
+         *   - `add_subtype` (follow-up 29)
+         *   - `add_power` (follow-up 25)
+         *   - `add_toughness` (follow-up 32,
+         *     wired 41b3ad3a)
+         *   - `add_ability` (follow-up 27)
+         *   - `add_keyword` (follow-up 27)
+         *
+         * Per-axis current scheme — `set_*`
+         * arms (follow-ups 32-33):
+         *   - `set_power` (follow-up 28)
+         *   - `set_toughness` (follow-up 32)
+         *   - `set_keyword` (deferred — see
+         *     follow-up 33 piece 5)
+         *   - `set_ability` (deferred — see
+         *     follow-up 33 piece 5)
+         *   - `set_type` (deferred — would
+         *     overwrite the types half
+         *     outright; not on the road map
+         *     this wave — follow-up 31)
+         *   - `set_subtype` — THIS follow-up
+         *     33 piece 1: REPLACES the
+         *     subtypes half of `type_line`
+         *     with the listed subtype names;
+         *     `add_subtype` is SKIPPED when
+         *     `set_subtype` is present on
+         *     the same effect (REPLACE wins
+         *     over additive on the subtype
+         *     axis — same pattern as
+         *     `set_toughness` vs
+         *     `add_toughness` from
+         *     follow-up 32).
+         */
         add_subtype: z.array(z.string().min(1)).min(1).optional(),
+        /**
+         * Wave 4.8 follow-up 33 priority 1
+         * (lane 28, piece 1/2) (#2614
+         * follow-up): OPTIONAL `set_subtype`
+         * sub-arm. The engine REPLACES the
+         * subtypes half of `type_line` with
+         * the listed subtype names (printed
+         * base is dropped). When
+         * `set_subtype` is present, the
+         * `add_subtype` append-consult is
+         * SKIPPED — the REPLACE form wins
+         * on the same axis (see PRECEDENCE
+         * block above).
+         *
+         * Marker is `REPLACE wins over
+         * additive on the subtype axis`.
+         */
+        set_subtype: z.array(z.string().min(1)).min(1).optional(),
         /**
          * Wave 4.8 follow-up 30 priority 1
          * (lane 28, piece 1/N) (#2614

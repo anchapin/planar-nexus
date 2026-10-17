@@ -1479,17 +1479,57 @@ function applyEffect(
               set_color?: string[];
               set_power?: number;
               set_toughness?: number;
+              /**
+               * Wave 4.8 follow-up 33 priority
+               * 1 (lane 28, piece 2/2) — new
+               * `set_subtype` REPLACE arm (the
+               * subtypes-half counterpart of
+               * `set_toughness`). See the
+               * PRECEDENCE block in
+               * `schema.ts` `CopyPermanentSchema.exceptions`
+               * for the full precedence rule
+               * across every per-copy axis.
+               */
+              set_subtype?: string[];
             };
           }
         ).exceptions;
         let rebuilt: ScryfallCard = { ...cardData };
-        // Wave 4.8 follow-up 29 priority 3
-        // (lane 28, piece 4/4) (#2614
-        // follow-up): the `add_subtype`
-        // append-consult — append the
-        // added subtypes to the printed
-        // subtypes half of `cardData.type_line`.
-        if (exceptions?.add_subtype?.length) {
+        // Wave 4.8 follow-up 33 priority 1
+        // (lane 28, piece 2/2) (#2614
+        // follow-up): the `set_subtype`
+        // REPLACE-consult — REPLACE the
+        // subtypes half of `type_line` with
+        // the listed subtype names (printed
+        // subtypes half is dropped). Marker
+        // is `REPLACE wins over additive on
+        // the subtype axis`. When this arm
+        // is present, the `add_subtype`
+        // append-consult below is SKIPPED
+        // (REPLACE wins on the same axis —
+        // same pattern as `set_toughness`
+        // vs `add_toughness` from
+        // follow-up 32 / commit 41b3ad3a).
+        if (exceptions?.set_subtype?.length) {
+          const printed = rebuilt.type_line ?? "";
+          const emDashIdx = printed.indexOf("—");
+          const typesHalf =
+            emDashIdx < 0
+              ? printed.trimEnd()
+              : printed.slice(0, emDashIdx).trimEnd();
+          rebuilt = {
+            ...rebuilt,
+            type_line: `${typesHalf} — ${exceptions.set_subtype.join(" ")}`,
+          };
+        } else if (exceptions?.add_subtype?.length) {
+          // Wave 4.8 follow-up 29 priority 3
+          // (lane 28, piece 4/4) (#2614
+          // follow-up): the `add_subtype`
+          // append-consult — append the
+          // added subtypes to the printed
+          // subtypes half of `cardData.type_line`.
+          // SKIPPED when `set_subtype` is
+          // present (REPLACE wins).
           const printed = rebuilt.type_line ?? "";
           const emDashIdx = printed.indexOf("—");
           if (emDashIdx < 0) {

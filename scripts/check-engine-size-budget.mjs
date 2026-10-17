@@ -873,7 +873,28 @@ const SCOPES = [
     // until end of turn and then restore the
     // printed power) rides follow-up 32. schema.ts
     // measured at 5264 (+44 over 5220).
-    budgetLines: 5270,
+    //
+    // Bumping 5270 → 5360 to capture the follow-up 33
+    // priority 1 (lane 28, piece 1/N) —
+    // `CopyPermanent.exceptions.set_subtype` arm
+    // (the per-copy subtypes-half REPLACE arm —
+    // `z.array(z.string().min(1)).min(1).optional()`,
+    // parallel in shape to the existing
+    // `set_color` REPLACE arm). The schema bump is
+    // dominated by the new PRECEDENCE doc-block
+    // that codifies the REPLACE-wins-over-additive
+    // rule across every per-copy axis (P/T, color,
+    // type, subtype, keywords, abilities) — a
+    // one-time documentation pass that the next
+    // `set_<axis>` arm-lander benefits from
+    // directly (no further doc-block needed; the
+    // rule is declarative end-to-end). The
+    // `set_<axis>`-vs-`add_<axis>` PRECEDENCE
+    // semantics are now mechanically derivable
+    // from the doc-block + the `applyExceptions`
+    // consult. schema.ts measured at 5354 (+84
+    // over 5270).
+    budgetLines: 5360,
     excludedFiles: new Set([
       join(REPO_ROOT, "src", "lib", "game-state", "index.ts"),
     ]),
