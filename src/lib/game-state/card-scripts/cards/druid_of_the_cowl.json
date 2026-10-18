@@ -1,0 +1,19 @@
+{
+  "name": "Druid of the Cowl",
+  "oracle": "{T}: Add {G}.",
+  "activated": [
+    {
+      "text": "{T}: Add {G}.",
+      "cost": {
+        "tap": true
+      },
+      "effects": [
+        {
+          "op": "AddMana",
+          "colors": ["G"],
+          "amount": 1
+        }
+      ]
+    }
+  ]
+}

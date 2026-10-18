@@ -1,0 +1,20 @@
+{
+  "name": "Three Tree Mascot",
+  "oracle": "{T}: Add one mana of any color.\nActivate only once each turn.",
+  "activated": [
+    {
+      "text": "{T}: Add one mana of any color.",
+      "cost": {
+        "tap": true
+      },
+      "limit": "once_per_turn",
+      "effects": [
+        {
+          "op": "AddMana",
+          "colors": "any",
+          "amount": 1
+        }
+      ]
+    }
+  ]
+}
