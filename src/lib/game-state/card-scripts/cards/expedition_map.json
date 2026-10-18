@@ -1,0 +1,23 @@
+{
+  "name": "Expedition Map",
+  "oracle": "{2}, {T}, Sacrifice this artifact: Search your library for a land card, reveal it, put it into your hand, then shuffle.",
+  "activated": [
+    {
+      "text": "{2}, {T}, Sacrifice this artifact: Search your library for a land card, reveal it, put it into your hand, then shuffle.",
+      "cost": {
+        "tap": true,
+        "sacrifice": true
+      },
+      "effects": [
+        {
+          "op": "SearchLibrary",
+          "filter": { "land": true },
+          "destination": "hand",
+          "shuffle": true,
+          "count": 1,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}
