@@ -36,7 +36,7 @@ Top-level directories a first-time contributor needs to recognize:
 
 ## Current test count
 
-Source of truth: `npx jest --listTests | wc -l` for the suite count, and `npm test --silent | grep -E "^(Tests:|Test Suites:)"` for the per-suite case totals. The block below is rewritten by `scripts/ratchet-test-count.mjs` and verified in CI by `scripts/check-test-count-docs.mjs` (issue #1902). A drift beyond this block fails merge.
+Source of truth: `npx jest --listTests | wc -l` for the suite count, and `npm test --silent | grep -E "^(Tests:|Test Suites:)"` for the per-suite case totals. The block below is rewritten by `scripts/ratchet-test-count.mjs` and verified in CI by `scripts/check-test-count-docs.mjs` (issue #1902). The CI gate **fails merge on drift in the anchored counts** — `Test Suites`, `Test cases total`, `Snapshots`, or `--listTests` files — because those only move when a test file is added, removed, or renamed without rerunning the ratchet. Drift in the non-anchored counters (`Tests passed`, `Tests skipped`, `Tests todo`) prints a `WARN` but no longer fails the gate (issue #2353); the next ratchet run reconciles flake-induced drops.
 
 <!-- TEST_COUNT:START -->
 
