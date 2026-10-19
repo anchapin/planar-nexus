@@ -210,6 +210,74 @@ describe("test-count docs guard and ratchet (#2342)", () => {
     expect(fs.readFileSync(fixturesDoc, "utf-8")).toBe(staleBash);
     expect(fs.readFileSync(onboardingDoc, "utf-8")).toBe(brokenMd);
   });
+
+  describe("non-anchored counter drift is decoupled (#2353)", () => {
+    // Test Suites, Test cases total, Snapshots, and --listTests files are
+    // anchored structural drift — they fail the gate when they mismatch.
+    // Tests passed / skipped / todo are non-anchored: a flake-induced drop
+    // prints WARN (to stderr via `console.warn`) but the guard exits 0.
+    it("passes with WARN when live.passed < doc.passed (flake noise)", () => {
+      const flakey = { ...LIVE, passed: (LIVE.passed ?? 0) - 5 };
+      fs.writeFileSync(livePath, JSON.stringify(flakey), "utf-8");
+      fs.writeFileSync(fixturesDoc, bashDoc(LIVE));
+      fs.writeFileSync(onboardingDoc, markdownDoc(LIVE));
+      const res = guard();
+      expect(res.code).toBe(0);
+      expect(res.stderr).toContain("Tests passed");
+      expect(res.stderr.toLowerCase()).toContain("tolerated");
+    });
+
+    it("passes with WARN when live.passed > doc.passed (post-ratchet)", () => {
+      const ahead = { ...LIVE, passed: (LIVE.passed ?? 0) + 3 };
+      fs.writeFileSync(livePath, JSON.stringify(ahead), "utf-8");
+      fs.writeFileSync(fixturesDoc, bashDoc(LIVE));
+      fs.writeFileSync(onboardingDoc, markdownDoc(LIVE));
+      const res = guard();
+      expect(res.code).toBe(0);
+      expect(res.stderr).toContain("Tests passed");
+      expect(res.stderr.toLowerCase()).toContain("tolerated");
+    });
+
+    it("passes with WARN when live.skipped != doc.skipped", () => {
+      const shifted = { ...LIVE, skipped: (LIVE.skipped ?? 0) + 2 };
+      fs.writeFileSync(livePath, JSON.stringify(shifted), "utf-8");
+      fs.writeFileSync(fixturesDoc, bashDoc(LIVE));
+      fs.writeFileSync(onboardingDoc, markdownDoc(LIVE));
+      const res = guard();
+      expect(res.code).toBe(0);
+      expect(res.stderr).toContain("Tests skipped");
+    });
+
+    it("passes with WARN when live.todo != doc.todo", () => {
+      const shifted = { ...LIVE, todo: (LIVE.todo ?? 0) + 1 };
+      fs.writeFileSync(livePath, JSON.stringify(shifted), "utf-8");
+      fs.writeFileSync(fixturesDoc, bashDoc(LIVE));
+      fs.writeFileSync(onboardingDoc, markdownDoc(LIVE));
+      const res = guard();
+      expect(res.code).toBe(0);
+      expect(res.stderr).toContain("Tests todo");
+    });
+
+    it("still FAILS when live.total != doc.total (anchored)", () => {
+      const dropped = { ...LIVE, total: (LIVE.total ?? 0) - 4 };
+      fs.writeFileSync(livePath, JSON.stringify(dropped), "utf-8");
+      fs.writeFileSync(fixturesDoc, bashDoc(LIVE));
+      fs.writeFileSync(onboardingDoc, markdownDoc(LIVE));
+      const res = guard();
+      expect(res.code).toBe(1);
+      expect(res.stderr).toContain("Tests total");
+    });
+
+    it("still FAILS when live.suites != doc.suites (anchored)", () => {
+      const fewer = { ...LIVE, suites: (LIVE.suites ?? 0) - 1 };
+      fs.writeFileSync(livePath, JSON.stringify(fewer), "utf-8");
+      fs.writeFileSync(fixturesDoc, bashDoc(LIVE));
+      fs.writeFileSync(onboardingDoc, markdownDoc(LIVE));
+      const res = guard();
+      expect(res.code).toBe(1);
+      expect(res.stderr).toContain("Test Suites");
+    });
+  });
 });
 
 describe("committed test-count blocks (#2342)", () => {

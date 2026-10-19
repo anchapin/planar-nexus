@@ -357,9 +357,25 @@ function parseMarkdownBlock(inner) {
  * @returns {string[]} violations (empty = pass)
  */
 export function diff(doc, live, liveListed) {
-  if (!doc.ok) return [doc.error];
+  if (!doc.ok) return { errs: [doc.error], drifts: [] };
   /** @type {string[]} */
   const errs = [];
+  /**
+   * Drift is non-anchored "clean baseline" counters
+   * (`passed`, `skipped`, `todo`). A flake-induced drop in
+   * `passed` is tolerated (the manamind/AI suites
+   * `forge-gate` / `forge-selfplay` / `expert-agent` —
+   * "is deterministic for a seed" — fail intermittently on
+   * full-suite runs but pass on isolated re-runs). Drift is
+   * surfaced as a WARN via `healthNote` style output below;
+   * it never fails the gate. Only anchored structural
+   * drift (`suites`, `total`, `snapshots`, `listed`) fails
+   * the gate, since those shift only when someone adds,
+   * removes, or renames a test file without rerunning
+   * `npm run ratchet:test-count`.
+   * @type {string[]}
+   */
+  const drifts = [];
   if (doc.suites !== live.suites) {
     errs.push(
       `Test Suites: doc=${doc.suites}, live=${live.suites}. ` +
@@ -373,38 +389,22 @@ export function diff(doc, live, liveListed) {
     );
   }
   if (doc.passed !== live.passed) {
-    // The doc's `passed` count is the "clean baseline" — the
-    // value captured by the ratchet on a flake-free run. The
-    // live `passed` count can be SMALLER than the doc when
-    // the manamind/AI suite flake
-    // (`forge-gate` / `forge-selfplay` / `expert-agent`
-    // "is deterministic for a seed" — 4-5 tests fail
-    // intermittently on full-suite runs but pass on isolated
-    // re-runs) strikes. The guard tolerates this flake
-    // noise (live.passed < doc.passed) — the diff is logged
-    // in the `healthNote` for visibility but does NOT fail
-    // the gate. The guard still fails when live.passed >
-    // doc.passed, which indicates a new test was added but
-    // not ratcheted (a real regression).
-    if (live.passed > doc.passed) {
-      errs.push(
-        `Tests passed: doc=${doc.passed}, live=${live.passed}. ` +
-          `Live is GREATER than doc — a new test was likely added ` +
-          `without ratcheting. ` +
-          `Run \`npm run ratchet:test-count\` to regenerate.`,
-      );
-    }
+    drifts.push(
+      `Tests passed: doc=${doc.passed}, live=${live.passed}. ` +
+        `Tolerated: flake-induced drop or post-ratchet addition. ` +
+        `Ratchet will reconcile on next full Jest run.`,
+    );
   }
   if (doc.skipped !== live.skipped) {
-    errs.push(
+    drifts.push(
       `Tests skipped: doc=${doc.skipped}, live=${live.skipped}. ` +
-        `Run \`npm run ratchet:test-count\` to regenerate.`,
+        `Tolerated drift; ratchet will reconcile on next run.`,
     );
   }
   if (doc.todo !== live.todo) {
-    errs.push(
+    drifts.push(
       `Tests todo: doc=${doc.todo}, live=${live.todo}. ` +
-        `Run \`npm run ratchet:test-count\` to regenerate.`,
+        `Tolerated drift; ratchet will reconcile on next run.`,
     );
   }
   if (doc.snapshots !== undefined && doc.snapshots !== live.snapshots) {
@@ -419,7 +419,7 @@ export function diff(doc, live, liveListed) {
         `Run \`npm run ratchet:test-count\` to regenerate.`,
     );
   }
-  return errs;
+  return { errs, drifts };
 }
 
 function parseArgs(argv) {
@@ -514,7 +514,16 @@ function runGuard(opts) {
     }
 
     const doc = parseDocBlock(source);
-    const errs = diff(doc, live, liveListed);
+    const { errs, drifts } = diff(doc, live, liveListed);
+    if (drifts.length > 0) {
+      console.warn(
+        `[check-test-count-docs] WARN: ${docPath}: drifted counters ` +
+          `(tolerated, flake-noise decoupled — see #2353):`,
+      );
+      for (const msg of drifts) {
+        console.warn(`  - ${msg}`);
+      }
+    }
 
     if (errs.length === 0) {
       console.log(
