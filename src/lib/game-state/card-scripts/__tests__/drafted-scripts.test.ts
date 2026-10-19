@@ -620,3 +620,89 @@ describe("card-scripts enter_choice text-vs-kind guard (data-driven)", () => {
     expect(textOk).toBe(false);
   });
 });
+
+describe("card-scripts keyword-vs-Pump guard (data-driven)", () => {
+  // Catches the regression class behind #2643: a "+0/+0 Pump" scripted in
+  // place of "GrantKeyword <keyword>" when the oracle text grants a keyword
+  // and never modifies power/toughness. The flagged pattern is a Pump effect
+  // whose `power` and `toughness` are both 0 AND whose parent ability text
+  // contains a granting phrase ("gains", "has") without a numeric P/T
+  // modifier. Such effects are almost certainly a GrantKeyword/Pump mix-up
+  // by an LLM drafter. We read the raw JSON (mirroring the text-vs-numbers
+  // and enter_choice guards) so we can iterate every effect field without
+  // going through the discriminated EffectSchema union.
+  it(
+    "flags Pump effects with power=0 and toughness=0 paired with a " +
+      "keyword-granting phrase (#2643)",
+    () => {
+      const grantingRe = /(gains|grant[^\n]*?|\bhas\b)/;
+      const ptnumericRe = /\+[0-9x]+\s*\/\s*\+[0-9x]+/;
+      const offenders: Array<{
+        name: string;
+        source: string;
+        reason: string;
+      }> = [];
+      const files = readdirSync(CARDS_DIR)
+        .filter((f) => f.endsWith(".json"))
+        .sort();
+      for (const file of files) {
+        const raw = JSON.parse(readFileSync(join(CARDS_DIR, file), "utf-8")) as {
+          name: string;
+          activated?: Array<{ text?: string; effects?: unknown[] }>;
+        };
+        const visit = (
+          ability: { text?: string; effects?: unknown[] },
+          source: string,
+        ) => {
+          const text = (ability.text ?? source).toLowerCase();
+          if (!grantingRe.test(text)) return;
+          if (ptnumericRe.test(text)) return; // a real P/T buff
+          for (const eff of ability.effects ?? []) {
+            if (!eff || typeof eff !== "object") continue;
+            const e = eff as Record<string, unknown>;
+            if (e.op !== "Pump") continue;
+            if (e.power !== 0 || e.toughness !== 0) continue;
+            offenders.push({
+              name: raw.name,
+              source: ability.text ?? source,
+              reason: `Pump with power=0 toughness=0 reads as a keyword grant; use op:"GrantKeyword" instead`,
+            });
+          }
+        };
+        for (const ability of raw.activated ?? []) visit(ability, "");
+      }
+      if (offenders.length > 0) {
+        throw new Error(
+          "Card scripts with a +0/+0 Pump that looks like a keyword grant:\n" +
+            offenders
+              .map((f) => `- ${f.name} (${f.source}): ${f.reason}`)
+              .join("\n"),
+        );
+      }
+      expect(offenders).toEqual([]);
+    },
+  );
+
+  it("flags a synthetic script that grants haste as a +0/+0 Pump", () => {
+    // Mirrors the regression in axgard_cavalry.json before #2643: the
+    // effect is a Pump with no P/T delta, while the source text grants
+    // a keyword. The guard's heuristic must flag it.
+    const grantingRe = /(gains|grant[^\n]*?|\bhas\b)/;
+    const ptnumericRe = /\+[0-9x]+\s*\/\s*\+[0-9x]+/;
+    const syntheticText = "Target creature gains haste until end of turn.";
+    const syntheticEffect = {
+      op: "Pump" as const,
+      power: 0,
+      toughness: 0,
+      target: "creature" as const,
+    };
+    const text = syntheticText.toLowerCase();
+    const ok =
+      grantingRe.test(text) &&
+      !ptnumericRe.test(text) &&
+      syntheticEffect.op === "Pump" &&
+      syntheticEffect.power === 0 &&
+      syntheticEffect.toughness === 0;
+    expect(ok).toBe(true);
+  });
+});
