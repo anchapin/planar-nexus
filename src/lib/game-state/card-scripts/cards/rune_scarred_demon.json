@@ -1,0 +1,29 @@
+{
+  "name": "Rune-Scarred Demon",
+  "oracle": "Flying\nWhen this creature enters, search your library for a card, put it into your hand, then shuffle.",
+  "triggers": [
+    {
+      "text": "When this creature enters, search your library for a card, put it into your hand, then shuffle.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "SearchLibrary",
+          "filter": {
+            "or": [
+              { "basic_land": true },
+              { "land": true },
+              { "creature": true },
+              { "artifact": true },
+              { "enchantment": true }
+            ]
+          },
+          "destination": "hand",
+          "shuffle": true,
+          "count": 1,
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}
