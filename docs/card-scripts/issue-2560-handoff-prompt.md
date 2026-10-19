@@ -87,6 +87,12 @@ These remain in the 46-card pool but are blocked:
   CI has a stable flake profile; for the most predictable docs,
   re-run `npm test --silent` locally a few times and pick the
   **lowest** total (treats flakes as consistent).
+- **Card JSON additions auto-add 3 it() each** via
+  `card-scripts.test.ts:176 it.each(files)("%s matches the schema", ...)`.
+  When you add N cards + 1 dedicated issue test file with M it()
+  blocks, the test delta is **N + M**, not just M. PR #2822 added
+  3 cards + 3 it() (issue-2560) = +6 tests. (Initial ratchet
+  missed the N part — corrected in d1f5e7f2.)
 - **Two commits per PR:** code+ratchet together; handoff doc as
   separate commit. The handoff commit is for the _next_ issue, so
   each session's branch carries its own handoff doc.
