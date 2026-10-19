@@ -136,3 +136,14 @@ test-serialization.ts
 # card-script bake-off output (#2491)
 bakeoff-out/
 !scripts/data/bakeoff-cards.json
+
+# AI agent runtime state — local only. Each of these dirs holds ephemeral
+# session/cache data (run logs, decisions, scratch notes, worktrees). They
+# are already gitignored at the home level (~/AGENTS.md); mirror the rule so
+# local agents can't accidentally stage and commit a session's worth of
+# scratch output. Issue: tracked .foreman/runs/*/events.jsonl polluted the
+# working tree during a pr-review-merge sweep and had to be restored.
+.foreman/
+.agents/
+.opencode/
+.planning/worktrees/
