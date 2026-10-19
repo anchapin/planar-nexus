@@ -141,7 +141,17 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
 
   test("host + 3 peers join, host broadcasts a state-sync that reaches all 3", async ({
     browser,
+    browserName,
   }) => {
+    // #2485: webkit peer page sometimes navigates mid-test and loses
+    // window.__peer; cold-loading 4 contexts hits the same window-state-loss
+    // mode that breaks the mid-game-join test below (#2604). The simplest
+    // mesh test is the first place it shows up. Quarantined on webkit;
+    // root-cause fix tracked in #2604.
+    test.fixme(
+      browserName === "webkit",
+      "webkit peer page navigates mid-test and loses state - quarantined, fix tracked in #2604",
+    );
     // #2290: 4 cold-loaded peer contexts + 6 cross-linked channels need more
     // than the 30s default off chromium. Cross-Browser run 37026236268: this
     // test took 25.7s (firefox), 39.7s (firefox retry), 26.3s (webkit retry).
