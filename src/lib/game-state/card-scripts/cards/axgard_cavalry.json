@@ -10,10 +10,10 @@
       },
       "effects": [
         {
-          "op": "Pump",
-          "power": 0,
-          "toughness": 0,
-          "target": "creature"
+          "op": "GrantKeyword",
+          "keyword": "haste",
+          "target": "creature",
+          "until": "end_of_turn"
         }
       ]
     }
