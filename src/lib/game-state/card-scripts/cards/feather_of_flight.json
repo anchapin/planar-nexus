@@ -1,0 +1,28 @@
+{
+  "name": "Feather of Flight",
+  "oracle": "Enchant creature\nEnchanted creature gets +1/+0 and has flying.\nWhen this Aura enters, draw a card.",
+  "aura": {
+    "text": "Enchanted creature gets +1/+0 and has flying.",
+    "target": "creature",
+    "static": {
+      "text": "Enchanted creature gets +1/+0 and has flying.",
+      "power": 1,
+      "toughness": 0,
+      "keywords": ["flying"]
+    }
+  },
+  "triggers": [
+    {
+      "text": "When this Aura enters, draw a card.",
+      "event": "etb",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "Draw",
+          "who": "you",
+          "amount": 1
+        }
+      ]
+    }
+  ]
+}
