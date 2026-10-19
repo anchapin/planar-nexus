@@ -1,0 +1,23 @@
+{
+  "name": "Krenko, Mob Boss",
+  "oracle": "{T}: Create X 1/1 red Goblin creature tokens, where X is the number of Goblins you control.",
+  "activated": [
+    {
+      "text": "{T}: Create X 1/1 red Goblin creature tokens, where X is the number of Goblins you control.",
+      "cost": {
+        "tap": true
+      },
+      "effects": [
+        {
+          "op": "CreateToken",
+          "count": "X",
+          "X": "yourCreatures",
+          "color": "red",
+          "subtypes": ["Goblin"],
+          "power": 1,
+          "toughness": 1
+        }
+      ]
+    }
+  ]
+}

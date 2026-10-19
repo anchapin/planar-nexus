@@ -1,0 +1,27 @@
+{
+  "name": "Ashroot Animist",
+  "oracle": "{X}{G}{G}, {T}: Put X +1/+1 counters on target creature you control. Draw X cards. Activate only as a sorcery.",
+  "activated": [
+    {
+      "text": "{X}{G}{G}, {T}: Put X +1/+1 counters on target creature you control. Draw X cards. Activate only as a sorcery.",
+      "cost": {
+        "mana": "{X}{G}{G}",
+        "tap": true
+      },
+      "effects": [
+        {
+          "op": "PutCounters",
+          "counter": "+1/+1",
+          "amount": "X",
+          "target": "creature",
+          "controller": "you"
+        },
+        {
+          "op": "Draw",
+          "amount": "X",
+          "who": "you"
+        }
+      ]
+    }
+  ]
+}
