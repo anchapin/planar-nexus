@@ -1,0 +1,20 @@
+{
+  "name": "Driver of the Dead",
+  "oracle": "When this creature dies, return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+  "triggers": [
+    {
+      "text": "When this creature dies, return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+      "event": "dies",
+      "subject": "self",
+      "effects": [
+        {
+          "op": "ReturnFromZone",
+          "from": "graveyard",
+          "to": "battlefield",
+          "filter": { "creature": true, "mv_le": 2, "controller": "you" },
+          "count": 1
+        }
+      ]
+    }
+  ]
+}

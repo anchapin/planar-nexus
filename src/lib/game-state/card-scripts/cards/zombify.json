@@ -1,0 +1,13 @@
+{
+  "name": "Zombify",
+  "oracle": "Return target creature card from your graveyard to the battlefield.",
+  "spell": [
+    {
+      "op": "ReturnFromZone",
+      "from": "graveyard",
+      "to": "battlefield",
+      "filter": { "creature": true, "controller": "you" },
+      "count": 1
+    }
+  ]
+}
