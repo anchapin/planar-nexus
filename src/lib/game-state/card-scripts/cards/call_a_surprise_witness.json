@@ -1,0 +1,13 @@
+{
+  "name": "Call a Surprise Witness",
+  "oracle": "Return target creature card with mana value 3 or less from your graveyard to the battlefield. Put a flying counter on it. It's a Spirit in addition to its other types.",
+  "spell": [
+    {
+      "op": "ReturnFromZone",
+      "from": "graveyard",
+      "to": "battlefield",
+      "filter": { "creature": true, "mv_le": 3, "controller": "you" },
+      "count": 1
+    }
+  ]
+}
