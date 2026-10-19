@@ -2,6 +2,11 @@
  * @jest-environment ./src/ai/manamind/__tests__/onnx-node-environment.cjs
  *
  * manamind#87 step 3: head-to-head gate between two checkpoints.
+ *
+ * Each test loads two ONNX sessions, plays ~16 game rollouts via
+ * `playGateGame`, and computes a Wilson score. Real CPU work totals
+ * ~9 s per test in isolation but exceeds Jest's 5 s default under
+ * full-suite contention, so we set a per-test budget here.
  */
 
 import { readFileSync } from "fs";
@@ -20,6 +25,11 @@ import {
   type GateGame,
 } from "../forge-gate";
 import { trainingDeck } from "@/ai/simulation/training-session";
+
+// ONNX runtime + game simulation is real CPU work. ~9s per test in isolation,
+// but full-suite contention pushes past Jest's 5s default. 30s gives ~3x
+// headroom without masking genuine hangs.
+jest.setTimeout(30_000);
 
 const MODEL = path.join(__dirname, "fixtures/forge_pointer_v1_seed86.onnx");
 
