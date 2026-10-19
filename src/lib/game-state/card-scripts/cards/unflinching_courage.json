@@ -1,0 +1,14 @@
+{
+  "name": "Unflinching Courage",
+  "oracle": "Enchant creature\nEnchanted creature gets +2/+2 and has trample and lifelink.",
+  "aura": {
+    "text": "Enchanted creature gets +2/+2 and has trample and lifelink.",
+    "target": "creature",
+    "static": {
+      "text": "Enchanted creature gets +2/+2 and has trample and lifelink.",
+      "power": 2,
+      "toughness": 2,
+      "keywords": ["trample", "lifelink"]
+    }
+  }
+}
