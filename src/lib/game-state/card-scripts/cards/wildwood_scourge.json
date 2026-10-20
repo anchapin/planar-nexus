@@ -1,0 +1,12 @@
+{
+  "name": "Wildwood Scourge",
+  "oracle": "Wildwood Scourge enters the battlefield with X +1/+1 counters on it.",
+  "spell": [
+    {
+      "op": "PutCounters",
+      "counter": "+1/+1",
+      "amount": "X",
+      "target": "self"
+    }
+  ]
+}
