@@ -1,0 +1,12 @@
+{
+  "name": "Faerie Fencing",
+  "oracle": "Target creature gets -X/-X until end of turn. If you controlled a Faerie at the time this spell was cast, it also gets -3/-3 until end of turn.",
+  "spell": [
+    {
+      "op": "Pump",
+      "power": "-X",
+      "toughness": "-X",
+      "target": "creature"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "name": "Stream of Life",
+  "oracle": "Target player gains X life.",
+  "spell": [
+    {
+      "op": "GainLife",
+      "amount": "X",
+      "who": "target_player"
+    }
+  ]
+}
