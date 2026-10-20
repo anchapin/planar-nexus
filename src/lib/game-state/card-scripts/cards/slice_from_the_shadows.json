@@ -1,16 +1,12 @@
 {
   "name": "Slice from the Shadows",
-  "oracle": "Look at target opponent's hand. You draw X cards and they discard X cards.",
+  "oracle": "This spell can't be countered.\nTarget creature gets -X/-X until end of turn.",
   "spell": [
     {
-      "op": "Draw",
-      "amount": "X",
-      "who": "you"
-    },
-    {
-      "op": "Discard",
-      "amount": "X",
-      "who": "target_player"
+      "op": "Pump",
+      "power": "-X",
+      "toughness": "-X",
+      "target": "creature"
     }
   ]
 }
