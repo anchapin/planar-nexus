@@ -31,6 +31,7 @@ import { CopyUntilEndOfTurnReference } from "./copy-until-eot";
 import { DealDamageReference } from "./deal-damage";
 import { DestroyReference } from "./destroy";
 import { DiscardReference } from "./discard";
+import { FlipCoinsReference } from "./flip-coins";
 import { DrawReference } from "./draw";
 import { ExileReference } from "./exile";
 import { FightReference } from "./fight";
@@ -80,6 +81,7 @@ export const OP_REFERENCES: readonly CardOpReference[] = [
   ScryReference,
   MillReference,
   DiscardReference,
+  FlipCoinsReference,
   CopySpellReference,
   SearchLibraryReference,
   ShuffleLibraryReference,

@@ -139,6 +139,7 @@ export function createInitialGameState(
   playerNames: string[],
   startingLife: number = 20,
   isCommander: boolean = false,
+  random?: () => number,
 ): GameState {
   // Create a new replacement effect manager for this game instance
   const rem = new ReplacementEffectManager();
@@ -208,6 +209,10 @@ export function createInitialGameState(
     format: "standard",
     createdAt: Date.now(),
     lastModifiedAt: Date.now(),
+    // RNG seam (issue #2829, Wild Hypothesis follow-up to #2552). When
+    // undefined, scripted `FlipCoins` falls back to `Math.random` at
+    // resolution time so existing tests don't need to thread a seed.
+    random,
     replacementEffectManager: rem,
     layerSystem,
     linkedEffectRegistry: {
@@ -246,11 +251,14 @@ export function loadDeckForPlayer(
     throw new Error(`Library zone not found for player ${playerId}`);
   }
 
-  // Shuffle library
+  // Shuffle library using state.random if available (issue #2829: keeps
+  // tests deterministic when a seeded RNG is passed to
+  // `createInitialGameState`).
+  const rng = state.random ?? Math.random;
   const libraryCardIds = shuffle ? [...libraryCards] : libraryCards;
   if (shuffle) {
     for (let i = libraryCardIds.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const j = Math.floor(rng() * (i + 1));
       [libraryCardIds[i], libraryCardIds[j]] = [
         libraryCardIds[j],
         libraryCardIds[i],

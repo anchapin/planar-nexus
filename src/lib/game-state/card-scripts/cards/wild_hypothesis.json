@@ -1,0 +1,11 @@
+{
+  "name": "Wild Hypothesis",
+  "oracle": "Flip X coins. For each heads, draw a card.",
+  "spell": [
+    {
+      "op": "FlipCoins",
+      "coins": "X",
+      "who": "you"
+    }
+  ]
+}

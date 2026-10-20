@@ -1146,6 +1146,30 @@ function applyEffect(
       const r = resolveLifeLossEffect(state, sourceId, effect.amount, player);
       return r.success ? r.state : state;
     }
+    case "FlipCoins": {
+      // #2829 (Wild Hypothesis follow-up to #2552): flip `coins` coins
+      // using `state.random` (or `Math.random` if undefined — tests
+      // should pass a seeded RNG for reproducibility). For each heads,
+      // the chosen `who` player draws a card via the existing
+      // `resolveCardDrawEffect` helper. CR 706 (Coin Flip) and CR
+      // 701.18 (the draw half).
+      const rng = state.random ?? Math.random;
+      const headsCount = (effect.coins as number) > 0
+        ? Array.from({ length: effect.coins as number }, () => rng() < 0.5)
+            .filter(Boolean).length
+        : 0;
+      if (headsCount === 0) return state;
+      // Reuse the high-level draw helper so we trigger the same
+      // cardDrawn-this-turn / replace-from-library / trigger-drawCard
+      // semantics as a normal Draw effect.
+      const drawResult = resolveCardDrawEffect(
+        state,
+        (ctx.sourceId ?? ctx.controllerId) as CardInstanceId,
+        headsCount,
+        ctx.controllerId,
+      );
+      return drawResult.success ? drawResult.state : state;
+    }
     case "CreateToken": {
       const subtypes = effect.subtypes.join(" ");
       const keywords = (effect.keywords ?? []).map(

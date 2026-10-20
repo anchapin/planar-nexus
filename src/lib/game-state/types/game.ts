@@ -51,6 +51,13 @@ export interface GameState {
   createdAt: number;
   /** Timestamp when game was last modified */
   lastModifiedAt: number;
+  /**
+   * Deterministic RNG for scripted coin flips, dice rolls, deck
+   * shuffles, and similar random outcomes (issue #2829, Wild
+   * Hypothesis follow-up to #2552). Defaults to `Math.random` when not
+   * supplied — tests should pass a seeded RNG for reproducibility.
+   */
+  random?: () => number;
   /** Replacement effect manager for this game instance */
   replacementEffectManager: ReplacementEffectManager;
   /** Layer system for this game instance */
