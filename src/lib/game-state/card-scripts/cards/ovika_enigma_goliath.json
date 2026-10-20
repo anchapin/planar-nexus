@@ -1,0 +1,31 @@
+{
+  "name": "Ovika Enigma Goliath",
+  "oracle": "Whenever you cast a noncreature spell, put X +1/+1 counters on target creature you control, where X is the number of mana spent to cast that spell. Create a Treasure token. (Gate of the Citadel, #273)",
+  "triggers": [
+    {
+      "event": "cast",
+      "spell": "noncreature",
+      "caster": "you",
+      "text": "Whenever you cast a noncreature spell, put X +1/+1 counters on target creature you control, where X is the number of mana spent to cast that spell. Create a Treasure token.",
+      "effects": [
+        {
+          "op": "PutCounters",
+          "counter": "+1/+1",
+          "amount": "X",
+          "X": "manaValueOfTriggeringSpell",
+          "target": "creature",
+          "controller": "you"
+        },
+        {
+          "op": "CreateToken",
+          "count": "X",
+          "X": "manaValueOfTriggeringSpell",
+          "subtypes": ["Treasure"],
+          "color": "colorless",
+          "power": 0,
+          "toughness": 0
+        }
+      ]
+    }
+  ]
+}

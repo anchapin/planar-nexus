@@ -341,6 +341,12 @@ export const CreateTokenSchema = z
         "creaturesDiedThisTurn",
         "yourCreatures",
         "landsYouControl",
+        // #2831 (Ovika Enigma Goliath follow-up to #2559): when `count:
+        // "X"` and `X: "manaValueOfTriggeringSpell"`, the interpreter
+        // substitutes the triggering spell's cmc at apply-time
+        // (CR 202.3, Ovika: "create X … where X is the number of mana
+        // spent to cast that spell").
+        "manaValueOfTriggeringSpell",
       ])
       .optional(),
   })
@@ -1859,8 +1865,24 @@ export const PutCountersSchema = z
      * The number of counters to add. Required when
      * `use_source_power` is unset/false; ignored (and may be
      * omitted entirely) when `use_source_power: true` (lane 23).
+     *
+     * #2831 (Ovika Enigma Goliath follow-up): accepts `"X"` for
+     * X-cost effects (substituted via `withX`) AND `"X"` with the
+     * `X` field set to `"manaValueOfTriggeringSpell"` — Ovika reads
+     * "put X +1/+1 counters on target creature you control, where X
+     * is the number of mana spent to cast that spell" (CR 202.3).
+     * `withX` does NOT substitute the runtime-X enum value; the
+     * interpreter reads `effect.X` at resolution time.
      */
     amount: xCount.optional(),
+    /**
+     * Runtime X resolver for `amount`. When set, the interpreter
+     * substitutes the resolved integer at apply-time instead of the
+     * `withX` cost-substitution path. Currently only supports the
+     * Ovika pattern (manaValue of the triggering spell — the spell
+     * that put this triggered ability on the stack).
+     */
+    X: z.enum(["manaValueOfTriggeringSpell"]).optional(),
     target: z.enum(["creature", "self"]),
     controller,
     /**
