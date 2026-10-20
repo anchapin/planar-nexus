@@ -1965,7 +1965,13 @@ export const MillSchema = z
 export const DiscardSchema = z
   .object({
     op: z.literal("Discard"),
-    amount: z.number().int().min(1),
+    // #2552 lane 2 follow-up: "X-cost discard" (Slice from the Shadows
+    // {X}{B}, Instant). The X value flows from the spell''s {X} cost
+    // via `withX` (see PR #2570). When `amount === "X"` and `all: false`,
+    // `startDiscard` is invoked with the resolved integer X. The
+    // min(1) on the integer arm ensures the literal-value path still
+    // requires ≥ 1.
+    amount: z.union([z.number().int().min(1), X]),
     who: z
       .enum(["you", "target_player", "each_opponent", "each_player"])
       .default("you"),
