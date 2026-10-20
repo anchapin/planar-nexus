@@ -2005,6 +2005,26 @@ export const SurveilSchema = z
   .strict();
 
 /**
+ * Flip N coins (CR 706 / 701.18 semantics — heads/tails determined by
+ * `state.random() < 0.5`). For each heads, the controller draws a card
+ * (Wild Hypothesis: "{X}{R}: Flip X coins. For each heads, draw a card.").
+ *
+ * `coins: number | "X"` — when "X", the spell or activated ability's
+ * own {X} cost is substituted via `withX` at resolution time (PR #2570).
+ * `who` selects whose library to draw from (default "you").
+ */
+export const FlipCoinsSchema = z
+  .object({
+    op: z.literal("FlipCoins"),
+    coins: z.union([z.number().int().min(1), X]),
+    who: z
+      .enum(["you", "target_player", "each_opponent", "each_player"])
+      .default("you"),
+    if_kicked: ifKicked,
+  })
+  .strict();
+
+/**
  * Copy the spell that triggered this ability (CR 707.10), keeping its
  * targets. Only for cast triggers. `gain`: "those spells gain wither", so
  * the original and the copy both get the keyword while on the stack.
@@ -2354,6 +2374,7 @@ export const EffectSchema = z.discriminatedUnion("op", [
   DrawSchema,
   GainLifeSchema,
   LoseLifeSchema,
+  FlipCoinsSchema,
   CreateTokenSchema,
   CreatePredefinedTokenSchema,
   CopyPermanentSchema,
