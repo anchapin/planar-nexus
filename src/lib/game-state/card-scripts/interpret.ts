@@ -311,6 +311,29 @@ function playerFor(
 }
 
 /**
+ * Resolve `X = manaValueOfTriggeringSpell` for triggered abilities
+ * (issue #2831, Ovika Enigma Goliath follow-up to #2559 lane 2). Ovika
+ * reads "X is the number of mana spent to cast that spell" — that is
+ * the cast spell's converted mana cost (cmc) at the time the trigger
+ * fired (CR 202.3). The engine reads the triggering spell's
+ * `sourceCardId` off the stack, then the corresponding `CardInstance`'s
+ * `cardData.cmc`. Falls back to 0 when no triggering spell is
+ * available or when the card instance has no `cmc` (defensive default;
+ * tests should always supply a triggering spell).
+ */
+function resolveManaValueOfTriggeringSpell(
+  state: GameState,
+  ctx: { triggeringStackObjectId?: string },
+): number {
+  const stackObjectId = ctx.triggeringStackObjectId;
+  if (!stackObjectId) return 0;
+  const triggeringSpell = state.stack.find((s) => s.id === stackObjectId);
+  if (!triggeringSpell?.sourceCardId) return 0;
+  const sourceCard = state.cards.get(triggeringSpell.sourceCardId);
+  return sourceCard?.cardData?.cmc ?? 0;
+}
+
+/**
  * Discard every card in the given player's hand (#2594 follow-up,
  * lane 15). Used by `Discard.all: true` (Myojin of Night's Reach).
  * Returns the `KeywordActionResult` from `discardCards` so callers
@@ -487,9 +510,11 @@ function resolveCreateTokenAmount(
       | "cardsDrawnThisTurn"
       | "creaturesDiedThisTurn"
       | "yourCreatures"
-      | "landsYouControl";
+      | "landsYouControl"
+      | "manaValueOfTriggeringSpell";
   },
   controllerId?: PlayerId,
+  ctx?: { triggeringStackObjectId?: string },
 ): number {
   if (effect.X === "creaturesDiedThisTurn") {
     return state.turn.creatureDiedThisTurn === true ? 1 : 0;
@@ -526,6 +551,17 @@ function resolveCreateTokenAmount(
       count += 1;
     }
     return count;
+  }
+  if (effect.X === "manaValueOfTriggeringSpell") {
+    // #2831 (Ovika Enigma Goliath follow-up to #2559): for the
+    // CreateToken half of Ovika — "create X … where X is the number
+    // of mana spent to cast that spell" (CR 202.3). The interpreter
+    // arms this via the same runtime-X resolver as `PutCounters` so
+    // both halves of Ovika resolve to the same X.
+    return resolveManaValueOfTriggeringSpell(
+      state,
+      { triggeringStackObjectId: ctx?.triggeringStackObjectId as string | undefined },
+    );
   }
   return typeof effect.count === "number" ? effect.count : 0;
 }
@@ -1198,6 +1234,7 @@ function applyEffect(
         state,
         effect,
         ctx.controllerId,
+        ctx,
       );
       const r = resolveTokenCreationEffect(
         state,
@@ -3265,10 +3302,22 @@ function applyEffect(
       // target are the same card; the source is read for its current
       // (post-layer) power, including any +1/+1 counters on it (so
       // re-activating Heroes' Bane compounds).
+      //
+      // #2831 (Ovika Enigma Goliath follow-up to #2559): when
+      // `X: "manaValueOfTriggeringSpell"`, the resolved amount is the
+      // cast spell's cmc at trigger resolution time (CR 202.3). Ovika
+      // reads "put X +1/+1 counters on target creature you control,
+      // where X is the number of mana spent to cast that spell".
       const resolvedAmount = effect.use_source_power
         ? sourceId
           ? Math.max(0, getEffectivePower(state.cards.get(sourceId)!))
           : 0
+        : effect.X === "manaValueOfTriggeringSpell"
+        ? resolveManaValueOfTriggeringSpell(state, {
+            triggeringStackObjectId: ctx.triggeringStackObjectId as
+              | string
+              | undefined,
+          })
         : (effect.amount ?? 0);
       const cards = new Map(state.cards);
       cards.set(cardId, addCounters(card, effect.counter, resolvedAmount));
