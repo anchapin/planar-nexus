@@ -46,6 +46,7 @@
     "test:flake": "tsx scripts/jest-flake-detector.ts",
     "test:mutation": "stryker run && node scripts/mutation-floor.js",
     "test:mutation:incremental": "stryker run --incremental",
+    "premutate": "npx tsx scripts/build-card-script-index.ts",
     "mutate": "stryker run",
     "mutate:layer-system": "stryker run --mutate src/lib/game-state/layer-system.ts",
     "mutate:replacement-effects": "stryker run --mutate src/lib/game-state/replacement-effects.ts",

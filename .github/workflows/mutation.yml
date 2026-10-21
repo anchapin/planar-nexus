@@ -136,6 +136,18 @@ jobs:
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
 
+      - name: Generate card-script index
+        # `src/lib/game-state/card-scripts/cards/index.generated.ts` is a
+        # generated artifact and is gitignored, but `jest.setup.js` requires it
+        # at test-setup time. Stryker's initial dry run boots the whole Jest
+        # suite, so without this step every matrix leg aborts within ~80s on
+        # `MODULE_NOT_FOUND: Cannot find module
+        # './src/lib/game-state/card-scripts/cards/index.generated'`
+        # (nightly runs 39570472965 / 39394365992 / 39226161901, all 9 legs).
+        # The generator is idempotent and self-skipping, so this is cheap when
+        # the file already exists. Must run before the Stryker step below.
+        run: npx tsx scripts/build-card-script-index.ts
+
       - name: Run Stryker mutation testing (${{ matrix.module }})
         # Issue #1785 acceptance criterion 1: per-module job calling
         # `npm run mutate:<module>` with a generous timeout (180 min —

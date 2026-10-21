@@ -206,6 +206,14 @@ module.exports = {
   concurrency: process.env.STRYKER_CONCURRENCY
     ? Number(process.env.STRYKER_CONCURRENCY)
     : 4,
+  // The initial (dry) run is unbounded by `concurrency`: it executes the
+  // whole Jest suite once to record a baseline, which is ~131s over 821
+  // suites locally but scales with the full suite and runner speed. Stryker's
+  // default is 5 minutes, which is not enough headroom for the slower CI
+  // runner generations this repo already tracks above (59↔184 min total
+  // runtime) and fails the nightly with "Initial test run timed out!".
+  // Budget the dry run for the slow case, not the fast one.
+  dryRunTimeoutMinutes: 20,
   tempDirName: ".stryker-tmp",
   cleanTempDir: true,
 };
