@@ -1682,13 +1682,37 @@ export const CounterSchema = z
       .array(z.enum(["W", "U", "B", "R", "G"]))
       .min(1)
       .optional(),
+    /**
+     * #2594 follow-up (lane 22b): "counter target spell with mana
+     * value X or less" (Spell Snare). When set, the targeted
+     * spell's mana value (its `mana_value`, cast X counting as X,
+     * CR 202.3b) must satisfy the bounds. A number constrains to
+     * that exact value; the `X` sentinel expands at resolution to
+     * the amount of mana spent to cast the *countering* spell (CR
+     * 603.10d). Spells with no numeric mana value (X on the
+     * targeted spell itself, or a permanent that generated an
+     * ability) are never legal here. Mirrors the
+     * min_mana_value/max_mana_value pair already used by
+     * DestroyMV (schema.ts) so both ops read the same way.
+     */
+    min_mana_value: z.union([z.number().int().min(0), X]).optional(),
+    max_mana_value: z.union([z.number().int().min(0), X]).optional(),
     if_kicked: ifKicked,
   })
   .strict()
   .refine((c) => c.target !== "ability" || c.colors === undefined, {
     message:
       "Counter.colors is only valid when target is 'spell' (#2594 follow-up, lane 22).",
-  });
+  })
+  .refine(
+    (c) =>
+      c.target !== "ability" ||
+      (c.min_mana_value === undefined && c.max_mana_value === undefined),
+    {
+      message:
+        "Counter.min_mana_value/max_mana_value are only valid when target is 'spell' (#2594 follow-up, lane 22b).",
+    },
+  );
 
 /**
  * Attach an Equipment (or other permanent) to a creature. The source of the

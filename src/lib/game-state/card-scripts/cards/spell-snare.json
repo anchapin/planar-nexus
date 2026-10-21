@@ -1,0 +1,5 @@
+{
+  "name": "Spell Snare",
+  "oracle": "Counter target spell with mana value X or less.",
+  "spell": [{ "op": "Counter", "target": "spell", "max_mana_value": "X" }]
+}
