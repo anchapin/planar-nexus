@@ -11,7 +11,7 @@
  * Both scripts take `--live <counts.json>` in place of running Jest, so
  * nothing here recurses into the full suite.
  *
- * @jest-environment node
+ * @jest-environment @stryker-mutator/jest-runner/jest-env/node
  */
 
 import * as cp from "child_process";

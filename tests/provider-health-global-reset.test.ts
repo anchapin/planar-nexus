@@ -1,5 +1,5 @@
 /**
- * @jest-environment node
+ * @jest-environment @stryker-mutator/jest-runner/jest-env/node
  *
  * Regression pin for issue #2364: the global beforeEach in jest.setup.js must
  * reset provider-health's module-level state between tests.

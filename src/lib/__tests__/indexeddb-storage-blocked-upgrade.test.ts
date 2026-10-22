@@ -26,7 +26,7 @@
  * the suite for the default 5s per test... and, more importantly, so a
  * hang is attributable to THIS behavior.
  *
- * @jest-environment jsdom
+ * @jest-environment @stryker-mutator/jest-runner/jest-env/jsdom
  */
 
 // Mock Orama to avoid ESM issues in Jest (mirrors card-database.test.ts
@@ -111,91 +111,79 @@ describe("card database blocked/versionchange handling (issue #1709)", () => {
     return mod!;
   };
 
-  it(
-    "rejects with IndexedDBBlockedError when another tab holds an older version open",
-    async () => {
-      const { initializeCardDatabase, getDatabaseStatus } = fresh();
+  it("rejects with IndexedDBBlockedError when another tab holds an older version open", async () => {
+    const { initializeCardDatabase, getDatabaseStatus } = fresh();
 
-      // Tab A: open v1 and KEEP the connection open (never closes on
-      // versionchange — the pre-#1709 misbehaving tab).
-      const oldTab = await openRaw(CARD_DB_NAME, 1);
-      expect(oldTab.version).toBe(1);
+    // Tab A: open v1 and KEEP the connection open (never closes on
+    // versionchange — the pre-#1709 misbehaving tab).
+    const oldTab = await openRaw(CARD_DB_NAME, 1);
+    expect(oldTab.version).toBe(1);
 
-      // Tab B (us): initialize at DB_VERSION (2) must reject with the
-      // stable blocked-error name instead of pending forever. The jest
-      // timeout on this test guards the hang.
-      await expect(initializeCardDatabase()).rejects.toMatchObject({
-        name: INDEXEDDB_BLOCKED_ERROR_NAME,
-      });
+    // Tab B (us): initialize at DB_VERSION (2) must reject with the
+    // stable blocked-error name instead of pending forever. The jest
+    // timeout on this test guards the hang.
+    await expect(initializeCardDatabase()).rejects.toMatchObject({
+      name: INDEXEDDB_BLOCKED_ERROR_NAME,
+    });
 
-      // The failure must be actionable + surfaced via status (#1726).
-      const status = await getDatabaseStatus();
-      expect(status.loaded).toBe(false);
-      expect(status.error).toContain("another tab");
+    // The failure must be actionable + surfaced via status (#1726).
+    const status = await getDatabaseStatus();
+    expect(status.loaded).toBe(false);
+    expect(status.error).toContain("another tab");
 
-      oldTab.close();
-    },
-    4000,
-  );
+    oldTab.close();
+  }, 4000);
 
-  it(
-    "retries successfully via #1726 init-retry once the other tab closes",
-    async () => {
-      const { initializeCardDatabase, getDatabaseStatus } = fresh();
+  it("retries successfully via #1726 init-retry once the other tab closes", async () => {
+    const { initializeCardDatabase, getDatabaseStatus } = fresh();
 
-      const oldTab = await openRaw(CARD_DB_NAME, 1);
-      await expect(initializeCardDatabase()).rejects.toMatchObject({
-        name: INDEXEDDB_BLOCKED_ERROR_NAME,
-      });
+    const oldTab = await openRaw(CARD_DB_NAME, 1);
+    await expect(initializeCardDatabase()).rejects.toMatchObject({
+      name: INDEXEDDB_BLOCKED_ERROR_NAME,
+    });
 
-      // The other tab goes away — the upgrade unblocks.
-      oldTab.close();
-      await tick();
+    // The other tab goes away — the upgrade unblocks.
+    oldTab.close();
+    await tick();
 
-      // #1726 synergy: the failed init cleared the single-flight cache,
-      // so the next call retries the open and now succeeds (no reload,
-      // no module reset).
-      await expect(initializeCardDatabase()).resolves.toBeUndefined();
+    // #1726 synergy: the failed init cleared the single-flight cache,
+    // so the next call retries the open and now succeeds (no reload,
+    // no module reset).
+    await expect(initializeCardDatabase()).resolves.toBeUndefined();
 
-      const status = await getDatabaseStatus();
-      expect(status.loaded).toBe(true);
-      expect(status.error).toBeNull();
-    },
-    4000,
-  );
+    const status = await getDatabaseStatus();
+    expect(status.loaded).toBe(true);
+    expect(status.error).toBeNull();
+  }, 4000);
 
-  it(
-    "closes its connection and dispatches the reload event when another tab upgrades",
-    async () => {
-      const { initializeCardDatabase, getDatabaseStatus } = fresh();
+  it("closes its connection and dispatches the reload event when another tab upgrades", async () => {
+    const { initializeCardDatabase, getDatabaseStatus } = fresh();
 
-      // Tab B (us) is happily open at DB_VERSION (2)...
-      await initializeCardDatabase();
-      expect((await getDatabaseStatus()).loaded).toBe(true);
+    // Tab B (us) is happily open at DB_VERSION (2)...
+    await initializeCardDatabase();
+    expect((await getDatabaseStatus()).loaded).toBe(true);
 
-      const events = captureVersionChangeEvents();
-      try {
-        // Tab A upgrades to v3. Our connection receives `versionchange`
-        // and must close promptly — otherwise this open would hang and
-        // the test would time out.
-        const upgraded = await openRaw(CARD_DB_NAME, 3);
-        expect(upgraded.version).toBe(3);
-        upgraded.close();
-      } finally {
-        events.stop();
-      }
+    const events = captureVersionChangeEvents();
+    try {
+      // Tab A upgrades to v3. Our connection receives `versionchange`
+      // and must close promptly — otherwise this open would hang and
+      // the test would time out.
+      const upgraded = await openRaw(CARD_DB_NAME, 3);
+      expect(upgraded.version).toBe(3);
+      upgraded.close();
+    } finally {
+      events.stop();
+    }
 
-      // UI layers get a reload prompt carrying the db name (no UI is
-      // rendered from the storage layer itself).
-      expect(events.seen).toEqual([{ dbName: CARD_DB_NAME }]);
+    // UI layers get a reload prompt carrying the db name (no UI is
+    // rendered from the storage layer itself).
+    expect(events.seen).toEqual([{ dbName: CARD_DB_NAME }]);
 
-      // Module state was reset — status no longer reports "ready" on the
-      // closed connection.
-      const status = await getDatabaseStatus();
-      expect(status.loaded).toBe(false);
-    },
-    4000,
-  );
+    // Module state was reset — status no longer reports "ready" on the
+    // closed connection.
+    const status = await getDatabaseStatus();
+    expect(status.loaded).toBe(false);
+  }, 4000);
 });
 
 describe("IndexedDBStorage blocked/versionchange handling (issue #1709)", () => {
@@ -204,67 +192,59 @@ describe("IndexedDBStorage blocked/versionchange handling (issue #1709)", () => 
     await deleteDb("VersionChangeStorage");
   });
 
-  it(
-    "initialize() rejects with IndexedDBBlockedError when another tab holds an older version open",
-    async () => {
-      const oldTab = await openRaw("BlockedUpgradeStorage", 1);
+  it("initialize() rejects with IndexedDBBlockedError when another tab holds an older version open", async () => {
+    const oldTab = await openRaw("BlockedUpgradeStorage", 1);
 
-      const storage = new IndexedDBStorage({
-        dbName: "BlockedUpgradeStorage",
-        version: 2,
-        stores: ["decks"],
-      });
+    const storage = new IndexedDBStorage({
+      dbName: "BlockedUpgradeStorage",
+      version: 2,
+      stores: ["decks"],
+    });
 
-      // Must reject with the stable blocked-error name, not hang.
-      await expect(storage.initialize()).rejects.toMatchObject({
-        name: INDEXEDDB_BLOCKED_ERROR_NAME,
-      });
+    // Must reject with the stable blocked-error name, not hang.
+    await expect(storage.initialize()).rejects.toMatchObject({
+      name: INDEXEDDB_BLOCKED_ERROR_NAME,
+    });
 
-      // The other tab goes away and a fresh initialize succeeds.
-      oldTab.close();
-      await tick();
-      await expect(storage.initialize()).resolves.toBeUndefined();
-    },
-    4000,
-  );
+    // The other tab goes away and a fresh initialize succeeds.
+    oldTab.close();
+    await tick();
+    await expect(storage.initialize()).resolves.toBeUndefined();
+  }, 4000);
 
-  it(
-    "auto-closes its connection, nulls the handle, and dispatches the reload event on versionchange",
-    async () => {
-      const storage = new IndexedDBStorage({
-        dbName: "VersionChangeStorage",
-        version: 2,
-        stores: ["decks"],
-      });
-      await storage.initialize();
+  it("auto-closes its connection, nulls the handle, and dispatches the reload event on versionchange", async () => {
+    const storage = new IndexedDBStorage({
+      dbName: "VersionChangeStorage",
+      version: 2,
+      stores: ["decks"],
+    });
+    await storage.initialize();
 
-      // Grab the live handle so we can prove it gets closed.
-      const handle = (storage as unknown as { db: IDBDatabase }).db;
-      expect(handle.version).toBe(2);
+    // Grab the live handle so we can prove it gets closed.
+    const handle = (storage as unknown as { db: IDBDatabase }).db;
+    expect(handle.version).toBe(2);
 
-      const events = captureVersionChangeEvents();
-      try {
-        // Another tab upgrades to v3 — only completes because we close.
-        const upgraded = await openRaw("VersionChangeStorage", 3);
-        expect(upgraded.version).toBe(3);
-        upgraded.close();
-      } finally {
-        events.stop();
-      }
+    const events = captureVersionChangeEvents();
+    try {
+      // Another tab upgrades to v3 — only completes because we close.
+      const upgraded = await openRaw("VersionChangeStorage", 3);
+      expect(upgraded.version).toBe(3);
+      upgraded.close();
+    } finally {
+      events.stop();
+    }
 
-      expect(events.seen).toEqual([{ dbName: "VersionChangeStorage" }]);
+    expect(events.seen).toEqual([{ dbName: "VersionChangeStorage" }]);
 
-      // The old connection is really closed: per spec a transaction on a
-      // closed connection throws InvalidStateError.
-      expect(() => handle.transaction("decks")).toThrow();
+    // The old connection is really closed: per spec a transaction on a
+    // closed connection throws InvalidStateError.
+    expect(() => handle.transaction("decks")).toThrow();
 
-      // The cached handle was nulled so the next ensureInitialized()
-      // re-opens instead of routing transactions at a dead connection.
-      expect((storage as unknown as { db: IDBDatabase | null }).db).toBeNull();
-      expect(storage.hasStore("decks")).toBe(false);
-    },
-    4000,
-  );
+    // The cached handle was nulled so the next ensureInitialized()
+    // re-opens instead of routing transactions at a dead connection.
+    expect((storage as unknown as { db: IDBDatabase | null }).db).toBeNull();
+    expect(storage.hasStore("decks")).toBe(false);
+  }, 4000);
 });
 
 describe("indexeddb-open-events helpers (issue #1709)", () => {
