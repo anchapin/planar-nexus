@@ -37,6 +37,29 @@ Ops today: `DealDamage`, `Draw`, `GainLife`, `LoseLife`, `CreateToken`,
 New ops go in `schema.ts` and `interpret.ts`, built on existing engine
 resolution helpers.
 
+## Tests
+
+Tests are split per op/mechanism under
+`src/lib/game-state/card-scripts/__tests__/`, one file per concern (for example
+`mill.test.ts`, `scry.test.ts`, `return-from-zone.test.ts`), rather than one
+large file (#2642). No file is over ~1,000 lines.
+
+Shared builders (`card`, `put`, `spell`, `cardTarget`, `playerTarget`,
+`battlefield`, `id`, `CARDS_DIR`) live in `__tests__/helpers.ts`; import them
+from there rather than redefining them locally.
+
+Adding a test for a new op? Put it in the matching per-op file, or create a
+new one and register it here. Run the whole group with:
+
+```sh
+npx jest src/lib/game-state/card-scripts/__tests__
+```
+
+The card-script index (`cards/index.generated.ts`) is generated and gitignored.
+Every entry point that runs the engine tests regenerates it first — `pretest`,
+`pretypecheck`, `prelint`, `predev`, and `premutate` — so a plain
+`npm test` or `npm run mutate:<module>` is fine from a clean clone.
+
 ## Drafting scripts with an LLM
 
 `scripts/draft-card-scripts.ts` drafts scripts for a Standard set or a card
