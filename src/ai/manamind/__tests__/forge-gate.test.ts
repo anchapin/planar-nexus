@@ -31,7 +31,7 @@ import { trainingDeck } from "@/ai/simulation/training-session";
 // headroom without masking genuine hangs.
 jest.setTimeout(30_000);
 
-const MODEL = path.join(__dirname, "fixtures/forge_pointer_v1_seed86.onnx");
+const MODEL = path.join(__dirname, "fixtures/forge_pointer_v2_seed86.onnx");
 
 let model: ForgePointerModel;
 beforeAll(async () => {

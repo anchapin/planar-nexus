@@ -4,7 +4,7 @@
  * manamind#86 step 3b: ForgePointerNet under onnxruntime-node, and the
  * Gumbel root search that plays it inside a TrainingSession.
  *
- * `forge_pointer_v1_seed86.onnx` is a random-init ForgePointerNet
+ * `forge_pointer_v2_seed86.onnx` is a random-init ForgePointerNet
  * (torch.manual_seed(86), default sizes) exported by manamind's
  * `forge_pointer_onnx.export`; the outputs fixture holds PyTorch's own
  * numbers for the step-3a decisions, so this checks packing, the graph and
@@ -15,8 +15,8 @@ import { readFileSync } from "fs";
 import path from "path";
 import * as ortNode from "onnxruntime-node";
 
-import packFixture from "./fixtures/forge_pointer_v1_pack.json";
-import outputsFixture from "./fixtures/forge_pointer_v1_seed86_outputs.json";
+import packFixture from "./fixtures/forge_pointer_v2_pack.json";
+import outputsFixture from "./fixtures/forge_pointer_v2_seed86_outputs.json";
 import type { ForgeDecision } from "../forge-pointer-features";
 import {
   createForgePointerModel,
@@ -32,7 +32,7 @@ import {
   trainingDeck,
 } from "@/ai/simulation/training-session";
 
-const MODEL = path.join(__dirname, "fixtures/forge_pointer_v1_seed86.onnx");
+const MODEL = path.join(__dirname, "fixtures/forge_pointer_v2_seed86.onnx");
 const ort = ortNode as unknown as ForgeOrtLike;
 
 let model: ForgePointerModel;

@@ -57,10 +57,8 @@ async function main() {
   const cScale = cScaleArg === "" ? undefined : Number(cScaleArg);
   if (cScale !== undefined && !(Number.isFinite(cScale) && cScale > 0))
     throw new Error(`--c-scale must be a positive number, not ${cScaleArg}`);
-  const decks = [
-    simDeck(arg("deck-a", "aggro")),
-    simDeck(arg("deck-b", "midrange")),
-  ];
+  const deckNames = [arg("deck-a", "aggro"), arg("deck-b", "midrange")];
+  const decks = [simDeck(deckNames[0]), simDeck(deckNames[1])];
   const opponent = arg("opponent", "self");
   if (opponent !== "self" && opponent !== "expert")
     throw new Error(`--opponent must be self or expert, not ${opponent}`);
@@ -91,6 +89,8 @@ async function main() {
       seed,
       deckA: decks[swap ? 1 : 0],
       deckB: decks[swap ? 0 : 1],
+      deckAName: deckNames[swap ? 1 : 0],
+      deckBName: deckNames[swap ? 0 : 1],
       simulations,
       exploreMoves,
       maxTurns,

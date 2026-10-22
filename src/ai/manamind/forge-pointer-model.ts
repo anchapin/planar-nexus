@@ -45,6 +45,8 @@ interface OrtTensorLike {
 }
 
 interface OrtSessionLike {
+  /** Graph input names; a v1 model has no deck inputs (manamind #96). */
+  inputNames?: readonly string[];
   run(feeds: Record<string, unknown>): Promise<Record<string, OrtTensorLike>>;
 }
 
@@ -102,8 +104,13 @@ export async function createForgePointerModel(
   return {
     async evaluate(decision) {
       const packed = packDecision(decision);
+      // A schema-v1 graph has no `own_deck` / `opp_deck` inputs; skip any
+      // input the loaded model does not declare so older checkpoints keep
+      // running (manamind #96 deck identity, warm-started from v1).
+      const declared = session.inputNames;
       const feeds: Record<string, unknown> = {};
       for (const name of FORGE_POINTER_INPUTS) {
+        if (declared && !declared.includes(name)) continue;
         const p = packed[name];
         feeds[name] = new ort.Tensor(p.type, p.data, p.dims);
       }

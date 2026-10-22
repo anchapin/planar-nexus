@@ -73,6 +73,12 @@ export interface SelfPlayOptions {
   seed: number;
   deckA: DeckList;
   deckB: DeckList;
+  /**
+   * Names recorded as deck identity (manamind #96). Default: a stable hash
+   * name of the deck list, so ad-hoc decks still get consistent ids.
+   */
+  deckAName?: string;
+  deckBName?: string;
   simulations?: number;
   /**
    * Sample the move from the search policy for this many decisions with
@@ -214,6 +220,29 @@ export function expertTarget(
   }
 }
 
+/** fnv1a over the sorted card multiset, for decks recorded without a name. */
+function fnv1a(text: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h >>> 0;
+}
+
+/** Stable hash name of a deck list (`deck-<fnv1a % 1e9>`), manamind #96. */
+export function deckName(list: DeckList): string {
+  const counts = new Map<string, number>();
+  for (const card of list) {
+    const name = String(card.name ?? "");
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  const pairs = [...counts.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([name, count]) => `${name}:${count}`);
+  return `deck-${fnv1a(pairs.join("|")) % 1_000_000_000}`;
+}
+
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
   return () => {
@@ -233,6 +262,8 @@ export async function playSelfPlayGame(
     seed,
     deckA,
     deckB,
+    deckAName,
+    deckBName,
     simulations = 16,
     exploreMoves = Number.POSITIVE_INFINITY,
     maxTurns,
@@ -244,6 +275,10 @@ export async function playSelfPlayGame(
   } = options;
   const session = new TrainingSession({ maxTurns });
   const seats = session.reset(seed, deckA, deckB);
+  const deckNames = [
+    deckAName ?? deckName(deckA),
+    deckBName ?? deckName(deckB),
+  ] as const;
   const random = mulberry32(seed ^ 0x5eed);
   const decisions: SelfPlayDecision[] = [];
   let prompt = session.legalChoices();
@@ -260,7 +295,7 @@ export async function playSelfPlayGame(
         const pi = expertTarget(prompt, action);
         if (pi)
           decisions.push({
-            ...forgeDecision(session, prompt),
+            ...forgeDecision(session, prompt, deckNames),
             seat: seats.indexOf(prompt.playerId),
             source: "expert",
             pi,
@@ -275,11 +310,12 @@ export async function playSelfPlayGame(
       seed: (seed * 7919 + move) >>> 0,
       gumbel: pick === "gumbel" && exploring,
       ...(cScale === undefined ? {} : { cScale }),
+      deckNames,
     });
     const pi = searchTarget(prompt, result);
     if (pi && result.candidates.length > 1) {
       decisions.push({
-        ...forgeDecision(session, prompt),
+        ...forgeDecision(session, prompt, deckNames),
         seat: seats.indexOf(prompt.playerId),
         source: "net",
         pi,

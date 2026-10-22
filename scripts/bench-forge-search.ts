@@ -35,7 +35,7 @@ async function main() {
     "model",
     join(
       __dirname,
-      "../src/ai/manamind/__tests__/fixtures/forge_pointer_v1_seed86.onnx",
+      "../src/ai/manamind/__tests__/fixtures/forge_pointer_v2_seed86.onnx",
     ),
   );
   await loadCardScripts();
