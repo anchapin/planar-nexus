@@ -151,6 +151,7 @@ export function forgeDecision(
         blockers: prompt.options.map((o) => card(o.cardId)),
         attackers: blockAttackers(prompt).map(card),
       };
+      break;
     case "choice":
       // The net has no head for engine choices; it still gives a value.
       decision = { ...view, t: "priority", options: [] };
