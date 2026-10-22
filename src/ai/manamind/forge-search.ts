@@ -143,6 +143,7 @@ export function forgeDecision(
         t: "attack",
         options: prompt.options.map((o) => card(o.cardId)),
       };
+      break;
     case "block":
       decision = {
         ...view,
