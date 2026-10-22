@@ -3,11 +3,13 @@
  * `forge_pointer_onnx.pack` exactly. The fixture is `pack` run on
  * manamind's own test decisions (tests/unit/test_forge_pointer.py), plus an
  * empty decision and one with an unknown phase, a hybrid cost, and a
- * non-ASCII card name.
+ * non-ASCII card name; the priority case carries deck identity
+ * (deck "red" / opp_deck "green", manamind #96).
  */
-import fixture from "./fixtures/forge_pointer_v1_pack.json";
+import fixture from "./fixtures/forge_pointer_v2_pack.json";
 import {
   CARD_FEATURES,
+  deckBucket,
   FORGE_POINTER_INPUTS,
   FORGE_POINTER_SCHEMA_VERSION,
   GLOBAL_FEATURES,
@@ -30,6 +32,12 @@ describe("forge pointer features", () => {
   it("hashes card names into the same buckets", () => {
     for (const [name, bucket] of Object.entries(fixture.name_buckets)) {
       expect(nameBucket(name)).toBe(bucket);
+    }
+  });
+
+  it("hashes deck names into the same buckets", () => {
+    for (const [name, bucket] of Object.entries(fixture.deck_buckets)) {
+      expect(deckBucket(name)).toBe(bucket);
     }
   });
 

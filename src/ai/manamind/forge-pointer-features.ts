@@ -6,13 +6,14 @@
  * A line-for-line port of `card_features`, `global_features`, and
  * `name_bucket` in manamind `src/manamind/models/forge_pointer.py`, and of
  * `pack` in `src/manamind/models/forge_pointer_onnx.py`. The parity fixture
- * (`__tests__/fixtures/forge_pointer_v1_pack.json`) is that `pack` run on
+ * (`__tests__/fixtures/forge_pointer_v2_pack.json`) is that `pack` run on
  * manamind's own test decisions.
  */
 import type { PlayerView, ViewCard } from "@/ai/simulation/player-view";
 
-export const FORGE_POINTER_SCHEMA_VERSION = 1;
+export const FORGE_POINTER_SCHEMA_VERSION = 2;
 export const NAME_BUCKETS = 4096;
+export const DECK_BUCKETS = 256;
 export const TYPE_WORDS = [
   "land",
   "creature",
@@ -70,6 +71,8 @@ export const FORGE_POINTER_INPUTS = [
   "blk_id",
   "batt_x",
   "batt_id",
+  "own_deck",
+  "opp_deck",
 ] as const;
 export type ForgePointerInputName = (typeof FORGE_POINTER_INPUTS)[number];
 
@@ -96,6 +99,10 @@ export type ForgeDecision = Partial<
   options?: Array<PriorityOption | BridgeCard>;
   blockers?: BridgeCard[];
   attackers?: BridgeCard[];
+  /** The deciding seat's deck name (manamind #96 deck identity). */
+  deck?: string;
+  /** The other seat's deck name. */
+  opp_deck?: string;
 };
 
 /** One graph input: float32 or int64 values with their shape. */
@@ -126,6 +133,16 @@ const utf8 = new TextEncoder();
 /** `zlib.crc32(name.lower().encode("utf-8")) % NAME_BUCKETS`. */
 export function nameBucket(name: string): number {
   return crc32(utf8.encode(name.toLowerCase())) % NAME_BUCKETS;
+}
+
+/**
+ * Deck-identity bucket (manamind #96): 0 when the name is missing, else
+ * `1 + crc32(lower-cased name) % 255`, mirroring manamind `deck_bucket`.
+ * The 0 row is the unknown deck, so a real name can never alias it.
+ */
+export function deckBucket(name: string): number {
+  const lower = String(name ?? "").toLowerCase();
+  return lower ? 1 + (crc32(utf8.encode(lower)) % 255) : 0;
 }
 
 const COST_SYMBOL = /\{([^}]*)\}/g;
@@ -252,5 +269,7 @@ export function packDecision(d: ForgeDecision): PackedInputs {
   const block = d.t === "block";
   [out.blk_x, out.blk_id] = cards(block ? (d.blockers ?? []) : []);
   [out.batt_x, out.batt_id] = cards(block ? (d.attackers ?? []) : []);
+  out.own_deck = i64([deckBucket(String(d.deck ?? ""))], [1]);
+  out.opp_deck = i64([deckBucket(String(d.opp_deck ?? ""))], [1]);
   return out;
 }

@@ -15,6 +15,7 @@ import {
   type trainingDeck,
 } from "@/ai/simulation/training-session";
 import type { ForgePointerModel } from "./forge-pointer-model";
+import { deckName } from "./forge-selfplay";
 import { forgeSearch } from "./forge-search";
 
 type Live = Exclude<
@@ -31,6 +32,12 @@ export interface GateGameOptions {
   seed: number;
   deckA: DeckList;
   deckB: DeckList;
+  /**
+   * Names for deck identity (manamind #96). Default: a stable hash name of
+   * each deck list.
+   */
+  deckAName?: string;
+  deckBName?: string;
   /** Seat (0 or 1, in `reset` order) the candidate plays. */
   candidateSeat: 0 | 1;
   simulations?: number;
@@ -78,6 +85,8 @@ export async function playGateGame(
     seed,
     deckA,
     deckB,
+    deckAName,
+    deckBName,
     candidateSeat,
     simulations = 16,
     baselineSimulations = simulations,
@@ -87,6 +96,10 @@ export async function playGateGame(
   const pick = options.pick ?? (sample ? "sample" : "greedy");
   const session = new TrainingSession({ maxTurns });
   const seats = session.reset(seed, deckA, deckB);
+  const deckNames = [
+    deckAName ?? deckName(deckA),
+    deckBName ?? deckName(deckB),
+  ] as const;
   const random = mulberry32(seed ^ 0x9a7e);
   let prompt = session.legalChoices();
   let move = 0;
@@ -98,6 +111,7 @@ export async function playGateGame(
       simulations: mine ? simulations : baselineSimulations,
       gumbel: pick === "gumbel",
       seed: (seed * 7919 + move) >>> 0,
+      deckNames,
     });
     let action = r.action;
     if (pick === "sample" && r.candidates.length > 1) {

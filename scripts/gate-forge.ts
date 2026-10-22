@@ -59,10 +59,8 @@ async function main() {
     throw new Error(`--pick must be greedy, sample or gumbel, not ${pick}`);
   const sample = pick === "sample";
   const out = arg("out", "");
-  const decks = [
-    simDeck(arg("deck-a", "aggro")),
-    simDeck(arg("deck-b", "midrange")),
-  ];
+  const deckNames = [arg("deck-a", "aggro"), arg("deck-b", "midrange")];
+  const decks = [simDeck(deckNames[0]), simDeck(deckNames[1])];
   await loadCardScripts();
   const ort = ortNode as unknown as ForgeOrtLike;
   const candidate = await createForgePointerModel(
@@ -83,6 +81,8 @@ async function main() {
         seed,
         deckA: decks[swap ? 1 : 0],
         deckB: decks[swap ? 0 : 1],
+        deckAName: deckNames[swap ? 1 : 0],
+        deckBName: deckNames[swap ? 0 : 1],
         candidateSeat: (g % 2) as 0 | 1,
         simulations,
         baselineSimulations,

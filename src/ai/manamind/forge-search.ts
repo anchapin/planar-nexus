@@ -51,6 +51,12 @@ export interface ForgeSearchOptions {
    * still reflects which candidates the noisy halving visited.
    */
   gumbel?: boolean;
+  /**
+   * Seat-order deck names (manamind #96 deck identity). When set, every
+   * decision the search evaluates carries `deck` / `opp_deck` for the
+   * deciding seat.
+   */
+  deckNames?: readonly [string, string];
 }
 
 export interface ForgeCandidate {
@@ -109,14 +115,17 @@ const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
 export function forgeDecision(
   session: TrainingSession,
   prompt: Live,
+  /** Seat-order deck names; sets deck identity on the decision (manamind #96). */
+  deckNames?: readonly [string, string],
 ): ForgeDecision {
   const viewer = prompt.playerId;
   const view = session.playerView(viewer);
   const card = (id: string): BridgeCard =>
     viewCardFor(session.state, id, viewer) ?? {};
+  let decision: ForgeDecision;
   switch (prompt.kind) {
     case "priority":
-      return {
+      decision = {
         ...view,
         t: "priority",
         options: prompt.options
@@ -127,23 +136,32 @@ export function forgeDecision(
             spell: o.kind === "cast_spell",
           })),
       };
+      break;
     case "attack":
-      return {
+      decision = {
         ...view,
         t: "attack",
         options: prompt.options.map((o) => card(o.cardId)),
       };
+      break;
     case "block":
-      return {
+      decision = {
         ...view,
         t: "block",
         blockers: prompt.options.map((o) => card(o.cardId)),
         attackers: blockAttackers(prompt).map(card),
       };
+      break;
     case "choice":
       // The net has no head for engine choices; it still gives a value.
-      return { ...view, t: "priority", options: [] };
+      decision = { ...view, t: "priority", options: [] };
   }
+  if (deckNames) {
+    const seat = Array.from(session.state.players.keys()).indexOf(viewer);
+    decision.deck = seat === 0 ? deckNames[0] : deckNames[1];
+    decision.opp_deck = seat === 0 ? deckNames[1] : deckNames[0];
+  }
+  return decision;
 }
 
 /** Attacker ids in the order the block decision lists them. */
@@ -236,8 +254,11 @@ export async function forgeCandidates(
   session: TrainingSession,
   prompt: Live,
   model: ForgePointerModel,
+  deckNames?: readonly [string, string],
 ): Promise<{ candidates: ForgeCandidate[]; value: number }> {
-  const out = await model.evaluate(forgeDecision(session, prompt));
+  const out = await model.evaluate(
+    forgeDecision(session, prompt, deckNames),
+  );
   let raw: RawCandidate[];
   switch (prompt.kind) {
     case "priority": {
@@ -306,6 +327,7 @@ export async function forgeSearch(
     cScale = 1,
     seed = 0,
     gumbel = false,
+    deckNames,
   } = options;
   const prompt = session.legalChoices();
   if (prompt.kind === "game_over") throw new Error("the game is over");
@@ -315,6 +337,7 @@ export async function forgeSearch(
     session,
     prompt,
     model,
+    deckNames,
   );
   let evaluations = 1;
   const count = candidates.length;
@@ -367,7 +390,9 @@ export async function forgeSearch(
         v = w.length === 0 ? 0 : w.includes(player) ? 1 : -1;
       } else {
         evaluations++;
-        const out = await model.evaluate(forgeDecision(session, next));
+        const out = await model.evaluate(
+          forgeDecision(session, next, deckNames),
+        );
         v = clamp(next.playerId === player ? out.value : -out.value);
       }
     } catch (err) {

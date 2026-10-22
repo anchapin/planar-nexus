@@ -16,7 +16,7 @@ import {
 import { playSelfPlayGame } from "../forge-selfplay";
 import { trainingDeck } from "@/ai/simulation/training-session";
 
-const MODEL = path.join(__dirname, "fixtures/forge_pointer_v1_seed86.onnx");
+const MODEL = path.join(__dirname, "fixtures/forge_pointer_v2_seed86.onnx");
 
 let model: ForgePointerModel;
 beforeAll(async () => {
