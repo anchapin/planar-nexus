@@ -4,8 +4,10 @@
 (the file itself lives in the primary checkout at
 `/home/alex/Projects/planar-nexus/.planning/handoffs/`, not in this worktree).
 
-Branch: `planar-nexus` @ `6140465c` → new branch `fix/mutation-gate-static-mutants`
-(rebased on `origin/main` @ `dd716e5a`).
+Branch: `fix/mutation-gate-static-mutants` @ `1d68185c`, rebased on
+`origin/main` @ `dd716e5a` (pushed to origin). The original `planar-nexus`
+branch @ `6140465c` carries the same change unrebased; its globs are already
+on `main` via the squash-merge of PR #2839.
 
 ---
 
@@ -109,7 +111,8 @@ must be re-derived from the new measurements and tightened.
 
 **How to complete it:**
 
-1. CI run #1 (dispatched from `fix/mutation-gate-static-mutants`) uploads
+1. CI run #1 — `gh workflow run mutation.yml --ref fix/mutation-gate-static-mutants -f module=all`
+   → run **`39990082229`** (dispatched 2026-10-23 16:50Z) — uploads
    `reports/mutation/mutation.json` as an artifact with `if: always()`, so the
    report survives even if a floor fails.
 2. Download the artifact, run `computeModuleScores` over it, and set each floor
@@ -145,7 +148,18 @@ The only remaining cause was the runtime. Secondary observations worth knowing:
 - `npx eslint` on the touched files → 0 errors.
 - Local Stryker run of `state-based-actions` (511 mutants) confirms
   `ignoreStatic` is honoured: the `Detected N static mutants` warning no longer
-  appears (Stryker only emits it when `ignoreStatic` is off).
+  appears (Stryker only emits it when `ignoreStatic` is off). The same local
+  run then failed its **dry run** with "There were failed tests in the initial
+  test run" — that was CPU contention, not a defect: the full Jest suite was
+  running concurrently for the test-count ratchet, and the same suite passes
+  twice on its own (14,884 passed). CI is the authoritative measurement.
+- `node scripts/check-mutation-config.mjs` → OK, and the new check 3b was
+  negative-tested (removing a module's budget makes the guard fail).
+- `node scripts/mutation-floor.js` was smoke-tested against synthetic reports:
+  a module over its uncovered budget fails with exit 1, a module exactly at
+  its budget passes, and a below-floor score still fails as before.
+- `npm run ratchet:test-count` → `suites=860, tests=14891 (14884 passed + 7
+skipped), snapshots=3` — the doc bump ships in the same commit as the tests.
 
 ---
 
