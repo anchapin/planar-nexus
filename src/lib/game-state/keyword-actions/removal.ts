@@ -273,6 +273,9 @@ export function exileCard(
   void _staleLink;
   const updatedCard = {
     ...rest,
+    // Leaving the battlefield creates a new object (CR 400.7), so the
+    // previous battlefield object's cast-origin flag does not carry over.
+    wasCast: undefined,
     isFaceDown: faceDown,
     attachedToId: null, // Detach from any attachments
     attachedCardIds: [], // Remove any attachments
@@ -1101,6 +1104,10 @@ function moveCardToZoneWithoutTriggers(
   let updatedCard: CardInstance = {
     ...(targetZoneType === "battlefield" ? card : returnToFrontFace(card)),
     currentZoneKey: null,
+    // A card that changes zones is a new object (CR 400.7).  The
+    // cast-origin flag belongs to the battlefield object that entered by
+    // resolving a spell, so it does not survive this zone change.
+    wasCast: undefined,
     // CR 400.7: a card that changes zones is a new object.
     activatedOnceAbilities: undefined,
     activatedThisTurn: undefined,

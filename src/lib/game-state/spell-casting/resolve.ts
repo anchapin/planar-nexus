@@ -652,7 +652,15 @@ function resolveSpellCompletion(
         if (!typeLine.includes("instant") && !typeLine.includes("sorcery")) {
           const card = state.cards.get(stackObject.sourceCardId);
           if (card) {
-            let next: typeof card = initializePlaneswalkerLoyalty(card);
+            // CR 603.6d / CR 607: a permanent that enters the battlefield
+            // by resolving a cast spell records its cast origin.  ETB
+            // conditions such as "if you cast it" can then distinguish a
+            // cast entry from a non-cast entry (for example, a card put
+            // onto the battlefield from another zone).
+            let next: typeof card = {
+              ...initializePlaneswalkerLoyalty(card),
+              wasCast: true,
+            };
             const x = stackObject.variableValues?.get("X");
             if (typeof x === "number") {
               next = { ...next, xValue: x };
