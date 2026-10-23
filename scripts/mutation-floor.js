@@ -34,6 +34,7 @@ const {
   loadFloorConfig,
   computeModuleScores,
   evaluateFloors,
+  evaluateUncoveredBudgets,
 } = require("./mutation-floor-lib.js");
 
 function main() {
@@ -89,8 +90,12 @@ function main() {
   }
 
   const { violations, ok } = evaluateFloors(rows, config);
+  // Issue #1785: stryker.config.js's ignoreStatic skips mutants that no test
+  // covers, which keeps the gate inside its CI timeout but hides that debt
+  // from the score. The per-module uncovered-mutant budget gates it instead.
+  const uncovered = evaluateUncoveredBudgets(rows, config);
 
-  if (ok) {
+  if (ok && uncovered.ok) {
     process.stdout.write(
       `mutation-floor: all ${rows.length} mutated module(s) at or above their floors.\n`,
     );
@@ -98,17 +103,34 @@ function main() {
     return;
   }
 
-  process.stderr.write(
-    `mutation-floor: ${violations.length}/${rows.length} mutated module(s) below the mutation-score floor:\n`,
-  );
-  for (const v of violations) {
+  if (!ok) {
     process.stderr.write(
-      `mutation-floor:   ${v.file} scored ${v.score.toFixed(1)}% (floor: ${v.floor}) — ⚠️ BELOW FLOOR\n`,
+      `mutation-floor: ${violations.length}/${rows.length} mutated module(s) below the mutation-score floor:\n`,
+    );
+    for (const v of violations) {
+      process.stderr.write(
+        `mutation-floor:   ${v.file} scored ${v.score.toFixed(1)}% (floor: ${v.floor}) — ⚠️ BELOW FLOOR\n`,
+      );
+    }
+    process.stderr.write(
+      "mutation-floor: gate failed — raise the tests for the offending module(s) or re-measure and adjust scripts/mutation-floor.config.js if the baseline legitimately moved.\n",
     );
   }
-  process.stderr.write(
-    "mutation-floor: gate failed — raise the tests for the offending module(s) or re-measure and adjust scripts/mutation-floor.config.js if the baseline legitimately moved.\n",
-  );
+
+  if (!uncovered.ok) {
+    process.stderr.write(
+      `mutation-floor: ${uncovered.violations.length} module(s) exceed their uncovered-mutant budget:\n`,
+    );
+    for (const v of uncovered.violations) {
+      process.stderr.write(
+        `mutation-floor:   ${v.module} has ${v.uncovered} uncovered (static) mutant(s) (budget: ${v.budget}) — ⚠️ UNCOVERED DEBT\n`,
+      );
+    }
+    process.stderr.write(
+      "mutation-floor: gate failed — uncovered-code debt grew. Cover the module's uncovered branches with tests, or re-measure and lower the budget in scripts/mutation-floor.config.js if the baseline legitimately moved.\n",
+    );
+  }
+
   process.exitCode = 1;
 }
 

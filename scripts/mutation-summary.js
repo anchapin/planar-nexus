@@ -51,8 +51,8 @@ function main() {
   const lines = [
     "### Mutation score breakdown",
     "",
-    "| Module | Score | Killed/Detected | Survived | No coverage |",
-    "| --- | ---: | ---: | ---: | ---: |",
+    "| Module | Score | Killed/Detected | Survived | No coverage | Uncovered |",
+    "| --- | ---: | ---: | ---: | ---: | ---: |",
   ];
   for (const r of rows) {
     const mark = r.score >= 70 ? "🟢" : r.score >= 50 ? "🟡" : "🔴";
@@ -61,7 +61,7 @@ function main() {
     // gate. Distinct from the emoji buckets so the two signals stay readable.
     const belowFloor = r.score < floor ? " ⚠️ BELOW FLOOR" : "";
     lines.push(
-      `| ${mark} \`${r.file}\`${belowFloor} | ${r.score.toFixed(1)}% | ${r.detected}/${r.considered} | ${r.survived} | ${r.noCoverage} |`,
+      `| ${mark} \`${r.file}\`${belowFloor} | ${r.score.toFixed(1)}% | ${r.detected}/${r.considered} | ${r.survived} | ${r.noCoverage} | ${r.ignored} |`,
     );
   }
 

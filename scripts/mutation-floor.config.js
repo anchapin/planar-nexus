@@ -110,4 +110,30 @@ module.exports = {
     "src/lib/game-state/keyword-actions/*.ts": 50,
     "src/lib/game-state/oracle-text-parser/abilities.ts": 50,
   },
+  // Issue #1785: stryker.config.js sets ignoreStatic, so Stryker skips the
+  // mutants that no test covers instead of re-running the whole suite for
+  // each one. That is what keeps every leg inside the 180-minute CI job
+  // timeout, but it also removes that debt from the mutation score.
+  //
+  // These budgets put the debt back under a gate. Each value is the count
+  // Stryker reported as static in nightly run 39925581871 (main@685223a5),
+  // i.e. the exact number of mutants that would have been reported as
+  // status "Ignored". A module violates its budget when its uncovered count
+  // rises above the number below: coverage debt may only shrink, never grow.
+  //
+  // Re-measure and lower these (never raise them) when coverage improves.
+  uncoveredBudgets: {
+    "src/lib/game-state/layer-system/*.ts": 243,
+    "src/lib/game-state/replacement-effects/*.ts": 87,
+    "src/lib/game-state/spell-casting/*.ts": 639,
+    "src/lib/game-state/trigger-system/*.ts": 94,
+    "src/lib/game-state/state-based-actions.ts": 190,
+    "src/lib/game-state/mana/*.ts": 368,
+    "src/lib/game-state/keyword-actions/*.ts": 1497,
+    "src/lib/game-state/oracle-text-parser/abilities.ts": 0,
+    "src/lib/game-state/combat/*.ts": 351,
+  },
+  // Files no budget glob claims are a configuration gap, not real debt, so
+  // they get no allowance: any uncovered mutant in one fails the gate.
+  defaultUncoveredBudget: 0,
 };

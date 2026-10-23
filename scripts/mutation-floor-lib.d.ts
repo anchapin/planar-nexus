@@ -9,6 +9,11 @@
 export interface FloorConfig {
   defaultFloor: number;
   floors: Record<string, number>;
+  /** Per-module ceiling on static (uncovered-code) mutants, keyed by the
+   * same module globs as `floors`. */
+  uncoveredBudgets?: Record<string, number>;
+  /** Ceiling applied to files that no `uncoveredBudgets` glob claims. */
+  defaultUncoveredBudget?: number;
 }
 
 export interface ModuleScore {
@@ -18,6 +23,8 @@ export interface ModuleScore {
   considered: number;
   survived: number;
   noCoverage: number;
+  /** Static mutants Stryker skipped because no test covers them. */
+  ignored: number;
 }
 
 export interface Violation {
@@ -50,3 +57,32 @@ export function evaluateFloors(
   rows: Array<{ file: string; score: number }>,
   config: FloorConfig,
 ): FloorEvaluation;
+
+/** Resolve the module glob key that owns a normalised file path. */
+export function moduleFor(
+  normalizedPath: string,
+  config: FloorConfig,
+): string | null;
+
+/** Aggregate ignored (static / uncovered) mutant counts per module. */
+export function computeUncoveredByModule(
+  rows: Array<{ file: string; ignored: number }>,
+  config: FloorConfig,
+): Record<string, number>;
+
+export interface UncoveredViolation {
+  module: string;
+  uncovered: number;
+  budget: number;
+}
+
+export interface UncoveredEvaluation {
+  violations: UncoveredViolation[];
+  ok: boolean;
+}
+
+/** Evaluate per-module uncovered-mutant counts against their budgets. */
+export function evaluateUncoveredBudgets(
+  rows: Array<{ file: string; ignored: number }>,
+  config: FloorConfig,
+): UncoveredEvaluation;

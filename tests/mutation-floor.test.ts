@@ -25,7 +25,9 @@ import { parse } from "yaml";
 
 import {
   computeModuleScores,
+  computeUncoveredByModule,
   evaluateFloors,
+  evaluateUncoveredBudgets,
   floorFor,
   loadFloorConfig,
   type FloorConfig,
@@ -38,6 +40,8 @@ import strykerConfigModule from "../stryker.config";
 const floorConfigSource = floorConfigModule as {
   defaultFloor: number;
   floors: Record<string, number>;
+  uncoveredBudgets: Record<string, number>;
+  defaultUncoveredBudget: number;
 };
 const strykerConfig = strykerConfigModule as {
   mutate: string[];
@@ -295,7 +299,8 @@ describe("floor config sanity", () => {
       "src/lib/game-state/replacement-effects/*.ts":
         "replacement-effects.mutation.test.ts",
       "src/lib/game-state/spell-casting/*.ts": "spell-casting.mutation.test.ts",
-      "src/lib/game-state/trigger-system/*.ts": "trigger-system.mutation.test.ts",
+      "src/lib/game-state/trigger-system/*.ts":
+        "trigger-system.mutation.test.ts",
       "src/lib/game-state/state-based-actions.ts":
         "state-based-actions.mutation.test.ts",
       "src/lib/game-state/mana/*.ts": "mana.mutation.test.ts",
@@ -679,9 +684,9 @@ describe("mutation-summary.js Markdown table (issue #1549)", () => {
 
     expect(lines).toContain("### Mutation score breakdown");
     expect(lines).toContain(
-      "| Module | Score | Killed/Detected | Survived | No coverage |",
+      "| Module | Score | Killed/Detected | Survived | No coverage | Uncovered |",
     );
-    expect(lines).toContain("| --- | ---: | ---: | ---: | ---: |");
+    expect(lines).toContain("| --- | ---: | ---: | ---: | ---: | ---: |");
 
     const rows = lines.filter(
       (l) =>
@@ -690,7 +695,7 @@ describe("mutation-summary.js Markdown table (issue #1549)", () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toContain("🟢"); // 80% ≥ 70 → green bucket
     expect(rows[0]).toContain("`src/lib/game-state/layer-system.ts`");
-    expect(rows[0]).toMatch(/\| 80\.0% \| 80\/100 \| 15 \| 5 \|$/);
+    expect(rows[0]).toMatch(/\| 80\.0% \| 80\/100 \| 15 \| 5 \| 0 \|$/);
   });
 
   it("appends the same table to $GITHUB_STEP_SUMMARY so the PR Summary tab renders it", () => {
@@ -711,7 +716,7 @@ describe("mutation-summary.js Markdown table (issue #1549)", () => {
     expect(existsSync(summaryPath)).toBe(true);
     const summary = readFileSync(summaryPath, "utf8");
     expect(summary).toContain(
-      "| Module | Score | Killed/Detected | Survived | No coverage |",
+      "| Module | Score | Killed/Detected | Survived | No coverage | Uncovered |",
     );
     expect(summary).toContain("src/lib/game-state/layer-system.ts");
     // stdout and the summary file carry the same table — the CI log stays
@@ -780,5 +785,113 @@ describe("mutation workflow wiring (issues #1549, #1762)", () => {
     expect(summaries).toHaveLength(1);
     expect(summaries[0]?.run).toBe("node scripts/mutation-summary.js");
     expect(String(summaries[0]?.if)).toBe("always()");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Per-module uncovered-mutant budget gate (issue #1785)
+//
+// stryker.config.js sets `ignoreStatic`, so Stryker reports mutants that no
+// test covers with status "Ignored" instead of re-running the whole suite for
+// each one. That is what keeps every CI leg inside its 180-minute timeout,
+// but it also drops that debt from the mutation score. These tests pin the
+// separate budget gate that keeps the debt visible and non-growing.
+// ─────────────────────────────────────────────────────────────────────────
+
+describe("per-module uncovered-mutant budget gate (issue #1785)", () => {
+  const budgetConfig: FloorConfig = {
+    defaultFloor: 55,
+    floors: {
+      "src/lib/game-state/mana/*.ts": 50,
+      "src/lib/game-state/state-based-actions.ts": 50,
+    },
+    uncoveredBudgets: {
+      "src/lib/game-state/mana/*.ts": 2,
+      "src/lib/game-state/state-based-actions.ts": 1,
+    },
+    defaultUncoveredBudget: 0,
+  };
+
+  /** A mutant list made only of ignored (uncovered) mutants. */
+  function ignored(count: number): Array<{ status: MutantStatus }> {
+    return Array.from({ length: count }, () => ({
+      status: "Ignored" as const,
+    }));
+  }
+
+  it("counts ignored mutants separately from the score denominator", () => {
+    const rows = computeModuleScores(
+      reportObject({
+        "src/lib/game-state/mana/pools.ts": [
+          ...ignored(3),
+          { status: "Killed" },
+        ],
+      }),
+    );
+    // Ignored mutants are excluded from the score ...
+    expect(rows[0]?.considered).toBe(1);
+    expect(rows[0]?.score).toBeCloseTo(100, 5);
+    // ... but they are still counted, so the debt stays visible.
+    expect(rows[0]?.ignored).toBe(3);
+  });
+
+  it("aggregates uncovered mutants per module glob", () => {
+    const rows = computeModuleScores(
+      reportObject({
+        "src/lib/game-state/mana/pools.ts": ignored(2),
+        "src/lib/game-state/mana/land.ts": ignored(1),
+        "src/lib/game-state/state-based-actions.ts": ignored(1),
+      }),
+    );
+    expect(computeUncoveredByModule(rows, budgetConfig)).toEqual({
+      "src/lib/game-state/mana/*.ts": 3,
+      "src/lib/game-state/state-based-actions.ts": 1,
+    });
+  });
+
+  it("passes when every module is within its uncovered budget", () => {
+    const rows = computeModuleScores(
+      reportObject({
+        "src/lib/game-state/mana/pools.ts": ignored(2),
+        "src/lib/game-state/state-based-actions.ts": ignored(1),
+      }),
+    );
+    const result = evaluateUncoveredBudgets(rows, budgetConfig);
+    expect(result.ok).toBe(true);
+    expect(result.violations).toEqual([]);
+  });
+
+  it("fails when a module exceeds its uncovered budget", () => {
+    const rows = computeModuleScores(
+      reportObject({ "src/lib/game-state/mana/pools.ts": ignored(3) }),
+    );
+    const result = evaluateUncoveredBudgets(rows, budgetConfig);
+    expect(result.ok).toBe(false);
+    expect(result.violations).toEqual([
+      { module: "src/lib/game-state/mana/*.ts", uncovered: 3, budget: 2 },
+    ]);
+  });
+
+  it("fails when an unbudgeted file carries uncovered mutants", () => {
+    const rows = computeModuleScores(
+      reportObject({ "src/lib/game-state/combat/attacks.ts": ignored(1) }),
+    );
+    const result = evaluateUncoveredBudgets(rows, budgetConfig);
+    expect(result.ok).toBe(false);
+    expect(result.violations[0]?.module).toBe("<unmapped>");
+    expect(result.violations[0]?.budget).toBe(0);
+  });
+
+  it("budgets every glob the stryker config mutates", () => {
+    for (const glob of strykerConfigModule.mutate) {
+      expect(Object.keys(floorConfigSource.uncoveredBudgets)).toContain(glob);
+    }
+  });
+
+  it("points every uncovered budget at a directory that exists", () => {
+    for (const glob of Object.keys(floorConfigSource.uncoveredBudgets)) {
+      const resolved = glob.replace(/\/?\*\.ts$/, "");
+      expect(existsSync(resolved)).toBe(true);
+    }
   });
 });

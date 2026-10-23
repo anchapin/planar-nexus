@@ -29,6 +29,12 @@ const REPORT_PATH = path.resolve(
 );
 
 /** Statuses that count AGAINST the suite when computing the score. */
+/**
+ * Bucket key used when no uncoveredBudgets glob claims a mutated file.
+ * Any uncovered mutant landing here is a configuration gap, not a debt.
+ */
+const UNMAPPED_MODULE = "<unmapped>";
+
 const COUNTED_STATUSES = [
   "Killed",
   "Timeout",
@@ -60,7 +66,15 @@ function loadFloorConfig(env) {
     // disable the gate (the config default keeps enforcement on).
   }
 
-  return { defaultFloor, floors: { ...config.floors } };
+  return {
+    defaultFloor,
+    floors: { ...config.floors },
+    uncoveredBudgets: { ...(config.uncoveredBudgets || {}) },
+    defaultUncoveredBudget:
+      typeof config.defaultUncoveredBudget === "number"
+        ? config.defaultUncoveredBudget
+        : 0,
+  };
 }
 
 /**
@@ -92,6 +106,81 @@ function floorFor(normalizedPath, config) {
 }
 
 /**
+ * Resolve the module glob key that owns a normalised file path.
+ *
+ * Precedence mirrors floorFor(): an exact key wins over a glob match, and
+ * the first matching glob in declaration order wins. Matching runs against
+ * the uncovered-mutant budget map so a file's static-mutant count is
+ * attributed to the same module its score is checked against.
+ *
+ * @param {string} normalizedPath - e.g. "src/lib/game-state/mana/pools.ts"
+ * @param {{ uncoveredBudgets?: Record<string, number> }} config
+ * @returns {string | null} the module key, or null when no module claims it
+ */
+function moduleFor(normalizedPath, config) {
+  const budgets = config.uncoveredBudgets || {};
+  if (Object.prototype.hasOwnProperty.call(budgets, normalizedPath)) {
+    return normalizedPath;
+  }
+  for (const key of Object.keys(budgets)) {
+    if (!key.includes("*")) continue;
+    if (globToRegExp(key).test(normalizedPath)) return key;
+  }
+  return null;
+}
+
+/**
+ * Aggregate ignored (static / uncovered) mutant counts per module.
+ *
+ * With stryker.config.js's ignoreStatic enabled, Stryker reports mutants
+ * that no test covers with status "Ignored" instead of executing them. Those
+ * mutants are excluded from the mutation score, so this count is the only
+ * place the uncovered-code debt stays visible.
+ *
+ * @param {Array<{ file: string, ignored: number }>} rows
+ * @param {{ uncoveredBudgets?: Record<string, number> }} config
+ * @returns {Record<string, number>} module key -> ignored mutant count
+ */
+function computeUncoveredByModule(rows, config) {
+  const totals = {};
+  for (const row of rows) {
+    const ignored = row.ignored || 0;
+    if (ignored <= 0) continue;
+    const module = moduleFor(row.file, config);
+    const key = module === null ? UNMAPPED_MODULE : module;
+    totals[key] = (totals[key] || 0) + ignored;
+  }
+  return totals;
+}
+
+/**
+ * Evaluate per-module uncovered-mutant counts against their budgets.
+ *
+ * A module violates its budget when uncovered > budget (strictly). The
+ * budget is a ceiling on uncovered-code debt: it may be lowered as coverage
+ * improves, never raised.
+ *
+ * @param {Array<{ file: string, ignored: number }>} rows
+ * @param {{ uncoveredBudgets?: Record<string, number>, defaultUncoveredBudget?: number }} config
+ * @returns {{ violations: Array<{ module: string, uncovered: number, budget: number }>, ok: boolean }}
+ */
+function evaluateUncoveredBudgets(rows, config) {
+  const totals = computeUncoveredByModule(rows, config);
+  const budgets = config.uncoveredBudgets || {};
+  const defaultBudget = config.defaultUncoveredBudget ?? 0;
+  const violations = [];
+  for (const [module, uncovered] of Object.entries(totals)) {
+    const budget = Object.prototype.hasOwnProperty.call(budgets, module)
+      ? budgets[module]
+      : defaultBudget;
+    if (uncovered > budget) {
+      violations.push({ module, uncovered, budget });
+    }
+  }
+  return { violations, ok: violations.length === 0 };
+}
+
+/**
  * Convert a repo-path glob (the limited `*` and `**` subset Stryker mutate
  * patterns use) into an anchored RegExp. A `**` path segment matches any
  * number of segments; a bare `*` matches within one segment.
@@ -103,9 +192,7 @@ function globToRegExp(glob) {
   const escaped = glob
     .replace(/[.*+?^${}()|\[\]\\]/g, "\\$&")
     .replace(/\\\*/g, "*"); // stars are glob syntax, not literals
-  const source = escaped
-    .replace(/\*\*\//g, "(?:.*/)?")
-    .replace(/\*/g, "[^/]*");
+  const source = escaped.replace(/\*\*\//g, "(?:.*/)?").replace(/\*/g, "[^/]*");
   return new RegExp(`^${source}$`);
 }
 
@@ -163,6 +250,10 @@ function computeModuleScores(data) {
         considered,
         survived: counts.Survived,
         noCoverage: counts.NoCoverage,
+        // Static mutants that stryker.config.js's ignoreStatic skips: code no
+        // test covers. Excluded from the score, so this count is the only
+        // place that uncovered-code debt stays visible.
+        ignored: counts.Ignored,
       };
     })
     .sort((a, b) => a.file.localeCompare(b.file));
@@ -200,4 +291,7 @@ module.exports = {
   globToRegExp,
   computeModuleScores,
   evaluateFloors,
+  moduleFor,
+  computeUncoveredByModule,
+  evaluateUncoveredBudgets,
 };

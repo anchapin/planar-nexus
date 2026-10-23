@@ -54,6 +54,10 @@
  *   6. The nightly mutation.yml matrix JSON contains a quoted entry for
  *      every allowlisted module — a per-module job that doesn't run is
  *      the same regression as removing the per-module floor (#1785).
+ *   7. scripts/mutation-floor.config.js defines an uncovered-mutant budget
+ *      for EVERY allowlisted module. stryker.config.js's `ignoreStatic`
+ *      excludes uncovered-code mutants from the score, so this budget is
+ *      the only thing keeping that debt gated (#1785).
  *   7. .github/workflows/ci.yml does NOT invoke Stryker anywhere — the
  *      ~3h long pole cannot creep back onto the per-PR path unnoticed.
  *   8. Every `--mutate` path (in the package.json `mutate:*` scripts and
@@ -149,6 +153,33 @@ for (const entry of mutateEntries) {
         `module ${entry} — the nightly per-module gate (issue #1598) ` +
         `cannot catch this module regressing below defaultFloor ` +
         `(${floorConfig?.defaultFloor}).`,
+    );
+  }
+}
+
+// ── 3b. uncovered-mutant budgets (issue #1785) ────────────────────────────
+// stryker.config.js sets `ignoreStatic`, so mutants that no test covers are
+// reported as "Ignored" and excluded from the mutation score. The per-module
+// uncovered-mutant budget is the only thing keeping that debt gated, so
+// every allowlisted module needs one — without it, adding a module to the
+// allowlist would silently drop its uncovered-code debt out of the gate.
+const uncoveredBudgets = floorConfig?.uncoveredBudgets ?? {};
+for (const entry of mutateEntries) {
+  if (!(entry in uncoveredBudgets)) {
+    failures.push(
+      `scripts/mutation-floor.config.js: no uncovered-mutant budget for ` +
+        `allowlisted module ${entry} — stryker.config.js's ignoreStatic ` +
+        `drops that module's uncovered-code mutants from the score, so ` +
+        `without a budget the debt is ungated (issue #1785).`,
+    );
+  }
+}
+for (const entry of Object.keys(uncoveredBudgets)) {
+  if (resolveMutatePattern(entry).length === 0) {
+    failures.push(
+      `scripts/mutation-floor.config.js: uncovered-mutant budget "${entry}" ` +
+        `matches no real source file — the budget can never be enforced ` +
+        `(issue #1785).`,
     );
   }
 }

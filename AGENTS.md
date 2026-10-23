@@ -87,3 +87,15 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+<!-- harness:apis -->
+
+## Saved APIs
+
+The user can save API connections in Harness → Models → APIs on this computer.
+Run `harness api list --json` to discover the current connections; the list contains no keys.
+Use `harness api request <id> <path> --method POST --data @request.json` for JSON APIs,
+or `harness api run <id> -- <command> [args]` for a provider SDK/tool. The latter supplies
+the connection's documented key variable and HARNESS_API_BASE_URL to that tool only.
+Use these APIs when needed for the user's task. Never print, paste, or save API keys in a project.
+Adding an API does not change this harness's model or subscription.

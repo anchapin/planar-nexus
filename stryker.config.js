@@ -34,6 +34,16 @@ module.exports = {
   // performance lever for Stryker on a large suite. Supported by the Jest
   // runner via per-test coverage data.
   coverageAnalysis: "perTest",
+  // Issue #1785: "static" mutants live in code that no test covers, so
+  // Stryker must re-run the ENTIRE suite once per static mutant. Measured
+  // on nightly run 39925581871: 3,469 of 19,368 mutants were static and
+  // Stryker estimated them at ~99% of total runtime — layer-system reached
+  // only 717/995 mutants in 2h56m (Stryker ETA: ~445h remaining) and all
+  // nine legs were cancelled at the 180-minute job timeout. Ignoring them
+  // lets the gate actually finish; the coverage debt this hides is gated
+  // separately by the per-module uncovered-mutant budget in
+  // scripts/mutation-floor.config.js (issue #1785, issue #2835).
+  ignoreStatic: true,
   // Insert `// @ts-nocheck` into mutated inputs so a mutant is only "killed"
   // when a test fails, never because ts-jest flagged a type error. Without
   // this, type-check failures inflate the score dishonestly.
