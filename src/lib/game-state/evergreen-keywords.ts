@@ -49,6 +49,11 @@ import { hasFlashStrict } from "./keyword-actions/flash";
 import { hasDefenderStrict } from "./keyword-actions/defender";
 import { oracleTextDeclaresOwnKeyword } from "./keyword-actions/grant-negation";
 import { isThresholdOnlyKeyword } from "./keyword-actions/threshold";
+import {
+  hasOwnKeyword,
+  resolveOwnKeywords,
+  resolveOwnKeywordParams,
+} from "./keyword-actions/own-keywords";
 
 /**
  * Check if a card has a specific keyword
@@ -80,29 +85,15 @@ export function hasKeyword(card: CardInstance, keyword: string): boolean {
       card.thresholdBonus?.keywords.includes(keyword.toLowerCase()),
     );
   }
-  const keywords = card.cardData.keywords || [];
-  // A scripted static's line grants keywords to others ("Creatures you
-  // control have haste"); it is applied above, not read as the card's own.
-  const statics = getCardScript(card.cardData.name)?.statics ?? [];
-  let oracleText = card.cardData.oracle_text?.toLowerCase() || "";
-  for (const s of statics)
-    oracleText = oracleText.replace(s.text.toLowerCase(), "");
-  // A conditional self bonus (#2614 Keen-Eyed Curator) is applied above
-  // through scriptStaticKeywords, not read from the oracle line.
-  const bonusText = getCardScript(card.cardData.name)?.exiled_types_bonus?.text;
-  if (bonusText) oracleText = oracleText.replace(bonusText.toLowerCase(), "");
-  // An Animate ability's keywords (#2614 Soulstone Sanctuary: "becomes a
-  // 3/3 creature with vigilance") apply only once it resolves, through
-  // untilEndOfTurnKeywords above.
-  for (const a of getCardScript(card.cardData.name)?.activated ?? []) {
-    if (a.effects?.some((e) => e.op === "Animate"))
-      oracleText = oracleText.replace(a.text.toLowerCase(), "");
-  }
-
-  return (
-    keywords.some((k) => k.toLowerCase() === keyword.toLowerCase()) ||
-    oracleText.includes(keyword.toLowerCase())
-  );
+  // Issue #2641: the card's OWN keywords are resolved by the shared
+  // anchored resolver (`keyword-actions/own-keywords.ts`). The previous
+  // fallback was an unanchored `oracleText.includes(keyword)`, so a card
+  // whose rules text merely MENTIONED a keyword acquired it ("Target
+  // creature loses flying.", "creatures without flying", "can't be blocked
+  // except by creatures with reach"). The resolver accepts a keyword only
+  // when the parsed keyword array says so, or when the keyword heads the
+  // card's own keyword line in the oracle text.
+  return hasOwnKeyword(card, keyword);
 }
 
 // ============== FLYING (CR 702.9) ==============
@@ -1077,36 +1068,16 @@ export function calculateCombatDamage(
  */
 export function getAllKeywords(card: CardInstance): string[] {
   const keywords = card.cardData.keywords || [];
-  const oracleText = card.cardData.oracle_text?.toLowerCase() || "";
 
   const foundKeywords: string[] = [...keywords];
 
-  // Check for keywords mentioned in Oracle text
-  const keywordTexts = [
-    "flying",
-    "first strike",
-    "double strike",
-    "deathtouch",
-    "defender",
-    "hexproof",
-    "indestructible",
-    "lifelink",
-    "menace",
-    "reach",
-    "trample",
-    "vigilance",
-    "haste",
-    "flash",
-    "protection",
-    "ward",
-  ];
-
-  for (const kw of keywordTexts) {
-    if (
-      oracleText.includes(kw) &&
-      !foundKeywords.some((k) => k.toLowerCase() === kw)
-    ) {
-      foundKeywords.push(kw);
+  // Issue #2641: the oracle arm used to be an unanchored substring scan
+  // over a fixed keyword list, so a card whose rules text merely mentioned
+  // "flying" ("Target creature loses flying.") was reported as a flier.
+  // The shared anchored resolver reports only the card's OWN keywords.
+  for (const keyword of resolveOwnKeywords(card)) {
+    if (!foundKeywords.some((k) => k.toLowerCase() === keyword)) {
+      foundKeywords.push(keyword);
     }
   }
 
@@ -1347,8 +1318,11 @@ export function canMutateOnto(
  * Check if a card has Boast keyword
  */
 export function hasBoast(card: CardInstance): boolean {
-  const oracleText = card.cardData.oracle_text?.toLowerCase() || "";
-  return oracleText.includes("boast");
+  // Issue #2641: the oracle arm used to be an unanchored
+  // `oracleText.includes("boast")`, so a card that merely MENTIONED boast
+  // ("...boasts when...") was treated as a Boast card. The shared anchored
+  // resolver only accepts boast on the card's own keyword line.
+  return hasOwnKeyword(card, "boast");
 }
 
 /**
@@ -1483,32 +1457,20 @@ export function hasWither(card: CardInstance): boolean {
  * Returns the specified number for "toxic N".
  */
 export function getToxicLevel(card: CardInstance): number {
-  const keywords = card.cardData.keywords || [];
-  const oracleText = card.cardData.oracle_text?.toLowerCase() || "";
-
-  // Check keywords array for "toxic" or "toxic N"
-  for (const keyword of keywords) {
-    const lowerKeyword = keyword.toLowerCase();
-    if (lowerKeyword === "toxic") {
-      return 1;
-    }
-    const toxicMatch = lowerKeyword.match(/^toxic\s+(\d+)$/);
-    if (toxicMatch) {
-      return parseInt(toxicMatch[1], 10);
-    }
+  // Issue #2641: the oracle arms used to be unanchored — an unparameterized
+  // `oracleText.includes("toxic")` plus a free-floating
+  // `/toxic\s+(\d+)/` match — so a card that merely MENTIONED toxic in its
+  // rules text poisoned players. The shared anchored resolver reads the
+  // card's OWN keyword line ("Toxic", "Toxic 2") and the parsed keyword
+  // array.
+  const params = resolveOwnKeywordParams(card);
+  const parameter = params.get("toxic");
+  if (parameter !== undefined) {
+    return parameter;
   }
-
-  // Also check oracle text for "toxic N"
-  const toxicOracleMatch = oracleText.match(/toxic\s+(\d+)/);
-  if (toxicOracleMatch) {
-    return parseInt(toxicOracleMatch[1], 10);
-  }
-
-  // Check if "toxic" appears without a number in oracle text
-  if (oracleText.includes("toxic")) {
+  if (hasOwnKeyword(card, "toxic")) {
     return 1;
   }
-
   return 0;
 }
 
