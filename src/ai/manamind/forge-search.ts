@@ -17,6 +17,11 @@
  *   redealt, both libraries shuffled), plays the root action, and scores the
  *   next decision with the value head. Repeat visits average over worlds.
  *   Deeper tree search is a follow-up.
+ * - Only the net calls are batched (issue #2728): a halving phase deals its
+ *   worlds one at a time, in the seeded order the search always used, and
+ *   hands the leaf decisions to `evaluateBatch` a bounded batch at a time.
+ *   Each world keeps its own deal and each value is folded back in the same
+ *   order, so the same seeds pick the same actions.
  *
  * The session is restored to where it started before this returns.
  */
@@ -30,10 +35,40 @@ import {
 } from "@/ai/simulation/training-session";
 import { viewCardFor } from "@/ai/simulation/player-view";
 import type { BridgeCard, ForgeDecision } from "./forge-pointer-features";
-import type { ForgePointerModel } from "./forge-pointer-model";
+import type {
+  ForgePointerModel,
+  ForgePointerOutput,
+} from "./forge-pointer-model";
 import { PRIOR_UNIFORM_FLOOR } from "./simple-search";
 
 type Live = Exclude<TrainingPrompt, { kind: "game_over" }>;
+
+/** A world the rules left open, waiting on the net's value head. */
+interface Leaf {
+  /** The root candidate this world played. */
+  candidate: number;
+  /** The bridge decision the value head scores. */
+  decision: ForgeDecision;
+  /** +1 when the net values the searcher's seat, -1 for the other one. */
+  sign: number;
+}
+
+/**
+ * Leaf decisions per net call (issue #2728). One packed decision is a few
+ * kilobytes, so a phase's leaves could all be live at once; the cap keeps
+ * the runtime's working set flat instead of growing with `simulations`.
+ */
+const DEFAULT_BATCH_SIZE = 16;
+
+/** The model's batched call, or N single calls on a model without one. */
+function evaluateLeaves(
+  model: ForgePointerModel,
+  decisions: readonly ForgeDecision[],
+): Promise<ForgePointerOutput[]> {
+  return typeof model.evaluateBatch === "function"
+    ? model.evaluateBatch(decisions)
+    : Promise.all(decisions.map((d) => model.evaluate(d)));
+}
 
 export interface ForgeSearchOptions {
   simulations: number;
@@ -57,6 +92,13 @@ export interface ForgeSearchOptions {
    * deciding seat.
    */
   deckNames?: readonly [string, string];
+  /**
+   * Leaf decisions per net call (issue #2728), default 16. A halving phase
+   * deals its worlds in the seeded order regardless; this only decides how
+   * many of the resulting leaf decisions ride in one batched call, so the
+   * picks do not depend on it.
+   */
+  batchSize?: number;
 }
 
 export interface ForgeCandidate {
@@ -328,6 +370,7 @@ export async function forgeSearch(
     seed = 0,
     gumbel = false,
     deckNames,
+    batchSize = DEFAULT_BATCH_SIZE,
   } = options;
   const prompt = session.legalChoices();
   if (prompt.kind === "game_over") throw new Error("the game is over");
@@ -342,6 +385,8 @@ export async function forgeSearch(
   let evaluations = 1;
   const count = candidates.length;
   const policyOf = (scores: number[]) => softmax(scores);
+  // A batch is at least one decision, and never a fraction of one.
+  const leavesPerCall = Math.max(1, Math.floor(batchSize));
 
   /**
    * Target policy from the net's raw prior plus Q, no exploration floor
@@ -378,30 +423,61 @@ export async function forgeSearch(
   const illegal = new Array<boolean>(count).fill(false);
   const root = session.save();
 
-  /** One world: deal hidden cards, play candidate `i`, score what follows. */
-  const simulate = async (i: number) => {
+  /** Fold one world into its candidate's visit count and value total. */
+  const record = (i: number, v: number) => {
+    visits[i]++;
+    totals[i] += v;
+  };
+
+  /**
+   * One world: deal hidden cards, play candidate `i`, and return the leaf
+   * decision the value head still has to score. A finished game and a
+   * refused action are both scored here, with no net call. Deals stay
+   * per-simulation and in simulation order, so the seeded stream is the one
+   * the unbatched search used (issue #2728).
+   */
+  const plan = async (i: number): Promise<Leaf | null> => {
     session.restore(root);
     session.determinize(player, random);
-    let v: number;
     try {
       const next = session.step(candidates[i].action);
       if (next.kind === "game_over") {
         const w = next.result.winners;
-        v = w.length === 0 ? 0 : w.includes(player) ? 1 : -1;
-      } else {
-        evaluations++;
-        const out = await model.evaluate(
-          forgeDecision(session, next, deckNames),
-        );
-        v = clamp(next.playerId === player ? out.value : -out.value);
+        record(i, w.length === 0 ? 0 : w.includes(player) ? 1 : -1);
+        return null;
       }
+      evaluations++;
+      return {
+        candidate: i,
+        decision: forgeDecision(session, next, deckNames),
+        sign: next.playerId === player ? 1 : -1,
+      };
     } catch (err) {
       if (!(err instanceof TrainingRulesError)) throw err;
       illegal[i] = true;
-      v = -1;
+      record(i, -1);
+      return null;
     }
-    visits[i]++;
-    totals[i] += v;
+  };
+
+  /** Leaf decisions dealt but not yet scored, oldest first. */
+  const pending: Leaf[] = [];
+
+  /**
+   * Score the batched leaves with one net call and fold the values back, in
+   * the order they were dealt: same floats, same additions, as the
+   * unbatched path, so the search's picks do not move.
+   */
+  const flush = async () => {
+    if (pending.length === 0) return;
+    const outs = await evaluateLeaves(
+      model,
+      pending.map((p) => p.decision),
+    );
+    pending.forEach((p, b) =>
+      record(p.candidate, p.sign * clamp(outs[b].value)),
+    );
+    pending.length = 0;
   };
 
   const priors = candidates.map((c) => Math.max(c.prior, 1e-12));
@@ -461,10 +537,16 @@ export async function forgeSearch(
       );
       for (const i of remaining) {
         for (let j = 0; j < perAction && used < budget; j++) {
-          await simulate(i);
+          const leaf = await plan(i);
           used++;
+          if (leaf) pending.push(leaf);
+          // A phase can deal more leaves than one batch holds — the last
+          // phase walks a single candidate up to the whole budget — so the
+          // batch is capped and the next one starts here.
+          if (pending.length >= leavesPerCall) await flush();
         }
       }
+      await flush();
       if (remaining.length === 1) break;
       const s = score(true);
       remaining = [...remaining]
