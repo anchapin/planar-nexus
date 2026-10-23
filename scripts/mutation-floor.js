@@ -22,6 +22,8 @@
  *      Stryker's own `break` gate covers hard failures, and in the
  *      `test:mutation` chain this script only runs after a successful run)
  *   1  at least one module scored below its floor, or the report is malformed
+ *      or contains no mutated file at all (issue #2835 — a run that
+ *      instrumented 0 files measured nothing and must not pass vacuously)
  */
 "use strict";
 
@@ -68,6 +70,24 @@ function main() {
 
   const config = loadFloorConfig();
   const rows = computeModuleScores(data);
+
+  // Issue #2835: a stale `--mutate` path makes Stryker instrument 0 files.
+  // The report then carries no mutated file at all, the aggregate score is
+  // NaN and every floor comparison would pass vacuously (`NaN >= 44`).
+  // The gate must fail closed instead of reporting success for a run that
+  // measured nothing.
+  if (rows.length === 0) {
+    process.stderr.write(
+      `mutation-floor: ${REPORT_PATH} contains 0 mutated files — failing ` +
+        `closed (issue #2835). Stryker instrumented nothing, so the run ` +
+        `measured nothing (NaN score) and the floor gate must not pass ` +
+        `vacuously. Check the --mutate path of the module that was run ` +
+        `(npm run mutate:<module>).\n`,
+    );
+    process.exitCode = 1;
+    return;
+  }
+
   const { violations, ok } = evaluateFloors(rows, config);
 
   if (ok) {

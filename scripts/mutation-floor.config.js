@@ -59,6 +59,13 @@
  *     break) — TO BE RACKETED to floor(measured − 1) once the first
  *     successful nightly run (#1785) records its score.
  *
+ * Issue #2835: layer-system, replacement-effects, trigger-system and mana
+ * were refactored from single files into directories with an `index.ts`
+ * barrel, so their floor keys are now the family-dir globs that mirror the
+ * Stryker allowlist entries (the same shape spell-casting already used).
+ * The keys must stay in sync with `stryker.config.js`'s `mutate` array —
+ * `tests/mutation-floor.test.ts` asserts the two sets are identical.
+ *
  * Precedence for any module in a Stryker report:
  *   1. explicit per-module entry in `floors` (this file)
  *   2. MUTATION_FLOOR env var (blunt override for unlisted modules; useful for
@@ -72,8 +79,8 @@ module.exports = {
   defaultFloor: 55,
 
   floors: {
-    "src/lib/game-state/layer-system.ts": 55,
-    "src/lib/game-state/replacement-effects.ts": 76,
+    "src/lib/game-state/layer-system/*.ts": 55,
+    "src/lib/game-state/replacement-effects/*.ts": 76,
     // Conservative pending-measurement floors — ratchet upward after the
     // first successful nightly run (issue #1785 split). See header.
     // Issue #1725: spell-casting.ts was decomposed into per-family files;
@@ -85,7 +92,7 @@ module.exports = {
     // renown/tribute ETB triggers (#1528) and the CR 702.168 corpse death
     // trigger (#1524). Re-baselined to floor(measured − 1) = 44; ratchet
     // back up once the pending test backfill lands.
-    "src/lib/game-state/trigger-system.ts": 44,
+    "src/lib/game-state/trigger-system/*.ts": 44,
     "src/lib/game-state/state-based-actions.ts": 50,
     // Issue #1989/#2055: combat.ts excluded from Stryker mutate allowlist
     // (40+ min runtime makes it nightly-only; suite is pin/neutered so
@@ -94,7 +101,7 @@ module.exports = {
     // Issue #1717: 7th Stryker module. Conservative pending-measurement
     // floor — ratchet to floor(measured − 1) once the first successful
     // nightly run (#1785) records its score.
-    "src/lib/game-state/mana.ts": 50,
+    "src/lib/game-state/mana/*.ts": 50,
     // Issue #2186: 8th and 9th Stryker modules. Conservative pending-
     // measurement floors for keyword-actions/*.ts (MTG keyword abilities and
     // actions) and abilities.ts (ability word parsing in oracle-text-parser).

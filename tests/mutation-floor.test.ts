@@ -273,11 +273,13 @@ describe("floor config sanity", () => {
     // If this test fails, either the measurement moved (re-measure, then
     // update BOTH the config comment and the floor) or the floor was hand-
     // raised above measured − 1pt — which breaks the nightly immediately.
-    expect(floorConfigSource.floors["src/lib/game-state/layer-system.ts"]).toBe(
-      Math.floor(56.65 - 1),
-    ); // 55
+    // Issue #2835: layer-system and replacement-effects were refactored
+    // into directories, so their floor keys are the family-dir globs.
     expect(
-      floorConfigSource.floors["src/lib/game-state/replacement-effects.ts"],
+      floorConfigSource.floors["src/lib/game-state/layer-system/*.ts"],
+    ).toBe(Math.floor(56.65 - 1)); // 55
+    expect(
+      floorConfigSource.floors["src/lib/game-state/replacement-effects/*.ts"],
     ).toBe(Math.floor(77.78 - 1)); // 76
   });
 
@@ -287,14 +289,16 @@ describe("floor config sanity", () => {
     // cost arithmetic). A deleted or renamed suite would silently drop the
     // module back to its untargeted kill rate.
     const suiteFor: Record<string, string> = {
-      "src/lib/game-state/layer-system.ts": "layer-system.mutation.test.ts",
-      "src/lib/game-state/replacement-effects.ts":
+      // Issue #2835: the modules refactored into directories are keyed by
+      // their family-dir glob (same shape as the Stryker allowlist entry).
+      "src/lib/game-state/layer-system/*.ts": "layer-system.mutation.test.ts",
+      "src/lib/game-state/replacement-effects/*.ts":
         "replacement-effects.mutation.test.ts",
       "src/lib/game-state/spell-casting/*.ts": "spell-casting.mutation.test.ts",
-      "src/lib/game-state/trigger-system.ts": "trigger-system.mutation.test.ts",
+      "src/lib/game-state/trigger-system/*.ts": "trigger-system.mutation.test.ts",
       "src/lib/game-state/state-based-actions.ts":
         "state-based-actions.mutation.test.ts",
-      "src/lib/game-state/mana.ts": "mana.mutation.test.ts",
+      "src/lib/game-state/mana/*.ts": "mana.mutation.test.ts",
       "src/lib/game-state/keyword-actions/*.ts":
         "keyword-actions.mutation.test.ts",
       "src/lib/game-state/oracle-text-parser/abilities.ts":
@@ -405,18 +409,24 @@ describe("mutation-floor.js CLI", () => {
     );
   }
 
-  /** All floors pass: 4 modules at 80% + layer-system at 56% (floor 55). */
+  /**
+   * All floors pass: 4 modules at 80% + layer-system at 56% (floor 55).
+   *
+   * Issue #2835: the report paths mirror the CURRENT module layout — the
+   * refactored modules live in directories, so their report paths are the
+   * family files matched by the family-dir glob floor keys.
+   */
   function passingFiles(): Record<string, Array<{ status: MutantStatus }>> {
     return {
-      "src/lib/game-state/layer-system.ts": mutants(56, 100), // 56% >= 55
-      "src/lib/game-state/replacement-effects.ts": mutants(80, 100), // 80% >= 76
+      "src/lib/game-state/layer-system/index.ts": mutants(56, 100), // 56% >= 55
+      "src/lib/game-state/replacement-effects/manager.ts": mutants(80, 100), // 80% >= 76
       // Issue #1725: spell-casting monolith became per-family files; the
       // floor key is the family-dir glob mirroring the Stryker allowlist.
       "src/lib/game-state/spell-casting/cast.ts": mutants(80, 100), // 80% >= 50 (glob)
       "src/lib/game-state/spell-casting/resolve.ts": mutants(80, 100), // 80% >= 50 (glob)
-      "src/lib/game-state/trigger-system.ts": mutants(80, 100), // 80% >= 50
+      "src/lib/game-state/trigger-system/trigger-targets.ts": mutants(80, 100), // 80% >= 44
       "src/lib/game-state/state-based-actions.ts": mutants(80, 100), // 80% >= 50
-      "src/lib/game-state/mana.ts": mutants(80, 100), // 80% >= 50 (issue #1717)
+      "src/lib/game-state/mana/lands.ts": mutants(80, 100), // 80% >= 50 (issue #1717)
     };
   }
 
@@ -456,12 +466,17 @@ describe("mutation-floor.js CLI", () => {
     // Aggregate = 71% — Stryker's `break: 50` would PASS; the per-module
     // floor is the only gate that catches this (issue #1598 acceptance).
     const files = passingFiles();
-    files["src/lib/game-state/trigger-system.ts"] = mutants(35, 100);
+    files["src/lib/game-state/trigger-system/trigger-targets.ts"] = mutants(
+      35,
+      100,
+    );
     writeReport(files);
 
     const res = runCli();
     expect(res.status).toBe(1);
-    expect(res.stderr).toContain("src/lib/game-state/trigger-system.ts");
+    expect(res.stderr).toContain(
+      "src/lib/game-state/trigger-system/trigger-targets.ts",
+    );
     expect(res.stderr).toContain("35.0%");
     expect(res.stderr).toContain("BELOW FLOOR");
     // The passing modules must NOT be reported as offenders.
@@ -504,6 +519,21 @@ describe("mutation-floor.js CLI", () => {
     expect(res.stderr).toContain("mutation.json");
     expect(res.stderr).toContain("empty");
     expect(res.stderr).toContain("#2295");
+  });
+
+  it("exits 1 when the report contains 0 mutated files (issue #2835 — fail closed)", () => {
+    // A stale `--mutate` path makes Stryker instrument nothing: the report
+    // carries no mutated file, the score is NaN and the floor gate must not
+    // pass vacuously (`NaN >= 44`).
+    mkdirSync(path.join(workDir, "reports", "mutation"), { recursive: true });
+    writeFileSync(
+      path.join(workDir, "reports", "mutation", "mutation.json"),
+      JSON.stringify({ schemaVersion: "1.0", files: {} }),
+    );
+    const res = runCli();
+    expect(res.status).toBe(1);
+    expect(res.stderr).toContain("0 mutated files");
+    expect(res.stderr).toContain("#2835");
   });
 
   it("exits 1 on a malformed report instead of silently passing", () => {
@@ -554,16 +584,21 @@ describe("mutation-summary.js below-floor annotation", () => {
 
   it("annotates only the below-floor rows, distinct from the emoji buckets", () => {
     const markdown = runSummary({
-      "src/lib/game-state/trigger-system.ts": mutants(35, 100), // floor 50 → below
-      "src/lib/game-state/replacement-effects.ts": mutants(80, 100), // floor 76 → above
+      // Issue #2835: report paths follow the current (directory) layout.
+      "src/lib/game-state/trigger-system/trigger-targets.ts": mutants(35, 100), // floor 44 → below
+      "src/lib/game-state/replacement-effects/manager.ts": mutants(80, 100), // floor 76 → above
     });
 
     const triggerRow = markdown
       .split("\n")
-      .find((l) => l.includes("src/lib/game-state/trigger-system.ts"));
+      .find((l) =>
+        l.includes("src/lib/game-state/trigger-system/trigger-targets.ts"),
+      );
     const replacementRow = markdown
       .split("\n")
-      .find((l) => l.includes("src/lib/game-state/replacement-effects.ts"));
+      .find((l) =>
+        l.includes("src/lib/game-state/replacement-effects/manager.ts"),
+      );
 
     expect(triggerRow).toContain("⚠️ BELOW FLOOR");
     expect(replacementRow).not.toContain("⚠️ BELOW FLOOR");

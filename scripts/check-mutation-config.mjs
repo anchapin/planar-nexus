@@ -56,6 +56,12 @@
  *      the same regression as removing the per-module floor (#1785).
  *   7. .github/workflows/ci.yml does NOT invoke Stryker anywhere — the
  *      ~3h long pole cannot creep back onto the per-PR path unnoticed.
+ *   8. Every `--mutate` path (in the package.json `mutate:*` scripts and
+ *      in the stryker.config.js allowlist) resolves to at least one real
+ *      file — issue #2835: six of the eight `mutate:*` scripts pointed at
+ *      files that had been refactored into directories, so Stryker
+ *      instrumented 0 files, scored NaN and the floor gate passed
+ *      vacuously (`NaN >= 44`) while the nightly measured nothing.
  *
  * Exit codes:
  *   0 — all markers present, nightly gate wiring intact
@@ -68,9 +74,9 @@
  * Wired into .github/workflows/ci.yml as the `mutation-smoke` job, which
  * the `build` job depends on — removing a marker blocks merge.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -98,13 +104,13 @@ function stripYamlComments(text) {
 
 // ── 1 + 2. stryker.config.js: allowlist + pinned concurrency ───────────────
 const EXPECTED_MUTATE_ENTRIES = [
-  "src/lib/game-state/layer-system.ts",
-  "src/lib/game-state/replacement-effects.ts",
+  "src/lib/game-state/layer-system/*.ts",
+  "src/lib/game-state/replacement-effects/*.ts",
   "src/lib/game-state/spell-casting/*.ts",
-  "src/lib/game-state/trigger-system.ts",
+  "src/lib/game-state/trigger-system/*.ts",
   "src/lib/game-state/state-based-actions.ts",
-  // combat.ts excluded: issue #1989 + #2055 (40+ min Stryker runtime)
-  "src/lib/game-state/mana.ts",
+  // combat excluded: issue #1989 + #2055 (40+ min Stryker runtime)
+  "src/lib/game-state/mana/*.ts",
 ];
 
 const strykerConfig = require(join(REPO_ROOT, "stryker.config.js"));
@@ -275,13 +281,155 @@ for (const pattern of STRYKER_INVOCATIONS) {
   }
 }
 
+// ── 7. every `--mutate` path must resolve to at least one real file ────────
+//
+// Issue #2835: six of the eight `mutate:*` scripts pointed `--mutate` at
+// files that had been refactored into directories with an `index.ts` barrel.
+// Stryker then instrumented 0 files, reported a NaN score and the floor
+// gate passed vacuously (`NaN >= 44`) — the nightly measured nothing while
+// still looking green. A stale path must fail CI instead of silently
+// scoring NaN.
+const MUTATE_FLAG_RE = /--mutate\s+(?:"([^"]+)"|'([^']+)'|(\S+))/g;
+
+/** Extract every `--mutate <path>` pattern from a script body. */
+function mutatePatterns(scriptBody) {
+  const patterns = [];
+  for (const match of scriptBody.matchAll(MUTATE_FLAG_RE)) {
+    patterns.push(match[1] ?? match[2] ?? match[3]);
+  }
+  return patterns;
+}
+
+/**
+ * Convert a repo-path glob into an anchored RegExp. Only the `*` / `**`
+ * subset Stryker's mutate patterns use is supported (same shape as
+ * scripts/mutation-floor-lib.js `globToRegExp`).
+ */
+function globToRegExp(glob) {
+  const escaped = glob
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/\\\*/g, "*"); // stars are glob syntax, not literals
+  const source = escaped
+    .replace(/\*\*\//g, "(?:.*/)?")
+    .replace(/\*/g, "[^/]*");
+  return new RegExp(`^${source}$`);
+}
+
+/** Recursively list the files below `dir` (missing dir → empty list). */
+function listFilesRecursively(dir) {
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const files = [];
+  for (const entry of entries) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) files.push(...listFilesRecursively(full));
+    else if (entry.isFile()) files.push(full);
+  }
+  return files;
+}
+
+/**
+ * Resolve one `--mutate` pattern to the repo-relative files it selects.
+ * Returns an empty array when the path selects nothing (stale file,
+ * renamed module, typo) — the failure mode issue #2835 is about.
+ */
+function resolveMutatePattern(pattern) {
+  const segments = pattern.split("/");
+  const baseSegments = [];
+  for (const segment of segments) {
+    if (segment.includes("*")) break;
+    baseSegments.push(segment);
+  }
+  const base = join(REPO_ROOT, ...baseSegments);
+  let candidates;
+  try {
+    const stats = statSync(base);
+    candidates = stats.isDirectory() ? listFilesRecursively(base) : [base];
+  } catch {
+    candidates = [];
+  }
+  const matcher = globToRegExp(pattern);
+  return candidates
+    .map((file) => relative(REPO_ROOT, file).split(sep).join("/"))
+    .filter((file) => matcher.test(file))
+    .sort();
+}
+
+// 7a. every `mutate:*` script must select at least one real file.
+const mutateScriptNames = Object.keys(scripts).filter((name) =>
+  name.startsWith("mutate:"),
+);
+const resolvedScriptFiles = new Map();
+for (const name of mutateScriptNames) {
+  const body = scripts[name];
+  const patterns = mutatePatterns(body);
+  if (patterns.length === 0) {
+    failures.push(
+      `package.json: script "${name}" has no --mutate <path> — the nightly ` +
+        `per-module job runs this script, so it must state which files ` +
+        `Stryker should instrument.`,
+    );
+    continue;
+  }
+  const files = new Set();
+  for (const pattern of patterns) {
+    const resolved = resolveMutatePattern(pattern);
+    if (resolved.length === 0) {
+      failures.push(
+        `package.json: script "${name}" points --mutate at "${pattern}", ` +
+          `which resolves to 0 files — Stryker would instrument nothing, ` +
+          `report a NaN score and pass the floor gate vacuously ` +
+          `(\`NaN >= 44\`, issue #2835). Point it at the real module ` +
+          `files (e.g. "src/lib/game-state/<module>/*.ts").`,
+      );
+      continue;
+    }
+    for (const file of resolved) files.add(file);
+  }
+  resolvedScriptFiles.set(name, files);
+}
+
+// 7b. every allowlist entry must select at least one real file, and the
+//     per-module script must cover exactly the same files as the
+//     allowlist entry (the nightly matrix runs the script, the full
+//     allowlist run uses the config — they must not drift apart).
+for (const entry of mutateEntries) {
+  const resolved = resolveMutatePattern(entry);
+  if (resolved.length === 0) {
+    failures.push(
+      `stryker.config.js: mutate allowlist entry "${entry}" resolves to 0 ` +
+        `files — the full-allowlist run would instrument nothing and score ` +
+        `NaN (issue #2835). Point it at the real module files.`,
+    );
+    continue;
+  }
+  const scriptName = `mutate:${shortModuleName(entry)}`;
+  const scriptFiles = resolvedScriptFiles.get(scriptName);
+  if (!scriptFiles) continue; // missing script is reported by check 4
+  const missing = resolved.filter((file) => !scriptFiles.has(file));
+  if (missing.length > 0) {
+    failures.push(
+      `package.json: script "${scriptName}" does not cover ` +
+        `${missing.join(", ")} — the Stryker allowlist entry "${entry}" ` +
+        `does. The nightly per-module job and the full-allowlist run must ` +
+        `mutate the same files (issue #2835).`,
+    );
+  }
+}
+
 // ── verdict ────────────────────────────────────────────────────────────────
 if (failures.length === 0) {
   const floorCount = Object.keys(floors).length;
   console.log(
     `mutation-config: OK — ${mutateEntries.length} allowlisted modules, ` +
       `${floorCount} per-module floors, nightly per-module matrix wired ` +
-      `(issue #1785), no Stryker on the per-PR path (issue #1762).`,
+      `(issue #1785), no Stryker on the per-PR path (issue #1762), all ` +
+      `${mutateScriptNames.length} mutate:* paths resolve to real files ` +
+      `(issue #2835).`,
   );
   process.exit(0);
 }
