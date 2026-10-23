@@ -110,7 +110,31 @@ jobs:
     # The first green nightly run will record measured runtimes per
     # module and a follow-up PR can tighten this back toward 90 min
     # for the lighter entries if it becomes a budget concern.
-    timeout-minutes: 180
+    #
+    # Raised 180 -> 360 on 2026-10-23 (issue #1785 acceptance criterion
+    # "make the nightly run complete within its budget"). Measured on run
+    # 39990082229, which had ignoreStatic enabled and still timed every
+    # leg out at 180 min. Per-mutant cost is dominated by the mutants
+    # that hang a covering test (55-92% of mutants in the timeout-heavy
+    # modules), so the throughput is roughly:
+    #
+    #   state-based-actions  321 runnable mutants x 23.8 s = 2.1 h
+    #   combat               454 runnable mutants x 15.0 s = 1.9 h
+    #   replacement-effects  724 runnable mutants x 14.9 s = 3.0 h
+    #   mana                 773 runnable mutants x 16.8 s = 3.6 h
+    #   layer-system         752 runnable mutants x 20.8 s = 4.3 h
+    #   trigger-system     1,450 runnable mutants x 13.7 s = 5.5 h
+    #   oracle-abilities     935 runnable mutants x 22.4 s = 5.8 h
+    #   spell-casting      2,516 runnable mutants x 11.0 s = 7.7 h  <- still over
+    #   keyword-actions    7,966 runnable mutants x  6.3 s = 13.9 h  <- still over
+    #
+    # 360 min is the ceiling GitHub-hosted runners allow. The last two
+    # modules still need to be split into per-file legs (spell-casting in
+    # two, keyword-actions in four) — see the handoff at
+    # .planning/handoffs/planar-nexus-mutation-gate-static-mutants-2026-10-23.md
+    # for the exact partitioning and the per-leg uncovered-mutant budgets
+    # that go with it.
+    timeout-minutes: 360
     strategy:
       # `fail-fast: false` (issue #1785 acceptance criterion 1): one slow
       # or hung module must not abort the others. With fail-fast enabled,
