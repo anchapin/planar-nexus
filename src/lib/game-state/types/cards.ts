@@ -72,6 +72,18 @@ export interface CardInstance {
   isPhasedOut: boolean;
   /** Whether the permanent has deployment restriction (internally tracked as "summoning sickness") */
   hasSummoningSickness: boolean;
+  /**
+   * Whether this permanent entered the battlefield by resolving a spell that
+   * was cast (CR 603.6d / CR 607). This is the cast-origin flag used by
+   * "if you cast it" ETB conditions (for example, Null Summoner).
+   *
+   * The flag describes the current battlefield object: it is set when a
+   * permanent spell resolves onto the battlefield and cleared whenever the
+   * card changes zones. Consequently, a card that was cast once but later
+   * put onto the battlefield from another zone is not considered to have
+   * entered by cast.
+   */
+  wasCast?: boolean;
 
   // Counters and modifications
   /** Markers on this card (p1p1, +1/+1, charge, etc.) */
