@@ -971,7 +971,7 @@ describe("Evergreen Keywords", () => {
       expect(hasDeathtouch(card)).toBe(true);
     });
 
-    it("should detect deathtouch in oracle text", () => {
+    it("should NOT detect deathtouch from a mere mention in oracle text (#2641)", () => {
       const card = createMockCard({
         cardData: {
           id: "dt2-id",
@@ -985,7 +985,10 @@ describe("Evergreen Keywords", () => {
           cmc: 1,
         } as any,
       });
-      expect(hasDeathtouch(card)).toBe(true);
+      // #2641: the sentence above merely MENTIONS deathtouch; it is not
+      // this card's own keyword line, so the anchored resolver must not
+      // grant it (the old unanchored substring scan did — that was the bug).
+      expect(hasDeathtouch(card)).toBe(false);
     });
   });
 

@@ -140,8 +140,13 @@ describe("combat hasHasteStrict (CR 702.10) — wiring pin", () => {
     const creatureId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
     const instance = state.cards.get(creatureId)!;
     expect(hasHasteStrict(instance)).toBe(false);
-    // The canonical helper still returns true via the substring fallback.
-    expect(hasHaste(instance)).toBe(true);
+    // #2641 removed the canonical helper's unanchored substring fallback:
+    // a grant aimed at OTHER creatures is not this card's own haste, so
+    // the canonical helper now agrees with the strict check. (The #2334
+    // back-compat pin that expected `true` here is superseded by #2641;
+    // cards with missing keyword tags are covered by the anchored
+    // keyword-line / self-statement parse instead.)
+    expect(hasHaste(instance)).toBe(false);
   });
 });
 
@@ -199,24 +204,25 @@ describe("canAttack — haste waives summoning sickness (CR 702.10b / 302.6)", (
     ]);
     const creatureId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
     const instance = state.cards.get(creatureId)!;
-    // Detection contract: strict check says no; canonical says yes (fallback).
+    // Detection contract (#2641): strict and canonical now agree — a
+    // mention/grant-to-others is not this card's own haste.
     expect(hasHasteStrict(instance)).toBe(false);
-    expect(hasHaste(instance)).toBe(true);
-    // Wiring contract: the combat gate uses the canonical helper, so this
-    // card retains its substring-fallback back-compat and can attack —
-    // pinning that the rewiring preserved existing behavior for cards
-    // with missing keyword tags while removing the bare-`includes` probe.
+    expect(hasHaste(instance)).toBe(false);
+    // Wiring contract (#2641): the combat gate uses the canonical helper,
+    // so with the substring fallback gone this card can no longer attack
+    // through summoning sickness. (The #2334 back-compat pin that
+    // expected `true` here is superseded by #2641.)
     const result = canAttack(state, creatureId, bobId);
-    expect(result.canAttack).toBe(true);
+    expect(result.canAttack).toBe(false);
+    expect(result.reason).toBe("Summoning sickness (haste not granted)");
   });
 
   it("a flavor-text-only haste mention with no keyword tag and no fallback match cannot attack", () => {
-    // Guard the case where the substring is NOT a grant phrase either:
-    // "Haste" as a plain flavor noun with no "has haste" phrasing still
-    // hits the `hasKeyword` substring fallback, so this pins that the
-    // canonical helper is what's being consulted (not a stale inline
-    // `keywords.includes` probe) by asserting the summoning-sickness gate
-    // remains the deciding factor.
+    // Guard the case where the keyword word is NOT a grant phrase either:
+    // this card's oracle text does not mention haste at all, so this pins
+    // that the canonical helper is what's being consulted (not a stale
+    // inline `keywords.includes` probe) by asserting the
+    // summoning-sickness gate remains the deciding factor.
     const { state, aliceId, bobId } = setupGameWithCreatures([
       {
         name: "No Haste",

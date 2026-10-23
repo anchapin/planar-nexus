@@ -4,6 +4,7 @@
 
 import type { CardInstanceId, CardInstance, PlayerId } from "./types";
 import type { ScryfallCard } from "./types";
+import { hasOwnKeyword } from "./keyword-actions/own-keywords";
 
 /**
  * Generate a unique card instance ID
@@ -505,9 +506,10 @@ export function canAttack(card: CardInstance): boolean {
     return false;
   }
   if (card.hasSummoningSickness) {
-    // Check for haste
-    const oracleText = card.cardData.oracle_text?.toLowerCase() || "";
-    if (!oracleText.includes("haste")) {
+    // Check for haste (#2641: was an unanchored `oracleText.includes("haste")`,
+    // so a card that merely MENTIONED haste in its rules text could attack.
+    // The shared anchored resolver only accepts the card's OWN haste.)
+    if (!hasOwnKeyword(card, "haste")) {
       return false;
     }
   }

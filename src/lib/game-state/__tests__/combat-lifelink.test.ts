@@ -8,14 +8,14 @@
  *     attackers (CR 702.15, gain-life-on-damage-dealt to player) and
  *     blockers (CR 702.15, gain-life-on-damage-dealt to controller when
  *     blocker survives or trades), using the canonical `hasLifelink`
- *     which now defers to `hasLifelinkStrict` first, then `hasKeyword`
- *     substring fallback;
+ *     which now defers to `hasLifelinkStrict` first, then the anchored
+ *     own-keyword resolver from #2641;
  *   - the strict `hasLifelinkStrict` path correctly drives the wiring:
  *     a card whose `keywords` array is empty but whose `oracle_text`
  *     mentions "lifelink" does NOT acquire lifelink via the strict
  *     path (regression pin for the substring-oracle-text fallback
- *     anti-pattern). The canonical `hasLifelink` still returns true
- *     via the substring fallback in that case (back-compat);
+ *     anti-pattern). Since #2641 the canonical `hasLifelink` also returns
+ *     false in that case (the substring fallback is gone);
  *   - lifelink + deathtouch interaction: a 1/1 lifelink deathtoucher
  *     still gains exactly its dealt damage in life even though the
  *     blocker dies;
@@ -196,8 +196,13 @@ describe("combat hasLifelinkStrict (CR 702.15) — wiring pin", () => {
     ]);
     const creatureId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
     expect(hasLifelinkStrict(state.cards.get(creatureId)!)).toBe(false);
-    // The canonical helper still returns true via the substring fallback.
-    expect(hasLifelink(state.cards.get(creatureId)!)).toBe(true);
+    // #2641 removed the canonical helper's unanchored substring fallback:
+    // a grant aimed at OTHER creatures is not this card's own lifelink,
+    // so the canonical helper now agrees with the strict check. (The
+    // earlier back-compat pin that expected `true` here is superseded by
+    // #2641; missing keyword tags are covered by the anchored
+    // keyword-line / self-statement parse instead.)
+    expect(hasLifelink(state.cards.get(creatureId)!)).toBe(false);
   });
 });
 

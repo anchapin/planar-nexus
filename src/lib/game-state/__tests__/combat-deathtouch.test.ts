@@ -9,8 +9,8 @@
  *     regardless of the attacker's power (the contract pinned by #2326);
  *   - `combat/resolution.ts` attributes deathtouch damage-assignment to
  *     attacker-side and blocker-side deathtouch sources through the
- *     canonical `hasDeathtouch` (which now defers to `hasDeathtouchStrict`
- *     first, then `hasKeyword` substring fallback);
+ *     canonical `hasDeathtouch` (which defers to `hasDeathtouchStrict`
+ *     first, then the anchored own-keyword resolver from #2641);
  *   - `isLethalDamage` (the >0 collapse gate in
  *     `keyword-actions/damage-tap.ts`) returns true for >=1 damage from
  *     a deathtouch source and false otherwise;
@@ -18,8 +18,8 @@
  *     a card whose `keywords` array is empty but whose `oracle_text`
  *     mentions "deathtouch" does NOT acquire deathtouch via the strict
  *     path (regression pin for the substring-oracle-text fallback
- *     anti-pattern). The canonical `hasDeathtouch` still returns true
- *     via the substring fallback in that case (back-compat).
+ *     anti-pattern). Since #2641 the canonical `hasDeathtouch` also returns
+ *     false in that case (the substring fallback is gone).
  *
  * Mirrors the deathtouch-trample interaction math that was pinned in
  * `combat-trample.test.ts` from #2326 — Plan E only changes the
@@ -184,8 +184,13 @@ describe("combat hasDeathtouchStrict (CR 702.2) — wiring pin", () => {
     ]);
     const creatureId = state.zones.get(`${aliceId}-battlefield`)!.cardIds[0];
     expect(hasDeathtouchStrict(state.cards.get(creatureId)!)).toBe(false);
-    // The canonical helper still returns true via the substring fallback.
-    expect(hasDeathtouch(state.cards.get(creatureId)!)).toBe(true);
+    // #2641 removed the canonical helper's unanchored substring fallback:
+    // a grant aimed at OTHER creatures is not this card's own deathtouch,
+    // so the canonical helper now agrees with the strict check. (The
+    // #2326 back-compat pin that expected `true` here is superseded by
+    // #2641; missing keyword tags are covered by the anchored
+    // keyword-line / self-statement parse instead.)
+    expect(hasDeathtouch(state.cards.get(creatureId)!)).toBe(false);
   });
 });
 
