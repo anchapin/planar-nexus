@@ -48,25 +48,33 @@ const COUNTED_STATUSES = new Set([
 
 const REPORT_PATH = join(REPO_ROOT, "reports/mutation/mutation.json");
 const FLOOR_CONFIG = require(join(REPO_ROOT, "scripts", "mutation-floor.config.js"));
+const { floorFor } = require(join(REPO_ROOT, "scripts", "mutation-floor-lib.js"));
 
 /**
  * Map a module name (e.g. "layer-system", "combat") to its floor from
  * mutation-floor.config.js. Returns defaultFloor if no module-specific entry.
+ *
+ * Issue #2835: the modules that were refactored into directories are keyed
+ * by their family-dir glob in `scripts/mutation-floor.config.js`, so the
+ * lookup goes through the shared glob-aware `floorFor` helper using a
+ * representative file of each module.
  */
 function moduleFloor(moduleName) {
   if (!moduleName) return FLOOR_CONFIG.defaultFloor ?? 55;
-  const floorMap = {
-    "layer-system": "src/lib/game-state/layer-system.ts",
-    combat: "src/lib/game-state/combat.ts",
-    mana: "src/lib/game-state/mana.ts",
-    "trigger-system": "src/lib/game-state/trigger-system.ts",
-    "replacement-effects": "src/lib/game-state/replacement-effects.ts",
-    "spell-casting": "src/lib/game-state/spell-casting",
+  const representativeFile = {
+    "layer-system": "src/lib/game-state/layer-system/index.ts",
+    combat: "src/lib/game-state/combat/index.ts",
+    mana: "src/lib/game-state/mana/index.ts",
+    "trigger-system": "src/lib/game-state/trigger-system/index.ts",
+    "replacement-effects": "src/lib/game-state/replacement-effects/index.ts",
+    "spell-casting": "src/lib/game-state/spell-casting/cast.ts",
     "state-based-actions": "src/lib/game-state/state-based-actions.ts",
-  };
-  const key = floorMap[moduleName];
-  if (key) return FLOOR_CONFIG.floors?.[key] ?? FLOOR_CONFIG.defaultFloor ?? 55;
-  return FLOOR_CONFIG.defaultFloor ?? 55;
+  }[moduleName];
+  if (!representativeFile) return FLOOR_CONFIG.defaultFloor ?? 55;
+  return floorFor(representativeFile, {
+    defaultFloor: FLOOR_CONFIG.defaultFloor ?? 55,
+    floors: FLOOR_CONFIG.floors ?? {},
+  });
 }
 
 const MODULE_NAME = process.env.MODULE_NAME;

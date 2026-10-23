@@ -88,16 +88,23 @@ module.exports = {
   // pools / CR 305 lands) — the mana-batch arithmetic boundary. Its targeted
   // `mana.mutation.test.ts` suite pins canAffordMana/spendMana generic
   // cascades, land-play timing, and mana-ability parsing/conditions.
+  // Issue #2835: layer-system, replacement-effects, trigger-system and mana
+  // were refactored from single files into directories with an `index.ts`
+  // barrel. A `--mutate <stale-file>.ts` path makes Stryker instrument 0
+  // files, so the run reports a NaN score and the floor gate passes
+  // vacuously (`NaN >= 44`). Every allowlist entry below is therefore a
+  // path that still resolves to at least one real file — the per-PR guard
+  // `scripts/check-mutation-config.mjs` asserts exactly that.
   mutate: [
-    "src/lib/game-state/layer-system.ts",
-    "src/lib/game-state/replacement-effects.ts",
+    "src/lib/game-state/layer-system/*.ts",
+    "src/lib/game-state/replacement-effects/*.ts",
     "src/lib/game-state/spell-casting/*.ts",
-    "src/lib/game-state/trigger-system.ts",
+    "src/lib/game-state/trigger-system/*.ts",
     "src/lib/game-state/state-based-actions.ts",
-    // combat.ts excluded: issue #1989 + #2055 — 40+ min Stryker runtime;
+    // combat excluded: issue #1989 + #2055 — 40+ min Stryker runtime;
     // suite is pin/neutered so mutation score is meaningless; removed from
     // strykerConfig.mutate and matched in mutation-floor.test.ts suiteFor.
-    "src/lib/game-state/mana.ts",
+    "src/lib/game-state/mana/*.ts",
     // Issue #2186: keyword-actions/ and abilities/ added to Stryker mutation
     // coverage. keyword-actions/ handles MTG keyword abilities and actions
     // (destroy, exile, sacrifice, etc.). abilities/ handles ability word

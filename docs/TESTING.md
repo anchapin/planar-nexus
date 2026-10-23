@@ -730,19 +730,28 @@ The `mutate` array in `stryker.config.js` is the allowlist. New modules are
 added one at a time once their tests harden the mutation score above the
 threshold:
 
-| Module                                      | Status              |
-| ------------------------------------------- | ------------------- |
-| `src/lib/game-state/layer-system.ts`        | 🟡 active — nightly |
-| `src/lib/game-state/replacement-effects.ts` | 🟡 active — nightly |
-| `src/lib/game-state/spell-casting/*.ts`     | 🟡 active — nightly |
-| `src/lib/game-state/trigger-system.ts`      | 🟡 active — nightly |
-| `src/lib/game-state/state-based-actions.ts` | 🟡 active — nightly |
-| `src/lib/game-state/combat.ts`              | 🟡 active — nightly |
-| `src/lib/game-state/mana.ts`                | 🟡 active — nightly |
+| Module                                        | Status              |
+| --------------------------------------------- | ------------------- |
+| `src/lib/game-state/layer-system/*.ts`        | 🟡 active — nightly |
+| `src/lib/game-state/replacement-effects/*.ts` | 🟡 active — nightly |
+| `src/lib/game-state/spell-casting/*.ts`       | 🟡 active — nightly |
+| `src/lib/game-state/trigger-system/*.ts`      | 🟡 active — nightly |
+| `src/lib/game-state/state-based-actions.ts`   | 🟡 active — nightly |
+| `src/lib/game-state/combat/*.ts`              | 🟡 active — nightly |
+| `src/lib/game-state/mana/*.ts`                | 🟡 active — nightly |
 
 (The `spell-casting` entry is a family-dir glob since issue #1725 decomposed
 the module into `cast` / `resolve` / `targeting` / `choices` /
 `board-sweepers`; per-family floors live in `scripts/mutation-floor.config.js`.)
+
+Issue #2835 fixed the same class of breakage for `layer-system`,
+`replacement-effects`, `trigger-system` and `mana`: each was refactored from
+a single file into a directory with an `index.ts` barrel, so the old
+`--mutate <module>.ts` paths made Stryker instrument **0** files, report a
+`NaN` score and pass the floor gate vacuously (`NaN >= 44`). Those modules
+are now mutated through their family-dir globs, and the per-PR guard
+`scripts/check-mutation-config.mjs` fails the build when any `--mutate`
+path (in the `mutate:*` scripts or in the allowlist) resolves to zero files.
 
 Every allowlisted module has a targeted `*.mutation.test.ts` suite in
 `src/lib/game-state/__tests__/` pinning the mutant classes Stryker reports as
@@ -835,10 +844,10 @@ Stryker/runner variance entirely.
 
 #### Baseline measurements
 
-- `replacement-effects.ts`: **77.78%** — 293 killed, 85 survived, 50 timed out,
-  13 no-coverage of 441 mutants. Per-module floor: **76**
+- `replacement-effects/*.ts`: **77.78%** — 293 killed, 85 survived, 50 timed
+  out, 13 no-coverage of 441 mutants. Per-module floor: **76**
   (`scripts/mutation-floor.config.js`).
-- `layer-system.ts`: **56.65%** (PR #1297, CI run 28489517797). Issue #1711
+- `layer-system/*.ts`: **56.65%** (PR #1297, CI run 28489517797). Issue #1711
   added the targeted `layer-system.mutation.test.ts` (layer-ordering
   boundaries, timestamp dependence, sublayer pipeline math); the next nightly
   run re-measures the baseline and the floor is ratcheted to
