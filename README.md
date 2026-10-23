@@ -297,7 +297,7 @@ toward the 70% target as coverage improves.
 | Lines      | 70%    | 68%               |
 | Functions  | 70%    | 60%               |
 | Statements | 70%    | 67%               |
-| Branches   | 60%    | 59%               |
+| Branches   | 60%    | 60%               |
 
 <!-- coverage-floor:end -->
 
