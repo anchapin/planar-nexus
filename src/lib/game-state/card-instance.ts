@@ -386,6 +386,14 @@ export function getPower(card: CardInstance): number {
     return 0;
   }
 
+  // Turn-only creature form (Kaito, issue #2300 / #2484): the printed face
+  // is a planeswalker with no power/toughness, so the form supplies the base
+  // value — mirroring getPowerValue in evergreen-keywords.ts. Without this,
+  // a dual creature/planeswalker reads as 0 power.
+  if (card.turnCreatureForm) {
+    return card.turnCreatureForm.power + card.powerModifier;
+  }
+
   // For double-faced cards, get the power from the current face
   const currentFace = getCurrentFaceData(card);
   let basePower = 0;
@@ -440,6 +448,15 @@ function getCurrentFaceData(card: CardInstance): ScryfallCard {
 export function getToughness(card: CardInstance): number {
   if (!isCreature(card)) {
     return 0;
+  }
+
+  // Turn-only creature form (Kaito, issue #2300 / #2484): the printed face
+  // is a planeswalker with no power/toughness, so the form supplies the base
+  // value — mirroring getToughnessValue in evergreen-keywords.ts. Without
+  // this, hasLethalDamage saw toughness 0 and the SBA destroyed a dual
+  // creature/planeswalker on ANY marked damage (CR 120.3 / 704.5g).
+  if (card.turnCreatureForm) {
+    return card.turnCreatureForm.toughness + card.toughnessModifier;
   }
 
   // For double-faced cards, get the toughness from the current face
