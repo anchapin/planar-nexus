@@ -159,6 +159,13 @@ jobs:
 
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
+        with:
+          # Nine matrix legs run `npm ci` in parallel. The setup-node npm
+          # tarball cache is a known intermittent failure point there
+          # ("Failed to recover package-lock.json" — it killed the combat leg
+          # of run 39990082229 after 2.5 minutes). The composite caches
+          # node_modules itself, so the tarball cache buys nothing here.
+          npm-cache: 'false'
 
       - name: Generate card-script index
         # `src/lib/game-state/card-scripts/cards/index.generated.ts` is a

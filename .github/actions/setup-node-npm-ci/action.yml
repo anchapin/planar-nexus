@@ -14,6 +14,15 @@ inputs:
     description: Additional arguments appended to npm ci.
     required: false
     default: ''
+  npm-cache:
+    description: >-
+      Whether to use the actions/setup-node npm tarball cache. Set to 'false'
+      for workflows that run several npm ci in parallel: the npm cache
+      restore is a known intermittent failure point ("Failed to recover
+      package-lock.json"), and those workflows already cache node_modules
+      itself, so the tarball cache buys little.
+    required: false
+    default: 'true'
 
 outputs:
   node-modules-cache-key:
@@ -47,7 +56,7 @@ runs:
       uses: actions/setup-node@v6
       with:
         node-version: ${{ inputs.node-version }}
-        cache: npm
+        cache: ${{ inputs.npm-cache == 'true' && 'npm' || '' }}
 
     - name: Compute node_modules cache key
       id: cache-key
