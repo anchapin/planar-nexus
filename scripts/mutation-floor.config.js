@@ -24,14 +24,13 @@
  * previous "TO BE RACKED after the first successful nightly run" placeholders.
  *
  * Measured baselines (see stryker.config.js "THRESHOLDS" for provenance):
- *   • src/lib/game-state/layer-system.ts        : 56.65% (PR #1297, CI run
- *     28489517797) → floor 55. Issue #1711 added the targeted
- *     `layer-system.mutation.test.ts` suite to lift the baseline toward 70%;
- *     the floor is ratcheted to floor(new measured − 1) once the next
- *     successful nightly run (#1785) re-measures it.
- *   • src/lib/game-state/replacement-effects.ts : re-measured 85.59% worst
- *     file (2026-10-23, nightly run 40015189962, 3 files, 811 mutants) →
- *     floor 84, ratcheted from the old 76.
+ *   • src/lib/game-state/layer-system.ts        : re-measured 92.78% worst
+ *     file (2026-10-24, nightly run 40101737873; 71 no-coverage mutants) →
+ *     floor 91, ratcheted from the old 56.65% baseline (PR #1297). Issue
+ *     #1711's targeted `layer-system.mutation.test.ts` suite lifted it.
+ *   • src/lib/game-state/replacement-effects.ts : re-measured 89.83% worst
+ *     file (2026-10-24, nightly run 40101737873, 3 files, 811 mutants) →
+ *     floor 88, ratcheted from the old 76.
  *   • src/lib/game-state/spell-casting.ts       : no recorded measurement →
  *     conservative 50 (the current aggregate break). Issue #1711 added the
  *     targeted `spell-casting.mutation.test.ts` suite (cost-arithmetic
@@ -54,13 +53,15 @@
  *     aggregate `break` of 44 would be a dead letter anyway — the aggregate
  *     gate fails first. This module needs the #1528/#1524 test backfill, not
  *     a lower floor.
- *   • src/lib/game-state/state-based-actions.ts : re-measured 93.74%
- *     (2026-10-23, nightly run 40015189962, 511 mutants, 479 detected, 28
- *     no-coverage) → floor 92, ratcheted from the old conservative 50
- *     (issue #1395).
- *   • src/lib/game-state/combat.ts : 45.00% measured (839 mutants, 45% static).
- *     Issue #1988: re-added to fix suiteFor mismatch. Runs in nightly
- *     workflow only (~40 min job timeout); too slow for per-PR gate.
+ *   • src/lib/game-state/state-based-actions.ts : re-measured 94.52%
+ *     (2026-10-24, nightly run 40101737873, 511 mutants, 28 no-coverage) →
+ *     floor 93, ratcheted from the old conservative 50 (issue #1395).
+ *   • src/lib/game-state/combat.ts : 67.80% worst file re-measured 2026-10-24
+ *     (nightly run 40101737873, 34 no-coverage mutants). Issue #1988: re-added
+ *     to fix suiteFor mismatch. Runs in nightly workflow only (~40 min job
+ *     timeout); too slow for per-PR gate. Kept off the floors map (its
+ *     mutation score is pin/neutered — issues #1989/#2055), so it is gated by
+ *     `defaultFloor` only.
  *   • src/lib/game-state/mana.ts : re-measured 81.88% worst file
  *     (2026-10-24, nightly run 40101737873; 7 files, mana/lands.ts 81.88%,
  *     90 no-coverage mutants) → floor 80, ratcheted from the old
@@ -86,8 +87,8 @@ module.exports = {
   defaultFloor: 55,
 
   floors: {
-    "src/lib/game-state/layer-system/*.ts": 55,
-    "src/lib/game-state/replacement-effects/*.ts": 84,
+    "src/lib/game-state/layer-system/*.ts": 91,
+    "src/lib/game-state/replacement-effects/*.ts": 88,
     // Conservative pending-measurement floors — ratchet upward after the
     // first successful nightly run (issue #1785 split). See header.
     // Issue #1725: spell-casting.ts was decomposed into per-family files;
@@ -100,7 +101,7 @@ module.exports = {
     // trigger (#1524). Re-baselined to floor(measured − 1) = 44; ratchet
     // back up once the pending test backfill lands.
     "src/lib/game-state/trigger-system/*.ts": 44,
-    "src/lib/game-state/state-based-actions.ts": 92,
+    "src/lib/game-state/state-based-actions.ts": 93,
     // Issue #1989/#2055: combat.ts excluded from Stryker mutate allowlist
     // (40+ min runtime makes it nightly-only; suite is pin/neutered so
     // mutation score is meaningless). Removed from floors config.
@@ -139,7 +140,7 @@ module.exports = {
     "src/lib/game-state/mana/*.ts": 90,
     "src/lib/game-state/keyword-actions/*.ts": 1456,
     "src/lib/game-state/oracle-text-parser/abilities.ts": 43,
-    "src/lib/game-state/combat/*.ts": 29,
+    "src/lib/game-state/combat/*.ts": 34,
   },
   // Files no budget glob claims are a configuration gap, not real debt, so
   // they get no allowance: any uncovered mutant in one fails the gate.

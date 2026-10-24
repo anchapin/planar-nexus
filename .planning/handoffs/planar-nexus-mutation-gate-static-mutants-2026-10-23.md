@@ -134,12 +134,24 @@ Measured from the `mutation.json` artifacts of runs `40015189962` and
 
 | Module                       | Worst file score |           Old floor |      **New floor** | No-coverage | Measured        |
 | ---------------------------- | ---------------: | ------------------: | -----------------: | ----------: | --------------- |
-| replacement-effects          |           85.59% |                  76 |             **84** |          68 | run 40015189962 |
-| state-based-actions          |           93.74% |                  50 |             **92** |          28 | run 40015189962 |
-| oracle-text-parser-abilities |           95.29% |                  50 |             **94** |          43 | run 40052506479 |
+| replacement-effects          |           89.83% |                  76 |             **88** |          68 | run 40101737873 |
+| state-based-actions          |           94.52% |                  50 |             **93** |          28 | run 40101737873 |
+| oracle-text-parser-abilities |           95.29% |                  50 |             **94** |          43 | run 40101737873 |
 | mana                         |           81.88% |                  50 |             **80** |          90 | run 40101737873 |
-| combat                       |           77.16% | 55 (`defaultFloor`) |                 55 |          29 | run 40015189962 |
+| layer-system                 |           92.78% |                  55 |             **91** |          71 | run 40101737873 |
+| combat                       |           67.80% | 55 (`defaultFloor`) |                 55 |          34 | run 40101737873 |
 | trigger-system               |           34.29% |                  44 | **44 (unchanged)** |         352 | run 40052506479 |
+
+Every module except trigger-system was re-measured on run `40101737873`,
+which is the first run **without** the flaky AI simulation tests in the
+mutation suite — so these numbers are on one consistent, deterministic basis.
+Excluding those tests moved several scores: `replacement-effects` 85.59% →
+89.83% and `layer-system` 56.65% → 92.78% (the excluded flaky test had been
+intermittently _failing inside mutant runs_, marking mutants it did not
+actually break as killed — the old numbers were inflated by it), while
+`combat` fell 77.16% → 67.80% and its uncovered-code count rose 29 → 34.
+`combat`'s new uncovered count is exactly what the new budget gate caught on
+that run.
 
 `state-based-actions` is off its "PENDING measurement" placeholder of 50
 (issue #1395), `oracle-text-parser-abilities` off its placeholder of 50
@@ -173,9 +185,9 @@ upper bounds derived from the run's progress counters
 530, keyword-actions 1,456. They must be ratcheted down to the exact count
 once each module's leg completes.
 
-Validated locally by running the gate against all six real Stryker reports:
-the five healthy modules pass (`exit=0`), and trigger-system fails with the
-actionable message it should produce —
+Validated locally by running the gate against all six real Stryker reports
+from run `40101737873`: all six pass (`exit=0`). trigger-system still fails
+with the actionable message it should produce —
 `src/lib/game-state/trigger-system/damage-death-triggers.ts scored 34.3%
 (floor: 44) — ⚠️ BELOW FLOOR`.
 

@@ -281,13 +281,13 @@ describe("floor config sanity", () => {
     // into directories, so their floor keys are the family-dir globs.
     expect(
       floorConfigSource.floors["src/lib/game-state/layer-system/*.ts"],
-    ).toBe(Math.floor(56.65 - 1)); // 55
+    ).toBe(Math.floor(92.78 - 1)); // 91 — re-measured on nightly run 40101737873
     expect(
       floorConfigSource.floors["src/lib/game-state/replacement-effects/*.ts"],
-    ).toBe(Math.floor(85.59 - 1)); // 84 — re-measured on nightly run 40015189962
+    ).toBe(Math.floor(89.83 - 1)); // 88 — re-measured on nightly run 40101737873
     expect(
       floorConfigSource.floors["src/lib/game-state/state-based-actions.ts"],
-    ).toBe(Math.floor(93.74 - 1)); // 92 — re-measured on nightly run 40015189962
+    ).toBe(Math.floor(94.52 - 1)); // 93 — re-measured on nightly run 40101737873
     expect(
       floorConfigSource.floors[
         "src/lib/game-state/oracle-text-parser/abilities.ts"
@@ -439,14 +439,14 @@ describe("mutation-floor.js CLI", () => {
    */
   function passingFiles(): Record<string, Array<{ status: MutantStatus }>> {
     return {
-      "src/lib/game-state/layer-system/index.ts": mutants(56, 100), // 56% >= 55
-      "src/lib/game-state/replacement-effects/manager.ts": mutants(90, 100), // 90% >= 84
+      "src/lib/game-state/layer-system/index.ts": mutants(95, 100), // 95% >= 91
+      "src/lib/game-state/replacement-effects/manager.ts": mutants(90, 100), // 90% >= 88
       // Issue #1725: spell-casting monolith became per-family files; the
       // floor key is the family-dir glob mirroring the Stryker allowlist.
       "src/lib/game-state/spell-casting/cast.ts": mutants(80, 100), // 80% >= 50 (glob)
       "src/lib/game-state/spell-casting/resolve.ts": mutants(80, 100), // 80% >= 50 (glob)
       "src/lib/game-state/trigger-system/trigger-targets.ts": mutants(80, 100), // 80% >= 44
-      "src/lib/game-state/state-based-actions.ts": mutants(95, 100), // 95% >= 92
+      "src/lib/game-state/state-based-actions.ts": mutants(95, 100), // 95% >= 93
       "src/lib/game-state/mana/lands.ts": mutants(90, 100), // 90% >= 80 (issue #1717)
     };
   }
@@ -680,12 +680,14 @@ describe("mutation-summary.js Markdown table (issue #1549)", () => {
 
   it("renders the header plus one row per module with score, killed/detected, survived, and no-coverage columns", () => {
     // Synthetic single-module report shaped like the per-PR layer-system run:
-    // 80 detected (70 Killed + 10 Timeout) of 100 considered, 15 Survived,
-    // 5 NoCoverage → 80.0% — every column gets a distinct non-zero value.
+    // 92 detected (87 Killed + 5 Timeout) of 100 considered, 3 Survived,
+    // 5 NoCoverage → 92.0% — every column gets a distinct non-zero value,
+    // and the score sits above layer-system's 91 floor so the row is not
+    // annotated as below-floor.
     const layerMutants: Array<{ status: MutantStatus }> = [
-      ...Array.from({ length: 70 }, () => ({ status: "Killed" as const })),
-      ...Array.from({ length: 10 }, () => ({ status: "Timeout" as const })),
-      ...Array.from({ length: 15 }, () => ({ status: "Survived" as const })),
+      ...Array.from({ length: 87 }, () => ({ status: "Killed" as const })),
+      ...Array.from({ length: 5 }, () => ({ status: "Timeout" as const })),
+      ...Array.from({ length: 3 }, () => ({ status: "Survived" as const })),
       ...Array.from({ length: 5 }, () => ({ status: "NoCoverage" as const })),
     ];
     mkdirSync(path.join(workDir, "reports", "mutation"), { recursive: true });
@@ -709,9 +711,9 @@ describe("mutation-summary.js Markdown table (issue #1549)", () => {
         l.startsWith("|") && !l.includes("Module |") && !l.includes("---:"),
     );
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toContain("🟢"); // 80% ≥ 70 → green bucket
+    expect(rows[0]).toContain("🟢"); // 92% ≥ 70 → green bucket
     expect(rows[0]).toContain("`src/lib/game-state/layer-system.ts`");
-    expect(rows[0]).toMatch(/\| 80\.0% \| 80\/100 \| 15 \| 5 \|$/);
+    expect(rows[0]).toMatch(/\| 92\.0% \| 92\/100 \| 3 \| 5 \|$/);
   });
 
   it("appends the same table to $GITHUB_STEP_SUMMARY so the PR Summary tab renders it", () => {
@@ -720,7 +722,7 @@ describe("mutation-summary.js Markdown table (issue #1549)", () => {
       path.join(workDir, "reports", "mutation", "mutation.json"),
       JSON.stringify(
         reportObject({
-          "src/lib/game-state/layer-system.ts": mutants(80, 100),
+          "src/lib/game-state/layer-system.ts": mutants(95, 100),
         }),
       ),
     );
