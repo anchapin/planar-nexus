@@ -61,13 +61,10 @@
  *   • src/lib/game-state/combat.ts : 45.00% measured (839 mutants, 45% static).
  *     Issue #1988: re-added to fix suiteFor mismatch. Runs in nightly
  *     workflow only (~40 min job timeout); too slow for per-PR gate.
- *   • src/lib/game-state/mana.ts : PENDING measurement (issue #1717, 7th
- *     Stryker module). Issue #1717 added the targeted
- *     `mana.mutation.test.ts` suite (canAffordMana boundaries, spendMana
- *     generic-payment cascade, land-play timing, mana-ability parsing and
- *     activation conditions) → conservative 50 (the current aggregate
- *     break) — TO BE RACKETED to floor(measured − 1) once the first
- *     successful nightly run (#1785) records its score.
+ *   • src/lib/game-state/mana.ts : re-measured 81.88% worst file
+ *     (2026-10-24, nightly run 40101737873; 7 files, mana/lands.ts 81.88%,
+ *     90 no-coverage mutants) → floor 80, ratcheted from the old
+ *     conservative 50 (issue #1717's `mana.mutation.test.ts` suite).
  *
  * Issue #2835: layer-system, replacement-effects, trigger-system and mana
  * were refactored from single files into directories with an `index.ts`
@@ -108,10 +105,10 @@ module.exports = {
     // (40+ min runtime makes it nightly-only; suite is pin/neutered so
     // mutation score is meaningless). Removed from floors config.
     //
-    // Issue #1717: 7th Stryker module. Conservative pending-measurement
-    // floor — ratchet to floor(measured − 1) once the first successful
-    // nightly run (#1785) records its score.
-    "src/lib/game-state/mana/*.ts": 50,
+    // Issue #1717: 7th Stryker module. Re-measured 81.88% worst file on
+    // nightly run 40101737873 → floor 80, ratcheted from the old
+    // conservative 50.
+    "src/lib/game-state/mana/*.ts": 80,
     // Issue #2186: 8th and 9th Stryker modules.
     // keyword-actions/*.ts (MTG keyword abilities and actions) is still a
     // conservative pending-measurement floor — its leg has never completed.
@@ -139,7 +136,7 @@ module.exports = {
     "src/lib/game-state/spell-casting/*.ts": 530,
     "src/lib/game-state/trigger-system/*.ts": 352,
     "src/lib/game-state/state-based-actions.ts": 28,
-    "src/lib/game-state/mana/*.ts": 149,
+    "src/lib/game-state/mana/*.ts": 90,
     "src/lib/game-state/keyword-actions/*.ts": 1456,
     "src/lib/game-state/oracle-text-parser/abilities.ts": 43,
     "src/lib/game-state/combat/*.ts": 29,

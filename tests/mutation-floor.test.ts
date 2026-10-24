@@ -293,6 +293,9 @@ describe("floor config sanity", () => {
         "src/lib/game-state/oracle-text-parser/abilities.ts"
       ],
     ).toBe(Math.floor(95.29 - 1)); // 94 — re-measured on nightly run 40052506479
+    expect(floorConfigSource.floors["src/lib/game-state/mana/*.ts"]).toBe(
+      Math.floor(81.88 - 1),
+    ); // 80 — re-measured on nightly run 40101737873
     // trigger-system is deliberately NOT pinned to floor(measured − 1): it
     // re-measured 34.29% on run 40052506479, which is below the aggregate
     // `break` threshold of 44, so a floor of 33 would be a dead letter. Its
@@ -444,7 +447,7 @@ describe("mutation-floor.js CLI", () => {
       "src/lib/game-state/spell-casting/resolve.ts": mutants(80, 100), // 80% >= 50 (glob)
       "src/lib/game-state/trigger-system/trigger-targets.ts": mutants(80, 100), // 80% >= 44
       "src/lib/game-state/state-based-actions.ts": mutants(95, 100), // 95% >= 92
-      "src/lib/game-state/mana/lands.ts": mutants(80, 100), // 80% >= 50 (issue #1717)
+      "src/lib/game-state/mana/lands.ts": mutants(90, 100), // 90% >= 80 (issue #1717)
     };
   }
 

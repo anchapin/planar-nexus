@@ -137,15 +137,18 @@ Measured from the `mutation.json` artifacts of runs `40015189962` and
 | replacement-effects          |           85.59% |                  76 |             **84** |          68 | run 40015189962 |
 | state-based-actions          |           93.74% |                  50 |             **92** |          28 | run 40015189962 |
 | oracle-text-parser-abilities |           95.29% |                  50 |             **94** |          43 | run 40052506479 |
+| mana                         |           81.88% |                  50 |             **80** |          90 | run 40101737873 |
 | combat                       |           77.16% | 55 (`defaultFloor`) |                 55 |          29 | run 40015189962 |
 | trigger-system               |           34.29% |                  44 | **44 (unchanged)** |         352 | run 40052506479 |
 
 `state-based-actions` is off its "PENDING measurement" placeholder of 50
-(issue #1395), and `oracle-text-parser-abilities` off its placeholder of 50
-(issue #2186). `combat` is deliberately left on `defaultFloor`: it is outside
-the stryker allowlist (issues #1989 / #2055 — "the suite is pin/neutered so
-mutation score is meaningless"), so a tight floor there would gate on a score
-the repo has already declared meaningless.
+(issue #1395), `oracle-text-parser-abilities` off its placeholder of 50
+(issue #2186), and `mana` off its placeholder of 50 (issue #1717 — the
+`mana.mutation.test.ts` suite it added was worth 30 points). `combat` is
+deliberately left on `defaultFloor`: it is outside the stryker allowlist
+(issues #1989 / #2055 — "the suite is pin/neutered so mutation score is
+meaningless"), so a tight floor there would gate on a score the repo has
+already declared meaningless.
 
 ### trigger-system regressed — the floor deliberately does not move
 
@@ -170,8 +173,11 @@ upper bounds derived from the run's progress counters
 530, keyword-actions 1,456. They must be ratcheted down to the exact count
 once each module's leg completes.
 
-Validated locally by running the gate against all five real Stryker reports:
-all five pass (`exit=0`).
+Validated locally by running the gate against all six real Stryker reports:
+the five healthy modules pass (`exit=0`), and trigger-system fails with the
+actionable message it should produce —
+`src/lib/game-state/trigger-system/damage-death-triggers.ts scored 34.3%
+(floor: 44) — ⚠️ BELOW FLOOR`.
 
 ---
 
