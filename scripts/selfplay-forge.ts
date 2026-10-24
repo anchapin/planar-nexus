@@ -9,7 +9,9 @@
  *
  * One JSON game per line (gzip when --out ends in .gz), the same
  * `decisions` / `returns` shape as manamind's imitation data; each decision
- * also carries `seat` and the search target `pi`. Seats swap decks on odd
+ * also carries `seat`, the search target `pi`, and (net decisions) the
+ * search's root evaluation `rootValue` (manamind#96: the search-derived
+ * value target; expert decisions have none). Seats swap decks on odd
  * seeds. Deck names are #2614 decks (`red`, `green`) or simulator
  * archetypes; see scripts/sim-decks.ts. `--pick gumbel` (manamind#96)
  * plays each exploring decision as the search's own pick under Gumbel root
