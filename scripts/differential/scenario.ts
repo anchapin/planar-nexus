@@ -60,7 +60,19 @@ export type ScenarioAction =
   | { do: "resolveStack" }
   | { do: "attack"; player: number; attackers: string[]; defender?: number }
   /** Pass priority until the game reaches this phase of the current turn. */
-  | { do: "advanceTo"; phase: ScenarioPhase };
+  | { do: "advanceTo"; phase: ScenarioPhase }
+  /**
+   * Create a token directly on the battlefield (CR 701.6). `card` names the
+   * card whose printed stats the token copies; `tokenName` overrides the
+   * name the token is observed under (e.g. "Bear" for a 2/2 Bear token).
+   */
+  | {
+      do: "createToken";
+      player: number;
+      card: string;
+      tokenName?: string;
+      count?: number;
+    };
 
 export type ObservedField =
   "life" | "battlefield" | "hand" | "graveyard" | "exile" | "library" | "stack";
@@ -146,6 +158,14 @@ export function scenarioCardNames(s: Scenario): string[] {
     if (Array.isArray(p.library)) p.library.forEach(zoneName);
     else if (typeof p.library === "number" && p.library > 0)
       names.add("Forest");
+  }
+  // Cards named by an ACTION are not necessarily in a zone (a token's stats
+  // come from a card that is never held), so collect them too — otherwise the
+  // card snapshot would miss the data the runner needs.
+  for (const a of s.actions) {
+    if (a.do === "cast" || a.do === "playLand" || a.do === "createToken") {
+      names.add(a.card);
+    }
   }
   return [...names].sort();
 }

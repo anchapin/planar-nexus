@@ -1,0 +1,37 @@
+{
+  "id": "worked-land-and-vanilla",
+  "refs": "#2411",
+  "description": "Worked example: a player with two green mana casts a vanilla 1/1 (Llanowar Elves) and plays a Forest.",
+  "players": [
+    {
+      "life": 20,
+      "hand": ["Forest", "Llanowar Elves"],
+      "library": 0,
+      "manaPool": { "G": 1 }
+    },
+    {
+      "life": 20,
+      "library": 0
+    }
+  ],
+  "phase": "precombat_main",
+  "actions": [
+    { "do": "cast", "player": 0, "card": "Llanowar Elves" },
+    { "do": "resolveStack" },
+    { "do": "playLand", "player": 0, "card": "Forest" }
+  ],
+  "observe": ["life", "battlefield", "hand", "graveyard", "library"],
+  "expect": [
+    {
+      "life": 20,
+      "battlefield": [
+        { "name": "Forest" },
+        { "name": "Llanowar Elves", "power": 1, "toughness": 1 }
+      ],
+      "hand": [],
+      "graveyard": [],
+      "library": 0
+    },
+    { "life": 20, "library": 0 }
+  ]
+}
