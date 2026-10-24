@@ -19,7 +19,8 @@ import * as path from "path";
 import { runScenario, type CardLookup } from "./planar-nexus-runner";
 import { diffExpected, diffOutcomes, formatRows } from "./diff";
 import { scenarioCardNames, type Scenario } from "./scenario";
-import type { ScryfallCard } from "../../src/lib/game-state/types";
+import { loadScenarioFile } from "./validate";
+import type { ScryfallCard } from "@/lib/game-state";
 
 const DIR = __dirname;
 const SNAPSHOT = path.join(DIR, "cards.snapshot.json");
@@ -55,7 +56,10 @@ export function loadScenarios(files: string[]): Scenario[] {
           .filter((f) => f.endsWith(".json"))
           .sort()
           .map((f) => path.join(SCENARIO_DIR, f));
-  return list.map((f) => JSON.parse(fs.readFileSync(f, "utf-8")) as Scenario);
+  // Every scenario file is validated against the engine-neutral format
+  // before it reaches the engine (#2411): an invalid file is rejected with
+  // a readable error instead of silently running with missing fields.
+  return list.map((f) => loadScenarioFile(f));
 }
 
 export function loadSnapshot(): CardLookup {
