@@ -46,6 +46,14 @@
  *     (issue #1939; 178 killed / 83 timeout / 68 survived / 251 no-coverage
  *     of 583 mutants — zero-coverage debt from renown/tribute ETB triggers
  *     #1528 and corpse death trigger #1524, pending test backfill) → floor 44.
+ *     REGRESSED: re-measured 34.29% on nightly run 40052506479
+ *     (2026-10-24) — 25 killed / 61 timeout / 0 survived / 352 no-coverage of
+ *     1,544 mutants. The floor stays at 44 on purpose: the module genuinely
+ *     regressed (the trigger-system.ts → trigger-system/ refactor tripled the
+ *     mutant count while the coverage did not keep up), and a floor below the
+ *     aggregate `break` of 44 would be a dead letter anyway — the aggregate
+ *     gate fails first. This module needs the #1528/#1524 test backfill, not
+ *     a lower floor.
  *   • src/lib/game-state/state-based-actions.ts : re-measured 93.74%
  *     (2026-10-23, nightly run 40015189962, 511 mutants, 479 detected, 28
  *     no-coverage) → floor 92, ratcheted from the old conservative 50
@@ -104,13 +112,14 @@ module.exports = {
     // floor — ratchet to floor(measured − 1) once the first successful
     // nightly run (#1785) records its score.
     "src/lib/game-state/mana/*.ts": 50,
-    // Issue #2186: 8th and 9th Stryker modules. Conservative pending-
-    // measurement floors for keyword-actions/*.ts (MTG keyword abilities and
-    // actions) and abilities.ts (ability word parsing in oracle-text-parser).
-    // Ratchet to floor(measured − 1) once the first successful nightly run
-    // records its score.
+    // Issue #2186: 8th and 9th Stryker modules.
+    // keyword-actions/*.ts (MTG keyword abilities and actions) is still a
+    // conservative pending-measurement floor — its leg has never completed.
     "src/lib/game-state/keyword-actions/*.ts": 50,
-    "src/lib/game-state/oracle-text-parser/abilities.ts": 50,
+    // abilities.ts (ability word parsing in oracle-text-parser): re-measured
+    // 95.29% on nightly run 40052506479 (2026-10-24; 1 file, 935 mutants, 43
+    // no-coverage) → floor 94, ratcheted from the old placeholder of 50.
+    "src/lib/game-state/oracle-text-parser/abilities.ts": 94,
   },
   // Issue #1785: stryker.config.js sets ignoreStatic, so Stryker excludes
   // mutants whose location no test covers ("NoCoverage") from the score.
@@ -128,7 +137,7 @@ module.exports = {
     "src/lib/game-state/layer-system/*.ts": 83,
     "src/lib/game-state/replacement-effects/*.ts": 68,
     "src/lib/game-state/spell-casting/*.ts": 530,
-    "src/lib/game-state/trigger-system/*.ts": 357,
+    "src/lib/game-state/trigger-system/*.ts": 352,
     "src/lib/game-state/state-based-actions.ts": 28,
     "src/lib/game-state/mana/*.ts": 149,
     "src/lib/game-state/keyword-actions/*.ts": 1456,

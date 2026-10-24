@@ -288,6 +288,16 @@ describe("floor config sanity", () => {
     expect(
       floorConfigSource.floors["src/lib/game-state/state-based-actions.ts"],
     ).toBe(Math.floor(93.74 - 1)); // 92 — re-measured on nightly run 40015189962
+    expect(
+      floorConfigSource.floors[
+        "src/lib/game-state/oracle-text-parser/abilities.ts"
+      ],
+    ).toBe(Math.floor(95.29 - 1)); // 94 — re-measured on nightly run 40052506479
+    // trigger-system is deliberately NOT pinned to floor(measured − 1): it
+    // re-measured 34.29% on run 40052506479, which is below the aggregate
+    // `break` threshold of 44, so a floor of 33 would be a dead letter. Its
+    // floor stays at 44 until the #1528/#1524 test backfill lifts the
+    // module back above it — see scripts/mutation-floor.config.js.
   });
 
   it("every allowlisted module has a targeted *.mutation.test.ts suite (issue #1711)", () => {
