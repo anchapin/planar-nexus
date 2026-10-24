@@ -51,6 +51,13 @@ export interface SelfPlayDecision extends ForgeDecision {
   /** Which seat's brain produced the action: the net or the Expert AI. */
   source: "net" | "expert";
   pi: SearchTarget;
+  /**
+   * The search's root evaluation for the deciding seat, in [-1, 1]
+   * (manamind#96): the search-derived value target, the same seat
+   * convention and scale as `returns`. Expert-source decisions have
+   * none (the Expert AI's move is not search-scored).
+   */
+  rootValue?: number;
 }
 
 export interface SelfPlayGame {
@@ -319,6 +326,7 @@ export async function playSelfPlayGame(
         seat: seats.indexOf(prompt.playerId),
         source: "net",
         pi,
+        rootValue: result.rootValue,
       });
     }
     let action: TrainingAction = result.action;
