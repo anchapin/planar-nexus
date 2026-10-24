@@ -118,6 +118,32 @@ describe("playSelfPlayGame", () => {
     }
   });
 
+  it("records the search's root value on net decisions only", async () => {
+    const game = await playSelfPlayGame(model, {
+      seed: 5,
+      deckA: trainingDeck("aggro"),
+      deckB: trainingDeck("midrange"),
+      simulations: 8,
+      maxTurns: 6,
+      opponent: "expert",
+      netSeat: 0,
+      expertRecord: "both",
+    });
+    expect(game.decisions.length).toBeGreaterThan(0);
+    let nets = 0;
+    for (const d of game.decisions) {
+      if (d.source === "net") {
+        nets++;
+        expect(d.root_value).toBeDefined();
+        expect(d.root_value as number).toBeGreaterThanOrEqual(-1);
+        expect(d.root_value as number).toBeLessThanOrEqual(1);
+      } else {
+        expect(d.root_value).toBeUndefined();
+      }
+    }
+    expect(nets).toBeGreaterThan(0);
+  });
+
   it("is deterministic for a seed", async () => {
     const a = await play(4);
     const b = await play(4);

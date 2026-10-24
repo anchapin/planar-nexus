@@ -127,6 +127,13 @@ export interface ForgeSearchResult {
   target: number[];
   /** Root evaluation for the searcher, in [-1, 1]. */
   rootValue: number;
+  /**
+   * The search's best estimate of the root position's value, in [-1, 1]:
+   * the pre-search root evaluation blended with the visited candidates'
+   * mean Q, weighted by prior share (manamind#96). The self-play capture
+   * records it as a bootstrap value target.
+   */
+  searchRootValue: number;
   simulations: number;
   evaluations: number;
 }
@@ -298,9 +305,7 @@ export async function forgeCandidates(
   model: ForgePointerModel,
   deckNames?: readonly [string, string],
 ): Promise<{ candidates: ForgeCandidate[]; value: number }> {
-  const out = await model.evaluate(
-    forgeDecision(session, prompt, deckNames),
-  );
+  const out = await model.evaluate(forgeDecision(session, prompt, deckNames));
   let raw: RawCandidate[];
   switch (prompt.kind) {
     case "priority": {
@@ -413,6 +418,7 @@ export async function forgeSearch(
       policy: [1],
       target: [1],
       rootValue,
+      searchRootValue: rootValue,
       simulations: 0,
       evaluations,
     };
@@ -491,21 +497,27 @@ export async function forgeSearch(
       : 0,
   );
 
-  const completedQ = (): number[] => {
+  /**
+   * The search's best estimate of the root position's value: the net's
+   * pre-search evaluation blended with the visited candidates' mean Q,
+   * weighted by prior share (manamind#96). Unvisited candidates lean on
+   * the pre-search value through this blend.
+   */
+  const mixedRootValue = (): number => {
     const totalVisits = visits.reduce((s, v) => s + v, 0);
-    let mixed = rootValue;
-    if (totalVisits > 0) {
-      let weight = 0;
-      let weighted = 0;
-      visits.forEach((v, i) => {
-        if (v > 0) {
-          weight += priors[i] / priorSum;
-          weighted += (priors[i] / priorSum) * (totals[i] / v);
-        }
-      });
-      mixed =
-        (rootValue + (totalVisits / weight) * weighted) / (1 + totalVisits);
-    }
+    if (totalVisits === 0) return rootValue;
+    let weight = 0;
+    let weighted = 0;
+    visits.forEach((v, i) => {
+      if (v > 0) {
+        weight += priors[i] / priorSum;
+        weighted += (priors[i] / priorSum) * (totals[i] / v);
+      }
+    });
+    return (rootValue + (totalVisits / weight) * weighted) / (1 + totalVisits);
+  };
+  const completedQ = (): number[] => {
+    const mixed = mixedRootValue();
     return visits.map((v, i) =>
       Math.min(1, Math.max(0, ((v > 0 ? totals[i] / v : mixed) + 1) / 2)),
     );
@@ -571,6 +583,7 @@ export async function forgeSearch(
       policy: policyOf(final.map((v) => (v === -Infinity ? -1e9 : v))),
       target,
       rootValue,
+      searchRootValue: mixedRootValue(),
       simulations: used,
       evaluations,
     };
