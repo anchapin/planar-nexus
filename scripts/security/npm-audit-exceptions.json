@@ -1,12 +1,4 @@
 {
   "$comment": "Time-boxed npm audit exceptions read by scripts/security/check-npm-audit.mjs. Each entry needs an advisory id, the package, why it is not reachable, an ISO expiry date, and a tracking issue. An expired entry fails CI so it gets re-reviewed rather than renewed on autopilot.",
-  "exceptions": [
-    {
-      "id": "GHSA-vfj7-8cjw-p6xm",
-      "package": "braces",
-      "reason": "No patched braces exists (registry still lists 3.0.3 as latest; every version through 3.0.3 is affected by GHSA-vfj7-8cjw-p6xm / CVE-2026-93687), so there is nothing to upgrade to. Reachability re-verified 2026-10-22 from the current tree (not inherited from the previous cycle): package-lock.json contains exactly one braces entry (3.0.3, dev:true) and exactly one dependency path to it - eslint-config-next (devDependency) -> @next/eslint-plugin-next -> fast-glob@3.3.1 -> micromatch@4.0.8 -> braces@3.0.3. A prod-dependency-only walk of the lockfile finds 0 paths to braces, so braces is not in the client bundle or the Tauri app, and no repo source file imports braces/micromatch/picomatch. Inside @next/eslint-plugin-next the only fast-glob use is dist/utils/get-root-dirs.js, which globs the ESLint `settings.next.rootDir` value; this repo's eslint.config.mjs sets no such rootDir (so the glob is never even executed), and any pattern would be a repo-config literal, never user input. patch-package is not installed and not used: there is no patches/ directory, no postinstall script (package.json only has \"prepare\": \"husky install\"), and no patch-package entry in package.json or package-lock.json. Renewed for another 30-day cycle; tracking issue #2437.",
-      "expires": "2026-11-22",
-      "issue": "https://github.com/anchapin/planar-nexus/issues/2437"
-    }
-  ]
+  "exceptions": []
 }
