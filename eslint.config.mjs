@@ -259,6 +259,10 @@ const eslintConfig = [
       "node_modules/**",
       "jest.setup.js",
       "jest.config.js",
+      // Issue #1785: Stryker-only jest config that excludes the known-flaky
+      // AI simulation tests from mutation runs. Same class of plain Node
+      // CommonJS tooling as jest.config.js above.
+      "jest.config.mutation.js",
       "commitlint.config.js",
       "stryker.config.js",
       // Plain Node CommonJS tooling (uses require/module/process globals that

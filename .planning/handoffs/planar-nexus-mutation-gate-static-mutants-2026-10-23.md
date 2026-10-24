@@ -194,26 +194,55 @@ all five pass (`exit=0`).
   _"expertAction is deterministic for a seed"_ — the exact test the repo's
   `AGENTS.md` already lists as known flake noise. Stryker's dry run executes
   the whole suite, so one flaky AI/simulation test takes out the leg's report
-  and nothing else. **This needs fixing before the nightly can be trusted.**
+  and nothing else. **Fixed** — see "Remaining work" §1.
 
 ---
 
 ## Remaining work
 
-### 1. Keep the flaky simulation tests out of the mutation dry run (blocking)
+### 1. Keep the flaky simulation tests out of the mutation run: ✅ LANDED
 
-`src/ai/__tests__/simulation/expert-agent.test.ts` (and the other AI
-simulation tests) are not needed to build the mutation coverage map for
-`src/lib/game-state/**`, and one flake in them kills a 6-hour leg. The clean
-fix is a **Stryker-only jest config** — e.g. `jest.config.mutation.js`
-extending `jest.config.js` with
-`testPathIgnorePatterns: ["src/ai/__tests__/simulation/"]` — referenced from
-`stryker.config.js`'s `jest.configFile`, so normal `npm test` keeps running
-them. **Check the coverage impact first**: those tests exercise the engine, so
-excluding them could raise the no-coverage counts and change the measured
-scores. The honest way to check is to re-run one completed module with and
-without the exclusion and compare `noCoverage` (replacement-effects:
-currently 68/811 mutants).
+`src/ai/__tests__/simulation/expert-agent.test.ts` → _"is deterministic for a
+seed and leaves the game where it was"_ plays the same seeded game twice and
+compares the action stream, and it intermittently diverges. Stryker runs the
+whole suite in its dry run, so one flaky failure aborts the whole mutation leg
+before it produces a report:
+
+- run `40052506479`: the `mana` leg died 5 minutes in with
+  `There were failed tests in the initial test run`;
+- run `40076898019`: the `keyword-actions` and `trigger-system` legs died the
+  same way.
+
+The same flake inside a mutant run would mark mutants it does not actually
+break as killed, inflating the score — so it has to be out of the mutation run
+entirely, not just out of the dry run.
+
+**Fix:** `jest.config.mutation.js` extends `jest.config.js` with
+`testPathIgnorePatterns` for `src/ai/__tests__/simulation/` and
+`src/ai/manamind/__tests__/` (the other two known-flaky families
+`AGENTS.md` lists: `forge-gate`, `forge-selfplay`). `stryker.config.js`'s
+`jest.configFile` now points at it. Normal `npm test` is untouched and still
+runs all 17 excluded files.
+
+**Coverage impact measured, not assumed.** Ran the full suite twice with
+Jest coverage — once normally, once with the simulation tests excluded — and
+compared every `src/lib/game-state/**` file:
+
+```
+mutated-area files: same=218 changed=2
+  src/lib/game-state/serialization.ts:  89.58% -> 88.88%
+  src/lib/game-state/legal-choices.ts:  87.27% -> 81.36%
+```
+
+**Neither of those two files is in the stryker mutate allowlist**, so no
+mutant's coverage changes and **every measured score and floor stays valid**.
+`src/ai/manamind/**` does not depend on `src/lib/game-state/**` at all, so
+dropping its tests cannot affect the coverage map either.
+
+The underlying determinism bug in the AI simulator (`src/ai/simulation/**` —
+seeded mulberry32 plus a `Date.now` counter, yet still intermittently
+divergent) is **not fixed here**: it is a separate AI-subsystem defect and
+deserves its own issue. It is not what the mutation gate should be blocked on.
 
 ### 2. Split the heavy modules (mechanical)
 

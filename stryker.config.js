@@ -50,7 +50,12 @@ module.exports = {
   disableTypeChecks: true,
   jest: {
     projectType: "custom",
-    configFile: "jest.config.js",
+    // Issue #1785: the AI simulation and forge tests are known-flaky, and a
+    // single flaky failure in Stryker's dry run aborts the whole mutation
+    // leg before it produces a report — nightly runs 40052506479 and
+    // 40076898019 both lost legs to it. jest.config.mutation.js excludes
+    // them from mutation runs only; `npm test` is unaffected.
+    configFile: "jest.config.mutation.js",
   },
 
   // ─────────────────────────────────────────────────────────────────────────
