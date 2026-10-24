@@ -130,37 +130,37 @@ function moduleFor(normalizedPath, config) {
 }
 
 /**
- * Aggregate ignored (static / uncovered) mutant counts per module.
+ * Aggregate uncovered-code mutant counts per module.
  *
- * With stryker.config.js's ignoreStatic enabled, Stryker reports mutants
- * that no test covers with status "Ignored" instead of executing them. Those
- * mutants are excluded from the mutation score, so this count is the only
- * place the uncovered-code debt stays visible.
+ * A mutant whose location no test covers is reported by Stryker with status
+ * "NoCoverage". Those mutants are excluded from the score when
+ * stryker.config.js's ignoreStatic is on, so this count is the only place
+ * the uncovered-code debt stays visible and can be ratcheted down.
  *
- * @param {Array<{ file: string, ignored: number }>} rows
+ * @param {Array<{ file: string, noCoverage: number }>} rows
  * @param {{ uncoveredBudgets?: Record<string, number> }} config
- * @returns {Record<string, number>} module key -> ignored mutant count
+ * @returns {Record<string, number>} module key -> uncovered mutant count
  */
 function computeUncoveredByModule(rows, config) {
   const totals = {};
   for (const row of rows) {
-    const ignored = row.ignored || 0;
-    if (ignored <= 0) continue;
+    const uncovered = row.noCoverage || 0;
+    if (uncovered <= 0) continue;
     const module = moduleFor(row.file, config);
     const key = module === null ? UNMAPPED_MODULE : module;
-    totals[key] = (totals[key] || 0) + ignored;
+    totals[key] = (totals[key] || 0) + uncovered;
   }
   return totals;
 }
 
 /**
- * Evaluate per-module uncovered-mutant counts against their budgets.
+ * Evaluate per-module uncovered-code mutant counts against their budgets.
  *
  * A module violates its budget when uncovered > budget (strictly). The
  * budget is a ceiling on uncovered-code debt: it may be lowered as coverage
  * improves, never raised.
  *
- * @param {Array<{ file: string, ignored: number }>} rows
+ * @param {Array<{ file: string, noCoverage: number }>} rows
  * @param {{ uncoveredBudgets?: Record<string, number>, defaultUncoveredBudget?: number }} config
  * @returns {{ violations: Array<{ module: string, uncovered: number, budget: number }>, ok: boolean }}
  */

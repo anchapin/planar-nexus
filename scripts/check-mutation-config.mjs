@@ -157,12 +157,12 @@ for (const entry of mutateEntries) {
   }
 }
 
-// ── 3b. uncovered-mutant budgets (issue #1785) ────────────────────────────
-// stryker.config.js sets `ignoreStatic`, so mutants that no test covers are
-// reported as "Ignored" and excluded from the mutation score. The per-module
-// uncovered-mutant budget is the only thing keeping that debt gated, so
-// every allowlisted module needs one — without it, adding a module to the
-// allowlist would silently drop its uncovered-code debt out of the gate.
+// ── 3b. uncovered-code budgets (issue #1785) ──────────────────────────────
+// stryker.config.js sets `ignoreStatic`, so mutants whose location no test
+// covers are excluded from the mutation score. The per-module uncovered-code
+// budget is the only thing keeping that debt gated, so every allowlisted
+// module needs one — without it, adding a module to the allowlist would
+// silently drop its uncovered-code debt out of the gate.
 const uncoveredBudgets = floorConfig?.uncoveredBudgets ?? {};
 for (const entry of mutateEntries) {
   if (!(entry in uncoveredBudgets)) {
