@@ -284,7 +284,7 @@ describe("floor config sanity", () => {
     ).toBe(Math.floor(85.37 - 1)); // 84 — worst of two runs (92.78 / 85.37)
     expect(
       floorConfigSource.floors["src/lib/game-state/replacement-effects/*.ts"],
-    ).toBe(Math.floor(89.83 - 1)); // 88 — re-measured on nightly run 40101737873
+    ).toBe(Math.floor(81.02 - 1)); // 80 — worst of three runs (89.83/89.83/81.02)
     expect(
       floorConfigSource.floors["src/lib/game-state/state-based-actions.ts"],
     ).toBe(Math.floor(94.52 - 1)); // 93 — re-measured on nightly run 40101737873

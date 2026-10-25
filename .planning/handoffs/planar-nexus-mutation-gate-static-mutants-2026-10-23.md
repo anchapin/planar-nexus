@@ -132,15 +132,27 @@ score is the **worst file** in the module (the floor is applied per file).
 Measured from the `mutation.json` artifacts of runs `40015189962` and
 `40052506479`:
 
-| Module                       | Worst file score |           Old floor |      **New floor** | No-coverage | Measured                           |
-| ---------------------------- | ---------------: | ------------------: | -----------------: | ----------: | ---------------------------------- |
-| replacement-effects          |           89.83% |                  76 |             **88** |          68 | runs 40101737873 + 40142166635     |
-| state-based-actions          |           94.52% |                  50 |             **93** |          28 | runs 40101737873 + 40142166635     |
-| oracle-text-parser-abilities |           88.56% |                  50 |             **87** |          43 | worst of 40101737873 / 40142166635 |
-| mana                         |           81.88% |                  50 |             **80** |          90 | runs 40101737873 + 40142166635     |
-| layer-system                 |           85.37% |                  55 |             **84** |          71 | worst of 40101737873 / 40142166635 |
-| combat                       |           67.80% | 55 (`defaultFloor`) |                 55 |          34 | worst of 40101737873 / 40142166635 |
-| trigger-system               |           34.29% |                  44 | **44 (unchanged)** |         355 | runs 40052506479 + 40142166635     |
+| Module                       | Worst file score |           Old floor |      **New floor** | No-coverage | Measured        |
+| ---------------------------- | ---------------: | ------------------: | -----------------: | ----------: | --------------- |
+| replacement-effects          |           81.02% |                  76 |             **80** |          68 | worst of 3 runs |
+| state-based-actions          |           94.52% |                  50 |             **93** |          28 | all 3 runs      |
+| oracle-text-parser-abilities |           88.56% |                  50 |             **87** |          43 | worst of 3 runs |
+| mana                         |           81.88% |                  50 |             **80** |          90 | both runs       |
+| layer-system                 |           85.37% |                  55 |             **84** |          71 | worst of 3 runs |
+| combat                       |           67.80% | 55 (`defaultFloor`) |                 55 |          34 | worst of 3 runs |
+| trigger-system               |           34.29% |                  44 | **44 (unchanged)** |         355 | 2 runs          |
+
+Three observations per module, from runs `40101737873`, `40142166635` and
+`40165283466` (2026-10-24):
+
+| Module                       |  run 1 |      run 2 |      run 3 | no-coverage (every run) |
+| ---------------------------- | -----: | ---------: | ---------: | ----------------------- |
+| replacement-effects          | 89.83% |     89.83% | **81.02%** | 68, 68, 68              |
+| layer-system                 | 92.78% | **85.37%** |     92.78% | 71, 71, 71              |
+| state-based-actions          | 94.52% |     94.52% |     94.52% | 28, 28, 28              |
+| mana                         | 81.88% |     81.88% |          — | 90, 90                  |
+| oracle-text-parser-abilities | 95.29% | **88.56%** |     95.29% | 43, 43, 43              |
+| combat                       | 67.80% |     68.47% |     67.80% | 34, 34, 34              |
 
 ### ⚠️ The mutation score is not reproducible — floors must come from the worst observation
 
@@ -230,9 +242,10 @@ upper bounds derived from the run's progress counters
 530, keyword-actions 1,456. They must be ratcheted down to the exact count
 once each module's leg completes.
 
-Validated locally by running the gate against all seven real Stryker reports
-from run `40142166635`: the six healthy modules pass (`exit=0`), and
-trigger-system fails with the actionable message it should produce —
+Validated locally by running the gate against **every real Stryker report
+produced by all three runs** — 18 report/module combinations: all the healthy
+ones pass (`exit=0`), and trigger-system fails with the actionable message it
+should produce —
 `src/lib/game-state/trigger-system/damage-death-triggers.ts scored 34.3%
 (floor: 44) — ⚠️ BELOW FLOOR`.
 

@@ -43,9 +43,11 @@
  *     mutants) → floor 84, ratcheted from the old 56.65% baseline (PR
  *     #1297). The two runs of identical code measured 92.78% and 85.37% —
  *     see the note on score noise above.
- *   • src/lib/game-state/replacement-effects.ts : re-measured 89.83% worst
- *     file (2026-10-24, nightly run 40101737873, 3 files, 811 mutants) →
- *     floor 88, ratcheted from the old 76.
+ *   • src/lib/game-state/replacement-effects.ts : 81.02% worst of three runs
+ *     (2026-10-24, nightly runs 40101737873 / 40142166635 / 40165283466
+ *     measured 89.83% / 89.83% / 81.02%; 68 no-coverage mutants, identical in
+ *     all three) → floor 80, ratcheted from the old 76. The score is
+ *     bimodal — see the score-noise note above.
  *   • src/lib/game-state/spell-casting.ts       : no recorded measurement →
  *     conservative 50 (the current aggregate break). Issue #1711 added the
  *     targeted `spell-casting.mutation.test.ts` suite (cost-arithmetic
@@ -103,7 +105,7 @@ module.exports = {
 
   floors: {
     "src/lib/game-state/layer-system/*.ts": 84,
-    "src/lib/game-state/replacement-effects/*.ts": 88,
+    "src/lib/game-state/replacement-effects/*.ts": 80,
     // Conservative pending-measurement floors — ratchet upward after the
     // first successful nightly run (issue #1785 split). See header.
     // Issue #1725: spell-casting.ts was decomposed into per-family files;
