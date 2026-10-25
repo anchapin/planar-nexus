@@ -156,6 +156,7 @@ import {
 } from "@/lib/deck-generation";
 import { BASIC_LAND_NAMES } from "@/lib/basic-land-data";
 
+import { GameHeader } from "./_components/GameHeader";
 import { PhaseTracker } from "./_components/PhaseTracker";
 import { GameLoading } from "./_components/GameLoading";
 
@@ -2970,6 +2971,11 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     }
   }, [gameState, autoSaveEnabled]);
 
+  // Stable callback for the memoized <GameHeader /> (issue #2418, slice 1).
+  const handleBackToMenu = useCallback(() => {
+    router.push("/single-player");
+  }, [router]);
+
   if (isLoading) {
     return (
       <div className="flex-1 p-2 md:p-4 flex items-center justify-center">
@@ -3069,61 +3075,16 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
 
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-      {/* Header */}
-      <header
-        className="shrink-0 bg-background/95 backdrop-blur border-b"
-        data-tutorial="phase-info"
-      >
-        <div className="flex items-center justify-between px-2 py-1.5 md:px-4 md:py-2">
-          <div className="flex items-center gap-2 md:gap-3">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-11 w-11 p-0 md:h-8 md:w-8"
-              onClick={() => router.push("/single-player")}
-              aria-label="Back to single player menu"
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </Button>
-            <div>
-              <h1 className="font-headline text-sm font-bold leading-tight">
-                Single Player
-              </h1>
-              <div className="flex items-center gap-2 text-[10px] text-muted-foreground leading-none">
-                <Badge
-                  variant="outline"
-                  className="text-[9px] h-3.5 px-1 py-0 font-normal"
-                >
-                  Game {gameId?.substring(0, 8)}
-                </Badge>
-                <span>Turn {gameState.turn.turnNumber}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="text-right">
-              <div className="text-xs font-medium flex items-center gap-2">
-                {currentPlayer?.name}
-                {isAIThinking && (
-                  <Badge
-                    variant="secondary"
-                    className="animate-pulse text-[9px] h-3.5 px-1 py-0"
-                  >
-                    AI Thinking...
-                  </Badge>
-                )}
-              </div>
-            </div>
-            <Badge
-              variant={mode === "ai" ? "default" : "secondary"}
-              className="text-[10px] h-4 px-1.5 py-0 font-normal"
-            >
-              {mode === "ai" ? `vs AI (${difficulty})` : "Self Play"}
-            </Badge>
-          </div>
-        </div>
-      </header>
+      {/* Header — extracted to a memoized leaf (issue #2418, slice 1) */}
+      <GameHeader
+        gameId={gameId}
+        turnNumber={gameState.turn.turnNumber}
+        currentPlayerName={currentPlayer?.name}
+        isAIThinking={isAIThinking}
+        mode={mode}
+        difficulty={difficulty}
+        onBack={handleBackToMenu}
+      />
 
       {/* Phase Tracker */}
       <div className="shrink-0">
