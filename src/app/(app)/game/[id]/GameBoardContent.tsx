@@ -23,19 +23,12 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   ArrowLeft,
-  Heart,
-  Clock,
   Info,
-  RotateCcw,
-  Play,
-  Pause,
-  SkipForward,
   Hand,
   Sparkles,
   Shuffle,
   CheckCircle2,
   ChevronRight,
-  Flag,
 } from "lucide-react";
 import Image from "next/image";
 import { GameBoard } from "@/components/game-board";
@@ -157,6 +150,7 @@ import {
 import { BASIC_LAND_NAMES } from "@/lib/basic-land-data";
 
 import { GameHeader } from "./_components/GameHeader";
+import { GameFooter } from "./_components/GameFooter";
 import { PhaseTracker } from "./_components/PhaseTracker";
 import { GameLoading } from "./_components/GameLoading";
 
@@ -2976,6 +2970,11 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     router.push("/single-player");
   }, [router]);
 
+  // Slice 2 (issue #2418): stable toggle handed to the memoized GameFooter.
+  const handleToggleAutoSave = useCallback(() => {
+    setAutoSaveEnabled((prev) => !prev);
+  }, []);
+
   if (isLoading) {
     return (
       <div className="flex-1 p-2 md:p-4 flex items-center justify-center">
@@ -3073,6 +3072,10 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
 
   const currentTurnIndex = sortedPlayers.findIndex((p) => p.isCurrentTurn);
 
+  // Slice 2 (issue #2418): narrow values consumed by the memoized GameFooter.
+  const footerPlayer = uiPlayers.find((p) => p.name === playerName);
+  const footerOpponent = uiPlayers.find((p) => p.name !== playerName);
+
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
       {/* Header — extracted to a memoized leaf (issue #2418, slice 1) */}
@@ -3118,203 +3121,27 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
         </div>
       </main>
 
-      {/* Game Controls Footer */}
-      <footer
-        className="shrink-0 bg-background/95 backdrop-blur border-t p-1.5 md:p-2"
-        data-tutorial="actions"
-      >
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div
-            className="flex items-center gap-4 text-xs text-muted-foreground"
-            data-tutorial="life-total"
-          >
-            <span className="flex items-center gap-1">
-              <Heart className="w-3 h-3" />
-              {playerName}:{" "}
-              {uiPlayers.find((p) => p.name === playerName)?.lifeTotal || 20}
-            </span>
-            {uiPlayers.find((p) => p.name !== playerName) && (
-              <span className="flex items-center gap-1">
-                <Heart className="w-3 h-3" />
-                {uiPlayers.find((p) => p.name !== playerName)?.name}:{" "}
-                {uiPlayers.find((p) => p.name !== playerName)?.lifeTotal || 20}
-              </span>
-            )}
-            {/* Mana Pool Display */}
-            {(() => {
-              const pool = uiPlayers.find(
-                (p) => p.name === playerName,
-              )?.manaPool;
-              if (!pool || getTotalMana(pool) === 0) return null;
-              return (
-                <span className="flex items-center gap-1 ml-2 border-l pl-2 border-border">
-                  {pool.white > 0 && (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] h-4 px-1 bg-yellow-500/20 text-yellow-700 border-yellow-500/30"
-                    >
-                      {pool.white}W
-                    </Badge>
-                  )}
-                  {pool.blue > 0 && (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] h-4 px-1 bg-blue-500/20 text-blue-700 border-blue-500/30"
-                    >
-                      {pool.blue}U
-                    </Badge>
-                  )}
-                  {pool.black > 0 && (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] h-4 px-1 bg-gray-800/40 text-gray-300 border-gray-500/30"
-                    >
-                      {pool.black}B
-                    </Badge>
-                  )}
-                  {pool.red > 0 && (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] h-4 px-1 bg-red-500/20 text-red-700 border-red-500/30"
-                    >
-                      {pool.red}R
-                    </Badge>
-                  )}
-                  {pool.green > 0 && (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] h-4 px-1 bg-green-500/20 text-green-700 border-green-500/30"
-                    >
-                      {pool.green}G
-                    </Badge>
-                  )}
-                  {pool.colorless > 0 && (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] h-4 px-1 bg-gray-500/20 text-gray-600 border-gray-500/30"
-                    >
-                      {pool.colorless}C
-                    </Badge>
-                  )}
-                  {pool.generic > 0 && (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] h-4 px-1 bg-muted"
-                    >
-                      {pool.generic}
-                    </Badge>
-                  )}
-                </span>
-              );
-            })()}
-          </div>
-
-          <div className="flex items-center gap-2 flex-wrap justify-end">
-            {/* Current phase badge */}
-            <Badge
-              variant={isPlayerTurn ? "default" : "outline"}
-              className="text-[10px] capitalize hidden sm:inline-flex"
-            >
-              {gameState.turn.currentPhase.replace("_", " ")}
-            </Badge>
-
-            {/* Pass Priority — available in both modes */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handlePassPriority}
-              disabled={isGameEnded}
-              className="h-11 md:h-8"
-              title={
-                mode === "ai"
-                  ? "Advance to the next phase"
-                  : "Pass priority to opponent"
-              }
-            >
-              <SkipForward className="w-3 h-3 mr-1" />
-              {mode === "ai" ? "Next Phase" : "Pass Priority"}
-            </Button>
-
-            {/* End Turn */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleEndTurn}
-              disabled={isGameEnded || !isPlayerTurn}
-              title="Pass through all remaining phases to end your turn"
-              className="h-11 md:h-8"
-            >
-              <Flag className="w-3 h-3 mr-1" />
-              End Turn
-            </Button>
-
-            {/* Self-play-only controls */}
-            {mode === "self-play" && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleAdvancePhase}
-                disabled={isGameEnded}
-                className="h-11 md:h-8"
-              >
-                <Play className="w-3 h-3 mr-1" />
-                Advance Phase
-              </Button>
-            )}
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleConcede}
-              disabled={isGameEnded}
-              className="h-11 md:h-8"
-            >
-              Concede
-            </Button>
-
-            <Button
-              variant={autoSaveEnabled ? "default" : "outline"}
-              size="sm"
-              onClick={() => setAutoSaveEnabled(!autoSaveEnabled)}
-              title={
-                autoSaveEnabled ? "Auto-save enabled" : "Auto-save disabled"
-              }
-              className="h-11 w-11 p-0 md:h-8 md:w-auto md:p-0"
-            >
-              {autoSaveEnabled ? (
-                <RotateCcw className="w-3 h-3" />
-              ) : (
-                <Pause className="w-3 h-3" />
-              )}
-            </Button>
-
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                toast({
-                  title: "Game State",
-                  description: `Turn ${gameState.turn.turnNumber}, Phase: ${gameState.turn.currentPhase}, Status: ${gameState.status}`,
-                });
-              }}
-              className="h-11 w-11 p-0 md:h-8 md:w-auto md:p-0"
-            >
-              <Info className="w-3 h-3" />
-            </Button>
-          </div>
-
-          {!isMobile && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Clock className="w-3 h-3" />
-              <span>
-                {gameState.status === "completed"
-                  ? "Game Ended"
-                  : "Game in Progress"}
-              </span>
-            </div>
-          )}
-        </div>
-      </footer>
+      {/* Game Controls Footer — extracted to a memoized leaf (issue #2418, slice 2) */}
+      <GameFooter
+        playerName={playerName}
+        playerLifeTotal={footerPlayer?.lifeTotal}
+        opponentName={footerOpponent?.name}
+        opponentLifeTotal={footerOpponent?.lifeTotal}
+        manaPool={footerPlayer?.manaPool}
+        currentPhase={gameState.turn.currentPhase}
+        turnNumber={gameState.turn.turnNumber}
+        status={gameState.status}
+        mode={mode}
+        isPlayerTurn={isPlayerTurn}
+        isGameEnded={isGameEnded}
+        autoSaveEnabled={autoSaveEnabled}
+        isMobile={isMobile}
+        onPassPriority={handlePassPriority}
+        onEndTurn={handleEndTurn}
+        onAdvancePhase={handleAdvancePhase}
+        onConcede={handleConcede}
+        onToggleAutoSave={handleToggleAutoSave}
+      />
 
       {/* Mulligan Dialog */}
       <Dialog open={showMulligan} onOpenChange={setShowMulligan}>
