@@ -142,17 +142,36 @@ Measured from the `mutation.json` artifacts of runs `40015189962` and
 | combat                       |           67.80% | 55 (`defaultFloor`) |                 55 |          34 | worst of 3 runs |
 | trigger-system               |           34.29% |                  44 | **44 (unchanged)** |         355 | 2 runs          |
 
-Three observations per module, from runs `40101737873`, `40142166635` and
-`40165283466` (2026-10-24):
+Four observations per module, from runs `40101737873`, `40142166635`,
+`40165283466` and `40188998653` (2026-10-24/25):
 
-| Module                       |  run 1 |      run 2 |      run 3 | no-coverage (every run) |
-| ---------------------------- | -----: | ---------: | ---------: | ----------------------- |
-| replacement-effects          | 89.83% |     89.83% | **81.02%** | 68, 68, 68              |
-| layer-system                 | 92.78% | **85.37%** |     92.78% | 71, 71, 71              |
-| state-based-actions          | 94.52% |     94.52% |     94.52% | 28, 28, 28              |
-| mana                         | 81.88% |     81.88% |          — | 90, 90                  |
-| oracle-text-parser-abilities | 95.29% | **88.56%** |     95.29% | 43, 43, 43              |
-| combat                       | 67.80% |     68.47% |     67.80% | 34, 34, 34              |
+| Module                       |  run 1 |      run 2 |      run 3 |  run 4 | no-coverage (every run) |
+| ---------------------------- | -----: | ---------: | ---------: | -----: | ----------------------- |
+| replacement-effects          | 89.83% |     89.83% | **81.02%** | 89.83% | 68, 68, 68, 68          |
+| layer-system                 | 92.78% | **85.37%** |     92.78% | 92.78% | 71, 71, 71, 71          |
+| state-based-actions          | 94.52% |     94.52% |     94.52% | 94.52% | 28, 28, 28, 28          |
+| mana                         | 81.88% |     81.88% |          — | 81.88% | 90, 90, 90              |
+| oracle-text-parser-abilities | 95.29% | **88.56%** |     95.29% | 95.40% | 43, 43, 43, 43          |
+| combat                       | 67.80% |     68.47% |     67.80% | 67.46% | 34, 34, 34, 34          |
+
+**Run `40188998653` (2026-10-25) is the proof: six of the nine legs finished
+and every one of them passed the gate** —
+
+```
+Stryker (layer-system)                  | success
+Stryker (replacement-effects)           | success
+Stryker (state-based-actions)           | success
+Stryker (mana)                          | success
+Stryker (oracle-text-parser-abilities) | success
+Stryker (combat)                        | success
+Stryker (spell-casting)                 | cancelled   (timeout — needs the split)
+Stryker (keyword-actions)               | cancelled   (timeout — needs the split)
+Stryker (trigger-system)                | cancelled   (timeout — needs the #1528/#1524 backfill)
+```
+
+The three legs that do not finish are the two heavy modules that need
+splitting and the one module with a genuine coverage regression. Nothing is
+red for a measurement reason any more.
 
 ### ⚠️ The mutation score is not reproducible — floors must come from the worst observation
 
@@ -243,11 +262,14 @@ upper bounds derived from the run's progress counters
 once each module's leg completes.
 
 Validated locally by running the gate against **every real Stryker report
-produced by all three runs** — 18 report/module combinations: all the healthy
+produced by all four runs** — 24 report/module combinations: all the healthy
 ones pass (`exit=0`), and trigger-system fails with the actionable message it
 should produce —
 `src/lib/game-state/trigger-system/damage-death-triggers.ts scored 34.3%
 (floor: 44) — ⚠️ BELOW FLOOR`.
+
+Confirmed in CI by run `40188998653`: six of the nine legs finished and all
+six passed the gate.
 
 ---
 
