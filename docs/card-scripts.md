@@ -97,3 +97,26 @@ The **Draft card scripts** workflow (Actions tab) runs the same thing for one
 set and opens a draft PR with the report as its body. Only the repo owner can
 run it, and its keys (`GEMINI_API_KEY`, or `ANTHROPIC_API_KEY` /
 `OPENAI_API_KEY`) live in the `llm-spend` environment.
+
+## Fine-tuning dataset (#2551)
+
+Every accepted script is an oracle-text -> script-JSON pair, so the whole
+card-script corpus can be exported as SFT data:
+
+```sh
+npx tsx scripts/export-card-script-dataset.ts [--out dataset-out] [--dry-run]
+```
+
+It writes two ETF files (brewery-ai's "Empero Trace Format", one JSON object
+per line):
+
+- `train.jsonl`: every accepted card script.
+- `eval.jsonl`: the 20-card #2514 bake-off gold set
+  (`scripts/data/bakeoff-cards.json`), held out of training.
+
+Each record is an ETF trace: `system` is the drafting prompt's op-set
+description (the same text `scripts/card-scripts/draft-lib.ts` sends to the
+model), `user` is the oracle text and `assistant` is the script JSON, which
+validates against `CardScriptSchema`. The export fails loudly if a gold card
+reaches the training file. The output is a local artifact and is not
+committed (`dataset-out/` is gitignored).

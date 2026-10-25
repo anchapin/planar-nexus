@@ -137,6 +137,9 @@ test-serialization.ts
 bakeoff-out/
 !scripts/data/bakeoff-cards.json
 
+# fine-tuning dataset export (#2551): generated ETF jsonl, never committed
+dataset-out/
+
 # AI agent runtime state — local only. Each of these dirs holds ephemeral
 # session/cache data (run logs, decisions, scratch notes, worktrees). They
 # are already gitignored at the home level (~/AGENTS.md); mirror the rule so
