@@ -132,15 +132,60 @@ score is the **worst file** in the module (the floor is applied per file).
 Measured from the `mutation.json` artifacts of runs `40015189962` and
 `40052506479`:
 
-| Module                       | Worst file score |           Old floor |      **New floor** | No-coverage | Measured        |
-| ---------------------------- | ---------------: | ------------------: | -----------------: | ----------: | --------------- |
-| replacement-effects          |           89.83% |                  76 |             **88** |          68 | run 40101737873 |
-| state-based-actions          |           94.52% |                  50 |             **93** |          28 | run 40101737873 |
-| oracle-text-parser-abilities |           95.29% |                  50 |             **94** |          43 | run 40101737873 |
-| mana                         |           81.88% |                  50 |             **80** |          90 | run 40101737873 |
-| layer-system                 |           92.78% |                  55 |             **91** |          71 | run 40101737873 |
-| combat                       |           67.80% | 55 (`defaultFloor`) |                 55 |          34 | run 40101737873 |
-| trigger-system               |           34.29% |                  44 | **44 (unchanged)** |         352 | run 40052506479 |
+| Module                       | Worst file score |           Old floor |      **New floor** | No-coverage | Measured                           |
+| ---------------------------- | ---------------: | ------------------: | -----------------: | ----------: | ---------------------------------- |
+| replacement-effects          |           89.83% |                  76 |             **88** |          68 | runs 40101737873 + 40142166635     |
+| state-based-actions          |           94.52% |                  50 |             **93** |          28 | runs 40101737873 + 40142166635     |
+| oracle-text-parser-abilities |           88.56% |                  50 |             **87** |          43 | worst of 40101737873 / 40142166635 |
+| mana                         |           81.88% |                  50 |             **80** |          90 | runs 40101737873 + 40142166635     |
+| layer-system                 |           85.37% |                  55 |             **84** |          71 | worst of 40101737873 / 40142166635 |
+| combat                       |           67.80% | 55 (`defaultFloor`) |                 55 |          34 | worst of 40101737873 / 40142166635 |
+| trigger-system               |           34.29% |                  44 | **44 (unchanged)** |         355 | runs 40052506479 + 40142166635     |
+
+### ⚠️ The mutation score is not reproducible — floors must come from the worst observation
+
+Two consecutive nightly runs of **identical code** (40101737873 and
+40142166635, 2026-10-24) disagreed on two modules:
+
+| Module                       | run 40101737873 | run 40142166635 | drift |
+| ---------------------------- | --------------: | --------------: | ----: |
+| layer-system                 |          92.78% |      **85.37%** | −7.42 |
+| oracle-text-parser-abilities |          95.29% |      **88.56%** | −6.74 |
+| replacement-effects          |          89.83% |          89.83% |  0.00 |
+| state-based-actions          |          94.52% |          94.52% |  0.00 |
+| mana                         |          81.88% |          81.88% |  0.00 |
+| combat                       |          67.80% |          68.47% | +0.68 |
+
+**Cause:** ~90% of mutants are classified by Stryker's 5-second per-test
+timeout. A mutant that pushes a covering test near that boundary flips
+between `Timeout` (counted as detected) and `Survived` (not detected)
+depending on how loaded the runner is — and a slower runner inflates the
+score. The 14,884 legitimate tests include 29 that run longer than 2 s and 9
+longer than 5 s, so the boundary is genuinely knife-edge.
+
+**The uncovered-code counts, by contrast, were byte-identical across both
+runs** (68, 28, 43, 90, 71, 34) — they depend on coverage, not on
+wall-clock. That is why `uncoveredBudgets` is the deterministic half of the
+gate and the score floor is the noisy half.
+
+**Consequence for this change:** every floor above is derived from the
+**worst** observation across the two runs, not the best. Setting a floor to a
+single lucky measurement is exactly what made the nightly flaky: on run
+40142166635, `layer-system` (floor 91) and `oracle-text-parser-abilities`
+(floor 94) both failed against floors measured from a single run.
+
+**Options for making the score itself deterministic** (not done here — both
+cost more than they buy today):
+
+- **Raise Stryker's `timeout` above the slowest legitimate test** (16.8 s).
+  Then "hang" is unambiguous and the classification stops depending on load —
+  but every hanging mutant costs 3× more wall-clock, and the legs already run
+  5.5 hours.
+- **Stop counting `Timeout` as detected.** That makes the score deterministic
+  but collapses it (Timeout is ~90% of detected mutants) and changes what the
+  score means.
+- **Keep the score floor loose and lean on `uncoveredBudgets`.** What this
+  change does.
 
 Every module except trigger-system was re-measured on run `40101737873`,
 which is the first run **without** the flaky AI simulation tests in the
@@ -185,9 +230,9 @@ upper bounds derived from the run's progress counters
 530, keyword-actions 1,456. They must be ratcheted down to the exact count
 once each module's leg completes.
 
-Validated locally by running the gate against all six real Stryker reports
-from run `40101737873`: all six pass (`exit=0`). trigger-system still fails
-with the actionable message it should produce —
+Validated locally by running the gate against all seven real Stryker reports
+from run `40142166635`: the six healthy modules pass (`exit=0`), and
+trigger-system fails with the actionable message it should produce —
 `src/lib/game-state/trigger-system/damage-death-triggers.ts scored 34.3%
 (floor: 44) — ⚠️ BELOW FLOOR`.
 
@@ -308,11 +353,17 @@ Machinery the split needs:
 5. **package.json** needs the new `mutate:*` scripts, and the workflow matrix
    - `workflow_dispatch` choices need the new names.
 
-### 3. `layer-system` — the one module that cannot be split
+### 3. `layer-system` — ✅ RESOLVED (it completes now)
 
-`layer-system` is a **single file** with 995 mutants, and reached 879 of them
-(88%) in 360 minutes. A single file cannot be partitioned across matrix legs,
-and 360 minutes is GitHub's ceiling. Options:
+`layer-system` is a **single file** with 995 mutants, so it cannot be split
+across matrix legs, and 360 minutes is GitHub's ceiling. It had only reached
+879 of them (88%) before — but once the flaky AI tests were out of the
+mutation suite, **it completed on both run `40101737873` and run
+`40142166635`** and produced a report (71 no-coverage mutants, score 92.78%
+and 85.37% on the two runs). So the "lower Stryker's timeout" option is no
+longer needed and the score-unsafe lever is off the critical path.
+
+Its floor is 84 (worst of the two runs) — see the score-noise section above.
 
 - **(a) Lower Stryker's per-test timeout** (e.g. 5000 → 2500 ms). Would make
   it fit comfortably and every other leg far faster. Score-unsafe for the 29

@@ -14,6 +14,20 @@
  * score or the nightly job fails immediately. Re-measure with
  * `npm run mutate:<module>` before raising an entry by hand.
  *
+ * ⚠️ The mutation score is NOT reproducible run to run. Two consecutive
+ * nightly runs of identical code (40101737873 and 40142166635, 2026-10-24)
+ * measured layer-system at 92.78% and 85.37%, and oracle-text-parser-abilities
+ * at 95.29% and 88.56%. The cause is that ~90% of mutants are classified by
+ * Stryker's 5-second per-test timeout, so a mutant that hangs near that
+ * boundary flips between "Timeout" (counted as detected) and "Survived"
+ * (not detected) depending on how loaded the runner is. The uncovered-code
+ * (NoCoverage) counts, by contrast, were byte-identical across both runs —
+ * they depend on coverage, not on wall-clock. So:
+ *   - derive each floor from the WORST observation, not the best, and
+ *   - treat `uncoveredBudgets` below as the deterministic half of the gate.
+ * Raising a floor to a single lucky measurement is what made the nightly
+ * flaky in the first place.
+ *
  * Issue #1785: the previous nightly workflow ran a single Stryker
  * invocation that mutated all seven allowlisted modules serially and was
  * killed by GitHub Actions' 6h job timeout in twelve consecutive
@@ -24,10 +38,11 @@
  * previous "TO BE RACKED after the first successful nightly run" placeholders.
  *
  * Measured baselines (see stryker.config.js "THRESHOLDS" for provenance):
- *   • src/lib/game-state/layer-system.ts        : re-measured 92.78% worst
- *     file (2026-10-24, nightly run 40101737873; 71 no-coverage mutants) →
- *     floor 91, ratcheted from the old 56.65% baseline (PR #1297). Issue
- *     #1711's targeted `layer-system.mutation.test.ts` suite lifted it.
+ *   • src/lib/game-state/layer-system.ts        : 85.37% worst of two runs
+ *     (2026-10-24, nightly runs 40101737873 and 40142166635; 71 no-coverage
+ *     mutants) → floor 84, ratcheted from the old 56.65% baseline (PR
+ *     #1297). The two runs of identical code measured 92.78% and 85.37% —
+ *     see the note on score noise above.
  *   • src/lib/game-state/replacement-effects.ts : re-measured 89.83% worst
  *     file (2026-10-24, nightly run 40101737873, 3 files, 811 mutants) →
  *     floor 88, ratcheted from the old 76.
@@ -87,7 +102,7 @@ module.exports = {
   defaultFloor: 55,
 
   floors: {
-    "src/lib/game-state/layer-system/*.ts": 91,
+    "src/lib/game-state/layer-system/*.ts": 84,
     "src/lib/game-state/replacement-effects/*.ts": 88,
     // Conservative pending-measurement floors — ratchet upward after the
     // first successful nightly run (issue #1785 split). See header.
@@ -114,10 +129,11 @@ module.exports = {
     // keyword-actions/*.ts (MTG keyword abilities and actions) is still a
     // conservative pending-measurement floor — its leg has never completed.
     "src/lib/game-state/keyword-actions/*.ts": 50,
-    // abilities.ts (ability word parsing in oracle-text-parser): re-measured
-    // 95.29% on nightly run 40052506479 (2026-10-24; 1 file, 935 mutants, 43
-    // no-coverage) → floor 94, ratcheted from the old placeholder of 50.
-    "src/lib/game-state/oracle-text-parser/abilities.ts": 94,
+    // abilities.ts (ability word parsing in oracle-text-parser): 88.56% worst
+    // of two runs (2026-10-24, nightly runs 40101737873 and 40142166635;
+    // 1 file, 935 mutants, 43 no-coverage) → floor 87, ratcheted from the
+    // old placeholder of 50 (issue #2186).
+    "src/lib/game-state/oracle-text-parser/abilities.ts": 87,
   },
   // Issue #1785: stryker.config.js sets ignoreStatic, so Stryker excludes
   // mutants whose location no test covers ("NoCoverage") from the score.
@@ -132,10 +148,10 @@ module.exports = {
   // (tested - survived - timed out) and must be ratcheted down to the exact
   // count once their own leg completes.
   uncoveredBudgets: {
-    "src/lib/game-state/layer-system/*.ts": 83,
+    "src/lib/game-state/layer-system/*.ts": 71,
     "src/lib/game-state/replacement-effects/*.ts": 68,
     "src/lib/game-state/spell-casting/*.ts": 530,
-    "src/lib/game-state/trigger-system/*.ts": 352,
+    "src/lib/game-state/trigger-system/*.ts": 355,
     "src/lib/game-state/state-based-actions.ts": 28,
     "src/lib/game-state/mana/*.ts": 90,
     "src/lib/game-state/keyword-actions/*.ts": 1456,
