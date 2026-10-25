@@ -193,3 +193,20 @@ export {
 } from "./card-scripts/registry";
 // #2614: menace minimum for block prompts outside the engine.
 export { getMenaceMinimumBlockers } from "./evergreen-keywords";
+// #2417 (slice 1): engine worker transport.
+//
+// The worker (engine-worker.ts) lives inside the engine because it may only
+// reach the rules engine through this barrel (#1710 / #1724) — a deep import
+// from outside the engine is an ESLint error. The protocol types and the
+// client are re-exported here so app code can talk to the worker without a
+// deep import; the browser-only factory (engine-worker-factory.ts) stays
+// unexported because it captures `import.meta.url` and must only ever be
+// loaded through a dynamic import.
+export * from "./engine-worker-types";
+export { EngineWorkerClient, engineWorkerClient } from "./engine-worker-client";
+export type {
+  EngineWorkerClientOptions,
+  EngineWorkerStatus,
+  EngineWorkerTransport,
+  EngineWorkerTransportFactory,
+} from "./engine-worker-client";
