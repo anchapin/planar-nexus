@@ -19,17 +19,8 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  ArrowLeft,
-  Info,
-  Hand,
-  Sparkles,
-  Shuffle,
-  CheckCircle2,
-  ChevronRight,
-} from "lucide-react";
+import { ArrowLeft, ChevronRight } from "lucide-react";
 import Image from "next/image";
 import { GameBoard } from "@/components/game-board";
 import { TargetHighlightContext } from "@/components/target-highlight-context";
@@ -151,6 +142,10 @@ import { BASIC_LAND_NAMES } from "@/lib/basic-land-data";
 
 import { GameHeader } from "./_components/GameHeader";
 import { GameFooter } from "./_components/GameFooter";
+import {
+  MulliganDialog,
+  type MulliganCardView,
+} from "./_components/MulliganDialog";
 import { PhaseTracker } from "./_components/PhaseTracker";
 import { GameLoading } from "./_components/GameLoading";
 
@@ -284,6 +279,22 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
   const [playerHandCards, setPlayerHandCards] = useState<CardInstance[]>([]);
   const [isGameStarted, setIsGameStarted] = useState(false);
   const [playerDeckName, setPlayerDeckName] = useState("Your Deck");
+
+  // Slice 3 (issue #2418): narrow hand view consumed by the memoized
+  // MulliganDialog. The memo keeps the array identity stable across
+  // unrelated re-renders, so the dialog only re-renders when the hand (or
+  // another one of its props) actually changes.
+  const mulliganHandCards = useMemo<MulliganCardView[]>(
+    () =>
+      playerHandCards.map((card) => ({
+        id: card.id,
+        name: card.cardData.name,
+        manaCost: card.cardData.mana_cost,
+        typeLine: card.cardData.type_line,
+        imageUrl: card.cardData.image_uris?.normal,
+      })),
+    [playerHandCards],
+  );
 
   // Shockland ETB choice state
   const [shocklandChoice, setShocklandChoice] = useState<{
@@ -2975,6 +2986,12 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     setAutoSaveEnabled((prev) => !prev);
   }, []);
 
+  // Slice 3 (issue #2418): stable open-state toggle handed to the memoized
+  // MulliganDialog.
+  const handleMulliganOpenChange = useCallback((open: boolean) => {
+    setShowMulligan(open);
+  }, []);
+
   if (isLoading) {
     return (
       <div className="flex-1 p-2 md:p-4 flex items-center justify-center">
@@ -3143,96 +3160,15 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
         onToggleAutoSave={handleToggleAutoSave}
       />
 
-      {/* Mulligan Dialog */}
-      <Dialog open={showMulligan} onOpenChange={setShowMulligan}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Hand className="h-5 w-5 text-primary" />
-              Opening Hand
-              {mulliganCount > 0 && (
-                <Badge variant="secondary">Mulligan {mulliganCount}</Badge>
-              )}
-            </DialogTitle>
-            <DialogDescription>
-              Review your opening hand. You can keep it or take a mulligan to
-              draw a new hand with one fewer card.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="py-4">
-            {playerHandCards.length === 0 ? (
-              <div className="text-center text-muted-foreground py-8">
-                <Sparkles className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p>Your hand is empty</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2 sm:gap-3">
-                {playerHandCards.map((card) => (
-                  <div
-                    key={card.id}
-                    className="relative aspect-[5/7] rounded-lg border border-border/50 bg-gradient-to-br from-primary/10 to-primary/5 overflow-hidden group cursor-pointer hover:border-primary/50 hover:shadow-xl hover:scale-110 hover:z-10 transition-all duration-200"
-                    title={`${card.cardData.name}${card.cardData.mana_cost ? ` — ${card.cardData.mana_cost}` : ""}`}
-                  >
-                    {card.cardData.image_uris?.normal ? (
-                      <Image
-                        src={card.cardData.image_uris.normal}
-                        alt={card.cardData.name}
-                        fill
-                        sizes="(max-width: 768px) 50vw, 140px"
-                        className="object-cover rounded-lg"
-                        loading="eager"
-                      />
-                    ) : (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center p-2 text-center">
-                        <p className="text-xs font-medium line-clamp-2">
-                          {card.cardData.name}
-                        </p>
-                        {card.cardData.mana_cost && (
-                          <p className="text-[10px] text-muted-foreground mt-1">
-                            {card.cardData.mana_cost}
-                          </p>
-                        )}
-                        <p className="text-[10px] text-muted-foreground mt-1 line-clamp-2">
-                          {card.cardData.type_line}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            <div className="text-xs text-muted-foreground flex items-center gap-1">
-              <Info className="h-3 w-3" />
-              {mulliganCount === 0
-                ? "First mulligan: draw 6 cards"
-                : `Next mulligan: draw ${Math.max(1, 7 - mulliganCount - 1)} cards`}
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={handleMulligan}
-                disabled={mulliganCount >= 6}
-                className="gap-1"
-              >
-                <Shuffle className="h-4 w-4" />
-                Mulligan
-              </Button>
-              <Button
-                onClick={handleKeepHand}
-                className="gap-1"
-                data-testid="keep-hand-button"
-              >
-                <CheckCircle2 className="h-4 w-4" />
-                Keep Hand
-              </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Mulligan Dialog — extracted to a memoized leaf (issue #2418, slice 3) */}
+      <MulliganDialog
+        isOpen={showMulligan}
+        onOpenChange={handleMulliganOpenChange}
+        mulliganCount={mulliganCount}
+        handCards={mulliganHandCards}
+        onMulligan={handleMulligan}
+        onKeepHand={handleKeepHand}
+      />
 
       {/* Activated ability choice (CR 602) */}
       <Dialog
