@@ -13,9 +13,13 @@ import type {
   Zone,
   Player,
 } from "../types";
-import { Phase } from "../types";
+import { Phase, ZoneType } from "../types";
 import type { ScryfallCard } from "../types";
-import { createCardInstance, untapOrRemoveStun } from "../card-instance";
+import {
+  createCardInstance,
+  resetDamage,
+  untapOrRemoveStun,
+} from "../card-instance";
 import { createPlayerZones, createSharedZones } from "../zones";
 import { isPriorityPlayer } from "../priority-guard";
 import {
@@ -585,6 +589,55 @@ export function processUntapStep(state: GameState): UntapStepResult {
 }
 
 /**
+ * CR 514.2: at the cleanup step, all damage marked on permanents is removed.
+ *
+ * Applies {@link resetDamage} to every card on every battlefield so that
+ * marked damage does not linger into the next turn (issue #2873).
+ *
+ * The returned state keeps the surrounding code's immutable style: a fresh
+ * `cards` Map is built and only the changed entries are replaced.
+ */
+function applyCleanupDamageRemoval(state: GameState): GameState {
+  const updatedCards = new Map(state.cards);
+  let changed = false;
+
+  // Battlefield zones are per-player; collect every card that is a permanent
+  // on one of them (both the zone card list and the card's cached zone key
+  // are consulted so legacy cards are not missed).
+  const battlefieldZoneKeys = new Set<string>();
+  for (const [zoneKey, zone] of state.zones) {
+    if (zone.type === ZoneType.BATTLEFIELD) battlefieldZoneKeys.add(zoneKey);
+  }
+
+  const battlefieldCardIds = new Set<CardInstanceId>();
+  for (const zone of state.zones.values()) {
+    if (zone.type !== ZoneType.BATTLEFIELD) continue;
+    for (const cardId of zone.cardIds) battlefieldCardIds.add(cardId);
+  }
+  for (const card of updatedCards.values()) {
+    if (card.currentZoneKey && battlefieldZoneKeys.has(card.currentZoneKey)) {
+      battlefieldCardIds.add(card.id);
+    }
+  }
+
+  for (const cardId of battlefieldCardIds) {
+    const card = updatedCards.get(cardId);
+    if (!card || card.damage === 0) continue;
+
+    updatedCards.set(cardId, resetDamage(card));
+    changed = true;
+  }
+
+  if (!changed) return state;
+
+  return {
+    ...state,
+    cards: updatedCards,
+    lastModifiedAt: Date.now(),
+  };
+}
+
+/**
  * Advance to the next phase
  */
 function advanceToNextPhase(state: GameState): GameState {
@@ -731,6 +784,13 @@ function advanceToNextPhase(state: GameState): GameState {
     players: updatedPlayers,
     priorityPlayerId: state.turn.activePlayerId,
   };
+
+  // CR 514.2 (issue #2873): at the cleanup step, all damage marked on
+  // permanents is removed. Without this, damage lingers across turns and a
+  // later ping can wrongly kill a creature that already "survived" cleanup.
+  if (nextPhase.currentPhase === Phase.CLEANUP) {
+    return applyCleanupDamageRemoval(advanced);
+  }
 
   // CR 503.1a: "at the beginning of your/each upkeep" triggers (#2498).
   if (nextPhase.currentPhase === Phase.UPKEEP) {
