@@ -151,6 +151,10 @@ import {
   AbilityChoiceDialog,
   type AbilityChoiceOption,
 } from "./_components/AbilityChoiceDialog";
+import {
+  ManaAbilityDialog,
+  type ManaAbilityOptionView,
+} from "./_components/ManaAbilityDialog";
 import { GameLoading } from "./_components/GameLoading";
 
 /**
@@ -2307,6 +2311,57 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     [gameState, manaAbilityChoice, playerName, toast, autoSaveEnabled],
   );
 
+  // Slice 7 (issue #2418): the pending choice and its (stateful) handler are
+  // kept in a ref so the memoized <ManaAbilityDialog /> can be handed a
+  // selection callback whose identity never churns — `handleManaChoice`
+  // depends on the game state, which changes on every board update.
+  const manaAbilityRef = useRef({
+    choice: manaAbilityChoice,
+    handler: handleManaChoice,
+  });
+  useEffect(() => {
+    manaAbilityRef.current = {
+      choice: manaAbilityChoice,
+      handler: handleManaChoice,
+    };
+  }, [manaAbilityChoice, handleManaChoice]);
+
+  // Slice 7 (issue #2418): stable close handler handed to the memoized
+  // ManaAbilityDialog.
+  const handleManaAbilityClose = useCallback(() => {
+    setManaAbilityChoice(null);
+  }, []);
+
+  // Slice 7 (issue #2418): stable selection handler handed to the memoized
+  // ManaAbilityDialog. It only forwards the picked index to the (stateful)
+  // `handleManaChoice`.
+  const handleManaAbilitySelect = useCallback((index: number) => {
+    const option = manaAbilityRef.current.choice?.options[index];
+    if (!option) return;
+    void manaAbilityRef.current.handler(option);
+  }, []);
+
+  // Slice 7 (issue #2418): the mana choices are pre-formatted for the
+  // memoized <ManaAbilityDialog /> so the dialog stays a dumb leaf. The array
+  // identity only changes while a choice is pending.
+  const manaAbilityOptionViews = useMemo<ManaAbilityOptionView[]>(
+    () =>
+      (manaAbilityChoice?.options ?? []).map((option) => ({
+        description: option.description,
+        manaText: formatManaPool({
+          colorless: 0,
+          white: 0,
+          blue: 0,
+          black: 0,
+          red: 0,
+          green: 0,
+          generic: 0,
+          ...option.mana,
+        }),
+      })),
+    [manaAbilityChoice],
+  );
+
   // Pick a mode of a modal ability on the stack; commits once enough are picked.
   const handleAbilityModeSelect = useCallback(
     (mode: string) => {
@@ -3273,49 +3328,15 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
         </DialogContent>
       </Dialog>
 
-      {/* Mana Ability Choice Dialog */}
-      <Dialog
-        open={!!manaAbilityChoice}
-        onOpenChange={() => setManaAbilityChoice(null)}
-      >
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Choose Mana</DialogTitle>
-            <DialogDescription>
-              {manaAbilityChoice?.cardName} can produce different colors of
-              mana. Choose one.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-3 py-4">
-            {manaAbilityChoice?.options.map((option, idx) => (
-              <Button
-                key={idx}
-                variant="outline"
-                onClick={() => handleManaChoice(option)}
-                className="justify-start h-auto py-3 px-4"
-              >
-                <div className="text-left">
-                  <div className="font-medium">{option.description}</div>
-                  <div className="text-xs text-muted-foreground">
-                    Add{" "}
-                    {formatManaPool({
-                      colorless: 0,
-                      white: 0,
-                      blue: 0,
-                      black: 0,
-                      red: 0,
-                      green: 0,
-                      generic: 0,
-                      ...option.mana,
-                    })}{" "}
-                    to your mana pool
-                  </div>
-                </div>
-              </Button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Mana Ability Choice Dialog — extracted to a memoized leaf
+          (issue #2418, slice 7) */}
+      <ManaAbilityDialog
+        isOpen={!!manaAbilityChoice}
+        onClose={handleManaAbilityClose}
+        cardName={manaAbilityChoice?.cardName ?? ""}
+        options={manaAbilityOptionViews}
+        onSelect={handleManaAbilitySelect}
+      />
 
       {/* Basic Land Type Choice Dialog */}
       <Dialog
