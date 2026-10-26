@@ -30,6 +30,78 @@ import {
   getPhaseShortName,
 } from '../turn-phases';
 import { Phase } from '../types';
+import {
+  createInitialGameState,
+  startGame,
+  passPriority,
+  checkStateBasedActions,
+} from '../game-state';
+import { createCardInstance } from '../card-instance';
+import { dealDamageToCard } from '../keyword-actions';
+import type { GameState, PlayerId, ScryfallCard } from '../types';
+
+/**
+ * Mock creature card data for the cleanup-step tests (CR 514.2, #2873).
+ */
+function mockCreature(name: string, power: number, toughness: number): ScryfallCard {
+  return {
+    id: `mock-${name.toLowerCase().replace(/\s+/g, '-')}`,
+    name,
+    type_line: 'Creature — Test',
+    power: power.toString(),
+    toughness: toughness.toString(),
+    keywords: [],
+    oracle_text: '',
+    mana_cost: '{1}',
+    cmc: 1,
+    colors: ['G'],
+    color_identity: ['G'],
+    legalities: { standard: 'legal', commander: 'legal' },
+    card_faces: undefined,
+    layout: 'normal',
+  } as ScryfallCard;
+}
+
+/**
+ * Put a creature with `damage` marked on the given player's battlefield.
+ */
+function putDamagedCreature(
+  state: GameState,
+  playerId: PlayerId,
+  damage: number,
+  toughness = 4,
+): { state: GameState; cardId: string } {
+  const data = mockCreature('Damaged Bear', 2, toughness);
+  const zoneKey = `${playerId}-battlefield`;
+  const card = createCardInstance(data, playerId, playerId, {
+    currentZoneKey: zoneKey,
+  });
+  const damaged = { ...card, damage };
+
+  const cards = new Map(state.cards);
+  cards.set(card.id, damaged);
+  const zones = new Map(state.zones);
+  const zone = zones.get(zoneKey)!;
+  zones.set(zoneKey, { ...zone, cardIds: [...zone.cardIds, card.id] });
+
+  return {
+    state: { ...state, cards, zones },
+    cardId: card.id,
+  };
+}
+
+/**
+ * Advance the game until the turn reaches `target` by passing priority for
+ * the player who currently holds it (CR 117.4).
+ */
+function advanceToPhase(state: GameState, target: Phase): GameState {
+  let current = state;
+  for (let i = 0; i < 60 && current.turn.currentPhase !== target; i++) {
+    const holder = current.priorityPlayerId!;
+    current = passPriority(current, holder);
+  }
+  return current;
+}
 
 describe('Turn Phases - Phase Progression', () => {
   describe('getNextPhase', () => {
@@ -448,5 +520,48 @@ describe('Turn Phases - Edge Cases', () => {
     turn = startNextTurn(turn, 'player-1', false);
     expect(turn.extraTurns).toBe(0);
     expect(hasExtraTurn(turn)).toBe(false);
+  });
+});
+describe('Cleanup step - CR 514.2 damage removal (issue #2873)', () => {
+  function setup(damage = 3, toughness = 4) {
+    const state = startGame(createInitialGameState(['Alice', 'Bob'], 20, false));
+    const aliceId = Array.from(state.players.keys())[0] as PlayerId;
+    const placed = putDamagedCreature(state, aliceId, damage, toughness);
+    return { state: placed.state, cardId: placed.cardId, aliceId };
+  }
+
+  it('removes marked damage when the phase advances into cleanup, and not before', () => {
+    const { state, cardId } = setup(3, 4);
+
+    const midTurn = advanceToPhase(state, Phase.POSTCOMBAT_MAIN);
+    expect(midTurn.turn.currentPhase).toBe(Phase.POSTCOMBAT_MAIN);
+    expect(midTurn.cards.get(cardId as never)?.damage).toBe(3);
+
+    const cleanup = advanceToPhase(midTurn, Phase.CLEANUP);
+    expect(cleanup.turn.currentPhase).toBe(Phase.CLEANUP);
+    expect(cleanup.cards.get(cardId as never)?.damage).toBe(0);
+  });
+
+  it('a creature at toughness - damage = 1 is not killed by a 1-damage ping after cleanup', () => {
+    const { state, cardId, aliceId } = setup(3, 4);
+
+    const cleanup = advanceToPhase(state, Phase.CLEANUP);
+    expect(cleanup.cards.get(cardId as never)?.damage).toBe(0);
+
+    // Advance into the next turn.
+    let next = cleanup;
+    for (let i = 0; i < 80 && next.turn.turnNumber < 2; i++) {
+      next = passPriority(next, next.priorityPlayerId!);
+    }
+    expect(next.turn.turnNumber).toBe(2);
+    expect(next.cards.get(cardId as never)?.damage).toBe(0);
+
+    // A fresh 1-damage ping is not lethal on its own terms (1 < 4).
+    const pinged = dealDamageToCard(next, cardId as never, 1);
+    expect(pinged.success).toBe(true);
+    const afterSba = checkStateBasedActions(pinged.state);
+    const battlefield = afterSba.zones.get(`${aliceId}-battlefield`)!;
+    expect(battlefield.cardIds).toContain(cardId);
+    expect(afterSba.cards.get(cardId as never)?.damage).toBe(1);
   });
 });
