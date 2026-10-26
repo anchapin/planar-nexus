@@ -147,7 +147,18 @@ import {
 } from "./_components/MulliganDialog";
 import { PhaseTracker } from "./_components/PhaseTracker";
 import { ZoneViewerDialog } from "./_components/ZoneViewerDialog";
+import {
+  AbilityChoiceDialog,
+  type AbilityChoiceOption,
+} from "./_components/AbilityChoiceDialog";
 import { GameLoading } from "./_components/GameLoading";
+
+/**
+ * Stable empty list of ability choices — keeps the `options` prop of the
+ * memoized <AbilityChoiceDialog /> referentially stable while no choice is
+ * pending (issue #2418, slice 5).
+ */
+const EMPTY_ABILITY_CHOICE_OPTIONS: AbilityChoiceOption[] = [];
 
 async function getOrCreateActiveGame(
   gameId: string,
@@ -2998,6 +3009,35 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     setViewingZone(null);
   }, []);
 
+  // Slice 5 (issue #2418): stable close handler handed to the memoized
+  // AbilityChoiceDialog (activated ability choice, CR 602).
+  const handleAbilityChoiceClose = useCallback(() => {
+    setAbilityChoice(null);
+  }, []);
+
+  // Slice 5 (issue #2418): stable selection handler handed to the memoized
+  // AbilityChoiceDialog. It owns the "which activation was picked" branching
+  // (hand activations vs. board abilities) so that the dialog itself stays a
+  // dumb, narrow leaf.
+  const handleAbilityChoiceSelect = useCallback(
+    (option: AbilityChoiceOption) => {
+      const choice = abilityChoice;
+      setAbilityChoice(null);
+      if (!choice) return;
+      if (choice.handActivations) {
+        if (option.abilityIndex < 0) {
+          skipHandActivationsRef.current = true;
+          handleCardClick(choice.cardId, "hand");
+        } else {
+          applyHandActivation(choice.handActivations[option.abilityIndex]);
+        }
+        return;
+      }
+      activateFromBoard(choice.cardId, option.abilityIndex);
+    },
+    [abilityChoice, handleCardClick, applyHandActivation, activateFromBoard],
+  );
+
   if (isLoading) {
     return (
       <div className="flex-1 p-2 md:p-4 flex items-center justify-center">
@@ -3180,56 +3220,16 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
         onKeepHand={handleKeepHand}
       />
 
-      {/* Activated ability choice (CR 602) */}
-      <Dialog
-        open={!!abilityChoice}
-        onOpenChange={(open) => {
-          if (!open) setAbilityChoice(null);
-        }}
-      >
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>
-              {abilityChoice?.handActivations
-                ? "Use a card from your hand"
-                : "Activate an ability"}
-            </DialogTitle>
-            <DialogDescription>
-              {abilityChoice?.handActivations
-                ? `Choose what to do with ${abilityChoice?.cardName}.`
-                : `Choose an ability of ${abilityChoice?.cardName}.`}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-2">
-            {abilityChoice?.options.map((o) => (
-              <Button
-                key={o.abilityIndex}
-                variant="outline"
-                className="h-auto whitespace-normal text-left"
-                onClick={() => {
-                  const choice = abilityChoice;
-                  setAbilityChoice(null);
-                  if (!choice) return;
-                  if (choice.handActivations) {
-                    if (o.abilityIndex < 0) {
-                      skipHandActivationsRef.current = true;
-                      handleCardClick(choice.cardId, "hand");
-                    } else {
-                      applyHandActivation(
-                        choice.handActivations[o.abilityIndex],
-                      );
-                    }
-                    return;
-                  }
-                  activateFromBoard(choice.cardId, o.abilityIndex);
-                }}
-              >
-                {o.label}
-              </Button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Activated ability choice (CR 602) — extracted to a memoized leaf
+          (issue #2418, slice 5) */}
+      <AbilityChoiceDialog
+        isOpen={!!abilityChoice}
+        onClose={handleAbilityChoiceClose}
+        cardName={abilityChoice?.cardName ?? ""}
+        isHandActivation={!!abilityChoice?.handActivations}
+        options={abilityChoice?.options ?? EMPTY_ABILITY_CHOICE_OPTIONS}
+        onSelect={handleAbilityChoiceSelect}
+      />
 
       {/* Shockland ETB Choice Dialog */}
       <Dialog
