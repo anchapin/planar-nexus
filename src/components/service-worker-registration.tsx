@@ -4,6 +4,10 @@ import { useEffect, useState, useCallback } from "react";
 import { WifiOff } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { captureError, initTelemetry } from "@/lib/telemetry";
+import {
+  installAppEventRecorder,
+  recordAppEvent,
+} from "@/lib/app-event-recorder";
 
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms: string[];
@@ -19,6 +23,21 @@ interface ServiceWorkerStatus {
   cacheSize: number;
   cacheNames: string[];
   lastUpdated: number | null;
+}
+
+// Issue #2604 (diagnosis step 2): install the shared app-side event
+// recorder at MODULE scope rather than inside an effect.
+//
+// The root layout mounts this component on EVERY page (src/app/layout.tsx),
+// and React runs child effects BEFORE parent effects — so a recorder
+// installed from this component's `useEffect` would start listening AFTER
+// the page's own components had already opened their databases, missing
+// exactly the open/upgrade/blocked events this diagnosis correlates.
+// Module scope runs as soon as the client chunk is evaluated, i.e. before
+// any effect. The `typeof window` guard keeps the server render (this
+// module is also evaluated during SSR) a no-op.
+if (typeof window !== "undefined") {
+  installAppEventRecorder();
 }
 
 export function ServiceWorkerRegistration() {
@@ -209,6 +228,14 @@ export function ServiceWorkerRegistration() {
 
   // Handle update click
   const handleUpdateClick = useCallback(() => {
+    // Issue #2604 (diagnosis step 2): record the reload TRIGGER before
+    // the reload destroys the document. The entry is mirrored into
+    // sessionStorage, so it survives the navigation and can be correlated
+    // with the navigation diagnostics in the e2e fixture.
+    recordAppEvent(
+      "sw-reload:update-available-click",
+      "user clicked 'Update Available' (new service worker installed)",
+    );
     window.location.reload();
   }, []);
 
@@ -245,6 +272,13 @@ export function ServiceWorkerRegistration() {
       const registration = await navigator.serviceWorker.getRegistration();
       if (registration) {
         registration.unregister();
+        // Issue #2604 (diagnosis step 2): same as the update button above
+        // — distinct label so the two service-worker reload triggers can
+        // be told apart in the correlated log.
+        recordAppEvent(
+          "sw-reload:force-update-click",
+          "user clicked 'Force Update' (service worker unregistered)",
+        );
         window.location.reload();
       }
     } catch (error) {

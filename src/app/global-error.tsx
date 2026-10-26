@@ -3,6 +3,12 @@
 import { AlertTriangle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+// Issue #2604 (diagnosis step 2): recording only — the error boundary's
+// reload button is one of the enumerated reload triggers, so it writes a
+// labelled entry into the shared app-side event log before the reload
+// destroys the document. The mirror in sessionStorage keeps the entry
+// readable after the navigation.
+import { recordAppEvent } from "@/lib/app-event-recorder";
 
 /**
  * Root global-error boundary (issue #1731).
@@ -60,12 +66,25 @@ export default function GlobalError({
               </h1>
               <p className="text-muted-foreground">
                 A critical error crashed the application shell itself. The
-                planar bridge has collapsed — your decks are stored locally
-                and are safe, and reloading usually restores the connection.
+                planar bridge has collapsed — your decks are stored locally and
+                are safe, and reloading usually restores the connection.
               </p>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
-              <Button onClick={() => window.location.reload()}>Reload</Button>
+              <Button
+                onClick={() => {
+                  // Issue #2604 (diagnosis step 2): label the trigger so
+                  // the e2e correlation can tell an error-boundary reload
+                  // apart from a service-worker reload.
+                  recordAppEvent(
+                    "error-boundary:reload-click",
+                    "user clicked 'Reload' on the global error boundary",
+                  );
+                  window.location.reload();
+                }}
+              >
+                Reload
+              </Button>
               <Button variant="outline" onClick={reset}>
                 Try Again
               </Button>
