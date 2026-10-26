@@ -65,14 +65,19 @@ export interface Dataset {
   eval: EtfRecord[];
 }
 
-/** Stable, file-name-like id for a card script. */
-export function recordId(script: CardScript): string {
+/** Stable, file-name-like id for a card name. */
+export function slugId(name: string): string {
   return (
-    script.name
+    name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "_")
       .replace(/^_+|_+$/g, "") || "card"
   );
+}
+
+/** Stable, file-name-like id for a card script. */
+export function recordId(script: CardScript): string {
+  return slugId(script.name);
 }
 
 /**
@@ -138,7 +143,7 @@ export function buildDataset(
 }
 
 /** One JSON object per line, the ETF file layout. */
-export function renderJsonl(records: readonly EtfRecord[]): string {
+export function renderJsonl(records: readonly unknown[]): string {
   return records.map((r) => JSON.stringify(r)).join("\n") + "\n";
 }
 

@@ -54,6 +54,8 @@ src-tauri/gen/
 !src/messages/*.json
 # Differential rules scenarios and their card-data snapshot (#2411)
 !scripts/differential/scenarios/*.json
+# Worked example of a card-script draft log for the preference export (#2551)
+!scripts/data/preference-draft-log.example.json
 !scripts/differential/cards.snapshot.json
 # Card scripts are data and must be tracked (#2488)
 !src/lib/game-state/card-scripts/cards/*.json

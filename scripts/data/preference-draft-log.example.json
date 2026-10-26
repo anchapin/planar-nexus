@@ -1,0 +1,51 @@
+{
+  "cards": [
+    {
+      "name": "Shock",
+      "oracle_text": "Shock deals 2 damage to any target.",
+      "type_line": "Instant",
+      "expect": "draft",
+      "replies": [
+        {
+          "source": "arm-a",
+          "reply": "{\"script\": {\"name\": \"Shock\", \"oracle\": \"Shock deals 2 damage to any target.\", \"spell\": [{\"op\": \"DealDamage\", \"amount\": 2, \"target\": \"any\"}]}}"
+        },
+        {
+          "source": "arm-b",
+          "reply": "{\"script\": {\"name\": \"Shock\", \"oracle\": \"Shock deals 2 damage to any target.\", \"spell\": [{\"op\": \"DealDamage\", \"target\": \"any\"}]}}"
+        }
+      ]
+    },
+    {
+      "name": "Glimmerburst",
+      "oracle_text": "Glimmerburst deals 2 damage to any target.",
+      "expect": "needs_new_op",
+      "replies": [
+        {
+          "source": "arm-a",
+          "reply": "{\"needs_new_op\": [\"damage a target and draw a card in one effect\"]}"
+        },
+        {
+          "source": "arm-b",
+          "reply": "{\"script\": {\"name\": \"Glimmerburst\", \"oracle\": \"Glimmerburst deals 2 damage to any target.\", \"spell\": [{\"op\": \"DealDamage\", \"amount\": 2, \"target\": \"any\"}]}}"
+        }
+      ]
+    },
+    {
+      "name": "Cancel",
+      "oracle_text": "Counter target spell.",
+      "type_line": "Instant",
+      "expect": "draft",
+      "replies": [
+        {
+          "source": "arm-a",
+          "reply": "{\"script\": {\"name\": \"Cancel\", \"oracle\": \"Counter target spell.\", \"spell\": [{\"op\": \"Counter\", \"target\": \"spell\"}]}}"
+        },
+        {
+          "source": "arm-b",
+          "reply": "{\"script\": {\"name\": \"Cancel\", \"oracle\": \"Counter target spell.\", \"spell\": [{\"op\": \"CounterSpell\"}]}}"
+        }
+      ]
+    }
+  ]
+}
