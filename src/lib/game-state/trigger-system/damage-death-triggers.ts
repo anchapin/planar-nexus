@@ -73,7 +73,7 @@ export function detectDamageTriggers(
           timestamp: Date.now(),
           sourceCardTimestamp: card.enteredBattlefieldTimestamp,
           interveningIf: ability.interveningIf,
-          context: context as any,
+          context,
         });
       }
     }
@@ -124,7 +124,7 @@ export function detectCreatureDeathTriggers(
           timestamp: Date.now(),
           sourceCardTimestamp: card.enteredBattlefieldTimestamp,
           interveningIf: ability.interveningIf,
-          context: context as any,
+          context,
         });
       }
     }
@@ -145,7 +145,7 @@ export function detectCreatureDeathTriggers(
         effect: "draw a card",
         timestamp: Date.now(),
         sourceCardTimestamp: deadCard.enteredBattlefieldTimestamp,
-        context: deathContext as any,
+        context: deathContext,
       });
     }
 
@@ -168,7 +168,7 @@ export function detectCreatureDeathTriggers(
             : "Corpse trigger",
         timestamp: Date.now(),
         sourceCardTimestamp: deadCard.enteredBattlefieldTimestamp,
-        context: corpseContext as any,
+        context: corpseContext,
       });
     }
   }
