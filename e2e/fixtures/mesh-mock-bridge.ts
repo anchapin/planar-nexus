@@ -28,6 +28,10 @@
  */
 import type { Page, Browser, BrowserContext } from "@playwright/test";
 import {
+  installMeshNavigationDiagnostics,
+  type MeshNavigationDiagnostics,
+} from "./mesh-navigation-diagnostics";
+import {
   GAME_MESSAGE_TYPES,
   MOCK_TRANSPORT_INIT,
   PEER_BOOT_INIT,
@@ -363,12 +367,21 @@ export async function setupMeshPeerPages(
   pages: Page[],
   baseURL: string,
   opts: MeshPeerOptions[],
-): Promise<void> {
+): Promise<MeshNavigationDiagnostics[]> {
   if (pages.length !== opts.length) {
     throw new Error(
       `setupMeshPeerPages: pages.length (${pages.length}) !== opts.length (${opts.length})`,
     );
   }
+
+  // Issue #2604: install the per-peer navigation diagnostics BEFORE the
+  // first `page.goto`, so the initial document load AND any later reload
+  // are visible in the test log with peer id + timestamp + URL. This is
+  // what turns "Execution context was destroyed" into an actionable
+  // "peer-d reloaded /multiplayer at t=+1234ms" line.
+  const diagnostics = pages.map((page, i) =>
+    installMeshNavigationDiagnostics(page, opts[i].playerId),
+  );
 
   // Build a map from playerId to Page for fanout routing.
   const pageById = new Map<string, Page>();
@@ -428,6 +441,10 @@ export async function setupMeshPeerPages(
     await page.waitForLoadState("domcontentloaded");
     await page.waitForFunction(() => Boolean((window as any).__peer));
   }
+
+  // Issue #2604: hand the diagnostics back so the spec can print a
+  // per-peer summary (peer id + navigation count) when a test fails.
+  return diagnostics;
 }
 
 /**
