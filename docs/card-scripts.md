@@ -120,3 +120,97 @@ model), `user` is the oracle text and `assistant` is the script JSON, which
 validates against `CardScriptSchema`. The export fails loudly if a gold card
 reaches the training file. The output is a local artifact and is not
 committed (`dataset-out/` is gitignored).
+
+### Preference pairs for DPO (#2551, step 2)
+
+SFT data teaches the model what a good script looks like; DPO data teaches
+it what a *bad* answer looks like, by putting the two side by side. A
+drafting run produces both, so the run can be exported as preference pairs:
+
+```sh
+npx tsx scripts/export-card-script-preferences.ts \
+  [--drafts scripts/data/card-script-drafts.json] [--out dataset-out] [--dry-run]
+```
+
+It writes one file:
+
+- `preferences.jsonl`: one DPO pair per card that has both a good and a
+  bad answer.
+
+Each record is the step-1 ETF record plus the two answers:
+
+```json
+{"etf": 1,
+ "id": "shock",
+ "system": "<the drafting prompt's op-set description>",
+ "user": "<the oracle text>",
+ "chosen": "<the answer we want>",
+ "rejected": "<the answer we don't>",
+ "messages": [{"role": "user", "content": "<the oracle text>"}],
+ "meta": {"source": "local:card-script-drafts", "license": "MIT",
+          "tags": ["card-scripts", "dpo", "train"],
+          "card": "Shock", "expect": "draft",
+          "chosen_source": "arm-a", "rejected_source": "arm-b"}}
+```
+
+The `system` prompt is the same op-set description the SFT export uses and
+the `user` prompt is the same oracle text, so the SFT and DPO data agree on
+what a prompt and a good answer look like. The `chosen` side of a draft pair
+is the bare script object, byte-for-byte the same shape as the step-1
+`assistant` turn.
+
+Two kinds of pair come out of a run:
+
+- **draft cards**: `chosen` is the schema-valid draft, `rejected` is the
+  invalid (or false) draft the same run also produced.
+- **needs-new-op cards**: `chosen` is the explicit refusal
+  (`{"needs_new_op": [...]}`), `rejected` is the forced/guessed script the
+  model wrote instead of refusing.
+
+Which reply is good is decided by the repo's own validator
+(`CardScriptSchema`, plus the drafting pipeline's mode and spell/permanent
+checks) — never by a label stored in the source file. The source only says
+which cards are meant to be drafted and which are meant to be refused.
+The gold set (`scripts/data/bakeoff-cards.json`) never reaches a training
+pair, the export fails loudly on a malformed draft log or a malformed pair,
+and cards that produce no pair are reported with the reason.
+
+#### The data source: a draft log
+
+The source is the **draft log**: the raw replies of a drafting run, one entry
+per card. `scripts/card-scripts/preference-lib.ts` reads it and pairs the
+replies.
+
+```json
+{"cards": [
+  {"name": "Shock",
+   "oracle_text": "Shock deals 2 damage to any target.",
+   "type_line": "Instant",
+   "expect": "draft",
+   "replies": [{"source": "arm-a", "reply": "{\"script\": {...}}"},
+               {"source": "arm-b", "reply": "{\"script\": {...}}"}]},
+  {"name": "Glimmerburst",
+   "oracle_text": "...",
+   "expect": "needs_new_op",
+   "replies": [{"source": "arm-a", "reply": "{\"needs_new_op\": [\"...\"]}"}]}
+]}
+```
+
+A worked example of the format (fixture replies, including a gold card
+that must be held out) is committed at
+`scripts/data/preference-draft-log.example.json`; run the export with
+`--drafts scripts/data/preference-draft-log.example.json --dry-run` to see
+the pairing and skip report without writing anything.
+
+**No real draft log exists in this repo yet.** `scripts/draft-card-scripts.ts`
+and `scripts/card-script-bakeoff.ts` keep only the *judged outcome* of a
+reply (the script, the list of missing ops, or the schema errors) and drop
+the reply itself, so the rejected drafts of a past run cannot be recovered;
+the committed reports under `docs/card-scripts/drafts/` list card names and
+error strings only. The pairing above is therefore exercised against the
+repo's own validator and fixture replies
+(`tests/card-script-preferences.test.ts`), and **live pair generation waits
+for a drafting run that persists its raw replies** (a `drafts.json` in the
+format above). Until then the export has nothing to pair: with no draft log at
+all it fails with a clear message, and with a log that has no cards it
+writes an empty `preferences.jsonl`.
