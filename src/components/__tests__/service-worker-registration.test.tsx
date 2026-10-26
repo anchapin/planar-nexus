@@ -1,6 +1,13 @@
 import React from "react";
-import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  act,
+  waitFor,
+} from "@testing-library/react";
 import { ServiceWorkerRegistration } from "../service-worker-registration";
+import { clearAppEvents, getAppEvents } from "@/lib/app-event-recorder";
 
 // Mock the toast module so we can assert on dispatched toasts without rendering <Toaster />.
 const toastMock = jest.fn();
@@ -19,7 +26,9 @@ class FakeEventTarget {
     (this.listeners[type] ||= []).push(cb);
   }
   removeEventListener(type: string, cb: (e: Event) => void) {
-    this.listeners[type] = (this.listeners[type] || []).filter((fn) => fn !== cb);
+    this.listeners[type] = (this.listeners[type] || []).filter(
+      (fn) => fn !== cb,
+    );
   }
   dispatchEvent(type: string) {
     (this.listeners[type] || []).forEach((cb) => cb(new Event(type)));
@@ -52,7 +61,8 @@ beforeEach(() => {
     value: {
       register: registerMock.mockResolvedValue({
         scope: "/",
-        addEventListener: registrationTarget.addEventListener.bind(registrationTarget),
+        addEventListener:
+          registrationTarget.addEventListener.bind(registrationTarget),
       }),
       controller: undefined,
       getRegistration: getRegistrationMock,
@@ -62,7 +72,10 @@ beforeEach(() => {
   // caches — referenced by getCacheInfo / clear cache. Provide a minimal stub.
   Object.defineProperty(global, "caches", {
     configurable: true,
-    value: { keys: jest.fn().mockResolvedValue([]), delete: jest.fn().mockResolvedValue(true) },
+    value: {
+      keys: jest.fn().mockResolvedValue([]),
+      delete: jest.fn().mockResolvedValue(true),
+    },
   });
 });
 
@@ -101,10 +114,14 @@ describe("ServiceWorkerRegistration", () => {
     render(<ServiceWorkerRegistration />);
 
     act(() => window.dispatchEvent(new Event("offline")));
-    expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ title: "You're offline" }));
+    expect(toastMock).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "You're offline" }),
+    );
 
     act(() => window.dispatchEvent(new Event("online")));
-    expect(toastMock).toHaveBeenCalledWith(expect.objectContaining({ title: "Back online" }));
+    expect(toastMock).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Back online" }),
+    );
   });
 
   it("shows a confirmation toast when caches are cleared", async () => {
@@ -140,7 +157,10 @@ describe("ServiceWorkerRegistration", () => {
     const promptEvent = new Event("beforeinstallprompt");
     Object.assign(promptEvent, {
       platforms: ["browser"],
-      userChoice: Promise.resolve({ outcome: "dismissed" as const, platform: "browser" }),
+      userChoice: Promise.resolve({
+        outcome: "dismissed" as const,
+        platform: "browser",
+      }),
       prompt: jest.fn().mockResolvedValue(undefined),
       preventDefault: jest.fn(),
     });
@@ -149,6 +169,114 @@ describe("ServiceWorkerRegistration", () => {
       window.dispatchEvent(promptEvent);
     });
 
-    expect(screen.getByLabelText("Install Planar Nexus as an app")).toBeTruthy();
+    expect(
+      screen.getByLabelText("Install Planar Nexus as an app"),
+    ).toBeTruthy();
+  });
+});
+
+/**
+ * Issue #2604 (diagnosis step 2): the two service-worker reload sites are
+ * enumerated reload triggers, so each must write a LABELLED entry into the
+ * shared app-side event log before the reload destroys the document.
+ *
+ * The labels are what the e2e navigation diagnostics correlate against the
+ * navigation events, so they are asserted by value here.
+ */
+describe("ServiceWorkerRegistration — reload instrumentation (#2604)", () => {
+  /** jsdom reports `location.reload()` as "Not implemented: navigation". */
+  let consoleErrorSpy: jest.SpyInstance;
+
+  beforeEach(() => {
+    clearAppEvents();
+    consoleErrorSpy = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("records 'sw-reload:update-available-click' when the update button reloads", async () => {
+    // A registration whose worker reaches the "installed" state while a
+    // controller exists — that is what makes the component offer the
+    // "Update Available" button.
+    const stateChangeCallbacks: Array<() => void> = [];
+    const worker = {
+      state: "installed",
+      addEventListener: (_type: string, cb: () => void) => {
+        stateChangeCallbacks.push(cb);
+      },
+    };
+    let updateFound: (() => void) | null = null;
+    registerMock.mockResolvedValue({
+      scope: "/",
+      installing: worker,
+      addEventListener: (type: string, cb: () => void) => {
+        if (type === "updatefound") updateFound = cb;
+      },
+    });
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      writable: true,
+      value: {
+        register: registerMock,
+        controller: { scriptURL: "/sw.js" },
+        getRegistration: getRegistrationMock,
+      },
+    });
+
+    render(<ServiceWorkerRegistration />);
+    await waitFor(() => expect(registerMock).toHaveBeenCalled());
+
+    await act(async () => {
+      updateFound?.();
+    });
+    await act(async () => {
+      stateChangeCallbacks.forEach((cb) => cb());
+    });
+
+    const updateButton = await screen.findByRole("button", {
+      name: /update to latest version/i,
+    });
+    fireEvent.click(updateButton);
+
+    const recorded = getAppEvents().filter(
+      (event) => event.label === "sw-reload:update-available-click",
+    );
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0].detail).toContain("Update Available");
+    expect(recorded[0].t).toBeGreaterThan(0);
+  });
+
+  it("records 'sw-reload:force-update-click' when the force-update button reloads", async () => {
+    const unregister = jest.fn();
+    getRegistrationMock.mockResolvedValue({ unregister });
+
+    render(<ServiceWorkerRegistration />);
+    fireEvent.click(screen.getByLabelText("Open service worker settings"));
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /force update/i }));
+    });
+
+    await waitFor(() =>
+      expect(
+        getAppEvents().some(
+          (event) => event.label === "sw-reload:force-update-click",
+        ),
+      ).toBe(true),
+    );
+    expect(unregister).toHaveBeenCalled();
+  });
+
+  it("labels the two service-worker reload triggers distinctly", () => {
+    // The e2e correlation needs to tell the two triggers apart.
+    const labels = new Set([
+      "sw-reload:update-available-click",
+      "sw-reload:force-update-click",
+    ]);
+    expect(labels.size).toBe(2);
   });
 });

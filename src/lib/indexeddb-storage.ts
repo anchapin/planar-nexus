@@ -39,6 +39,11 @@ import {
   IndexedDBBlockedError,
   registerVersionChangeClose,
 } from "./indexeddb-open-events";
+// Issue #2604 (diagnosis step 2): recording only — no storage behaviour
+// changes. The recorder writes to the shared app-side event log so the
+// e2e navigation diagnostics can correlate the storage/recovery timeline
+// with the navigation that loses the peer's state.
+import { recordAppEvent } from "./app-event-recorder";
 
 /**
  * Schema version of the backup envelope produced by this build. Bumped in
@@ -467,6 +472,13 @@ export class IndexedDBStorage {
     // separate chunk and does not bloat the shared client bundle.
     if (this.hasStore(SAVED_GAMES_META_STORE)) {
       try {
+        // Issue #2604 (diagnosis step 2): record the recovery path that
+        // ran, so the log shows which migration (if any) touched the
+        // database around the navigation. Recording only.
+        recordAppEvent(
+          "idb:recovery:v3-split",
+          `db=${this.config.dbName} — running the legacy saved-games split`,
+        );
         const { ensureLegacyV3Split } =
           await import("./migrations/indexeddb-saved-games-split");
         await ensureLegacyV3Split(this);
@@ -499,6 +511,12 @@ export class IndexedDBStorage {
       //proceeds so the user is not permanently blocked. On success the
       //retry flag is cleared below.
       try {
+        // Issue #2604 (diagnosis step 2): record the retry path (the
+        // consolidation previously failed on a quota error). Recording only.
+        recordAppEvent(
+          "idb:recovery:v4-consolidation-retry",
+          `db=${this.config.dbName} — retrying the v4 consolidation after a previous quota failure`,
+        );
         const { ensureLegacyV4Consolidation } =
           await import("./migrations/indexeddb-v4-consolidation");
         await ensureLegacyV4Consolidation(this);
@@ -529,6 +547,12 @@ export class IndexedDBStorage {
 
     // Normal first-run path: marker absent, no retry pending.
     try {
+      // Issue #2604 (diagnosis step 2): record the normal consolidation
+      // path. Recording only.
+      recordAppEvent(
+        "idb:recovery:v4-consolidation",
+        `db=${this.config.dbName} — running the v4 legacy-database consolidation`,
+      );
       const { ensureLegacyV4Consolidation } =
         await import("./migrations/indexeddb-v4-consolidation");
       await ensureLegacyV4Consolidation(this);
@@ -590,6 +614,10 @@ export class IndexedDBStorage {
       // On-disk database is NEWER than `config.version` — an earlier
       // session self-healed a torn schema past it. Re-open at the
       // on-disk version via the lazy heal module.
+      recordAppEvent(
+        "idb:recovery:version-error",
+        `db=${this.config.dbName} — on-disk version is newer than ${this.config.version}; reopening at the on-disk version`,
+      );
       const { reopenAtDiskVersion } =
         await import("./migrations/indexeddb-schema-heal");
       db = await reopenAtDiskVersion(open, this.config.dbName);
@@ -599,6 +627,10 @@ export class IndexedDBStorage {
       (storeName) => !db.objectStoreNames.contains(storeName),
     );
     if (missing.length > 0) {
+      recordAppEvent(
+        "idb:recovery:schema-heal",
+        `db=${this.config.dbName} — missing stores: ${missing.join(",")}`,
+      );
       const { healTornSchema } =
         await import("./migrations/indexeddb-schema-heal");
       db = await healTornSchema(open, db, missing);
@@ -636,6 +668,14 @@ export class IndexedDBStorage {
       // another tab. Reject with a stable, actionable error name instead
       // of pending forever.
       request.onblocked = () => {
+        // Issue #2604 (diagnosis step 2): record the blocked open — a
+        // blocked upgrade is one of the few app-side events that can
+        // precede a tab-wide version change, so its timestamp matters
+        // for the navigation correlation. Recording only.
+        recordAppEvent(
+          "idb:blocked-reject",
+          `db=${this.config.dbName} — upgrade blocked by another tab; rejecting with IndexedDBBlockedError`,
+        );
         // If the other tab closes later, this request may STILL succeed
         // after we already rejected. Close that late connection instead
         // of leaking it for the rest of the session (the retry opens its

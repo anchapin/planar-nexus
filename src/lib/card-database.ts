@@ -23,6 +23,10 @@ import {
   IndexedDBBlockedError,
   registerVersionChangeClose,
 } from "./indexeddb-open-events";
+// Issue #2604 (diagnosis step 2): recording only — the recorder writes to
+// the shared app-side event log used to correlate storage/recovery events
+// with the navigation that loses a peer's state.
+import { recordAppEvent } from "./app-event-recorder";
 import DOMPurify from "dompurify";
 import type { Format } from "@/lib/game-rules";
 
@@ -124,6 +128,14 @@ async function openDatabase(): Promise<IDBDatabase> {
     // another tab. Reject with a stable, actionable error name so retry
     // logic (and tests) can key off it instead of hanging forever.
     request.onblocked = () => {
+      // Issue #2604 (diagnosis step 2): record the blocked open — the
+      // timestamp of a blocked upgrade is one of the app-side events the
+      // navigation correlation needs. Recording only; the reject below is
+      // unchanged.
+      recordAppEvent(
+        "idb:blocked-reject",
+        `db=${DB_NAME} — upgrade blocked by another tab; rejecting with IndexedDBBlockedError`,
+      );
       // If the other tab closes later, this request may STILL succeed
       // after we already rejected. Close that late connection instead of
       // leaking it for the rest of the session (the retry opens its own).
@@ -225,6 +237,15 @@ export async function initializeCardDatabase(): Promise<void> {
       lastInitError = null;
     } catch (error) {
       console.error("Failed to initialize card database:", error);
+      // Issue #2604 (diagnosis step 2): record the failed init (the
+      // recovery path that clears the single-flight cache so the next
+      // call retries). Recording only.
+      recordAppEvent(
+        "idb:recovery:card-db-init-failed",
+        `db=${DB_NAME} — ${error instanceof Error ? error.name : "Error"}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
       // Issue #1726: clear the single-flight cache so the NEXT call
       // retries, and remember the failure for status reporting.
       initPromise = null;

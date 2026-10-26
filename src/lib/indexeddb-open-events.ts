@@ -24,7 +24,16 @@
  *
  * Scope note (#1709): this is event-lifecycle plumbing only. Persistence
  * unification across the storage layers is tracked separately (#1722).
+ *
+ * Issue #2604 (diagnosis step 2): this module is also the CENTRAL place
+ * where the `versionchange` half of the open lifecycle is handled — every
+ * database module (`card-database.ts`, `indexeddb-storage.ts`,
+ * `p2p-reconnect-store.ts`) routes its connection through
+ * {@link registerVersionChangeClose}. Recording the event HERE gives the
+ * correlated app-side log exactly one `idb:versionchange-close` entry per
+ * event, without touching the (out-of-scope) caller modules.
  */
+import { recordAppEvent } from "./app-event-recorder";
 
 /**
  * Stable `name` for open-blocked rejections. Callers and tests match on
@@ -114,6 +123,14 @@ export function registerVersionChangeClose(
   onClose?: () => void,
 ): void {
   db.onversionchange = () => {
+    // Issue #2604 (diagnosis step 2): record the event BEFORE closing —
+    // a `versionchange` is one of the two events that can precede a
+    // tab-wide upgrade/reload, so its timestamp is exactly what the
+    // navigation correlation needs.
+    recordAppEvent(
+      "idb:versionchange-close",
+      `db=${db.name} — another tab requested a version change; closing our connection`,
+    );
     try {
       db.close();
     } catch {
