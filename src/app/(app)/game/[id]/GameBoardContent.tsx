@@ -21,7 +21,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ArrowLeft, ChevronRight } from "lucide-react";
-import Image from "next/image";
 import { GameBoard } from "@/components/game-board";
 import { TargetHighlightContext } from "@/components/target-highlight-context";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -147,6 +146,7 @@ import {
   type MulliganCardView,
 } from "./_components/MulliganDialog";
 import { PhaseTracker } from "./_components/PhaseTracker";
+import { ZoneViewerDialog } from "./_components/ZoneViewerDialog";
 import { GameLoading } from "./_components/GameLoading";
 
 async function getOrCreateActiveGame(
@@ -2992,6 +2992,12 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     setShowMulligan(open);
   }, []);
 
+  // Slice 4 (issue #2418): stable close handler handed to the memoized
+  // ZoneViewerDialog.
+  const handleCloseZoneViewer = useCallback(() => {
+    setViewingZone(null);
+  }, []);
+
   if (isLoading) {
     return (
       <div className="flex-1 p-2 md:p-4 flex items-center justify-center">
@@ -3092,6 +3098,10 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
   // Slice 2 (issue #2418): narrow values consumed by the memoized GameFooter.
   const footerPlayer = uiPlayers.find((p) => p.name === playerName);
   const footerOpponent = uiPlayers.find((p) => p.name !== playerName);
+
+  // Slice 4 (issue #2418): narrow values consumed by the memoized
+  // ZoneViewerDialog.
+  const localPlayerId = footerPlayer?.id;
 
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
@@ -3590,60 +3600,14 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
         </DialogContent>
       </Dialog>
 
-      {/* Zone Viewer Dialog */}
-      <Dialog open={!!viewingZone} onOpenChange={() => setViewingZone(null)}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="capitalize">
-              {viewingZone?.playerId ===
-              Array.from(gameState?.players.values() || []).find(
-                (p) => p.name === playerName,
-              )?.id
-                ? "Your"
-                : "Opponent's"}{" "}
-              {viewingZone?.zone}
-            </DialogTitle>
-            <DialogDescription>
-              {viewingZone?.cards.length || 0} cards
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3 py-4">
-            {viewingZone?.cards.map((card) => (
-              <div
-                key={card.id}
-                className="relative aspect-[5/7] rounded-lg overflow-hidden shadow-md bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/30"
-              >
-                {card.cardData.image_uris?.normal ? (
-                  <Image
-                    src={card.cardData.image_uris.normal}
-                    alt={card.cardData.name}
-                    fill
-                    sizes="120px"
-                    className="object-cover"
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="flex h-full w-full flex-col items-center justify-center p-2">
-                    <p className="text-center text-xs font-medium line-clamp-3">
-                      {card.cardData.name}
-                    </p>
-                    {card.cardData.mana_cost && (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {card.cardData.mana_cost}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-            {(viewingZone?.cards.length || 0) === 0 && (
-              <p className="col-span-full text-center text-muted-foreground text-sm py-8">
-                No cards in {viewingZone?.zone}
-              </p>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Zone Viewer Dialog — extracted to a memoized leaf (issue #2418, slice 4) */}
+      <ZoneViewerDialog
+        isOpen={!!viewingZone}
+        zone={viewingZone?.zone}
+        cards={viewingZone?.cards}
+        isLocalPlayerZone={viewingZone?.playerId === localPlayerId}
+        onClose={handleCloseZoneViewer}
+      />
 
       {/* Tutorial */}
       {isGameStarted && <GameTutorial />}
