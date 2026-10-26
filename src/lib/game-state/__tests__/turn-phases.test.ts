@@ -524,7 +524,7 @@ describe('Turn Phases - Edge Cases', () => {
 });
 describe('Cleanup step - CR 514.2 damage removal (issue #2873)', () => {
   function setup(damage = 3, toughness = 4) {
-    let state = startGame(createInitialGameState(['Alice', 'Bob'], 20, false));
+    const state = startGame(createInitialGameState(['Alice', 'Bob'], 20, false));
     const aliceId = Array.from(state.players.keys())[0] as PlayerId;
     const placed = putDamagedCreature(state, aliceId, damage, toughness);
     return { state: placed.state, cardId: placed.cardId, aliceId };
