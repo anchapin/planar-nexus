@@ -147,6 +147,7 @@ import {
 } from "./_components/MulliganDialog";
 import { PhaseTracker } from "./_components/PhaseTracker";
 import { ZoneViewerDialog } from "./_components/ZoneViewerDialog";
+import { ShocklandDialog } from "./_components/ShocklandDialog";
 import { GameLoading } from "./_components/GameLoading";
 
 async function getOrCreateActiveGame(
@@ -2998,6 +2999,12 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     setViewingZone(null);
   }, []);
 
+  // Slice 6 (issue #2418): stable open-state toggle handed to the memoized
+  // ShocklandDialog.
+  const handleShocklandOpenChange = useCallback(() => {
+    setShocklandChoice(null);
+  }, []);
+
   if (isLoading) {
     return (
       <div className="flex-1 p-2 md:p-4 flex items-center justify-center">
@@ -3231,47 +3238,14 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
         </DialogContent>
       </Dialog>
 
-      {/* Shockland ETB Choice Dialog */}
-      <Dialog
-        open={!!shocklandChoice}
-        onOpenChange={() => setShocklandChoice(null)}
-      >
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Enter the Battlefield</DialogTitle>
-            <DialogDescription>
-              {shocklandChoice?.cardName} can enter tapped or you can pay 2 life
-              to have it enter untapped.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-3 py-4">
-            <Button
-              variant="outline"
-              onClick={handleShocklandEnterTapped}
-              className="justify-start h-auto py-3 px-4"
-            >
-              <div className="text-left">
-                <div className="font-medium">Enter Tapped</div>
-                <div className="text-xs text-muted-foreground">
-                  No life loss
-                </div>
-              </div>
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleShocklandPayLife}
-              className="justify-start h-auto py-3 px-4"
-            >
-              <div className="text-left">
-                <div className="font-medium">Pay 2 Life</div>
-                <div className="text-xs text-muted-foreground">
-                  Enters untapped
-                </div>
-              </div>
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Shockland ETB Choice Dialog — extracted to a memoized leaf (issue #2418, slice 6) */}
+      <ShocklandDialog
+        isOpen={!!shocklandChoice}
+        cardName={shocklandChoice?.cardName}
+        onOpenChange={handleShocklandOpenChange}
+        onEnterTapped={handleShocklandEnterTapped}
+        onPayLife={handleShocklandPayLife}
+      />
 
       {/* Mana Ability Choice Dialog */}
       <Dialog
