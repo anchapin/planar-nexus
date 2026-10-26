@@ -878,6 +878,68 @@ export async function runAITurn(
 }
 
 /**
+ * Options for {@link runAITurnOffThread}.
+ */
+export interface AITurnOffThreadOptions {
+  /**
+   * Force the synchronous, in-process turn loop.
+   *
+   * Used by the Jest suite and the free-cast test harness, which must keep
+   * the historical main-thread behaviour (and its deterministic engine
+   * mocks) byte for byte.
+   */
+  forceSync?: boolean;
+}
+
+/**
+ * Run the AI's turn **off the main thread** when the AI-opponent Web Worker
+ * is available (issue #2417, slice 2).
+ *
+ * The worker runs the very same turn loop (`runAITurn`) inside the worker
+ * thread, so both the AI decision work *and* the rules-engine calls the
+ * turn makes happen off the main thread. The state crosses the boundary
+ * once per turn (in and out) — not once per action.
+ *
+ * Fallbacks (all of them keep the game playable):
+ *   - no `Worker` global (Jest, SSR, a dev build whose worker chunk cannot
+ *     be served) → the in-process handler runs the same turn loop,
+ *   - the worker fails to start or errors mid-turn → the turn is retried
+ *     on the main thread,
+ *   - the turn is not transferable (a seeded RNG or a swing tracker in the
+ *     config) → the turn stays on the main thread so its behaviour does
+ *     not change.
+ *
+ * The returned result is identical in shape to {@link runAITurn}'s.
+ */
+export async function runAITurnOffThread(
+  gameState: EngineGameState,
+  aiPlayerId: PlayerId,
+  config: AITurnConfig,
+  options: AITurnOffThreadOptions = {},
+): Promise<AITurnResult> {
+  if (!options.forceSync) {
+    try {
+      // Loaded dynamically: the bridge pulls in the browser-only worker
+      // factory (which captures `import.meta.url`), which ts-jest's
+      // CommonJS parser cannot handle at module scope.
+      const mod = await import("./worker/ai-turn-worker-bridge");
+      const workerResult = await mod.runAITurnViaWorker(
+        gameState,
+        aiPlayerId,
+        config,
+      );
+      if (workerResult) {
+        return workerResult;
+      }
+    } catch {
+      // Any bridge/transport problem falls through to the synchronous turn.
+    }
+  }
+
+  return runAITurn(gameState, aiPlayerId, config);
+}
+
+/**
  * Run untap phase
  */
 async function runUntapPhase(
