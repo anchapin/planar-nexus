@@ -241,6 +241,78 @@ export function checkStateBasedActions(
       if (!progressed) break;
     }
 
+    // SBA 704.5d: A token that is in any zone other than the battlefield
+    // ceases to exist (CR 111.8, CR 704.5d).
+    //
+    // Without this rule the engine keeps phantom tokens forever: a destroyed
+    // or exiled token stays in the graveyard / exile zone and in
+    // `state.cards` even though it no longer exists.
+    //
+    // Ordering is CR-critical, so this pass runs BEFORE the destruction /
+    // exile applications below and only looks at the zone membership as it
+    // was at the start of this check:
+    //  - a token that dies during THIS pass (lethal damage, 0 toughness,
+    //    sacrifice, exile) transits its zone first so its "dies" triggers
+    //    fire (CR 603.10a); it ceases to exist on the NEXT SBA check;
+    //  - a token that is already in a graveyard / exile / hand / library at
+    //    the start of this check ceases to exist now.
+    //
+    // The stack zone is deliberately out of scope (tokens are never stack
+    // objects in this engine — a token copy of a spell is not a card), and
+    // the command zone is left alone for the same reason.
+    const tokensToCease = Array.from(updatedState.cards.values()).filter(
+      (card) => card.isToken === true,
+    );
+    if (tokensToCease.length > 0) {
+      const ceasingZones = new Map(updatedState.zones);
+      const ceasingCards = new Map(updatedState.cards);
+      for (const token of tokensToCease) {
+        // Locate the token's zone (cached key first, then a scan for legacy
+        // cards whose zone cache was never populated).
+        let tokenZoneKey = token.currentZoneKey;
+        let tokenZone = tokenZoneKey
+          ? (ceasingZones.get(tokenZoneKey) ?? null)
+          : null;
+        if (tokenZone && !tokenZone.cardIds.includes(token.id)) {
+          // Stale zone cache — fall back to the scan below.
+          tokenZone = null;
+          tokenZoneKey = null;
+        }
+        if (!tokenZone || !tokenZoneKey) {
+          for (const [zoneKey, zone] of ceasingZones) {
+            if (zone.cardIds.includes(token.id)) {
+              tokenZone = zone;
+              tokenZoneKey = zoneKey;
+              break;
+            }
+          }
+        }
+        if (tokenZone && tokenZoneKey) {
+          // Still on the battlefield — it exists.
+          if (tokenZone.type === ZoneType.BATTLEFIELD) continue;
+          // The stack is out of scope for this rule (hard stop).
+          if (tokenZone.type === ZoneType.STACK) continue;
+
+          ceasingZones.set(tokenZoneKey, {
+            ...tokenZone,
+            cardIds: tokenZone.cardIds.filter((id) => id !== token.id),
+          });
+        }
+        // A token that is in no zone at all is not on the battlefield either:
+        // only the phantom `state.cards` entry is left, so it goes too.
+        ceasingCards.delete(token.id);
+        descriptions.push(
+          `${token.cardData.name} ceases to exist (token, CR 704.5d)`,
+        );
+        actionsPerformed = true;
+      }
+      updatedState = {
+        ...updatedState,
+        zones: ceasingZones,
+        cards: ceasingCards,
+      };
+    }
+
     // Check cards for SBAs
     const cardsToCheck = Array.from(updatedState.cards.values());
     const cardsToDestroy: CardInstanceId[] = [];
