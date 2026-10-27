@@ -55,7 +55,7 @@ export function detectStateTriggers(
           timestamp: Date.now(),
           sourceCardTimestamp: card.enteredBattlefieldTimestamp,
           interveningIf: ability.interveningIf,
-          context: context as any,
+          context,
         });
       }
     }
@@ -100,7 +100,7 @@ export function detectMonarchyChangeTriggers(
       effect: oracle,
       timestamp: Date.now(),
       sourceCardTimestamp: card.enteredBattlefieldTimestamp,
-      context: context as any,
+      context,
     });
   }
 

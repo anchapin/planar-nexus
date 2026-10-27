@@ -59,7 +59,7 @@ export function detectTurnStartTriggers(
           timestamp: Date.now(),
           sourceCardTimestamp: card.enteredBattlefieldTimestamp,
           interveningIf: ability.interveningIf,
-          context: context as any,
+          context,
         });
       }
     }
@@ -107,7 +107,7 @@ export function detectUntapStepTriggers(
           timestamp: Date.now(),
           sourceCardTimestamp: card.enteredBattlefieldTimestamp,
           interveningIf: ability.interveningIf,
-          context: context as any,
+          context,
         });
       }
     }
@@ -158,7 +158,7 @@ export function detectTurnEndTriggers(
           timestamp: Date.now(),
           sourceCardTimestamp: card.enteredBattlefieldTimestamp,
           interveningIf: ability.interveningIf,
-          context: context as any,
+          context,
         });
       }
     }
@@ -179,7 +179,7 @@ export function detectTurnEndTriggers(
       effect: "sacrifice this creature",
       timestamp: Date.now(),
       sourceCardTimestamp: card.enteredBattlefieldTimestamp,
-      context: endContext as any,
+      context: endContext,
     });
   }
 
@@ -202,7 +202,7 @@ function warpEndStepTriggers(state: GameState): TriggeredAbilityInstance[] {
       effect: "exile this permanent (warp)",
       timestamp: Date.now(),
       sourceCardTimestamp: card.enteredBattlefieldTimestamp,
-      context: context as any,
+      context,
     });
   }
   return out;
@@ -241,7 +241,7 @@ export function detectBlitzEndStepTriggers(
       effect: "sacrifice this creature",
       timestamp: Date.now(),
       sourceCardTimestamp: card.enteredBattlefieldTimestamp,
-      context: context as any,
+      context,
     });
   }
   // CR 702.185a: warp's delayed "exile at the next end step" rides the same
@@ -312,7 +312,7 @@ export function detectEndStepTriggers(
         timestamp: Date.now(),
         sourceCardTimestamp: card.enteredBattlefieldTimestamp,
         interveningIf: t.interveningIf,
-        context: context as any,
+        context,
       });
     }
   }

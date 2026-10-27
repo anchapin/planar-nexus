@@ -62,7 +62,7 @@ export function detectLifeLossTriggers(
           timestamp: Date.now(),
           sourceCardTimestamp: card.enteredBattlefieldTimestamp,
           interveningIf: ability.interveningIf,
-          context: context as any,
+          context,
         });
       }
     }
@@ -116,7 +116,7 @@ export function detectSpellCastTriggers(
           timestamp: Date.now(),
           sourceCardTimestamp: card.enteredBattlefieldTimestamp,
           interveningIf: ability.interveningIf,
-          context: context as any,
+          context,
         });
       }
     }
@@ -175,7 +175,7 @@ export function detectProwessTriggers(
         effect: "Prowess — This creature gets +1/+1 until end of turn.",
         timestamp: Date.now(),
         sourceCardTimestamp: card.enteredBattlefieldTimestamp,
-        context: context as any,
+        context,
       });
     }
   }
