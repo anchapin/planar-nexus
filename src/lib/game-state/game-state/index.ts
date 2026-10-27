@@ -50,6 +50,7 @@ import {
   HAND_SIZE_DISCARD_CHOICE_TYPE,
   createHandSizeDiscardChoice,
   discardToHandSize,
+  getPlayerMaxHandSize,
   validateHandSizeDiscard,
 } from "../keyword-actions/hand-size";
 import {
@@ -789,7 +790,35 @@ function advanceToNextPhase(state: GameState): GameState {
   // permanents is removed. Without this, damage lingers across turns and a
   // later ping can wrongly kill a creature that already "survived" cleanup.
   if (nextPhase.currentPhase === Phase.CLEANUP) {
-    return applyCleanupDamageRemoval(advanced);
+    const afterCleanup = applyCleanupDamageRemoval(advanced);
+
+    // CR 514.1 (issue #2875): the cleanup step opens with the active player
+    // discarding down to their maximum hand size (7 by default). Only the
+    // ACTIVE player's hand is ever touched; the other players keep theirs.
+    //
+    // The player picks the cards, so the turn pauses on a waiting choice of
+    // the existing cleanup-discard shape (`discard_to_hand_size`, the
+    // machinery shipped with issue #2446): answering it moves the chosen
+    // cards hand -> graveyard and the turn continues. A player whose
+    // maximum hand size is not finite (e.g. Infinity) is skipped, and so is
+    // a state that already has a choice pending (never clobber it).
+    const activePlayerId = state.turn.activePlayerId;
+    const maxHandSize = getPlayerMaxHandSize(afterCleanup, activePlayerId);
+    if (Number.isFinite(maxHandSize) && !afterCleanup.waitingChoice) {
+      const discardChoice = createHandSizeDiscardChoice(
+        afterCleanup,
+        activePlayerId,
+      );
+      if (discardChoice) {
+        return {
+          ...afterCleanup,
+          waitingChoice: discardChoice,
+          priorityPlayerId: activePlayerId,
+        };
+      }
+    }
+
+    return afterCleanup;
   }
 
   // CR 503.1a: "at the beginning of your/each upkeep" triggers (#2498).
@@ -848,9 +877,13 @@ function resolveHandSizeDiscard(
   if (!discarded.success) {
     return { success: false, state, description: discarded.description };
   }
+  // CR 514.3 (issue #2875): re-check the state-based actions after the
+  // discard, so the post-discard state is stable when the cleanup step is
+  // looked at again (a second cleanup pass must not discard any more).
+  const afterSBA = checkSBAs(discarded.state).state;
   return {
     success: true,
-    state: advanceToNextPhase(discarded.state),
+    state: advanceToNextPhase(afterSBA),
     description: discarded.description,
   };
 }
