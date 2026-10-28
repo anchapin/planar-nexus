@@ -56,6 +56,9 @@ src-tauri/gen/
 !scripts/differential/scenarios/*.json
 # Worked example of a card-script draft log for the preference export (#2551)
 !scripts/data/preference-draft-log.example.json
+# Card-script drafting pipeline sample input and its stub replies (#2491)
+!scripts/data/card-scripts-sample-cards.json
+!scripts/data/card-scripts-sample-stub-replies.json
 !scripts/differential/cards.snapshot.json
 # Card scripts are data and must be tracked (#2488)
 !src/lib/game-state/card-scripts/cards/*.json
@@ -141,6 +144,9 @@ bakeoff-out/
 
 # fine-tuning dataset export (#2551): generated ETF jsonl, never committed
 dataset-out/
+
+# card-script draft review output (#2491): proposals for review, never committed
+draft-out/
 
 # AI agent runtime state — local only. Each of these dirs holds ephemeral
 # session/cache data (run logs, decisions, scratch notes, worktrees). They

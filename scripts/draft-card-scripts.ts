@@ -5,6 +5,11 @@
  *   ... --cards "Helpful Hunter;Shivan Dragon"
  *   ... --gemini-batch batches/abc   # resume a batch that outlived the timeout
  *
+ * Review mode (no network, no key, nothing lands in the script corpus):
+ *
+ *   npx tsx scripts/draft-card-scripts.ts --input scripts/data/card-scripts-sample-cards.json \
+ *     --out draft-out --model stub
+ *
  * Providers (DRAFT_LLM_PROVIDER): gemini-batch, the default, picked by the
  * bake-off (#2514): one Gemini Batch API job for the whole set, model
  * DRAFT_LLM_MODEL (default gemini-3.1-flash-lite), GEMINI_API_KEY.
@@ -33,6 +38,15 @@ import {
   type DraftCard,
   type DraftOutcome,
 } from "./card-scripts/draft-lib";
+import {
+  createStubModelClient,
+  renderRunSummary,
+  runDraftPipeline,
+  writeRunOutput,
+  type ModelClient,
+  type PipelineCard,
+  type StubReply,
+} from "./card-scripts/pipeline-lib";
 
 const ROOT = join(__dirname, "..");
 const CARDS_DIR = join(
@@ -125,8 +139,7 @@ function loadOwnScripts(): CardScript[] {
 const PROVIDER = process.env.DRAFT_LLM_PROVIDER ?? "gemini-batch";
 const DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-lite";
 
-async function complete(prompt: string): Promise<string> {
-  const provider = PROVIDER;
+async function complete(prompt: string, provider = PROVIDER): Promise<string> {
   const model = process.env.DRAFT_LLM_MODEL;
   if (!model) throw new Error("set DRAFT_LLM_MODEL");
   if (provider === "anthropic") {
@@ -226,7 +239,73 @@ async function draftAll(
   return replies;
 }
 
+/**
+ * The canned replies the stub model uses by default: one per sample card,
+ * covering a valid draft, a refusal (needs new op) and a broken reply.
+ */
+const DEFAULT_STUB_REPLIES = join(
+  ROOT,
+  "scripts",
+  "data",
+  "card-scripts-sample-stub-replies.json",
+);
+
+function loadStubReplies(path: string): StubReply[] {
+  const raw = JSON.parse(readFileSync(path, "utf8")) as Record<string, string>;
+  return Object.entries(raw).map(([cardName, reply]) => ({ cardName, reply }));
+}
+
+/**
+ * The model the review run talks to. `stub` is the default and needs no
+ * key and no network; the real providers are configured with environment
+ * variables only (see the header of this file).
+ */
+function modelClient(model: string): ModelClient {
+  if (model === "stub") {
+    return createStubModelClient(
+      loadStubReplies(arg("stub-replies") ?? DEFAULT_STUB_REPLIES),
+    );
+  }
+  if (model === "anthropic" || model === "openai") {
+    return { draft: (prompt: string) => complete(prompt, model) };
+  }
+  throw new Error(
+    `unknown --model ${model} (review mode supports stub, anthropic and openai; ` +
+      "the gemini-batch provider only works in set mode)",
+  );
+}
+
+/**
+ * Review mode: draft a card list with the stub model and write the result
+ * to a review directory. Nothing here touches the game's script corpus.
+ */
+async function reviewMode(): Promise<void> {
+  const inputPath = arg("input");
+  if (!inputPath) throw new Error("pass --input <card-list.json>");
+  const parsed = JSON.parse(readFileSync(inputPath, "utf8")) as unknown;
+  if (!Array.isArray(parsed)) {
+    throw new Error("--input must be a JSON array of {name, oracleText} cards");
+  }
+  const cards = parsed as PipelineCard[];
+  const outDir = arg("out") ?? join(ROOT, "draft-out");
+  const model = arg("model") ?? "stub";
+  const own = loadOwnScripts();
+  const scripted = new Set(own.map((s) => s.name.toLowerCase()));
+  const run = await runDraftPipeline({
+    client: modelClient(model),
+    cards,
+    alreadyScripted: scripted,
+  });
+  const written = writeRunOutput(outDir, run);
+  console.info(renderRunSummary(run.summary));
+  console.info(`wrote ${written.files.length} files to ${outDir}`);
+}
+
 async function main() {
+  if (arg("input")) {
+    await reviewMode();
+    return;
+  }
   const dryRun = process.argv.includes("--dry-run");
   const limit = Number(arg("limit") ?? Infinity);
   const { title, cards } = await loadCards();
