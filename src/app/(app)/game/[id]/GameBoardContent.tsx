@@ -137,7 +137,6 @@ import {
   generateSimpleDeck,
   generateStarterDeck,
 } from "@/lib/deck-generation";
-import { BASIC_LAND_NAMES } from "@/lib/basic-land-data";
 
 import { GameHeader } from "./_components/GameHeader";
 import { GameFooter } from "./_components/GameFooter";
@@ -155,6 +154,10 @@ import {
   ManaAbilityDialog,
   type ManaAbilityOptionView,
 } from "./_components/ManaAbilityDialog";
+import {
+  BasicLandTypeDialog,
+  BASIC_LAND_TYPE_OPTIONS,
+} from "./_components/BasicLandTypeDialog";
 import { GameLoading } from "./_components/GameLoading";
 
 /**
@@ -2608,18 +2611,6 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     setAttractionChoice(null);
   }, [gameState, attractionChoice, playerName, toast, autoSaveEnabled]);
 
-  // Helper to get description for basic land types
-  const getBasicLandTypeDescription = (landType: string): string => {
-    const descriptions: Record<string, string> = {
-      Plains: "Produces white mana",
-      Island: "Produces blue mana",
-      Swamp: "Produces black mana",
-      Mountain: "Produces red mana",
-      Forest: "Produces green mana",
-    };
-    return descriptions[landType] || "";
-  };
-
   // Check if a card's ability requires choosing a basic land type
   const requiresBasicLandTypeChoice = (card: CardInstance): boolean => {
     // Already chosen - don't ask again
@@ -2693,6 +2684,28 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     },
     [gameState, basicLandTypeChoice, playerName, toast],
   );
+
+  // Slice 8 (issue #2418): the (stateful) handler is kept in a ref so the
+  // memoized <BasicLandTypeDialog /> can be handed a selection callback whose
+  // identity never churns — `handleBasicLandTypeChoice` depends on the game
+  // state, which changes on every board update.
+  const basicLandTypeHandlerRef = useRef(handleBasicLandTypeChoice);
+  useEffect(() => {
+    basicLandTypeHandlerRef.current = handleBasicLandTypeChoice;
+  }, [handleBasicLandTypeChoice]);
+
+  // Slice 8 (issue #2418): stable close handler handed to the memoized
+  // BasicLandTypeDialog.
+  const handleBasicLandTypeClose = useCallback(() => {
+    setBasicLandTypeChoice(null);
+  }, []);
+
+  // Slice 8 (issue #2418): stable selection handler handed to the memoized
+  // BasicLandTypeDialog. It only forwards the picked land type to the
+  // (stateful) `handleBasicLandTypeChoice`.
+  const handleBasicLandTypeSelect = useCallback((landType: string) => {
+    void basicLandTypeHandlerRef.current(landType);
+  }, []);
 
   // Handle end turn — pass through all remaining phases
   const handleEndTurn = useCallback(async () => {
@@ -3338,38 +3351,15 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
         onSelect={handleManaAbilitySelect}
       />
 
-      {/* Basic Land Type Choice Dialog */}
-      <Dialog
-        open={!!basicLandTypeChoice}
-        onOpenChange={() => setBasicLandTypeChoice(null)}
-      >
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Choose Basic Land Type</DialogTitle>
-            <DialogDescription>
-              {basicLandTypeChoice?.cardName} allows you to choose a basic land
-              type. Select one.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-1 gap-2 py-4">
-            {BASIC_LAND_NAMES.map((landType) => (
-              <Button
-                key={landType}
-                variant="outline"
-                onClick={() => handleBasicLandTypeChoice(landType)}
-                className="justify-start h-auto py-3 px-4"
-              >
-                <div className="text-left">
-                  <div className="font-medium">{landType}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {getBasicLandTypeDescription(landType)}
-                  </div>
-                </div>
-              </Button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Basic Land Type Choice Dialog — extracted to a memoized leaf
+          (issue #2418, slice 8) */}
+      <BasicLandTypeDialog
+        isOpen={!!basicLandTypeChoice}
+        onClose={handleBasicLandTypeClose}
+        cardName={basicLandTypeChoice?.cardName ?? ""}
+        options={BASIC_LAND_TYPE_OPTIONS}
+        onSelect={handleBasicLandTypeSelect}
+      />
 
       {/* Modal Spell Mode Choice Dialog */}
       <Dialog
