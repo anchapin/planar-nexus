@@ -36,6 +36,11 @@ import {
 } from "./legendary-rule";
 import { processCorpseOnDeath } from "./corpse-keyword";
 import { createEngineUncaughtException } from "./errors";
+import {
+  acquireCardMap,
+  createPassCardMap,
+  releasePassCardMap,
+} from "./sba-pass-cards";
 import { refreshThresholdBonuses } from "./keyword-actions/threshold";
 import { refreshDomainPower } from "./keyword-actions/domain";
 import { refreshTribalAnthems } from "./keyword-actions/tribal-anthem";
@@ -79,6 +84,14 @@ export function checkStateBasedActions(
   state: GameState,
 ): StateBasedActionResult {
   const originalState = state;
+  // #2419: copy the card map ONCE per pass. Every helper on the SBA path
+  // used to copy the whole map again (`new Map(state.cards)`), so one
+  // `checkStateBasedActions` call copied a 100+ entry `Map` up to a dozen
+  // times. The pass now owns one working copy: the helpers mutate it in
+  // place through `acquireCardMap`, and the frozen result is published at
+  // the end. The ownership marker is dropped in the `finally` below, so the
+  // map handed back to the caller is an ordinary immutable map again.
+  const workingCards = createPassCardMap(state);
   try {
     // Threshold static bonuses depend on graveyard size (issue #2300).
     // Domain CDA power depends on the lands each player controls.
@@ -96,7 +109,7 @@ export function checkStateBasedActions(
               refreshThresholdBonuses(
                 refreshTurnCreatureForms({
                   ...state,
-                  cards: new Map(state.cards),
+                  cards: workingCards,
                 }),
               ),
             ),
@@ -410,7 +423,7 @@ export function checkStateBasedActions(
           );
           updatedState = {
             ...updatedState,
-            cards: new Map(updatedState.cards).set(card.id, {
+            cards: acquireCardMap(updatedState).set(card.id, {
               ...card,
               counters: card.counters
                 .map((c) => {
@@ -660,6 +673,10 @@ export function checkStateBasedActions(
         `SBA check failed: ${err instanceof Error ? err.message : String(err)}`,
       ],
     };
+  } finally {
+    // #2419: the pass is over — the working copy is no longer owned by the
+    // pass, so later callers treat the published map as immutable again.
+    releasePassCardMap(workingCards);
   }
 }
 
