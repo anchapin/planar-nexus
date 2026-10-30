@@ -36,7 +36,9 @@ function arg(name: string, fallback: string): string {
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
 }
 
-function makeCard(partial: Partial<ScryfallCard> & { name: string }): ScryfallCard {
+function makeCard(
+  partial: Partial<ScryfallCard> & { name: string },
+): ScryfallCard {
   return {
     id: `bench-${partial.name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
     name: partial.name,
@@ -58,7 +60,12 @@ function makeCard(partial: Partial<ScryfallCard> & { name: string }): ScryfallCa
 const CREATURE_CARDS = [
   makeCard({ name: "Grizzly Bears", power: "2", toughness: "2" }),
   makeCard({ name: "Hill Giant", power: "3", toughness: "3" }),
-  makeCard({ name: "Giant Growth", type_line: "Enchantment", power: undefined, toughness: undefined }),
+  makeCard({
+    name: "Giant Growth",
+    type_line: "Enchantment",
+    power: undefined,
+    toughness: undefined,
+  }),
   makeCard({
     name: "Banner of Kinship",
     type_line: "Enchantment — Aura",
@@ -85,7 +92,8 @@ const CREATURE_CARDS = [
     type_line: "Creature — Merfolk Wizard",
     power: "2",
     toughness: "3",
-    oracle_text: "Whenever you cast a spell, this creature gets +1/+0 until end of turn.",
+    oracle_text:
+      "Whenever you cast a spell, this creature gets +1/+0 until end of turn.",
   }),
   makeCard({
     name: "Forest",
@@ -107,7 +115,7 @@ export function buildMidGameState(): {
   state: GameState;
   moverId: PlayerId;
 } {
-  let state = createInitialGameState(["Alice", "Bob"], 20, false);
+  const state = createInitialGameState(["Alice", "Bob"], 20, false);
   const playerIds = Array.from(state.players.keys());
 
   for (const playerId of playerIds) {
@@ -185,7 +193,10 @@ export function buildMidGameState(): {
       graveyardIds.push(card.id);
     }
 
-    state.zones.set(battlefieldKey, { ...battlefield, cardIds: battlefieldIds });
+    state.zones.set(battlefieldKey, {
+      ...battlefield,
+      cardIds: battlefieldIds,
+    });
     state.zones.set(handKey, { ...hand, cardIds: handIds });
     state.zones.set(libraryKey, { ...library, cardIds: libraryIds });
     state.zones.set(graveyardKey, { ...graveyard, cardIds: graveyardIds });
@@ -203,11 +214,7 @@ function median(values: number[]): number {
     : sorted[mid];
 }
 
-function bench(
-  label: string,
-  iterations: number,
-  fn: () => void,
-): number {
+function bench(label: string, iterations: number, fn: () => void): number {
   // Warmup (JIT + lazy module init) — not measured.
   for (let i = 0; i < Math.max(1, Math.floor(iterations / 10)); i++) fn();
 
@@ -262,7 +269,9 @@ function main(): void {
     });
   }
 
-  console.log(`\nSummary: checkStateBasedActions = ${sbaMs.toFixed(4)} ms/action`);
+  console.log(
+    `\nSummary: checkStateBasedActions = ${sbaMs.toFixed(4)} ms/action`,
+  );
 }
 
 if (process.argv[1]?.endsWith("bench-state-based-actions.ts")) {
