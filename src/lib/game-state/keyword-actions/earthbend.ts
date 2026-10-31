@@ -10,6 +10,7 @@
 import type { CardInstanceId, GameState } from "../types";
 import { addCounters } from "../card-instance";
 import { moveCardToZone } from "./removal";
+import { acquireCardMap } from "../sba-pass-cards";
 
 /** The zone a card is in, trusting `currentZoneKey` only when it's current. */
 function zoneKeyOf(state: GameState, cardId: CardInstanceId): string {
@@ -75,7 +76,7 @@ export function returnEarthbentLands(state: GameState): GameState {
       controllerId: card.ownerId,
     };
     delete restored.earthbent;
-    const cards = new Map(s.cards);
+    const cards = acquireCardMap(s);
     cards.set(id, restored);
     s = { ...s, cards };
     if (!zone.endsWith("-graveyard") && !zone.endsWith("-exile")) continue;
@@ -86,7 +87,7 @@ export function returnEarthbentLands(state: GameState): GameState {
       s = r.state;
       continue;
     }
-    const after = new Map(r.state.cards);
+    const after = acquireCardMap(r.state);
     after.set(id, { ...moved, isTapped: true });
     s = { ...r.state, cards: after };
   }
