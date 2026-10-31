@@ -144,7 +144,7 @@ function convertEnginePlayerToUI(
 /**
  * Convert engine GameState to UI GameState
  */
-function convertEngineToUI(engineState: EngineGameState): UIGameState {
+export function convertEngineToUI(engineState: EngineGameState): UIGameState {
   const players: PlayerState[] = [];
 
   engineState.players.forEach((player, playerId) => {
