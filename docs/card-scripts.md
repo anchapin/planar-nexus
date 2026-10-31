@@ -201,6 +201,11 @@ validates against `CardScriptSchema`. The export fails loudly if a gold card
 reaches the training file. The output is a local artifact and is not
 committed (`dataset-out/` is gitignored).
 
+The SFT run plan and cost estimate for the fine-tuning step are in
+[`docs/card-scripts/sft-run-plan.md`](card-scripts/sft-run-plan.md). It is a
+plan only: no training run has happened, and it needs Alex's approval before
+any GPU is rented or used.
+
 ### Preference pairs for DPO (#2551, step 2)
 
 SFT data teaches the model what a good script looks like; DPO data teaches
