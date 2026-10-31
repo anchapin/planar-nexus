@@ -10,7 +10,15 @@
 import type { CardScript } from "../../src/lib/game-state/card-scripts/schema";
 import type { DraftOutcome } from "./draft-lib";
 
-export type Provider = "gemini-batch" | "zai" | "openrouter";
+export type Provider = "gemini-batch" | "zai" | "openrouter" | "local";
+
+/** Every provider an arm spec may name. */
+export const PROVIDERS: readonly Provider[] = [
+  "gemini-batch",
+  "zai",
+  "openrouter",
+  "local",
+];
 
 export interface Arm {
   id: string;
@@ -59,6 +67,16 @@ export function priceFor(model: string, prices: Record<string, Price>): Price {
   return prices[model] ?? { input: NaN, output: NaN };
 }
 
+/**
+ * The price of one arm. A `local` arm runs on our own hardware, so its API
+ * cost is $0 — the rule lives here, keyed on the provider, so it can never
+ * leak into a hosted arm's price (and no served model needs a price entry).
+ */
+export function priceForArm(arm: Arm, prices: Record<string, Price>): Price {
+  if (arm.provider === "local") return { input: 0, output: 0 };
+  return priceFor(arm.model, prices);
+}
+
 /** Parses "provider:model" specs, e.g. "zai:glm-5.3-flash". */
 export function parseArms(spec: string): Arm[] {
   return spec
@@ -69,7 +87,7 @@ export function parseArms(spec: string): Arm[] {
       const i = s.indexOf(":");
       if (i < 0) throw new Error(`arm "${s}" must be provider:model`);
       const provider = s.slice(0, i) as Provider;
-      if (!["gemini-batch", "zai", "openrouter"].includes(provider)) {
+      if (!PROVIDERS.includes(provider)) {
         throw new Error(`unknown provider in arm "${s}"`);
       }
       const model = s.slice(i + 1);
@@ -283,7 +301,7 @@ export function scoreArm(
     } else if (e === "needs_new_op") s.newCorrect++;
     else s.newFalseRefusal++;
   }
-  const p = priceFor(arm.model, prices);
+  const p = priceForArm(arm, prices);
   s.costUsd = (s.usage.input * p.input + s.usage.output * p.output) / 1e6;
   s.costPer1000Cards = results.length ? (s.costUsd / results.length) * 1000 : 0;
   return s;
