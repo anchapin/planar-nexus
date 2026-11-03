@@ -17,6 +17,10 @@ import {
   writeRunOutput,
   type PipelineCard,
 } from "../scripts/card-scripts/pipeline-lib";
+import {
+  buildPreferencePairs,
+  parseDraftLog,
+} from "../scripts/card-scripts/preference-lib";
 import { buildSystemPrompt } from "../scripts/card-scripts/draft-lib";
 import { CardScriptSchema } from "../src/lib/game-state/card-scripts/schema";
 
@@ -205,6 +209,152 @@ describe("card-script drafting pipeline (stub model)", () => {
       ),
     ).toThrow(/card script corpus/);
     expect(existsSync(join(out, "drafts"))).toBe(false);
+  });
+});
+
+describe("card-script drafting pipeline (draft log)", () => {
+  /** A schema-invalid answer for the same card: the pairing needs one. */
+  const BOLT_INVALID_REPLY = JSON.stringify({
+    script: {
+      name: "Ember Bolt",
+      oracle: "Ember Bolt deals 3 damage to any target.",
+      spell: [{ op: "DealDamage", target: "any" }],
+    },
+  });
+
+  /** The stub answers the same card twice: once well, once badly. */
+  const MIXED_STUB = [
+    { cardName: "Ember Bolt", reply: VALID_REPLY },
+    { cardName: "Ember Bolt", reply: BOLT_INVALID_REPLY },
+    { cardName: "Soul Snare", reply: REFUSAL_REPLY },
+  ];
+
+  it("writes a draft log the preference export can read", async () => {
+    const out = tempDir();
+    const client = createStubModelClient(MIXED_STUB);
+    const run = await runDraftPipeline({
+      client,
+      cards: [BOLT, BOLT, SNARE],
+    });
+    const written = writeRunOutput(out, run);
+
+    const logFile = join(out, "draft-log.json");
+    expect(existsSync(logFile)).toBe(true);
+    expect(written.files).toContain(logFile);
+
+    const log = parseDraftLog(
+      JSON.parse(readFileSync(logFile, "utf8")) as unknown,
+    );
+    expect(log.cards.map((c) => c.name)).toEqual(["Ember Bolt", "Soul Snare"]);
+
+    const bolt = log.cards[0];
+    expect(bolt.oracle_text).toBe(BOLT.oracleText);
+    expect(bolt.type_line).toBe("Instant");
+    expect(bolt.expect).toBe("draft");
+    // Every reply is kept verbatim, the invalid one too.
+    const texts = (replies: Array<{ reply: string } | string>) =>
+      replies.map((r) => (typeof r === "string" ? r : r.reply));
+    expect(texts(bolt.replies)).toEqual([VALID_REPLY, BOLT_INVALID_REPLY]);
+
+    const snare = log.cards[1];
+    expect(snare.expect).toBe("needs_new_op");
+    expect(texts(snare.replies)).toEqual([REFUSAL_REPLY]);
+  });
+
+  it("turns the written draft log into preference pairs", async () => {
+    const out = tempDir();
+    const client = createStubModelClient(MIXED_STUB);
+    const run = await runDraftPipeline({
+      client,
+      cards: [BOLT, BOLT, SNARE],
+    });
+    writeRunOutput(out, run);
+
+    const log = parseDraftLog(
+      JSON.parse(readFileSync(join(out, "draft-log.json"), "utf8")) as unknown,
+    );
+    const { pairs, skipped } = buildPreferencePairs(log, buildSystemPrompt());
+    expect(pairs.length).toBeGreaterThanOrEqual(1);
+    const pair = pairs[0];
+    expect(pair.meta.card).toBe("Ember Bolt");
+    expect(pair.user).toBe(BOLT.oracleText);
+    expect(pair.system).toBe(buildSystemPrompt());
+    expect(JSON.parse(pair.chosen)).toEqual({
+      name: "Ember Bolt",
+      oracle: BOLT.oracleText,
+      spell: [{ op: "DealDamage", amount: 3, target: "any" }],
+    });
+    expect(JSON.parse(pair.rejected)).toEqual({
+      name: "Ember Bolt",
+      oracle: BOLT.oracleText,
+      spell: [{ op: "DealDamage", target: "any" }],
+    });
+    // The refusal-only card has nothing to pair against.
+    expect(skipped.map((s) => s.name)).toEqual(["Soul Snare"]);
+  });
+
+  it("leaves the failure, refusal and summary files in their old shape", async () => {
+    const out = tempDir();
+    const client = createStubModelClient(MIXED_STUB);
+    const run = await runDraftPipeline({
+      client,
+      cards: [BOLT, BOLT, SNARE],
+    });
+    writeRunOutput(out, run);
+
+    const summary = JSON.parse(
+      readFileSync(join(out, "run-summary.json"), "utf8"),
+    ) as { drafted: number; failed: number; needsNewOp: number };
+    expect(summary).toMatchObject({ drafted: 1, failed: 1, needsNewOp: 1 });
+
+    const failures = JSON.parse(
+      readFileSync(join(out, "failures.json"), "utf8"),
+    ) as Array<{ name: string; errors: string[] }>;
+    expect(failures).toHaveLength(1);
+    expect(failures[0].name).toBe("Ember Bolt");
+    expect(Array.isArray(failures[0].errors)).toBe(true);
+
+    const refusals = JSON.parse(
+      readFileSync(join(out, "needs-new-op.json"), "utf8"),
+    ) as Array<{ name: string; missing: string[] }>;
+    expect(refusals).toEqual([
+      {
+        name: "Soul Snare",
+        missing: ["additional costs (exile a card from your hand)"],
+      },
+    ]);
+  });
+
+  it("logs no card the model never answered", async () => {
+    const out = tempDir();
+    const client = {
+      draft: async () => {
+        throw new Error("model unavailable");
+      },
+    };
+    const run = await runDraftPipeline({ client, cards: [BOLT] });
+    writeRunOutput(out, run);
+
+    const log = parseDraftLog(
+      JSON.parse(readFileSync(join(out, "draft-log.json"), "utf8")) as unknown,
+    );
+    expect(log.cards).toEqual([]);
+  });
+
+  it("logs no card the pipeline skipped", async () => {
+    const out = tempDir();
+    const client = createStubModelClient(STUB);
+    const run = await runDraftPipeline({
+      client,
+      cards: [BOLT],
+      alreadyScripted: new Set(["ember bolt"]),
+    });
+    writeRunOutput(out, run);
+
+    const log = parseDraftLog(
+      JSON.parse(readFileSync(join(out, "draft-log.json"), "utf8")) as unknown,
+    );
+    expect(log.cards).toEqual([]);
   });
 });
 

@@ -37,6 +37,7 @@ import {
   type DraftOutcome,
 } from "./draft-lib";
 import type { CardScript } from "../../src/lib/game-state/card-scripts/schema";
+import type { CardExpectation, DraftLog, DraftLogCard } from "./preference-lib";
 
 /**
  * A model that can draft one card script. The only thing the pipeline
@@ -125,22 +126,37 @@ export const STUB_FALLBACK_REPLY =
  * the card named in the prompt, and refuses (needs new op) for every card
  * it has no answer for. Tests use it to cover the valid, invalid and
  * unknown-effect paths without a network call.
+ *
+ * A card may have several canned replies: they are handed out in order,
+ * one per call, and the last one is repeated when the card is asked for
+ * again. That is how a run collects more than one answer for the same
+ * card — the draft log keeps every reply of a card, so the preference
+ * export has a good answer and a bad one to pair.
  */
 export function createStubModelClient(
   replies: readonly StubReply[],
   fallbackReply: string = STUB_FALLBACK_REPLY,
 ): StubModelClient {
-  const byName = new Map(
-    replies.map((r) => [r.cardName.trim().toLowerCase(), r.reply]),
-  );
+  const byName = new Map<string, string[]>();
+  for (const r of replies) {
+    const key = r.cardName.trim().toLowerCase();
+    const list = byName.get(key);
+    if (list) list.push(r.reply);
+    else byName.set(key, [r.reply]);
+  }
+  const asked = new Map<string, number>();
   const prompts: string[] = [];
   return {
     prompts,
     async draft(prompt: string): Promise<string> {
       prompts.push(prompt);
       const name = cardNameFromPrompt(prompt);
-      const hit = name ? byName.get(name.toLowerCase()) : undefined;
-      return hit ?? fallbackReply;
+      const key = name ? name.toLowerCase() : "";
+      const list = byName.get(key);
+      if (!list || list.length === 0) return fallbackReply;
+      const seen = asked.get(key) ?? 0;
+      asked.set(key, seen + 1);
+      return list[seen % list.length];
     },
   };
 }
@@ -211,10 +227,33 @@ export interface RunSummary {
   missingOps: Array<{ missing: string; cards: string[] }>;
 }
 
+/**
+ * One raw model reply of a run, kept so the run can be written as a draft
+ * log (the input of the preference export).
+ */
+export interface RunReply {
+  /** The card the model was asked about. */
+  name: string;
+  /** The oracle text the prompt was built from. */
+  oracleText: string;
+  /** The card's type line, when the card list knows it. */
+  typeLine?: string;
+  /** The raw reply text, exactly as the model gave it. */
+  reply: string;
+  /** What the pipeline made of the reply. */
+  outcome: DraftOutcome;
+}
+
 /** A whole run. */
 export interface PipelineRun {
   outcomes: DraftOutcome[];
   summary: RunSummary;
+  /**
+   * The raw replies of the run, one per card the model was asked about.
+   * A card may have more than one (a re-draft), and every reply is kept
+   * verbatim — including the invalid and the refused ones.
+   */
+  replies: RunReply[];
 }
 
 /** Options for {@link runDraftPipeline}. */
@@ -262,6 +301,7 @@ export async function runDraftPipeline(
 ): Promise<PipelineRun> {
   const alreadyScripted = options.alreadyScripted ?? new Set<string>();
   const outcomes: DraftOutcome[] = [];
+  const replies: RunReply[] = [];
   for (const card of options.cards) {
     const reason = skipReason(toDraftCard(card), alreadyScripted);
     if (reason) {
@@ -270,8 +310,69 @@ export async function runDraftPipeline(
     }
     const step = await draftCard(options.client, card);
     outcomes.push(step.outcome);
+    replies.push({
+      name: card.name,
+      oracleText: card.oracleText,
+      typeLine: card.typeLine,
+      reply: step.reply,
+      outcome: step.outcome,
+    });
   }
-  return { outcomes, summary: summarize(outcomes) };
+  return { outcomes, summary: summarize(outcomes), replies };
+}
+
+/**
+ * The label a draft-log card gets: what the run showed for it.
+ *
+ * - a card the run drafted is a "draft" card;
+ * - a card the run refused (needs new op) is a "needs_new_op" card;
+ * - a card whose only answer was invalid is "either": the run did not
+ *   say what the card is supposed to be.
+ */
+function logExpectation(outcomes: readonly DraftOutcome[]): CardExpectation {
+  const kinds = new Set(outcomes.map((o) => o.kind));
+  if (kinds.has("drafted")) return "draft";
+  if (kinds.has("needs_new_op")) return "needs_new_op";
+  return "either";
+}
+
+/**
+ * Builds the draft log of a run: the raw replies, one entry per card, in
+ * the shape `preference-lib.ts` reads (`parseDraftLog`).
+ *
+ * Every reply is kept verbatim — the invalid ones and the refusals too:
+ * they are the rejected side of a preference pair. A card the model never
+ * answered (a skipped card, a failed model call) has no reply and is not
+ * in the log.
+ */
+export function buildDraftLog(run: PipelineRun): DraftLog {
+  const cards: DraftLogCard[] = [];
+  const byName = new Map<string, DraftLogCard>();
+  const outcomes = new Map<string, DraftOutcome[]>();
+  for (const entry of run.replies ?? []) {
+    if (!entry.reply.trim()) continue;
+    const key = entry.name.trim().toLowerCase();
+    let card = byName.get(key);
+    if (!card) {
+      card = {
+        name: entry.name,
+        oracle_text: entry.oracleText,
+        type_line: entry.typeLine,
+        expect: "either",
+        replies: [],
+      };
+      byName.set(key, card);
+      cards.push(card);
+      outcomes.set(key, []);
+    }
+    card.replies.push({ source: "run", reply: entry.reply });
+    outcomes.get(key)?.push(entry.outcome);
+  }
+  for (const card of cards) {
+    const key = card.name.trim().toLowerCase();
+    card.expect = logExpectation(outcomes.get(key) ?? []);
+  }
+  return { cards };
 }
 
 /** The files a run wrote. */
@@ -312,6 +413,8 @@ export function assertReviewOutputDir(outputDir: string): string {
  * - `failures.json` — the failure log (invalid drafts; nothing was written).
  * - `needs-new-op.json` — one record per refused card.
  * - `missing-ops.json` — the missing-ops list.
+ * - `draft-log.json` — the raw replies of the run, in the draft-log shape
+ *   the preference export reads (`preference-lib.ts`).
  */
 export function writeRunOutput(
   outputDir: string,
@@ -342,6 +445,7 @@ export function writeRunOutput(
   write("failures.json", run.summary.failures);
   write("needs-new-op.json", run.summary.needsNewOpCards);
   write("missing-ops.json", run.summary.missingOps);
+  write("draft-log.json", buildDraftLog(run));
   return { files, summary: run.summary };
 }
 
