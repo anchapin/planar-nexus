@@ -159,6 +159,7 @@ import {
   BASIC_LAND_TYPE_OPTIONS,
 } from "./_components/BasicLandTypeDialog";
 import { GameLoading } from "./_components/GameLoading";
+import { ModeChoiceDialog } from "./_components/ModeChoiceDialog";
 
 /**
  * Stable empty list of ability choices — keeps the `options` prop of the
@@ -3361,74 +3362,29 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
         onSelect={handleBasicLandTypeSelect}
       />
 
-      {/* Modal Spell Mode Choice Dialog */}
-      <Dialog
-        open={!!spellModeChoice}
-        onOpenChange={() => setSpellModeChoice(null)}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Choose Mode</DialogTitle>
-            <DialogDescription>
-              {spellModeChoice?.cardName} has multiple modes. Choose one.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-3 py-4">
-            {spellModeChoice?.modes.map((mode, idx) => (
-              <Button
-                key={idx}
-                variant="outline"
-                onClick={() => handleModeSelect(idx)}
-                className="justify-start h-auto py-3 px-4 text-left"
-              >
-                <div className="text-left">
-                  <div className="font-medium">Mode {idx + 1}</div>
-                  <div className="text-xs text-muted-foreground line-clamp-3 mt-1">
-                    {mode}
-                  </div>
-                </div>
-              </Button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Modal Spell Mode Choice Dialog — extracted to a memoized leaf
+          (issue #2418, slice 9) */}
+      <ModeChoiceDialog
+        isOpen={!!spellModeChoice}
+        onClose={() => setSpellModeChoice(null)}
+        cardName={spellModeChoice?.cardName ?? ""}
+        modes={spellModeChoice?.modes}
+        selectionMode="single"
+        onSelectIndex={handleModeSelect}
+      />
 
-      {/* Modal Ability Mode Choice Dialog (#2525): a mode must be chosen */}
-      <Dialog open={!!abilityModeChoice} onOpenChange={() => undefined}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Choose Mode</DialogTitle>
-            <DialogDescription>
-              {abilityModeChoice?.cardName}: choose{" "}
-              {abilityModeChoice?.choose === 1
-                ? "one"
-                : abilityModeChoice?.choose}
-              .
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-3 py-4">
-            {abilityModeChoice?.modes.map((mode, idx) => (
-              <Button
-                key={idx}
-                variant={
-                  abilityModeChoice.picked.includes(mode)
-                    ? "default"
-                    : "outline"
-                }
-                onClick={() => handleAbilityModeSelect(mode)}
-                className="justify-start h-auto py-3 px-4 text-left"
-              >
-                <div className="text-left">
-                  <div className="font-medium">Mode {idx + 1}</div>
-                  <div className="text-xs text-muted-foreground line-clamp-3 mt-1">
-                    {mode}
-                  </div>
-                </div>
-              </Button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Modal Ability Mode Choice Dialog (#2525): a mode must be chosen —
+          extracted to a memoized leaf (issue #2418, slice 9) */}
+      <ModeChoiceDialog
+        isOpen={!!abilityModeChoice}
+        dismissable={false}
+        cardName={abilityModeChoice?.cardName ?? ""}
+        modes={abilityModeChoice?.modes}
+        selectionMode="multi"
+        choose={abilityModeChoice?.choose}
+        picked={abilityModeChoice?.picked}
+        onSelect={handleAbilityModeSelect}
+      />
 
       {/* X-Cost Spell Dialog */}
       <Dialog open={!!xCostChoice} onOpenChange={() => setXCostChoice(null)}>
