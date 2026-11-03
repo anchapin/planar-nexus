@@ -10,6 +10,10 @@
  *   npx tsx scripts/draft-card-scripts.ts --input scripts/data/card-scripts-sample-cards.json \
  *     --out draft-out --model stub
  *
+ * The review run writes the drafts, the run summary and `draft-log.json`
+ * (the raw replies of the run, the input of the preference export) into
+ * the output directory.
+ *
  * Providers (DRAFT_LLM_PROVIDER): gemini-batch, the default, picked by the
  * bake-off (#2514): one Gemini Batch API job for the whole set, model
  * DRAFT_LLM_MODEL (default gemini-3.1-flash-lite), GEMINI_API_KEY.
@@ -250,9 +254,22 @@ const DEFAULT_STUB_REPLIES = join(
   "card-scripts-sample-stub-replies.json",
 );
 
+/**
+ * The canned replies of the stub model. The file maps a card name to one
+ * reply, or to a list of replies when the card is asked more than once
+ * (the stub hands them out in order).
+ */
 function loadStubReplies(path: string): StubReply[] {
-  const raw = JSON.parse(readFileSync(path, "utf8")) as Record<string, string>;
-  return Object.entries(raw).map(([cardName, reply]) => ({ cardName, reply }));
+  const raw = JSON.parse(readFileSync(path, "utf8")) as Record<
+    string,
+    string | string[]
+  >;
+  return Object.entries(raw).flatMap(([cardName, reply]) =>
+    (Array.isArray(reply) ? reply : [reply]).map((text) => ({
+      cardName,
+      reply: text,
+    })),
+  );
 }
 
 /**
