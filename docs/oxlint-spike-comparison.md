@@ -286,3 +286,65 @@ npm run typecheck             # tsc --noEmit → exit 0 (manifest edit proven ha
 ```
 
 No Jest test was run: this spike changes no source file, and the brief forbids the full suite.
+
+---
+
+## 11. Appendix — CI comparison job (follow-up, added after the spike)
+
+**Added:** 2026-11-05 (follow-up to the spike; the spike diff itself is unchanged).
+**Status:** the spike's verdict is unchanged — **ESLint stays the authoritative lint gate**. The CI job below
+only _publishes_ the Oxlint-vs-ESLint comparison on every run; it never gates anything.
+
+> The header note above (“**No CI comparison job exists**”) and §9’s “CI comparison job — deferred follow-up”
+> describe the state of the **spike diff**. They are superseded by this appendix: the job now exists as
+> `.github/workflows/oxlint-comparison.yml`. All numbers recorded in §1–§10 remain **local, spike-time** numbers.
+
+### 11.1 The workflow
+
+| Property      | Value                                                                                                                                                                                                                     |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| File          | `.github/workflows/oxlint-comparison.yml` (standalone workflow — `ci.yml` and its required `build` `needs:` list are untouched)                                                                                           |
+| Workflow name | `Oxlint Comparison` · job `Oxlint Comparison (report-only)`                                                                                                                                                               |
+| Triggers      | `pull_request` → `main`, `push` → `main`, `workflow_dispatch`                                                                                                                                                             |
+| Bootstrap     | `./.github/actions/setup-node-npm-ci` (the shared composite: Node 22 + `npm ci`) — no direct `npm ci`, no `actions/setup-node@`                                                                                           |
+| Command       | `npm run lint:oxlint` (i.e. `npx -y oxlint@1.88.0 src`) — the existing script, unchanged; no new devDependency, lockfile untouched                                                                                        |
+| Output        | Workflow-run **stdout** (Actions tab → the job’s log). No artifact is uploaded; the raw oxlint output plus a `### Oxlint comparison summary` block (exit code, wall-clock ms, `Found N warnings and N errors`) is printed |
+
+### 11.2 Non-blocking guarantees
+
+The job **can never fail a build or block a merge** — two independent mechanisms:
+
+1. `continue-on-error: true` on both the job and the `Run Oxlint (report-only)` step, so a non-zero oxlint exit
+   code is recorded as a soft failure instead of failing the run.
+2. The step script ends with `exit 0`, so even a crash inside the reporting code cannot turn the job red.
+
+Because it lives in its own workflow file, it also adds **no new required status check** to branch protection.
+
+### 11.3 How to read the output
+
+Open the run in the Actions tab → `Oxlint Comparison` → the `Run Oxlint (report-only)` step log. The tail of the
+log looks like:
+
+```
+### Oxlint comparison summary (report-only, non-blocking)
+- exit code: 0
+- duration: 1769 ms
+- oxlint: Found 862 warnings and 0 errors
+- ESLint remains the authoritative lint gate (ci.yml lint job); this job is informational only.
+```
+
+The ESLint side of the comparison is the existing `lint` job in `ci.yml` (`npm run lint`, ~40 s); the numbers are
+therefore visible side by side (CI `Lint` job vs. this job) without any change to the ESLint gate.
+
+### 11.4 Dated re-measurement note (local, 2026-11-05)
+
+The spike’s local numbers were re-measured on the same `src/` surface before wiring the job, to confirm the
+script still behaves as documented. They are **unchanged**:
+
+| Linter                         | Command               | Errors | Warnings | Wall clock (this run)  |
+| ------------------------------ | --------------------- | ------ | -------- | ---------------------- |
+| ESLint 10.12.0                 | `npm run lint`        | 0      | 597      | ≈44.0 s                |
+| Oxlint 1.88.0 (default config) | `npm run lint:oxlint` | 0      | 862      | ≈2.1–3.6 s (incl. npx) |
+
+(The oxlint file count reported by the tool is now **1744** files vs. **1742** at spike time — the tree moved;
+the warning/error counts did not.) The §3 table is left untouched on purpose: it is the spike’s own record.
