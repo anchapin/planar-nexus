@@ -37,7 +37,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from "@/components/ui/dialog";
 
 // Game engine imports
@@ -160,6 +159,9 @@ import {
 } from "./_components/BasicLandTypeDialog";
 import { GameLoading } from "./_components/GameLoading";
 import { ModeChoiceDialog } from "./_components/ModeChoiceDialog";
+import { XCostDialog } from "./_components/XCostDialog";
+import { KickerDialog } from "./_components/KickerDialog";
+import { AttractionDialog } from "./_components/AttractionDialog";
 
 /**
  * Stable empty list of ability choices — keeps the `options` prop of the
@@ -167,6 +169,13 @@ import { ModeChoiceDialog } from "./_components/ModeChoiceDialog";
  * pending (issue #2418, slice 5).
  */
 const EMPTY_ABILITY_CHOICE_OPTIONS: AbilityChoiceOption[] = [];
+
+/**
+ * Stable empty list of revealed cards — keeps the `revealedCards` prop of the
+ * memoized <AttractionDialog /> referentially stable while no Attraction is
+ * pending (issue #2418, slice 9).
+ */
+const EMPTY_REVEALED_CARDS: string[] = [];
 
 async function getOrCreateActiveGame(
   gameId: string,
@@ -2612,6 +2621,58 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     setAttractionChoice(null);
   }, [gameState, attractionChoice, playerName, toast, autoSaveEnabled]);
 
+  // Slice 9 (issue #2418): the (stateful) handlers of the three small choice
+  // dialogs are kept in refs so the memoized leaves can be handed callbacks
+  // whose identity never churns — they depend on the game state, which
+  // changes on every board update.
+  const xCostHandlerRef = useRef(handleXValueSelect);
+  useEffect(() => {
+    xCostHandlerRef.current = handleXValueSelect;
+  }, [handleXValueSelect]);
+
+  const kickerHandlerRef = useRef(handleKickerSelect);
+  useEffect(() => {
+    kickerHandlerRef.current = handleKickerSelect;
+  }, [handleKickerSelect]);
+
+  const attractionHandlerRef = useRef(handleAttractionSpinAndCast);
+  useEffect(() => {
+    attractionHandlerRef.current = handleAttractionSpinAndCast;
+  }, [handleAttractionSpinAndCast]);
+
+  // Slice 9 (issue #2418): stable close handlers handed to the memoized
+  // XCostDialog / KickerDialog / AttractionDialog.
+  const handleXCostClose = useCallback(() => {
+    setXCostChoice(null);
+  }, []);
+
+  const handleKickerClose = useCallback(() => {
+    setKickerChoice(null);
+  }, []);
+
+  const handleAttractionClose = useCallback(() => {
+    setAttractionChoice(null);
+  }, []);
+
+  // Slice 9 (issue #2418): stable callbacks handed to the memoized leaves.
+  // The X value itself stays in the parent state, so the leaf only reports
+  // the new value / the chosen cast.
+  const handleXValueChange = useCallback((value: number) => {
+    setXCostChoice((prev) => (prev ? { ...prev, maxX: value } : null));
+  }, []);
+
+  const handleXCostCast = useCallback((value: number) => {
+    void xCostHandlerRef.current(value);
+  }, []);
+
+  const handleKickerSelectWith = useCallback((withKicker: boolean) => {
+    void kickerHandlerRef.current(withKicker);
+  }, []);
+
+  const handleAttractionSpinAndCastClick = useCallback(() => {
+    void attractionHandlerRef.current();
+  }, []);
+
   // Check if a card's ability requires choosing a basic land type
   const requiresBasicLandTypeChoice = (card: CardInstance): boolean => {
     // Already chosen - don't ask again
@@ -3386,186 +3447,38 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
         onSelect={handleAbilityModeSelect}
       />
 
-      {/* X-Cost Spell Dialog */}
-      <Dialog open={!!xCostChoice} onOpenChange={() => setXCostChoice(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Choose X Value</DialogTitle>
-            <DialogDescription>
-              {xCostChoice?.description ||
-                `Choose a value for ${xCostChoice?.cardName}`}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col items-center gap-4 py-6">
-            <div className="flex items-center gap-6">
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() =>
-                  setXCostChoice((prev) =>
-                    prev ? { ...prev, maxX: Math.max(0, prev.maxX - 1) } : null,
-                  )
-                }
-                disabled={xCostChoice ? xCostChoice.maxX <= 0 : true}
-              >
-                <span className="text-xl">−</span>
-              </Button>
-              <div className="text-5xl font-bold tabular-nums min-w-[80px] text-center">
-                {xCostChoice?.maxX || 0}
-              </div>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() =>
-                  setXCostChoice((prev) =>
-                    prev ? { ...prev, maxX: prev.maxX + 1 } : null,
-                  )
-                }
-              >
-                <span className="text-xl">+</span>
-              </Button>
-            </div>
-            <div className="text-sm text-muted-foreground">
-              Max: {xCostChoice?.maxX || 0}
-            </div>
-            <div className="flex gap-2 mt-2">
-              {[0, 1, 2, 3].map((n) => (
-                <Button
-                  key={n}
-                  variant={xCostChoice?.maxX === n ? "default" : "outline"}
-                  size="sm"
-                  onClick={() =>
-                    setXCostChoice((prev) =>
-                      prev ? { ...prev, maxX: n } : null,
-                    )
-                  }
-                  disabled={n > (xCostChoice?.maxX || 0)}
-                >
-                  {n}
-                </Button>
-              ))}
-              {(xCostChoice?.maxX || 0) > 3 && (
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={() => handleXValueSelect(xCostChoice?.maxX || 0)}
-                >
-                  Cast X={xCostChoice?.maxX || 0}
-                </Button>
-              )}
-            </div>
-          </div>
-          <DialogFooter className="flex-row gap-2 sm:flex-col">
-            <Button variant="outline" onClick={() => setXCostChoice(null)}>
-              Cancel
-            </Button>
-            <Button onClick={() => handleXValueSelect(xCostChoice?.maxX || 0)}>
-              Cast with X={xCostChoice?.maxX || 0}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* X-Cost Spell Dialog — extracted to a memoized leaf
+          (issue #2418, slice 9) */}
+      <XCostDialog
+        isOpen={!!xCostChoice}
+        onClose={handleXCostClose}
+        cardName={xCostChoice?.cardName ?? ""}
+        description={xCostChoice?.description ?? ""}
+        value={xCostChoice?.maxX ?? 0}
+        onValueChange={handleXValueChange}
+        onCast={handleXCostCast}
+      />
 
-      {/* Kicker Spell Dialog */}
-      <Dialog open={!!kickerChoice} onOpenChange={() => setKickerChoice(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Kicker Option</DialogTitle>
-            <DialogDescription>
-              {kickerChoice?.cardName} has an optional kicker cost.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-3 py-4">
-            <Button
-              variant="outline"
-              onClick={() => handleKickerSelect(false)}
-              className="justify-start h-auto py-3 px-4"
-            >
-              <div className="text-left">
-                <div className="font-medium">Cast without kicker</div>
-                <div className="text-xs text-muted-foreground">
-                  Pay only the base mana cost
-                </div>
-              </div>
-            </Button>
-            <Button
-              variant="default"
-              onClick={() => handleKickerSelect(true)}
-              className="justify-start h-auto py-3 px-4"
-            >
-              <div className="text-left">
-                <div className="font-medium">Cast with kicker</div>
-                <div className="text-xs text-muted-foreground">
-                  {kickerChoice?.description ||
-                    "Pay extra cost for additional effect"}
-                </div>
-              </div>
-            </Button>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setKickerChoice(null)}>
-              Cancel
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Kicker Spell Dialog — extracted to a memoized leaf
+          (issue #2418, slice 9) */}
+      <KickerDialog
+        isOpen={!!kickerChoice}
+        onClose={handleKickerClose}
+        cardName={kickerChoice?.cardName ?? ""}
+        description={kickerChoice?.description ?? ""}
+        onSelect={handleKickerSelectWith}
+      />
 
-      {/* Attraction Spell Dialog (Unfinity) */}
-      <Dialog
-        open={!!attractionChoice}
-        onOpenChange={() => setAttractionChoice(null)}
-      >
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Attraction!</DialogTitle>
-            <DialogDescription>
-              {attractionChoice?.cardName} - Spin the die to reveal cards
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col items-center gap-4 py-6">
-            {attractionChoice?.spinResult ? (
-              <>
-                <div className="text-6xl font-bold">
-                  {attractionChoice.spinResult}
-                </div>
-                <div className="text-sm text-muted-foreground">Rolled!</div>
-                {attractionChoice.revealedCards.length > 0 && (
-                  <div className="text-sm text-center">
-                    <div className="font-medium">Revealed cards:</div>
-                    <div className="text-xs text-muted-foreground">
-                      {attractionChoice.revealedCards.join(", ")}
-                    </div>
-                  </div>
-                )}
-              </>
-            ) : (
-              <>
-                <div className="text-4xl">🎲</div>
-                <div className="text-sm text-muted-foreground text-center">
-                  Spin the Attraction die to determine the result
-                </div>
-              </>
-            )}
-          </div>
-          <DialogFooter className="flex-col gap-2 sm:flex-col">
-            {!attractionChoice?.spinResult ? (
-              <Button onClick={handleAttractionSpinAndCast} className="w-full">
-                Spin & Cast
-              </Button>
-            ) : (
-              <Button
-                onClick={() => setAttractionChoice(null)}
-                className="w-full"
-              >
-                Done
-              </Button>
-            )}
-            <Button variant="outline" onClick={() => setAttractionChoice(null)}>
-              Cancel
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Attraction Spell Dialog (Unfinity) — extracted to a memoized leaf
+          (issue #2418, slice 9) */}
+      <AttractionDialog
+        isOpen={!!attractionChoice}
+        onClose={handleAttractionClose}
+        cardName={attractionChoice?.cardName ?? ""}
+        spinResult={attractionChoice?.spinResult ?? 0}
+        revealedCards={attractionChoice?.revealedCards ?? EMPTY_REVEALED_CARDS}
+        onSpinAndCast={handleAttractionSpinAndCastClick}
+      />
 
       {/* Zone Viewer Dialog — extracted to a memoized leaf (issue #2418, slice 4) */}
       <ZoneViewerDialog
