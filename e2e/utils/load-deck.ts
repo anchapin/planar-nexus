@@ -1,5 +1,5 @@
 /**
- * Seed-deck e2e helper — issue #1856.
+ * Seed-deck e2e helper — issue #1856, hardened for #2485.
  *
  * Mirrors the `seedCardDatabase` pattern in `e2e/test-utils.ts`: an init
  * script is registered on the page so it runs before every navigation,
@@ -24,6 +24,33 @@
  * the app's next open upgrades to the full schema), and re-navigations
  * are plain readwrite seeds against whatever version is on disk.
  *
+ * Issue #2485 (cross-browser e2e flakes): the unversioned open above was
+ * still wrong for the CI browsers. On a fresh context it CREATED the
+ * database at version 1 with only the `decks` store — a torn schema —
+ * so the app's own open had to run a v1→v4 upgrade. That upgrade is
+ * `blocked` whenever the seed's connection is still open, and the app
+ * answers `blocked` with `IndexedDBBlockedError` → "Failed to open
+ * IndexedDB" / "IndexedDB not available, using localStorage" in the CI
+ * web-server log (the exact symptom #2485 tracks). When the upgrade did
+ * go through, the app's #1937 self-heal re-opened at v5, which closed
+ * the app's v4 connection out from under in-flight callers →
+ * "Can't start a transaction on a closed database". Both outcomes are
+ * timing-dependent, hence the rotating firefox/webkit failures.
+ *
+ * The seed now:
+ *   - opens at the APP's version and creates the APP's full store set
+ *     (mirroring `DEFAULT_STORAGE_CONFIG`), so the app's open is a
+ *     no-op: no upgrade, no `blocked`, no torn schema, no self-heal;
+ *   - falls back to an unversioned open when the on-disk database is
+ *     NEWER than the app's version (VersionError);
+ *   - retries the whole open+seed when the connection is closed under
+ *     it (`InvalidStateError` / "closed database") or the open fails
+ *     transiently — the CI browsers abort connections more eagerly;
+ *   - awaits the readwrite transaction's `complete` event BEFORE
+ *     closing the connection and before flagging the seed as done, so a
+ *     caller that waits for the seed never observes a half-written
+ *     store.
+ *
  * The localStorage fallback (`planar_nexus_decks`, JSON-encoded ARRAY
  * of StoredDeck rows) is seeded too — `deckStorage.getAllDecks()` in
  * `src/lib/deck-storage.ts` line 238 reads localStorage only when the
@@ -32,13 +59,17 @@
  * breaks one path.
  *
  * The `useLocalStorage("saved-decks", …)` hook used by
- * `<DeckSelector>` is also covered via the `saved-decks` localStorage
+ * `<DeckSelector>` is covered via the `saved-decks` localStorage
  * key — the hook falls back to that when its IndexedDB read throws
  * (see `use-local-storage.ts` line 130). The IndexedDB `preferences`
- * store seed was intentionally omitted because of a known race with
- * the page's React effect's `useLocalStorage` IndexedDB read; the
- * hook reliably falls back to localStorage on the synthetic error
- * path, so the localStorage seed is sufficient.
+ * store is seeded with the SAME value in the app's own wire format
+ * (`{ id, _type: "array", items }`) so the deck shows up whether the
+ * hook reads IndexedDB (the normal path) or falls back to localStorage
+ * (the degraded path). Issue #1937 previously skipped the `preferences`
+ * seed because the store was torn; with the full schema in place the
+ * write is ordered before the app's read (IndexedDB serialises
+ * overlapping-scope transactions in creation order), so the deck is
+ * visible on the first paint instead of only after the fallback.
  */
 import { test as base, expect, Page } from "@playwright/test";
 import fs from "fs";
@@ -58,6 +89,52 @@ const DECK_LOCALSTORAGE_KEY = "planar_nexus_decks";
 const FIXTURE_ID = "test-commander-deck-001";
 const FIXTURE_NAME = "Test Commander Deck";
 const FIXTURE_FORMAT = "commander";
+
+/**
+ * The app's `DEFAULT_STORAGE_CONFIG.version` — keep in sync with
+ * `src/lib/indexeddb-storage.ts` (v4 since issue #1811).
+ */
+const DECK_DB_VERSION = 4;
+
+/**
+ * Mirror of `DEFAULT_STORAGE_CONFIG.stores` — the app's full store set.
+ * The seed creates exactly these so the app's own open finds a complete
+ * schema and never has to upgrade or self-heal (#2485).
+ */
+const DECK_DB_STORES = [
+  "decks",
+  "saved-games",
+  "saved-games-meta",
+  "saved-games-payloads",
+  "preferences",
+  "usage-tracking",
+  "achievements",
+  "game-history",
+  "local-game-state",
+  "local-game-codes",
+  "search-preferences",
+  "search-presets",
+  "recent-searches",
+];
+
+/**
+ * Mirror of the secondary indexes the app's upgrade handler creates per
+ * store (all stores use `keyPath: "id"`; only the stores listed here get
+ * secondary indexes).
+ */
+const DECK_DB_INDEXES: Record<string, string[]> = {
+  decks: ["name", "format", "createdAt", "updatedAt"],
+  "saved-games": ["name", "format", "status", "savedAt", "isAutoSave"],
+  "saved-games-meta": ["name", "format", "status", "savedAt", "isAutoSave"],
+  "usage-tracking": ["provider", "timestamp"],
+  "game-history": ["date", "result", "mode"],
+  "local-game-state": ["gameCode", "status", "updatedAt"],
+  "search-presets": ["name", "updatedAt"],
+  "recent-searches": ["lastUsedAt"],
+};
+
+/** How many times the seed retries a failed open+write cycle. */
+const SEED_MAX_ATTEMPTS = 5;
 
 function buildDeckRow(): unknown {
   const cardsById = new Map<string, Record<string, unknown>>(
@@ -134,11 +211,22 @@ export async function loadDeck(
 
   await page.addInitScript(
     (config) => {
-      const { dbName, storeName, localStorageKey, deck } = config;
+      const {
+        dbName,
+        version,
+        stores,
+        indexes,
+        storeName,
+        preferencesStore,
+        savedDecksKey,
+        localStorageKey,
+        deck,
+        maxAttempts,
+      } = config;
 
       // Seed localStorage fallback first — synchronous, race-free.
-      // The `useLocalStorage` hook falls back to localStorage when
-      // its IndexedDB read throws (use-local-storage.ts line 130); the
+      // The `useLocalStorage` hook falls back to localStorage when its
+      // IndexedDB read throws (use-local-storage.ts line 130); the
       // deck-builder's saved-decks sidebar reads `localStorage` directly
       // in some flows.
       try {
@@ -173,64 +261,161 @@ export async function loadDeck(
         console.error("localStorage [planar_nexus_decks] seed error:", e);
       }
 
-      // Open the production IndexedDB once on init, seed the `decks`
-      // store, and close. Unversioned open (issue #1937): never forces
-      // an upgrade or a stale intermediate version; `upgradeneeded`
-      // only fires when the DB is brand new. Closing releases the
-      // connection so the page's React `useLocalStorage` open can
-      // succeed without hitting an IndexedDB-blocked error from
-      // another tab.
-      const seedDb = indexedDB.open(dbName);
-      seedDb.addEventListener("upgradeneeded", (event) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        if (!db.objectStoreNames.contains(storeName)) {
-          const store = db.createObjectStore(storeName, { keyPath: "id" });
-          store.createIndex("name", "name", { unique: false });
-          store.createIndex("format", "format", { unique: false });
-          store.createIndex("createdAt", "createdAt", { unique: false });
-          store.createIndex("updatedAt", "updatedAt", { unique: false });
-        }
-      });
-      seedDb.addEventListener("success", () => {
-        const db = seedDb.result;
-        try {
-          const tx = db.transaction([storeName], "readwrite");
-          const s = tx.objectStore(storeName);
-          s.clear();
-          s.put(deck);
-          tx.oncomplete = () => {
-            console.log(
-              `IndexedDB [decks] seeded with deck "${deck.id}" (${deck.cards.length} cards)`,
-            );
-            (
-              window as unknown as { __loadDeckSeeded?: boolean }
-            ).__loadDeckSeeded = true;
+      type SeedWindow = Window & {
+        __loadDeckSeeded?: boolean;
+        __loadDeckSeedError?: string;
+      };
+      const seedWindow = window as SeedWindow;
+
+      const sleep = (ms: number) =>
+        new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+      /**
+       * Open the database (optionally at a specific version), create the
+       * app's store set when the upgrade handler runs, write the deck row
+       * plus the `saved-decks` preference, and resolve only after the
+       * write transaction has COMPLETED.
+       *
+       * `openVersion === null` opens whatever version is on disk (never
+       * upgrades) — the fallback for a database that lives above the
+       * app's version.
+       */
+      const openAndSeed = (openVersion: number | null): Promise<void> =>
+        new Promise<void>((resolve, reject) => {
+          const request =
+            openVersion === null
+              ? indexedDB.open(dbName)
+              : indexedDB.open(dbName, openVersion);
+
+          request.onupgradeneeded = () => {
+            const db = request.result;
+            for (const name of stores) {
+              if (db.objectStoreNames.contains(name)) continue;
+              const store = db.createObjectStore(name, { keyPath: "id" });
+              for (const indexName of indexes[name] ?? []) {
+                store.createIndex(indexName, indexName, { unique: false });
+              }
+            }
           };
-        } catch (e) {
-          console.error("seed [decks] error:", e);
+
+          request.onblocked = () => {
+            // Another connection holds an older version. The request stays
+            // pending and succeeds as soon as that connection closes (the
+            // app closes on `versionchange`), so keep waiting instead of
+            // failing the seed.
+            console.warn(
+              "loadDeck init: open blocked by another connection — waiting",
+            );
+          };
+
+          request.onerror = () => reject(request.error ?? new Error("open failed"));
+
+          request.onsuccess = () => {
+            const db = request.result;
+            let tx: IDBTransaction;
+            try {
+              tx = db.transaction([storeName, preferencesStore], "readwrite");
+            } catch (e) {
+              // The connection was closed under us ("Can't start a
+              // transaction on a closed database") — let the retry loop
+              // re-open it.
+              try {
+                db.close();
+              } catch {
+                /* already closed */
+              }
+              reject(e);
+              return;
+            }
+            const store = tx.objectStore(storeName);
+            store.clear();
+            store.put(deck);
+            // The deck-builder reads its saved decks through
+            // `useLocalStorage("saved-decks")`, which stores the array in
+            // the `preferences` store as `{ id, _type: "array", items }`.
+            // Seeding it keeps the seeded deck visible on the IndexedDB
+            // path as well as on the localStorage fallback path.
+            tx.objectStore(preferencesStore).put({
+              id: savedDecksKey,
+              _type: "array",
+              items: [deck],
+            });
+            tx.oncomplete = () => {
+              console.log(
+                `IndexedDB [decks] seeded with deck "${deck.id}" (${deck.cards.length} cards)`,
+              );
+              try {
+                db.close();
+              } catch {
+                /* already closed */
+              }
+              resolve();
+            };
+            tx.onerror = () => {
+              try {
+                db.close();
+              } catch {
+                /* already closed */
+              }
+              reject(tx.error ?? new Error("seed transaction failed"));
+            };
+            tx.onabort = () => {
+              try {
+                db.close();
+              } catch {
+                /* already closed */
+              }
+              reject(tx.error ?? new Error("seed transaction aborted"));
+            };
+          };
+        });
+
+      const runSeed = async () => {
+        let lastError: unknown;
+        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+          try {
+            await openAndSeed(version);
+            seedWindow.__loadDeckSeeded = true;
+            return;
+          } catch (error) {
+            lastError = error;
+            const name = (error as { name?: string } | null)?.name;
+            if (name === "VersionError") {
+              // The on-disk database is NEWER than the app's version (an
+              // earlier session self-healed past it). Open unversioned
+              // instead — never force a downgrade.
+              try {
+                await openAndSeed(null);
+                seedWindow.__loadDeckSeeded = true;
+                return;
+              } catch (fallbackError) {
+                lastError = fallbackError;
+              }
+            }
+            await sleep(100 * (attempt + 1));
+          }
         }
-        try {
-          db.close();
-        } catch {
-          /* ignore */
-        }
-      });
-      seedDb.addEventListener("error", (event) => {
-        console.error(
-          "loadDeck init: open error",
-          (event.target as IDBOpenDBRequest).error,
-        );
-        (
-          window as unknown as { __loadDeckSeedError?: string }
-        ).__loadDeckSeedError =
-          (event.target as IDBOpenDBRequest).error?.message ?? "unknown";
-      });
+        const message =
+          lastError instanceof Error
+            ? `${lastError.name}: ${lastError.message}`
+            : String(lastError);
+        console.error("loadDeck init: seed failed", lastError);
+        seedWindow.__loadDeckSeedError = message;
+      };
+
+      void runSeed();
     },
     {
       dbName: DECK_DB_NAME,
+      version: DECK_DB_VERSION,
+      stores: DECK_DB_STORES,
+      indexes: DECK_DB_INDEXES,
       storeName: DECK_STORE,
+      preferencesStore: "preferences",
+      savedDecksKey: SAVED_DECKS_LOCALSTORAGE_KEY,
       localStorageKey: DECK_LOCALSTORAGE_KEY,
       deck: deckRow,
+      maxAttempts: SEED_MAX_ATTEMPTS,
     },
   );
 }
@@ -264,21 +449,54 @@ export async function waitForDeckSeed(page: Page): Promise<void> {
       return new Promise<number>((resolve, reject) => {
         // Unversioned open — read whatever version is on disk (issue
         // #1937: pinning a stale version VersionError'd once the app
-        // upgraded the DB past it).
-        const req = indexedDB.open(config.dbName);
-        req.onsuccess = (event) => {
-          const db = (event.target as IDBOpenDBRequest).result;
-          try {
-            const tx = db.transaction([config.storeName], "readonly");
-            const store = tx.objectStore(config.storeName);
-            const countReq = store.count();
-            countReq.onsuccess = () => resolve(countReq.result);
-            countReq.onerror = () => reject(new Error("Count failed"));
-          } catch (e) {
-            reject(e);
-          }
-        };
-        req.onerror = () => reject(new Error("DB open failed"));
+        // upgraded the DB past it). Retried once: the CI browsers abort
+        // a connection that is closed mid-flight (#2485).
+        const countRows = (db: IDBDatabase): Promise<number> =>
+          new Promise<number>((res, rej) => {
+            try {
+              const tx = db.transaction([config.storeName], "readonly");
+              const store = tx.objectStore(config.storeName);
+              const countReq = store.count();
+              countReq.onsuccess = () => res(countReq.result);
+              countReq.onerror = () => rej(new Error("Count failed"));
+            } catch (e) {
+              rej(e);
+            }
+          });
+
+        const open = (): Promise<IDBDatabase> =>
+          new Promise<IDBDatabase>((res, rej) => {
+            const req = indexedDB.open(config.dbName);
+            req.onsuccess = () => res(req.result);
+            req.onerror = () => rej(new Error("DB open failed"));
+          });
+
+        open()
+          .then((db) => {
+            if (!db.objectStoreNames.contains(config.storeName)) {
+              db.close();
+              reject(
+                new Error(
+                  `store "${config.storeName}" missing — the seed did not create the app schema`,
+                ),
+              );
+              return;
+            }
+            return countRows(db).then((count) => {
+              db.close();
+              resolve(count);
+            });
+          })
+          .catch((firstError) => {
+            // One retry: a connection closed under us (InvalidStateError /
+            // "closed database") must not fail the seed verification.
+            open()
+              .then((db) => countRows(db).then((count) => {
+                db.close();
+                resolve(count);
+              }))
+              .catch(() => reject(firstError));
+          });
       });
     },
     {
