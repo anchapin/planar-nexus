@@ -1,16 +1,56 @@
 name: PR Flake Detector
 
+# Issue #2365: the flake detectors used to collect their FIRST signal on
+# `main`. In `.github/workflows/ci.yml` the `flake-detector` (Playwright) and
+# `jest-flake-detector` (Jest) jobs are gated to
+# schedule / workflow_dispatch / push-to-main, so a flaky test was only ever
+# discovered AFTER the merge.
+#
+# This workflow is the path-filtered PR route for BOTH detectors: it runs on
+# every PR that touches the code the corresponding detector actually
+# exercises, so the signal lands BEFORE the merge:
+#
+#   - `Flake Detector (Jest)`     -> the Jest unit suite
+#     (jest.config.js roots: `src/`, `tests/`, `e2e/`), the Jest config, and
+#     the detector script itself.
+#   - `Flake Detector (Playwright)` -> the Playwright suite
+#     (`e2e/`), `playwright.config.ts`, and the app code the specs drive
+#     (`src/`, plus the Next.js/Playwright configuration).
+#
+# The PR route is ADVISORY (non-blocking): the detectors run fewer repetitions
+# than the nightly job (`--runs=3 --threshold=2` instead of 5×/4) to keep
+# per-PR cost down, and the detector step is `continue-on-error: true` so a
+# flake shows up as a PR comment + artifact instead of a red required check.
+# The nightly 5×/4 runs in `ci.yml` remain the authoritative gate.
+#
+# Both detector runs are non-blocking on the merge as well: neither job is in
+# the `build` job's `needs:` list.
+#
+# `pull_request_target` (not `pull_request`) is used so the run has a token
+# that can post the flake report back on the PR; the detector jobs keep the
+# token scoped to `contents: read` + `pull-requests: write` and the PR branch
+# is only checked out, never merged into the base branch.
+
 on:
   pull_request_target:
     types: [opened, synchronize, reopened]
+    # Union of the paths the two detectors exercise. A PR that touches none of
+    # them cannot change what either detector runs, so the workflow does not
+    # even start.
     paths:
-      - 'src/lib/game-state/**'
-      - 'src/ai/**'
-      - 'src/test-utils/**'
+      - 'src/**'
+      - 'tests/**'
+      - 'e2e/**'
       - 'jest.config.js'
-      - 'e2e/flake-detector.ts'
-      - 'scripts/jest-flake-detector.ts'
+      - 'jest.setup.js'
       - 'playwright.config.ts'
+      - 'next.config.ts'
+      - 'tsconfig.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'scripts/jest-flake-detector.ts'
+      - 'scripts/build-card-script-index.ts'
+      - '.github/actions/setup-node-npm-ci/**'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
@@ -21,15 +61,82 @@ permissions:
   pull-requests: write
 
 jobs:
-  jest-flake-detector:
-    name: Flake Detector (Jest)
+  changed-paths:
+    # Issue #2365: the per-job path checks used
+    # `contains(github.event.pull_request.changed_files, 'src/lib/game-state/')`.
+    # `changed_files` is a COUNT, not a list of file names, so `contains(...)`
+    # compared a number against a path and was always false — the detector
+    # steps below never ran and the PR route was dead. Ask the pulls API for
+    # the real file list instead, and fan the result out as job outputs.
+    name: Detect changed paths
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      pull-requests: read
+    outputs:
+      unit_changed: ${{ steps.changed.outputs.unit_changed }}
+      e2e_changed: ${{ steps.changed.outputs.e2e_changed }}
+    steps:
+      - name: List changed files
+        id: changed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          if FILES="$(gh api --paginate "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files?per_page=100" --jq '.[].filename')"; then
+            :
+          else
+            echo "Could not list the changed files via the pulls API."
+            FILES=""
+          fi
+          unit_changed=false
+          e2e_changed=false
+          if [ -z "${FILES}" ]; then
+            # Fail open: when the file list is unavailable we cannot tell
+            # which paths changed, so run both detectors rather than lose the
+            # pre-merge signal.
+            echo "Changed-file list unavailable; running both detectors."
+            unit_changed=true
+            e2e_changed=true
+          else
+            while IFS= read -r file; do
+              [ -n "${file}" ] || continue
+              # Jest unit suite: jest.config.js roots are src/, tests/ and
+              # e2e/; the config, the setup file and the detector script are
+              # part of the run too.
+              case "${file}" in
+                src/*|tests/*|e2e/*|jest.config.js|jest.setup.js|tsconfig.json|package.json|package-lock.json|scripts/jest-flake-detector.ts|scripts/build-card-script-index.ts)
+                  unit_changed=true
+                  ;;
+              esac
+              # Playwright suite: the specs in e2e/, the Playwright config,
+              # and the app code those specs drive.
+              case "${file}" in
+                src/*|e2e/*|playwright.config.ts|next.config.ts|package.json|package-lock.json)
+                  e2e_changed=true
+                  ;;
+              esac
+            done <<< "${FILES}"
+          fi
+          {
+            echo "unit_changed=${unit_changed}"
+            echo "e2e_changed=${e2e_changed}"
+          } >> "$GITHUB_OUTPUT"
+
+  jest-flake-detector:
+    name: Flake Detector (Jest)
+    needs: changed-paths
+    # Only run when the PR touches something the unit suite covers.
+    if: needs.changed-paths.outputs.unit_changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
       pull-requests: write
-    # Issue #2153: non-blocking flake detection on every PR touching
-    # game-state/ or ai/. Run 3× instead of the nightly 5× to keep
-    # per-commit cost low; threshold 3 means a test must pass all 3 runs.
+    # Issue #2153: non-blocking flake detection on every PR touching the
+    # unit suite. Run 3× instead of the nightly 5× to keep per-commit cost
+    # low; threshold 2 means a test must pass at least 2 of the 3 runs.
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -43,31 +150,21 @@ jobs:
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
 
-      - name: Detect changed paths
-        id: changed
-        run: |
-          echo "Checking changed files..."
-          {
-            echo "changed=${{ contains(github.event.pull_request.changed_files, 'src/lib/game-state/') }}"
-            echo "game_state_changed=${{ contains(github.event.pull_request.changed_files, 'src/lib/game-state/') }}"
-            echo "ai_changed=${{ contains(github.event.pull_request.changed_files, 'src/ai/') }}"
-            echo "all_changed_files=${{ github.event.pull_request.changed_files }}"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Run Jest flake detector
-        if: steps.changed.outputs.game_state_changed == 'true'
+      - name: Run Jest flake detector (3 runs, threshold 2)
         id: jestflake
+        # Non-blocking: the report is the signal, not a red required check.
+        continue-on-error: true
         run: |
           set +e
-          npm run test:flake
+          npm run test:flake -- --runs=3 --threshold=2
           FLAKE_EXIT=$?
           echo "flake-exit=$FLAKE_EXIT" >> "$GITHUB_OUTPUT"
-          exit $FLAKE_EXIT
+          exit "$FLAKE_EXIT"
         env:
           CI: 'true'
 
       - name: Upload Jest flake report
-        if: always() && steps.changed.outputs.game_state_changed == 'true'
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: pr-jest-flake-detector-report
@@ -75,7 +172,7 @@ jobs:
           retention-days: 7
 
       - name: Post PR comment (Jest flakes)
-        if: always() && steps.jestflake.outputs.flake-exit == '1' && steps.changed.outputs.game_state_changed == 'true'
+        if: always() && steps.jestflake.outputs.flake-exit == '1'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -87,7 +184,14 @@ jobs:
 
   e2e-flake-detector:
     name: Flake Detector (Playwright)
+    needs: changed-paths
+    # Only run when the PR touches the Playwright suite or the app code it
+    # drives — before #2365 this route only fired for `src/ai/**`, so a PR
+    # that changed an `e2e/` spec (or any other app code the specs drive)
+    # never got a pre-merge flake signal.
+    if: needs.changed-paths.outputs.e2e_changed == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: read
       pull-requests: write
@@ -105,13 +209,7 @@ jobs:
       - name: Setup repository
         uses: ./.github/actions/setup-node-npm-ci
 
-      - name: Detect changed paths
-        id: changed
-        run: |
-          echo "ai_changed=${{ contains(github.event.pull_request.changed_files, 'src/ai/') }}" >> "$GITHUB_OUTPUT"
-
       - name: Cache Playwright browsers
-        if: steps.changed.outputs.ai_changed == 'true'
         uses: actions/cache@v6
         id: playwright-cache
         with:
@@ -119,27 +217,27 @@ jobs:
           key: playwright-${{ hashFiles('package-lock.json') }}
 
       - name: Install Playwright browsers
-        if: steps.changed.outputs.ai_changed == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
 
       - name: Install Playwright OS dependencies
-        if: steps.changed.outputs.ai_changed == 'true'
         run: npx playwright install-deps chromium
 
-      - name: Run Playwright flake detector
-        if: steps.changed.outputs.ai_changed == 'true'
+      - name: Run Playwright flake detector (3 runs, threshold 2)
         id: e2eflake
+        # Non-blocking: the report is the signal, not a red required check.
+        continue-on-error: true
         run: |
           set +e
-          npm run test:e2e:flake
+          npm run test:e2e:flake -- --runs=3 --threshold=2
           FLAKE_EXIT=$?
           echo "flake-exit=$FLAKE_EXIT" >> "$GITHUB_OUTPUT"
-          exit $FLAKE_EXIT
+          exit "$FLAKE_EXIT"
         env:
           CI: 'true'
 
       - name: Upload Playwright flake report
-        if: always() && steps.changed.outputs.ai_changed == 'true'
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: pr-e2e-flake-detector-report
@@ -147,7 +245,7 @@ jobs:
           retention-days: 7
 
       - name: Post PR comment (Playwright flakes)
-        if: always() && steps.e2eflake.outputs.flake-exit == '1' && steps.changed.outputs.ai_changed == 'true'
+        if: always() && steps.e2eflake.outputs.flake-exit == '1'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
