@@ -158,7 +158,7 @@ export const scenarioSchema = z
     description: z.string(),
     refs: z.string().optional(),
     players: z.tuple([playerSchema, playerSchema]),
-    activePlayer: z.number().int().min(0).max(1).optional(),
+    activePlayer: z.union([z.literal(0), z.literal(1)]).optional(),
     phase: phaseSchema.optional(),
     actions: z.array(actionSchema),
     observe: z.array(observedFieldSchema).optional(),
