@@ -17,6 +17,7 @@ import {
   Fragment,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -30,7 +31,6 @@ import { useToast } from "@/hooks/use-toast";
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 import type { ScryfallCard, SavedDeck } from "@/lib/card-database";
 import { gameLogger } from "@/lib/logger";
-import { GameTutorial } from "@/components/game-tutorial";
 import {
   Dialog,
   DialogContent,
@@ -108,7 +108,6 @@ import {
   isDiscardChoice,
   isOfferChoice,
 } from "@/ai/offer-choices";
-import { HandSizeDiscardDialog } from "@/components/choice-dialog";
 import {
   parseModes,
   parseXCost,
@@ -144,25 +143,77 @@ import {
   type MulliganCardView,
 } from "./_components/MulliganDialog";
 import { PhaseTracker } from "./_components/PhaseTracker";
-import { ZoneViewerDialog } from "./_components/ZoneViewerDialog";
-import {
-  AbilityChoiceDialog,
-  type AbilityChoiceOption,
-} from "./_components/AbilityChoiceDialog";
-import {
-  ManaAbilityDialog,
-  type ManaAbilityOptionView,
-} from "./_components/ManaAbilityDialog";
-import {
-  BasicLandTypeDialog,
-  BASIC_LAND_TYPE_OPTIONS,
-} from "./_components/BasicLandTypeDialog";
-import { ShocklandDialog } from "./_components/ShocklandDialog";
 import { GameLoading } from "./_components/GameLoading";
-import { ModeChoiceDialog } from "./_components/ModeChoiceDialog";
-import { XCostDialog } from "./_components/XCostDialog";
-import { KickerDialog } from "./_components/KickerDialog";
-import { AttractionDialog } from "./_components/AttractionDialog";
+import type { AbilityChoiceOption } from "./_components/AbilityChoiceDialog";
+import type { ManaAbilityOptionView } from "./_components/ManaAbilityDialog";
+import { BASIC_LAND_TYPE_OPTIONS } from "./_components/basic-land-type-options";
+
+/**
+ * Lazily loaded, conditionally rendered leaves (issue #2903).
+ *
+ * Every dialog below only ever appears in response to a pending game choice
+ * (or a pending hand-size discard), so none of them is needed for the board
+ * to paint. Loading them through `next/dynamic` keeps their code out of the
+ * route's first-load payload: the chunk is fetched the first time the dialog
+ * is actually opened instead of on every page load.
+ *
+ * The rendering CONDITIONS are unchanged — each dialog is still mounted with
+ * exactly the same props and the same `isOpen`/`open` flag as before, so it
+ * shows up at exactly the same moment in the game.
+ *
+ * `loading: () => null` keeps the placeholder invisible while the chunk is
+ * in flight (the dialogs themselves are modals that mount closed).
+ */
+const ZoneViewerDialog = dynamic(
+  () => import("./_components/ZoneViewerDialog").then((m) => m.ZoneViewerDialog),
+  { ssr: false, loading: () => null },
+);
+const AbilityChoiceDialog = dynamic(
+  () =>
+    import("./_components/AbilityChoiceDialog").then((m) => m.AbilityChoiceDialog),
+  { ssr: false, loading: () => null },
+);
+const ManaAbilityDialog = dynamic(
+  () =>
+    import("./_components/ManaAbilityDialog").then((m) => m.ManaAbilityDialog),
+  { ssr: false, loading: () => null },
+);
+const BasicLandTypeDialog = dynamic(
+  () =>
+    import("./_components/BasicLandTypeDialog").then(
+      (m) => m.BasicLandTypeDialog,
+    ),
+  { ssr: false, loading: () => null },
+);
+const ShocklandDialog = dynamic(
+  () => import("./_components/ShocklandDialog").then((m) => m.ShocklandDialog),
+  { ssr: false, loading: () => null },
+);
+const ModeChoiceDialog = dynamic(
+  () => import("./_components/ModeChoiceDialog").then((m) => m.ModeChoiceDialog),
+  { ssr: false, loading: () => null },
+);
+const XCostDialog = dynamic(
+  () => import("./_components/XCostDialog").then((m) => m.XCostDialog),
+  { ssr: false, loading: () => null },
+);
+const KickerDialog = dynamic(
+  () => import("./_components/KickerDialog").then((m) => m.KickerDialog),
+  { ssr: false, loading: () => null },
+);
+const AttractionDialog = dynamic(
+  () => import("./_components/AttractionDialog").then((m) => m.AttractionDialog),
+  { ssr: false, loading: () => null },
+);
+const GameTutorial = dynamic(
+  () => import("@/components/game-tutorial").then((m) => m.GameTutorial),
+  { ssr: false, loading: () => null },
+);
+const HandSizeDiscardDialog = dynamic(
+  () =>
+    import("@/components/choice-dialog").then((m) => m.HandSizeDiscardDialog),
+  { ssr: false, loading: () => null },
+);
 
 /**
  * Stable empty list of ability choices — keeps the `options` prop of the
