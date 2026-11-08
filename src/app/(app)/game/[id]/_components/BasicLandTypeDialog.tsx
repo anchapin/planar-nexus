@@ -1,7 +1,6 @@
 "use client";
 
 import { memo } from "react";
-import { BASIC_LAND_NAMES } from "@/lib/basic-land-data";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -10,6 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import type { BasicLandTypeOptionView } from "./basic-land-type-options";
 
 /**
  * Issue #2418 (SLICE 8) — the "choose a basic land type" dialog of the
@@ -28,35 +28,14 @@ import {
  */
 
 /**
- * Human readable description of every basic land type, used by the dialog to
- * explain what each choice produces.
+ * The basic land type options live in their own module (issue #2903) so the
+ * board can import them without pulling this dialog into the route's
+ * first-load payload — the dialog itself is loaded lazily via `next/dynamic`.
  */
-const BASIC_LAND_TYPE_DESCRIPTIONS: Readonly<Record<string, string>> = {
-  Plains: "Produces white mana",
-  Island: "Produces blue mana",
-  Swamp: "Produces black mana",
-  Mountain: "Produces red mana",
-  Forest: "Produces green mana",
-};
-
-/** A single choice of the dialog: one basic land type. */
-export interface BasicLandTypeOptionView {
-  /** The basic land name (e.g. "Plains"). */
-  name: string;
-  /** Human readable description of the choice (e.g. "Produces white mana"). */
-  description: string;
-}
-
-/**
- * The five basic land types the player can choose from. Built once at module
- * load so the `options` prop of the memoized dialog keeps a stable identity
- * for the whole lifetime of the board.
- */
-export const BASIC_LAND_TYPE_OPTIONS: BasicLandTypeOptionView[] =
-  BASIC_LAND_NAMES.map((name) => ({
-    name,
-    description: BASIC_LAND_TYPE_DESCRIPTIONS[name] ?? "",
-  }));
+export {
+  BASIC_LAND_TYPE_OPTIONS,
+  type BasicLandTypeOptionView,
+} from "./basic-land-type-options";
 
 export interface BasicLandTypeDialogProps {
   /** Whether the dialog is open (i.e. a choice is pending). */
