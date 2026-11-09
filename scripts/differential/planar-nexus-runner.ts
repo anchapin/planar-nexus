@@ -9,36 +9,38 @@ import {
   createInitialGameState,
   startGame,
   passPriority,
-} from "../../src/lib/game-state/game-state";
-// The full SBA pass (refreshes threshold, domain, anthems), the same one the
-// `@/lib/game-state` barrel exports. game-state.ts has a narrower one.
-import { checkStateBasedActions } from "../../src/lib/game-state/state-based-actions";
-import { createCardInstance } from "../../src/lib/game-state/card-instance";
-import {
+  // The full SBA pass (refreshes threshold, domain, anthems) — the barrel's
+  // `checkStateBasedActions` is the state-based-actions one (issue #1710).
+  checkStateBasedActions,
+  createCardInstance,
+  createTokenCard,
   castSpell,
   resolveTopOfStack,
-} from "../../src/lib/game-state/spell-casting";
-import { playLand, addMana } from "../../src/lib/game-state/mana";
-import { declareAttackers } from "../../src/lib/game-state/combat/declaration";
-import { resolveCombatDamage } from "../../src/lib/game-state/combat/resolution";
-import {
+  playLand,
+  addMana,
+  declareAttackers,
+  resolveCombatDamage,
   getEffectivePower,
   getEffectiveToughness,
   layerSystem,
-} from "../../src/lib/game-state/layer-system";
+  Phase,
+  type GameState,
+  type PlayerId,
+  type CardInstance,
+  type CardInstanceId,
+  type ScryfallCard,
+  type Target,
+} from "@/lib/game-state";
+// The engine keeps a SECOND P/T read (evergreen-keywords.ts) that folds in
+// the modifier ledger (threshold, anthem, until-end-of-turn bonuses) rather
+// than the layer system. The barrel only re-exports `getMenaceMinimumBlockers`
+// from that module, so this dev-only harness (outside the eslint-enforced
+// `src/**` boundary) reaches into the engine module directly to cross-check
+// the two reads and report a disagreement as an engine finding.
 import {
   getEffectivePower as getModifiedPower,
   getEffectiveToughness as getModifiedToughness,
 } from "../../src/lib/game-state/evergreen-keywords";
-import { Phase } from "../../src/lib/game-state/types";
-import type {
-  GameState,
-  PlayerId,
-  CardInstance,
-  CardInstanceId,
-  ScryfallCard,
-  Target,
-} from "../../src/lib/game-state/types";
 import {
   ALL_FIELDS,
   type ObservedField,
@@ -287,6 +289,25 @@ function runAction(ctx: Ctx, action: ScenarioAction): void {
     case "resolveStack":
       resolveAll(ctx);
       return;
+    case "createToken": {
+      const pid = ctx.playerIds[action.player];
+      const data = cardData(ctx, action.card);
+      // The token copies the printed stats of `card`; `tokenName` overrides
+      // the name the token is observed under (CR 111.2 token name).
+      const tokenData = action.tokenName
+        ? ({ ...data, name: action.tokenName } as ScryfallCard)
+        : data;
+      const r = createTokenCard(
+        ctx.state,
+        tokenData,
+        pid,
+        pid,
+        action.count ?? 1,
+      );
+      if (!r.success) ctx.errors.push(`createToken ${action.card}: ${r.error}`);
+      ctx.state = r.state;
+      return;
+    }
     case "attack": {
       const pid = ctx.playerIds[action.player];
       if (ctx.state.turn.currentPhase !== Phase.DECLARE_ATTACKERS) {
