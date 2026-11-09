@@ -4,11 +4,15 @@
  *     npx tsx scripts/yardstick-pn.ts [--agent random|expert|model]
  *         [--model forge_pointer.onnx] [--sims 16] [--sample]
  *         [--games 200] [--seed 1] [--out result.json]
+ *         [--decks-file 2614-decks.json] [--deck-a mono-red-aggro]
+ *         [--deck-b mono-green-landfall]
  *
- * Plays the #2614 deck pair (Mono-Red Aggro vs Mono-Green Landfall) through
- * the training session. Games come in pairs on the same seed with decks
- * swapped, and the deck on the play alternates by pair, so the candidate
- * plays each deck and each seat equally often. Prints JSON: wins, losses,
+ * Plays a deck pair through the training session. Defaults to the #2614
+ * pair (Mono-Red Aggro vs Mono-Green Landfall). `--decks-file` names a file
+ * in scripts/data/decks, `--deck-a` / `--deck-b` the two deck keys in it.
+ * Games come in pairs on the same seed with decks swapped, and the deck on
+ * the play alternates by pair, so the candidate plays each deck and each
+ * seat equally often. Prints JSON: wins, losses,
  * draws, score (a draw counts half) with a 95% Wilson interval, and a split
  * by the candidate's deck. `--agent model` plays a ForgePointerNet ONNX
  * checkpoint through `forgeSearch` (manamind#86): the search's greedy pick by
@@ -47,6 +51,9 @@ function arg(name: string, fallback: string): string {
 }
 
 const agentName = arg("agent", "random");
+const deckFile = arg("decks-file", "2614-decks.json");
+const deckA = arg("deck-a", "mono-red-aggro");
+const deckB = arg("deck-b", "mono-green-landfall");
 const games = Number(arg("games", "200"));
 const firstSeed = Number(arg("seed", "1"));
 const out = arg("out", "");
@@ -97,7 +104,7 @@ const BASIC_MANA: Record<string, string> = {
   Forest: "G",
 };
 const data = JSON.parse(
-  readFileSync(join(__dirname, "data/decks/2614-decks.json"), "utf-8"),
+  readFileSync(join(__dirname, "data/decks", deckFile), "utf-8"),
 ) as DeckFile;
 function deck(key: string): ScryfallCard[] {
   const cards: ScryfallCard[] = [];
@@ -113,8 +120,8 @@ function deck(key: string): ScryfallCard[] {
   return cards;
 }
 const DECKS = {
-  red: deck("mono-red-aggro"),
-  green: deck("mono-green-landfall"),
+  a: deck(deckA),
+  b: deck(deckB),
 };
 
 /** Wilson 95% interval for a score out of n. */
@@ -128,11 +135,11 @@ function wilson(p: number, n: number): [number, number] {
 
 async function playGame(
   seed: number,
-  candidateDeck: "red" | "green",
+  candidateDeck: "a" | "b",
   candidateFirst: boolean,
 ): Promise<"win" | "loss" | "draw"> {
   const session = new TrainingSession();
-  const other = candidateDeck === "red" ? "green" : "red";
+  const other = candidateDeck === "a" ? "b" : "a";
   const [a, b] = candidateFirst
     ? [DECKS[candidateDeck], DECKS[other]]
     : [DECKS[other], DECKS[candidateDeck]];
@@ -164,15 +171,15 @@ async function main(): Promise<void> {
   }
   const start = Date.now();
   const tally = { win: 0, loss: 0, draw: 0 };
-  const byDeck = {
-    red: { win: 0, loss: 0, draw: 0 },
-    green: { win: 0, loss: 0, draw: 0 },
+  const byDeck: Record<string, { win: number; loss: number; draw: number }> = {
+    [deckA]: { win: 0, loss: 0, draw: 0 },
+    [deckB]: { win: 0, loss: 0, draw: 0 },
   };
   const errors: string[] = [];
   for (let pair = 0; pair < games / 2; pair++) {
     const seed = firstSeed + pair;
     const candidateFirst = pair % 2 === 0;
-    for (const d of ["red", "green"] as const) {
+    for (const d of ["a", "b"] as const) {
       try {
         const r = await playGame(seed, d, candidateFirst);
         tally[r]++;
@@ -195,7 +202,7 @@ async function main(): Promise<void> {
     agent: agentName,
     ...(agentName === "model" ? { model: modelPath, simulations, sample } : {}),
     opponent: "expert",
-    decks: "mono-red-aggro vs mono-green-landfall (#2614)",
+    decks: `${deckA} vs ${deckB} (${deckFile})`,
     games: n,
     ...tally,
     score: +score.toFixed(3),
