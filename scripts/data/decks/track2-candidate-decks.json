@@ -1,0 +1,132 @@
+{
+ "note": "Track 2 candidate decks (manamind #96, built 2026-11-09): candidate second pairs for the expert-vs-expert seat-balance read. Brews assembled from the scripted card pool (354 scripts on main), not meta lists: mono-white-aggro (lifegain-aggro with Pridemate payoffs), mono-blue-tempo (fliers + countermagic + bounce), mono-black-aggro (low-curve drain + removal), mono-green-ramp (elves into fatties), mono-blue-control (counters + draw + tap-lock auras). mono-red-aggro is copied verbatim from 2614-decks.json so the red-vs-black candidate reuses the existing yardstick deck. Card records are trimmed Scryfall objects (engine fields only, standard-legal). X-cost spells, vehicles, and sagas avoided pending engine behavior; Hornet Queen and Avenger of Zendikar dropped (not standard-legal in the pool fetch).",
+ "decks": {
+  "mono-white-aggro": {
+   "source": "brewed from the scripted card pool, 2026-11-09",
+   "main": {
+    "Novice Inspector": 2,
+    "Ajani's Pridemate": 4,
+    "Holy Cow": 4,
+    "Thistledown Players": 2,
+    "Kyoshi Warriors": 4,
+    "Twinblade Paladin": 4,
+    "Dazzling Angel": 4,
+    "Angel of Finality": 2,
+    "Herald of Faith": 2,
+    "Moment of Triumph": 4,
+    "Make a Stand": 4,
+    "Pacifism": 2,
+    "Plains": 22
+   }
+  },
+  "mono-blue-tempo": {
+   "source": "brewed from the scripted card pool, 2026-11-09",
+   "main": {
+    "Spectral Sailor": 4,
+    "Il Mheg Pixie": 4,
+    "Divining Duelist": 4,
+    "Dragoon's Wyvern": 4,
+    "Merfolk Coralsmith": 4,
+    "Bigfin Bouncer": 2,
+    "Voracious Greatshark": 2,
+    "Unsummon": 4,
+    "Negate": 4,
+    "Essence Scatter": 4,
+    "Opt": 2,
+    "Island": 22
+   }
+  },
+  "mono-black-aggro": {
+   "source": "brewed from the scripted card pool, 2026-11-09",
+   "main": {
+    "Diregraf Ghoul": 4,
+    "Pulse Tracker": 4,
+    "Scarblade Scout": 4,
+    "Sanguine Syphoner": 4,
+    "Crow of Dark Tidings": 4,
+    "Screaming Phantom": 4,
+    "Crypt Feaster": 2,
+    "Skeleton Archer": 2,
+    "Stab": 4,
+    "Fell": 4,
+    "Moment of Craving": 2,
+    "Bake into a Pie": 2,
+    "Swamp": 20
+   }
+  },
+  "mono-green-ramp": {
+   "source": "brewed from the scripted card pool, 2026-11-09",
+   "main": {
+    "Llanowar Elves": 4,
+    "Druid of the Cowl": 4,
+    "Thrashing Brontodon": 4,
+    "Regal Imperiosaur": 4,
+    "Rampaging Baloths": 4,
+    "Elfsworn Giant": 4,
+    "Apothecary Stomper": 4,
+    "Pelakka Wurm": 4,
+    "Rabid Bite": 4,
+    "Oracle's Restoration": 2,
+    "Forest": 22
+   }
+  },
+  "mono-blue-control": {
+   "source": "brewed from the scripted card pool, 2026-11-09",
+   "main": {
+    "Cancel": 4,
+    "Negate": 4,
+    "Essence Scatter": 4,
+    "Spell Snare": 2,
+    "Flashfreeze": 2,
+    "Opt": 4,
+    "Quick Study": 2,
+    "Ancestral Reminiscence": 2,
+    "Starlight Snare": 2,
+    "Rune-Sealed Wall": 2,
+    "Icewind Elemental": 2,
+    "Iceridge Serpent": 2,
+    "Voracious Greatshark": 2,
+    "Island": 26
+   }
+  },
+  "mono-red-aggro": {
+   "source": "https://www.mtggoldfish.com/deck/7954752",
+   "main": {
+    "Burst Lightning": 4,
+    "Channeled Dragonfire": 2,
+    "Generous Plunderer": 1,
+    "Hired Claw": 4,
+    "Magda, the Hoardmaster": 4,
+    "Magmatic Hellkite": 4,
+    "Mountain": 20,
+    "Nova Hellkite": 4,
+    "Sarkhan, Dragon Ascendant": 4,
+    "Shock": 4,
+    "Smaug the Magnificent": 4,
+    "Soulstone Sanctuary": 3,
+    "Sunspine Lynx": 2
+   }
+  }
+ },
+ "cards": {
+  "Ajani's Pridemate": {
+   "name": "Ajani's Pridemate",
+   "mana_cost": "{1}{W}",
+   "cmc": 2.0,
+   "type_line": "Creature \u2014 Cat Soldier",
+   "oracle_text": "Whenever you gain life, put a +1/+1 counter on this creature.",
+   "colors": [
+    "W"
+   ],
+   "color_identity": [
+    "W"
+   ],
+   "keywords": [],
+   "layout": "normal",
+   "power": "2",
+   "toughness": "2",
+   "legalities": {
+    "standard": "legal"
+   },
+   "id": "222c1a68-e34c-4103-b1be-17d4ceaef6ce"
+  }
