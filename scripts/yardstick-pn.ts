@@ -183,7 +183,7 @@ async function main(): Promise<void> {
       try {
         const r = await playGame(seed, d, candidateFirst);
         tally[r]++;
-        byDeck[d][r]++;
+        byDeck[d === "a" ? deckA : deckB][r]++;
       } catch (err) {
         errors.push(
           `seed ${seed} ${d}: ${err instanceof Error ? err.message : String(err)}`,
