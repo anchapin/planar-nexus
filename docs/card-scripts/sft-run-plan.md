@@ -334,7 +334,7 @@ run on 334 examples, plus the 50-card bake-off), and nothing beyond it.
 Options:
 
 - **A — approve the pilot.** Alex says go; the pilot runs on a rented GPU
-  (estimated well under $0.50 of GPU time) or on his own GPU if he confirms
+  (estimated at roughly $0.30 – $0.84 of GPU time) or on his own GPU if he confirms
   it meets the requirement above. Nothing else is started. The pilot ends with
   a #2514-format report and a go/no-go against section 5.
 - **B — approve a full run instead of a pilot.** Only sensible with a stated
