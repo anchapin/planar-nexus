@@ -149,7 +149,12 @@ lora_rank=16)`, `total_tokens = 1,184,706 × 2 epochs`.
 - **Price**: brewery-ai's GPU catalog, `src/brewery_ai/hardware/gpus.py`, which
   states its prices are "on-demand $/hour for one GPU, checked on 2026-10-04
   (Runpod pricing page; Vast.ai live offers API)" (`PRICES_CHECKED =
-"2026-10-04"`). Access date for this plan: **2026-10-31**.
+"2026-10-04"`). Access date for this plan: **2026-10-31**. One correction,
+  applied 2026-11-10: the catalog's $0.34/h for the RTX 4090 is Runpod's
+  Community Cloud rate, not the Secure Cloud on-demand rate this plan rents.
+  The 4090's Secure Cloud rate was read directly from Runpod's pricing page
+  on **2026-11-09**: **$0.89/h** — the table and totals below use that figure
+  for the 4090.
 - **Token count** is an estimate: characters / 4. No tokenizer was downloaded
   (model downloads are out of scope for this task), so the real token count
   could be 10–25% off in either direction.
@@ -160,9 +165,12 @@ lora_rank=16)`, `total_tokens = 1,184,706 × 2 epochs`.
 ### Rented-GPU options (ESTIMATE)
 
 Prices are Runpod / Vast.ai on-demand $/hour per GPU, as published in
-brewery-ai's catalog (`gpus.py`, checked 2026-10-04). Runpod's published
+brewery-ai's catalog (`gpus.py`, checked 2026-10-04) — except the Runpod
+RTX 4090 figure, which is the Secure Cloud on-demand rate read directly from
+Runpod's pricing page on 2026-11-09 ($0.89/h; the catalog's $0.34/h for this
+card is its Community Cloud rate). Runpod's published
 pricing page is <https://www.runpod.io/pricing> and Vast.ai's live-offer API is
-behind <https://vast.ai>; both were read via brewery-ai's catalog on
+behind <https://vast.ai>; the other prices were read via brewery-ai's catalog on
 2026-10-31, not directly, because this task allows only brewery-ai doc reads
 on the network. **Confirm the live price on the provider's page on the day of
 the run — these are estimates, not quotes.**
@@ -170,7 +178,7 @@ the run — these are estimates, not quotes.**
 | GPU          | VRAM  | Fits 2B LoRA @4096? | Training hours (EST.) | Price $/h (Runpod / Vast.ai) | Training cost (EST.) |
 | ------------ | ----- | ------------------- | --------------------- | ---------------------------- | -------------------- |
 | RTX 3090     | 24 GB | yes (16.6 GB)       | 0.21 – 0.44           | 0.22 / 0.11–0.18             | $0.02 – $0.10        |
-| RTX 4090     | 24 GB | yes                 | 0.09 – 0.19           | 0.34 / 0.27–0.42             | $0.02 – $0.08        |
+| RTX 4090     | 24 GB | yes                 | 0.09 – 0.19           | 0.89 / 0.27–0.42             | $0.02 – $0.17        |
 | RTX 5090     | 32 GB | yes                 | 0.07 – 0.15           | 0.69 / 0.28–0.54             | $0.02 – $0.10        |
 | RTX A6000    | 48 GB | yes                 | 0.11 – 0.23           | 0.33 / 0.36–0.40             | $0.04 – $0.09        |
 | RTX 6000 Ada | 48 GB | yes                 | 0.05 – 0.10           | 0.74 / 0.52–0.76             | $0.03 – $0.08        |
@@ -184,15 +192,15 @@ these cards.** The realistic bill is dominated by everything around it:
 
 | Line item                                             | ESTIMATE         | Notes                                                                                                                 |
 | ----------------------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Training (2B LoRA, 2 epochs)                          | $0.02 – $0.10    | from the table above                                                                                                  |
-| Setup + data upload + model download on the pod       | $0.06 – $0.26    | ~0.25–0.75 h of pod time at $0.22–$0.34/h; a 4 GB model download dominates the low end                                |
+| Training (2B LoRA, 2 epochs)                          | $0.02 – $0.17    | from the table above                                                                                                  |
+| Setup + data upload + model download on the pod       | $0.06 – $0.67    | ~0.25–0.75 h of pod time at $0.22–$0.89/h; a 4 GB model download dominates the low end                                |
 | Serving the fine-tuned model for the 50-card bake-off | $0.02 – $0.10    | same pod, 50 cards × ~3.5k prompt tokens                                                                              |
 | Disk / storage until the pod is destroyed             | unknown          | provider-specific; brewery's rental guide warns that stopped pods still bill storage                                  |
 | **DPO step (step 2 data → preference tuning)**        | **not included** | needs a real draft log first: no rejected draft is stored in this repo yet (`scripts/card-scripts/preference-lib.ts`) |
 | **Wider bake-off / second bake-off arm set**          | **not included** | out of scope for the pilot                                                                                            |
 | **Anything past the pilot (full run, 4B, sweeps)**    | **not included** | each is a new approval                                                                                                |
 
-**Total pilot estimate: roughly $0.10 – $0.50 of rented GPU time, plus $10 of
+**Total pilot estimate: roughly $0.30 – $0.84 of rented GPU time, plus $10 of
 provider credit to open the account (brewery's rental guide suggests $10 is
 plenty for a first small brew).** The number that matters for the decision is
 the order of magnitude: this is a few cents of training, and the decision is
