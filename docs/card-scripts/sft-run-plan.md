@@ -217,6 +217,25 @@ the money is irrelevant next to these two constraints:
 meets this requirement before the local path is chosen. This plan does not
 assert what his machine has — that is unknown from the repo.**
 
+### Colab CLI alternative (tried 2026-11-10 — No-go / Kill)
+
+On 2026-11-10 a Colab CLI spike (google-colab-cli v0.7.5, agent-driven via
+ADC auth) was run as a Phase 1 measurement against this pilot's shape — a
+20-record smoke slice at the real `max_seq_len` 4096 configuration — and
+returned a **No-go / Kill** verdict. Both GPU allocation attempts (L4, then
+A100) were rejected by the Colab frontend with HTTP 411 "Length Required"
+on the CLI's assignment POST: a client bug in the CLI, and the requests
+never reached quota or entitlement evaluation. The account side was
+verified healthy (600 CU paid balance, ADC auth working, no active
+assignments). The run burned 0 CU, teardown was verified clean, and no
+training measurements (VRAM, step time) were obtained. **This changes
+nothing in this plan:** RunPod Secure Cloud on-demand RTX 4090 (repriced
+$0.89/hr on 2026-11-09) remains the approved backend, exactly as above.
+Colab CLI is not to be re-proposed for this pilot without new evidence,
+e.g. a CLI release fixing the assign POST. Full spike record:
+`~/workspace/colab-cli-phase0/phase1/PHASE1-REPORT.md` (local record, not a
+repo link).
+
 ---
 
 ## 4. Evaluation plan (a fourth #2514-format bake-off arm)
