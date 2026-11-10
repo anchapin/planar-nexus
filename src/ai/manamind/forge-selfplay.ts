@@ -58,6 +58,15 @@ export interface SelfPlayDecision extends ForgeDecision {
    * none (the Expert AI's move is not search-scored).
    */
   rootValue?: number;
+  /**
+   * manamind#106 rerank probe (`selfplay-forge --probe collect`): the
+   * search's per-candidate value-head reads at this decision, in the
+   * search's candidate order (`visits` counts, mean leaf `q` over the
+   * dealt worlds, null when never visited) plus the search's own pick
+   * index. Analysis derives the value-head favorite from these;
+   * recording changes no play.
+   */
+  probe?: { visits: number[]; q: (number | null)[]; pick: number };
 }
 
 export interface SelfPlayGame {
@@ -115,6 +124,12 @@ export interface SelfPlayOptions {
    * (`"net"`, default) or the Expert AI's too (`"both"`, manamind#96).
    */
   expertRecord?: "net" | "both";
+  /**
+   * Record the manamind#106 rerank probe on each net decision (the
+   * search's per-candidate value-head reads and its own pick).
+   * Default off; recording only.
+   */
+  probe?: boolean;
 }
 
 /**
@@ -278,6 +293,7 @@ export async function playSelfPlayGame(
     netSeat = 0,
     expertRecord = "net",
     pick = "sample",
+    probe = false,
     cScale,
   } = options;
   const session = new TrainingSession({ maxTurns });
@@ -327,6 +343,15 @@ export async function playSelfPlayGame(
         source: "net",
         pi,
         rootValue: result.rootValue,
+        ...(probe && result.stats
+          ? {
+              probe: {
+                visits: result.stats.map((c) => c.visits),
+                q: result.stats.map((c) => c.q),
+                pick: result.index,
+              },
+            }
+          : {}),
       });
     }
     let action: TrainingAction = result.action;
