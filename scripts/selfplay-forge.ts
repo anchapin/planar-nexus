@@ -24,6 +24,12 @@
  * with both decks. `--expert-record both` (manamind#96) also records the
  * Expert AI's decisions as one-hot targets with `source: "expert"`;
  * default `net` keeps the old format. Prints a one-line throughput summary.
+ *
+ * `--probe collect` (manamind#106): each net decision also carries
+ * the search's per-candidate value-head reads (`probe.visits`, the
+ * mean leaf `q` over dealt worlds, null when unvisited) and the
+ * search's own pick index, for the prediction-rerank analysis.
+ * Recording only; play is unchanged.
  */
 import { createWriteStream, readFileSync } from "node:fs";
 import { createGzip } from "node:zlib";
@@ -64,6 +70,9 @@ async function main() {
   const opponent = arg("opponent", "self");
   if (opponent !== "self" && opponent !== "expert")
     throw new Error(`--opponent must be self or expert, not ${opponent}`);
+  const probe = arg("probe", "") === "collect";
+  if (!probe && process.argv.includes("--probe"))
+    throw new Error("--probe must be collect (manamind#106)");
   const expertRecord = arg("expert-record", "net");
   if (expertRecord !== "net" && expertRecord !== "both")
     throw new Error(`--expert-record must be net or both, not ${expertRecord}`);
@@ -101,6 +110,7 @@ async function main() {
       expertRecord,
       pick,
       cScale,
+      probe,
     });
     decisions += game.decisions.length;
     expertDecisions += game.decisions.filter(
