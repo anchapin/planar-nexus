@@ -79,6 +79,13 @@ export interface ForgeSearchOptions {
   /** Seed for the hidden-card deals (and the Gumbel draws). */
   seed?: number;
   /**
+   * How the final action is picked (manamind#106 rerank probe): the
+   * Gumbel score ("gumbel", default) or the value head's favorite
+   * among the visited candidates ("qargmax"), ties broken by visits
+   * then candidate order. Default is the historical pick.
+   */
+  pickRule?: "gumbel" | "qargmax";
+  /**
    * Gumbel MuZero root sampling (manamind#96): add Gumbel(0, 1) noise to the
    * root logits for the top-k pick and sequential halving, so `action` is a
    * varied draw that still plays the search's own pick. With 0 simulations
@@ -129,6 +136,13 @@ export interface ForgeSearchResult {
   rootValue: number;
   simulations: number;
   evaluations: number;
+  /**
+   * Per-candidate raw value-head reads (manamind#106 rerank probe):
+   * the candidate's visit count and its mean leaf value over the
+   * dealt worlds, null when the search never visited it. Recording
+   * only: it changes no search behavior.
+   */
+  stats?: { visits: number; q: number | null }[];
 }
 
 function mulberry32(seed: number): () => number {
@@ -298,9 +312,7 @@ export async function forgeCandidates(
   model: ForgePointerModel,
   deckNames?: readonly [string, string],
 ): Promise<{ candidates: ForgeCandidate[]; value: number }> {
-  const out = await model.evaluate(
-    forgeDecision(session, prompt, deckNames),
-  );
+  const out = await model.evaluate(forgeDecision(session, prompt, deckNames));
   let raw: RawCandidate[];
   switch (prompt.kind) {
     case "priority": {
@@ -371,6 +383,7 @@ export async function forgeSearch(
     gumbel = false,
     deckNames,
     batchSize = DEFAULT_BATCH_SIZE,
+    pickRule,
   } = options;
   const prompt = session.legalChoices();
   if (prompt.kind === "game_over") throw new Error("the game is over");
@@ -557,6 +570,24 @@ export async function forgeSearch(
     const noisy = score(true);
     let best = remaining[0];
     for (const i of remaining) if (noisy[i] > noisy[best]) best = i;
+    if (pickRule === "qargmax") {
+      // manamind#106: play the value head's favorite among the visited
+      // candidates instead of the Gumbel pick.
+      let arg = -1;
+      let argQ = -Infinity;
+      let argV = -1;
+      for (let i = 0; i < count; i++) {
+        const v = visits[i];
+        if (v === 0 || illegal[i]) continue;
+        const q = totals[i] / v;
+        if (q > argQ || (q === argQ && v > argV)) {
+          arg = i;
+          argQ = q;
+          argV = v;
+        }
+      }
+      if (arg >= 0) best = arg;
+    }
     const final = score(false);
     const target = targetOf(completedQ());
     if (illegal[best]) {
@@ -573,6 +604,10 @@ export async function forgeSearch(
       rootValue,
       simulations: used,
       evaluations,
+      stats: visits.map((v, i) => ({
+        visits: v,
+        q: v > 0 ? totals[i] / v : null,
+      })),
     };
   } finally {
     session.restore(root);
