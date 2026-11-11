@@ -24,7 +24,7 @@ import {
   type Dataset,
   type EtfRecord,
 } from "../scripts/card-scripts/dataset-lib";
-import { buildSystemPrompt } from "../scripts/card-scripts/draft-lib";
+import { buildSystemPrompt, judgeReply, type DraftCard } from "../scripts/card-scripts/draft-lib";
 import { exportDataset } from "../scripts/export-card-script-dataset";
 
 const ROOT = join(__dirname, "..");
@@ -54,10 +54,10 @@ describe("ETF records", () => {
   const system = buildSystemPrompt();
   const record = toEtfRecord(lightningStrike, system, "train");
 
-  it("carries the system prompt, the oracle text and the script JSON", () => {
+  it("carries the system prompt, the oracle text and the drafting reply", () => {
     expect(record.system).toBe(system);
     expect(record.user).toBe(lightningStrike.oracle);
-    expect(record.assistant).toBe(JSON.stringify(lightningStrike));
+    expect(record.assistant).toBe(JSON.stringify({ script: lightningStrike }));
   });
 
   it("is an ETF trace record with a user turn and an assistant turn", () => {
@@ -68,11 +68,9 @@ describe("ETF records", () => {
     expect(record.meta.tags).toContain("sft");
   });
 
-  it("has an assistant turn that is a valid card script", () => {
-    const parsed = CardScriptSchema.safeParse(
-      JSON.parse(record.assistant) as unknown,
-    );
-    expect(parsed.success).toBe(true);
+  it("has an assistant turn that is a drafting reply holding a valid script", () => {
+    const parsed = JSON.parse(record.assistant) as { script: unknown };
+    expect(CardScriptSchema.safeParse(parsed.script).success).toBe(true);
     expect(checkRecord(record)).toEqual([]);
   });
 
@@ -83,10 +81,20 @@ describe("ETF records", () => {
     );
   });
 
+  it("rejects a bare script target: the reply needs the envelope", () => {
+    const bare: EtfRecord = {
+      ...record,
+      assistant: JSON.stringify(lightningStrike),
+    };
+    expect(checkRecord(bare).join(" ")).toContain(
+      'assistant turn is not a drafting reply: it has no "script" object',
+    );
+  });
+
   it("reports a broken record instead of passing it", () => {
     const broken: EtfRecord = {
       ...record,
-      assistant: JSON.stringify({ name: "Nope", oracle: "Nope." }),
+      assistant: JSON.stringify({ script: { name: "Nope", oracle: "Nope." } }),
     };
     expect(checkRecord(broken).join(" ")).toContain("not a valid card script");
   });
@@ -128,6 +136,59 @@ describe("gold-set hold-out", () => {
   });
 });
 
+describe("the exported format and the judge agree (#2914)", () => {
+  const system = buildSystemPrompt();
+  const record = toEtfRecord(lightningStrike, system, "train");
+  const card: DraftCard = {
+    name: lightningStrike.name,
+    type_line: "Instant",
+    layout: "normal",
+    oracle_text: lightningStrike.oracle,
+  };
+
+  it("judges an exported target as a draft, not as an invalid reply", () => {
+    const outcome = judgeReply(card, record.assistant);
+    expect(outcome.kind).toBe("drafted");
+    expect(outcome.kind === "invalid" ? outcome.errors : []).toEqual([]);
+  });
+
+  it("judges a bare script target as invalid: that is the old format", () => {
+    const outcome = judgeReply(card, JSON.stringify(lightningStrike));
+    expect(outcome.kind).toBe("invalid");
+    expect(
+      outcome.kind === "invalid" ? outcome.errors.join(" ") : "",
+    ).toContain('reply has neither "script" nor "needs_new_op"');
+  });
+
+  it("judges an exported gold-card target as a draft too", () => {
+    const outDir = mkdtempSync(join(tmpdir(), "card-script-dataset-judge-"));
+    try {
+      const exported = exportDataset({ outDir });
+      const lines = readFileSync(exported.evalFile, "utf8")
+        .split("\n")
+        .filter((l) => l.trim().length > 0);
+      expect(lines.length).toBeGreaterThan(0);
+      for (const line of lines) {
+        const record2 = JSON.parse(line) as EtfRecord;
+        const script = (JSON.parse(record2.assistant) as { script: CardScript })
+          .script;
+        const outcome = judgeReply(
+          {
+            name: script.name,
+            type_line: "",
+            layout: "normal",
+            oracle_text: script.oracle,
+          },
+          record2.assistant,
+        );
+        expect(outcome.kind).toBe("drafted");
+      }
+    } finally {
+      rmSync(outDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("exported dataset", () => {
   const outDir = mkdtempSync(join(tmpdir(), "card-script-dataset-"));
   const result = exportDataset({ outDir });
@@ -161,31 +222,27 @@ describe("exported dataset", () => {
     expect(parseJsonl(rendered)[0]).toEqual(record);
   });
 
-  it("writes the assistant turn as a schema-valid card script", () => {
+  it("writes the assistant turn as a drafting reply holding a schema-valid script", () => {
     for (const line of trainLines) {
       const parsed = JSON.parse(line) as EtfRecord;
-      expect(
-        CardScriptSchema.safeParse(JSON.parse(parsed.assistant) as unknown)
-          .success,
-      ).toBe(true);
+      const reply = JSON.parse(parsed.assistant) as { script: unknown };
+      expect(CardScriptSchema.safeParse(reply.script).success).toBe(true);
     }
   });
 
   it("holds the 20 gold cards out of the training file", () => {
     expect(evalLines).toHaveLength(goldNames.length);
-    const trainNames = trainLines.map(
-      (l) => (JSON.parse(l) as EtfRecord).assistant,
-    );
-    const trainCardNames = trainNames.map(
-      (a) => (JSON.parse(a) as CardScript).name,
-    );
+    const trainCardNames = trainLines.map((l) => {
+      const record = JSON.parse(l) as EtfRecord;
+      return (JSON.parse(record.assistant) as { script: CardScript }).script.name;
+    });
     for (const gold of goldNames) {
       expect(trainCardNames).not.toContain(gold);
     }
-    const evalCardNames = evalLines.map(
-      (l) =>
-        (JSON.parse((JSON.parse(l) as EtfRecord).assistant) as CardScript).name,
-    );
+    const evalCardNames = evalLines.map((l) => {
+      const record = JSON.parse(l) as EtfRecord;
+      return (JSON.parse(record.assistant) as { script: CardScript }).script.name;
+    });
     expect([...evalCardNames].sort()).toEqual([...goldNames].sort());
   });
 

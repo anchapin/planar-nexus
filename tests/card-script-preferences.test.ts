@@ -134,11 +134,13 @@ describe("preference pairs", () => {
     expect(skipped).toEqual([]);
     expect(pairs).toHaveLength(1);
     const pair = pairs[0];
-    expect(JSON.parse(pair.chosen)).toEqual(shockScript);
+    expect(JSON.parse(pair.chosen)).toEqual({ script: shockScript });
     expect(JSON.parse(pair.rejected)).toEqual({
-      name: "Shock",
-      oracle: shockScript.oracle,
-      spell: [{ op: "DealDamage", target: "any" }],
+      script: {
+        name: "Shock",
+        oracle: shockScript.oracle,
+        spell: [{ op: "DealDamage", target: "any" }],
+      },
     });
     expect(pair.meta.card).toBe("Shock");
     expect(pair.meta.expect).toBe("draft");
@@ -190,7 +192,7 @@ describe("preference pairs", () => {
     expect(JSON.parse(pair.chosen)).toEqual({
       needs_new_op: ["damage a target and draw a card in one effect"],
     });
-    expect(JSON.parse(pair.rejected).name).toBe("Glimmerburst");
+    expect(JSON.parse(pair.rejected).script.name).toBe("Glimmerburst");
     expect(pair.meta.expect).toBe("needs_new_op");
   });
 
@@ -257,9 +259,19 @@ describe("preference pair checks", () => {
   });
 
   it("fails loudly on a chosen reply that is not a card script", () => {
-    const broken = { ...pairs[0], chosen: JSON.stringify({ nope: true }) };
+    const broken = {
+      ...pairs[0],
+      chosen: JSON.stringify({ script: { nope: true } }),
+    };
     expect(checkPreferencePair(broken).join(" ")).toMatch(
       /not a valid card script/,
+    );
+  });
+
+  it("fails loudly on a chosen reply that is not a drafting reply", () => {
+    const broken = { ...pairs[0], chosen: JSON.stringify(shockScript) };
+    expect(checkPreferencePair(broken).join(" ")).toMatch(
+      /has no "script" object/,
     );
   });
 

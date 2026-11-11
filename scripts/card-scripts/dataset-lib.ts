@@ -13,9 +13,9 @@
  *    "id": "bilbos_deadly_slice",
  *    "system": "<the drafting prompt's op-set description>",
  *    "messages": [{"role": "user", "content": "<oracle text>"},
- *                 {"role": "assistant", "content": "<script JSON>"}],
+ *                 {"role": "assistant", "content": "{\"script\": <script JSON>}"}],
  *    "user": "<oracle text>",
- *    "assistant": "<script JSON>",
+ *    "assistant": "{\"script\": <script JSON>}",
  *    "meta": {"source": "local:card-scripts", "license": "MIT",
  *             "tags": ["card-scripts", "sft", "train"]}}
  *
@@ -27,13 +27,20 @@
  * - `system` is the drafting prompt's op-set description, reused verbatim
  *   from `draft-lib.ts` (`buildSystemPrompt`) — never a second copy of it.
  * - `user` is the oracle text the script was written against.
- * - `assistant` is the script JSON itself, so it validates against
+ * - `assistant` is the *drafting reply* — the same envelope the system
+ *   prompt asks for and the same one `judgeReply` accepts:
+ *   `{"script": {...}}` (or `{"needs_new_op": [...]}` for a card the op set
+ *   cannot express). The script inside it validates against
  *   `CardScriptSchema` — the same validator the drafting pipeline uses.
  *
- * The assistant turn is the bare script object, not the drafting reply
- * envelope (`{"script": ...}`): the reply envelope is the *pipeline's*
- * transport format, and a model fine-tuned on the bare script has to be
- * wrapped again when it is plugged back into `judgeReply`.
+ * The assistant turn is the drafting reply envelope, not the bare script
+ * object (#2914): the export's own system prompt tells the model to reply
+ * with `{"script": ...}` or `{"needs_new_op": [...]}`, and `judgeReply`
+ * rejects any reply without that envelope ("reply has neither \"script\"
+ * nor \"needs_new_op\""). A model fine-tuned on bare scripts therefore
+ * scored zero against the stock bake-off judge, so the training format and
+ * the judge now agree: the assistant turn is exactly what the judge wants
+ * to read.
  *
  * No Forge scripts are ever used: the source of every example is this
  * repo's own JSON.
@@ -81,9 +88,18 @@ export function recordId(script: CardScript): string {
 }
 
 /**
+ * The assistant turn of a record: the drafting reply envelope
+ * `{"script": {...}}` — the format the system prompt asks for and the one
+ * `judgeReply` accepts.
+ */
+export function toReplyText(script: CardScript): string {
+  return JSON.stringify({ script });
+}
+
+/**
  * The ETF record for one card script. `system` is the shared op-set
  * description; the user turn is the oracle text; the assistant turn is the
- * script JSON.
+ * drafting reply (`{"script": ...}`).
  */
 export function toEtfRecord(
   script: CardScript,
@@ -91,7 +107,7 @@ export function toEtfRecord(
   split: DatasetSplit,
 ): EtfRecord {
   const user = script.oracle;
-  const assistant = JSON.stringify(script);
+  const assistant = toReplyText(script);
   return {
     etf: 1,
     id: recordId(script),
@@ -157,24 +173,61 @@ export function parseJsonl(text: string): unknown[] {
 }
 
 /**
+ * Parses an assistant turn: it must be the drafting reply envelope
+ * `{"script": {...}}`, and the script inside it must be a card script the
+ * schema accepts. Returns the script or the problems found.
+ */
+export function parseAssistantTarget(
+  text: string,
+): { script: CardScript } | { errors: string[] } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch (e) {
+    return {
+      errors: [`assistant turn is not JSON: ${(e as Error).message}`],
+    };
+  }
+  const obj = (parsed ?? {}) as Record<string, unknown>;
+  if (
+    !obj.script ||
+    typeof obj.script !== "object" ||
+    Array.isArray(obj.script)
+  ) {
+    return {
+      errors: [
+        'assistant turn is not a drafting reply: it has no "script" object ' +
+          '(the reply must be {"script": {...}} or {"needs_new_op": [...]})',
+      ],
+    };
+  }
+  const script = CardScriptSchema.safeParse(obj.script);
+  if (!script.success) {
+    return {
+      errors: [
+        `assistant script is not a valid card script: ${script.error.issues
+          .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
+          .join("; ")}`,
+      ],
+    };
+  }
+  return { script: script.data };
+}
+
+/**
  * Checks one record: the system prompt is there, the user turn is not
- * empty, and the assistant turn is a card script the schema accepts.
- * Returns the problems found (empty when the record is fine).
+ * empty, and the assistant turn is a drafting reply holding a card script
+ * the schema accepts. Returns the problems found (empty when the record is
+ * fine).
  */
 export function checkRecord(record: EtfRecord): string[] {
   const errors: string[] = [];
   if (!record.system.trim()) errors.push("empty system prompt");
   if (!record.user.trim()) errors.push("empty user turn");
   if (!record.assistant.trim()) errors.push("empty assistant turn");
-  const parsed = CardScriptSchema.safeParse(
-    JSON.parse(record.assistant) as unknown,
-  );
-  if (!parsed.success) {
-    errors.push(
-      `assistant is not a valid card script: ${parsed.error.issues
-        .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
-        .join("; ")}`,
-    );
+  const parsed = parseAssistantTarget(record.assistant);
+  if ("errors" in parsed) {
+    errors.push(...parsed.errors);
   }
   const roles = record.messages.map((m) => m.role);
   if (roles.join(",") !== "user,assistant") {
@@ -206,7 +259,9 @@ export function checkDataset(
     for (const e of checkRecord(record)) errors.push(`eval ${record.id}: ${e}`);
   }
   for (const record of dataset.train) {
-    const name = (JSON.parse(record.assistant) as { name: string }).name;
+    const parsed = parseAssistantTarget(record.assistant);
+    if (!("script" in parsed)) continue; // checkRecord already reported it
+    const name = parsed.script.name;
     if (gold.has(name.trim().toLowerCase())) {
       errors.push(`gold card ${name} leaked into the training split`);
     }
