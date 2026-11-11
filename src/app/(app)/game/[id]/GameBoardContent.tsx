@@ -24,6 +24,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ArrowLeft, ChevronRight } from "lucide-react";
 import { GameBoard } from "@/components/game-board";
 import { TargetHighlightContext } from "@/components/target-highlight-context";
+import { buildUiPlayers, type UiPlayer } from "./_components/ui-players";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { GameBoardErrorBoundary } from "@/components/error-boundaries";
 import type { PlayerCount, ZoneType } from "@/types/game";
@@ -165,12 +166,15 @@ import { BASIC_LAND_TYPE_OPTIONS } from "./_components/basic-land-type-options";
  * in flight (the dialogs themselves are modals that mount closed).
  */
 const ZoneViewerDialog = dynamic(
-  () => import("./_components/ZoneViewerDialog").then((m) => m.ZoneViewerDialog),
+  () =>
+    import("./_components/ZoneViewerDialog").then((m) => m.ZoneViewerDialog),
   { ssr: false, loading: () => null },
 );
 const AbilityChoiceDialog = dynamic(
   () =>
-    import("./_components/AbilityChoiceDialog").then((m) => m.AbilityChoiceDialog),
+    import("./_components/AbilityChoiceDialog").then(
+      (m) => m.AbilityChoiceDialog,
+    ),
   { ssr: false, loading: () => null },
 );
 const ManaAbilityDialog = dynamic(
@@ -190,7 +194,8 @@ const ShocklandDialog = dynamic(
   { ssr: false, loading: () => null },
 );
 const ModeChoiceDialog = dynamic(
-  () => import("./_components/ModeChoiceDialog").then((m) => m.ModeChoiceDialog),
+  () =>
+    import("./_components/ModeChoiceDialog").then((m) => m.ModeChoiceDialog),
   { ssr: false, loading: () => null },
 );
 const XCostDialog = dynamic(
@@ -202,7 +207,8 @@ const KickerDialog = dynamic(
   { ssr: false, loading: () => null },
 );
 const AttractionDialog = dynamic(
-  () => import("./_components/AttractionDialog").then((m) => m.AttractionDialog),
+  () =>
+    import("./_components/AttractionDialog").then((m) => m.AttractionDialog),
   { ssr: false, loading: () => null },
 );
 const GameTutorial = dynamic(
@@ -3226,6 +3232,20 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     setShocklandChoice(null);
   }, []);
 
+  // Issue #2918: the engine → UI player derivation is extracted into the
+  // pure helper `buildUiPlayers`, which shares structure with the previous
+  // render. The memoized `PlayerArea` in `src/components/game-board.tsx`
+  // compares zone array references, so keeping them stable lets it bail out
+  // when nothing relevant changed.
+  const uiPlayersRef = useRef<readonly UiPlayer[] | undefined>(undefined);
+  const uiPlayers = useMemo<UiPlayer[]>(() => {
+    if (!gameState) return [];
+    return buildUiPlayers(gameState, uiPlayersRef.current, playerName);
+  }, [gameState, playerName]);
+  useEffect(() => {
+    uiPlayersRef.current = uiPlayers;
+  }, [uiPlayers]);
+
   if (isLoading) {
     return (
       <div className="flex-1 p-2 md:p-4 flex items-center justify-center">
@@ -3275,51 +3295,9 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
   const isPlayerTurn = currentPlayer?.name === playerName;
   const isGameEnded = gameState.status === "completed";
 
-  // Convert game state players to UI format
-  const uiPlayers = Array.from(gameState.players.values()).map((player) => {
-    // Get cards in each zone
-    const getCardsInZone = (zoneType: string) => {
-      const zone = gameState.zones.get(`${player.id}-${zoneType}`);
-      if (!zone) return [];
-
-      return zone.cardIds
-        .map((id) => gameState.cards.get(id))
-        .filter((card): card is CardInstance => card !== undefined)
-        .map((card) => ({
-          id: card.id,
-          card: card.cardData,
-          zone: zoneType as ZoneType,
-          playerId: player.id,
-          tapped: card.isTapped,
-          faceDown: card.isFaceDown,
-        }));
-    };
-
-    return {
-      id: player.id,
-      name: player.name,
-      lifeTotal: player.life,
-      poisonCounters: player.poisonCounters,
-      commanderDamage: {},
-      hand: getCardsInZone("hand"),
-      battlefield: getCardsInZone("battlefield"),
-      graveyard: getCardsInZone("graveyard"),
-      exile: getCardsInZone("exile"),
-      library: getCardsInZone("library"),
-      commandZone: [],
-      isCurrentTurn: player.id === gameState.turn.activePlayerId,
-      hasPriority: player.id === gameState.priorityPlayerId,
-      landsPlayedThisTurn: player.landsPlayedThisTurn,
-      manaPool: player.manaPool,
-    };
-  });
-
-  // Sort so player is at bottom (index 1)
-  const sortedPlayers = uiPlayers.sort((a, b) => {
-    if (a.name === playerName) return 1;
-    if (b.name === playerName) return -1;
-    return 0;
-  });
+  // The UI players are derived in the memo above (`buildUiPlayers`), which
+  // already sorts the local player to the bottom (index 1).
+  const sortedPlayers = uiPlayers;
 
   const currentTurnIndex = sortedPlayers.findIndex((p) => p.isCurrentTurn);
 
