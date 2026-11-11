@@ -26,13 +26,17 @@ name: PR Flake Detector
 # Both detector runs are non-blocking on the merge as well: neither job is in
 # the `build` job's `needs:` list.
 #
-# `pull_request_target` (not `pull_request`) is used so the run has a token
-# that can post the flake report back on the PR; the detector jobs keep the
-# token scoped to `contents: read` + `pull-requests: write` and the PR branch
-# is only checked out, never merged into the base branch.
+# `pull_request` (not `pull_request_target`): this workflow checks out and
+# executes PR code (npm ci + the test suites), so it must NOT run with the
+# privileged base-branch token that `pull_request_target` provides — that
+# pairing is the CodeQL `actions/untrusted-checkout` critical. Under
+# `pull_request` the default checkout is the PR merge commit, the token is
+# scoped to `contents: read` + `pull-requests: write` below, and that write
+# scope still lets same-repo PR runs post the flake report comment. (Fork
+# PRs get a read-only token; the comment steps tolerate that failure.)
 
 on:
-  pull_request_target:
+  pull_request:
     types: [opened, synchronize, reopened]
     # Union of the paths the two detectors exercise. A PR that touches none of
     # them cannot change what either detector runs, so the workflow does not
@@ -141,10 +145,9 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      - name: Checkout PR head
+      - name: Checkout
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 1
 
       - name: Setup repository
@@ -200,10 +203,9 @@ jobs:
       NEXT_PUBLIC_TAURI_FALLBACK: '1'
 
     steps:
-      - name: Checkout PR head
+      - name: Checkout
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 1
 
       - name: Setup repository
