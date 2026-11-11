@@ -127,31 +127,111 @@ export function toEtfRecord(
 }
 
 /**
+ * The bake-off card list, split the way the export needs it: the `gold`
+ * cards are the eval split (cards this repo scripts by hand), the `new`
+ * cards are the bake-off cards this repo has no script for. Both sets are
+ * held out of the training split (#2915): a card the bake-off scores
+ * against must never be trained on, whether the repo scripts it by hand
+ * (gold) or not at all (new).
+ */
+export interface BakeoffNames {
+  /** The bake-off gold set: the eval split. */
+  gold: string[];
+  /** The bake-off 'new' set: held out of train, never in eval. */
+  new: string[];
+}
+
+/** Every bake-off card name (gold and new): none of them may reach train. */
+export function bakeoffHeldOutNames(list: BakeoffNames): string[] {
+  return [...list.gold, ...list.new];
+}
+
+/**
+ * Parses the bake-off card list (`scripts/data/bakeoff-cards.json`): the
+ * `gold` names and the `new` names. Throws when the list is malformed.
+ */
+export function parseBakeoffNames(raw: unknown): BakeoffNames {
+  const list = (raw ?? {}) as {
+    gold?: unknown;
+    new?: unknown;
+  };
+  if (!Array.isArray(list.gold)) {
+    throw new Error(`bake-off card list has no "gold" list`);
+  }
+  const gold = list.gold.map((n) => {
+    if (typeof n !== "string" || !n.trim()) {
+      throw new Error(`bake-off card list has a bad "gold" entry: ${n}`);
+    }
+    return n.trim();
+  });
+  const newNames: string[] = [];
+  if (list.new !== undefined) {
+    if (!Array.isArray(list.new)) {
+      throw new Error(`bake-off card list has no "new" list`);
+    }
+    for (const entry of list.new) {
+      const name = (entry as { name?: unknown })?.name;
+      if (typeof name !== "string" || !name.trim()) {
+        throw new Error(`bake-off card list has a bad "new" entry: ${entry}`);
+      }
+      newNames.push(name.trim());
+    }
+  }
+  return { gold, new: newNames };
+}
+
+/**
  * Splits the scripts into the training split and the held-out eval split.
  * The eval split is the #2514 bake-off gold set (cards this repo scripts by
- * hand); gold cards never reach the training file.
+ * hand). Both bake-off sets are held out of train: a gold card goes to
+ * eval, a 'new' card (which this repo has no script for) is left out
+ * entirely, and everything else trains.
  */
-export function splitByGold(
+export function splitByBakeoff(
   scripts: readonly CardScript[],
-  goldNames: readonly string[],
+  list: BakeoffNames,
 ): { train: CardScript[]; eval: CardScript[] } {
-  const gold = new Set(goldNames.map((n) => n.trim().toLowerCase()));
+  const gold = new Set(list.gold.map((n) => n.trim().toLowerCase()));
+  const heldOut = new Set(list.new.map((n) => n.trim().toLowerCase()));
   const train: CardScript[] = [];
   const evalScripts: CardScript[] = [];
   for (const script of scripts) {
-    if (gold.has(script.name.trim().toLowerCase())) evalScripts.push(script);
+    const name = script.name.trim().toLowerCase();
+    if (gold.has(name)) evalScripts.push(script);
+    else if (heldOut.has(name))
+      continue; // bake-off 'new' card: never train
     else train.push(script);
   }
   return { train, eval: evalScripts };
 }
 
-/** Builds the whole dataset: training records plus the held-out gold split. */
+/**
+ * Splits the scripts into the training split and the held-out eval split.
+ * Gold cards go to eval; every other card trains. Kept for callers that
+ * only know the gold set.
+ */
+export function splitByGold(
+  scripts: readonly CardScript[],
+  goldNames: readonly string[],
+): { train: CardScript[]; eval: CardScript[] } {
+  return splitByBakeoff(scripts, { gold: [...goldNames], new: [] });
+}
+
+/**
+ * Builds the whole dataset: training records plus the held-out gold split.
+ * `newNames` are the bake-off 'new' cards: they are held out of the
+ * training split as well (#2915) and never reach the eval split.
+ */
 export function buildDataset(
   scripts: readonly CardScript[],
   goldNames: readonly string[],
   system: string,
+  newNames: readonly string[] = [],
 ): Dataset {
-  const { train, eval: evalScripts } = splitByGold(scripts, goldNames);
+  const { train, eval: evalScripts } = splitByBakeoff(scripts, {
+    gold: [...goldNames],
+    new: [...newNames],
+  });
   return {
     train: train.map((s) => toEtfRecord(s, system, "train")),
     eval: evalScripts.map((s) => toEtfRecord(s, system, "eval")),
@@ -242,15 +322,26 @@ export function checkRecord(record: EtfRecord): string[] {
 }
 
 /**
- * Checks a whole split: every record is well formed, and no gold card
- * leaked into the training split. Returns the problems found.
+ * Checks a whole split: every record is well formed, and no bake-off card
+ * (gold *or* new) leaked into the training split. Returns the problems
+ * found.
+ *
+ * `bakeoff` is the full bake-off card list: the gold set and the 'new'
+ * set. A plain list of names is accepted too and is read as the gold set.
  */
 export function checkDataset(
   dataset: Dataset,
-  goldNames: readonly string[],
+  bakeoff: BakeoffNames | readonly string[],
 ): string[] {
+  const list: BakeoffNames = Array.isArray(bakeoff)
+    ? { gold: [...(bakeoff as readonly string[])], new: [] }
+    : {
+        gold: [...(bakeoff as BakeoffNames).gold],
+        new: [...(bakeoff as BakeoffNames).new],
+      };
   const errors: string[] = [];
-  const gold = new Set(goldNames.map((n) => n.trim().toLowerCase()));
+  const gold = new Set(list.gold.map((n) => n.trim().toLowerCase()));
+  const newNames = new Set(list.new.map((n) => n.trim().toLowerCase()));
   for (const record of dataset.train) {
     for (const e of checkRecord(record))
       errors.push(`train ${record.id}: ${e}`);
@@ -262,8 +353,14 @@ export function checkDataset(
     const parsed = parseAssistantTarget(record.assistant);
     if (!("script" in parsed)) continue; // checkRecord already reported it
     const name = parsed.script.name;
-    if (gold.has(name.trim().toLowerCase())) {
+    const key = name.trim().toLowerCase();
+    if (gold.has(key)) {
       errors.push(`gold card ${name} leaked into the training split`);
+    } else if (newNames.has(key)) {
+      errors.push(
+        `bake-off card ${name} leaked into the training split ` +
+          "(a bake-off 'new' card must never be trained on)",
+      );
     }
   }
   return errors;

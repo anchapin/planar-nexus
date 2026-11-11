@@ -16,6 +16,7 @@ import {
   buildDataset,
   checkDataset,
   checkRecord,
+  parseBakeoffNames,
   parseJsonl,
   recordId,
   renderJsonl,
@@ -24,7 +25,11 @@ import {
   type Dataset,
   type EtfRecord,
 } from "../scripts/card-scripts/dataset-lib";
-import { buildSystemPrompt, judgeReply, type DraftCard } from "../scripts/card-scripts/draft-lib";
+import {
+  buildSystemPrompt,
+  judgeReply,
+  type DraftCard,
+} from "../scripts/card-scripts/draft-lib";
 import { exportDataset } from "../scripts/export-card-script-dataset";
 
 const ROOT = join(__dirname, "..");
@@ -136,6 +141,53 @@ describe("gold-set hold-out", () => {
   });
 });
 
+describe("bake-off 'new'-set hold-out (#2915)", () => {
+  it("keeps a 'new' card out of both train and eval", () => {
+    const system = buildSystemPrompt();
+    const dataset = buildDataset([lightningStrike], [], system, [
+      lightningStrike.name,
+    ]);
+    expect(dataset.train).toHaveLength(0);
+    expect(dataset.eval).toHaveLength(0);
+  });
+
+  it("flags a 'new' card that leaked into the training split", () => {
+    const system = buildSystemPrompt();
+    const leaked: Dataset = {
+      train: [toEtfRecord(lightningStrike, system, "train")],
+      eval: [],
+    };
+    expect(
+      checkDataset(leaked, { gold: [], new: [lightningStrike.name] }).join(" "),
+    ).toContain("leaked into the training split");
+  });
+
+  it("exports no bake-off card (gold or new) into the training file", () => {
+    const outDir = mkdtempSync(join(tmpdir(), "card-script-dataset-2915-"));
+    try {
+      const exported = exportDataset({ outDir });
+      const bakeoff = parseBakeoffNames(
+        JSON.parse(readFileSync(GOLD_LIST, "utf8")) as unknown,
+      );
+      const heldOut = new Set(
+        [...bakeoff.gold, ...bakeoff.new].map((n) => n.toLowerCase()),
+      );
+      for (const record of exported.dataset.train) {
+        const script = (JSON.parse(record.assistant) as { script: CardScript })
+          .script;
+        expect(heldOut.has(script.name.toLowerCase())).toBe(false);
+      }
+      for (const record of exported.dataset.eval) {
+        const script = (JSON.parse(record.assistant) as { script: CardScript })
+          .script;
+        expect(bakeoff.new).not.toContain(script.name);
+      }
+    } finally {
+      rmSync(outDir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("the exported format and the judge agree (#2914)", () => {
   const system = buildSystemPrompt();
   const record = toEtfRecord(lightningStrike, system, "train");
@@ -234,14 +286,16 @@ describe("exported dataset", () => {
     expect(evalLines).toHaveLength(goldNames.length);
     const trainCardNames = trainLines.map((l) => {
       const record = JSON.parse(l) as EtfRecord;
-      return (JSON.parse(record.assistant) as { script: CardScript }).script.name;
+      return (JSON.parse(record.assistant) as { script: CardScript }).script
+        .name;
     });
     for (const gold of goldNames) {
       expect(trainCardNames).not.toContain(gold);
     }
     const evalCardNames = evalLines.map((l) => {
       const record = JSON.parse(l) as EtfRecord;
-      return (JSON.parse(record.assistant) as { script: CardScript }).script.name;
+      return (JSON.parse(record.assistant) as { script: CardScript }).script
+        .name;
     });
     expect([...evalCardNames].sort()).toEqual([...goldNames].sort());
   });
