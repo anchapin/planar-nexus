@@ -1,0 +1,71 @@
+{
+  "id": "token-cease-baloths-burst-lightning",
+  "refs": "#2896",
+  "description": "Landfall creates a 4/4 Beast token; kicked Burst Lightning deals 4 damage to it and the token ceases to exist (CR 704.5d), so it is in neither the battlefield nor the graveyard.",
+  "players": [
+    {
+      "battlefield": [
+        {
+          "card": "Rampaging Baloths"
+        }
+      ],
+      "hand": ["Forest", "Burst Lightning"],
+      "manaPool": {
+        "R": 5
+      }
+    },
+    {}
+  ],
+  "actions": [
+    {
+      "do": "playLand",
+      "player": 0,
+      "card": "Forest"
+    },
+    {
+      "do": "resolveStack"
+    },
+    {
+      "do": "cast",
+      "player": 0,
+      "card": "Burst Lightning",
+      "kicked": true,
+      "targets": [
+        {
+          "card": "Beast"
+        }
+      ]
+    },
+    {
+      "do": "resolveStack"
+    },
+    {
+      "do": "advanceTo",
+      "phase": "end"
+    }
+  ],
+  "observe": ["life", "battlefield", "hand", "graveyard"],
+  "expect": [
+    {
+      "life": 20,
+      "battlefield": [
+        {
+          "name": "Forest"
+        },
+        {
+          "name": "Rampaging Baloths",
+          "power": 6,
+          "toughness": 6
+        }
+      ],
+      "hand": [],
+      "graveyard": ["Burst Lightning"]
+    },
+    {
+      "life": 20,
+      "battlefield": [],
+      "hand": [],
+      "graveyard": []
+    }
+  ]
+}
