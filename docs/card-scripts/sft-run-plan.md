@@ -505,3 +505,36 @@ Fix the dataset, not the optimizer: envelope-format targets, refusal
 examples for inexpressible cards (sourced from the `docs/card-scripts/
 drafts/` missing-op reports), and an export disjoint from all 50
 bake-off cards. DPO only if v2 still false-drafts.
+
+### SFT v2 results (2026-11-10)
+
+Ran the same night (pod pnym6ps6u2dsca, $0.83). Data: 399 train
+(328 envelope-wrapped drafts + 71 refusals), 20 eval. One sourcing
+correction to the direction above: the drafts/ missing-op reports
+proved stale against the current 36-op schema, so the 71 refusals were
+sourced mechanically instead — real cards whose mechanics are verified
+absent from `card-scripts/` (planeswalker loyalty, battles, gift,
+dungeon/initiative, the Ring tempts you, poison, experience counters).
+
+| | Pilot A (corrected) | SFT v2 |
+|---|---|---|
+| Replies needing envelope wrap | 50/50 | 0/50 |
+| Gold exact | 20/20 | 20/20 |
+| Gold refused | 0 | 0 |
+| New correct | 8/30 | 8/30 |
+| New false drafts | 11 | 8 |
+| New invalid | 11 | 14 |
+
+Like-for-like on unseen cards only (Pilot A's new set included 6
+leaked cards): Pilot A clean split 3/24 correct; v2's new set is 100%
+unseen at 8/30 correct. Training: 100/100 steps, final eval_loss 0.339.
+FLA kernels failed to install again despite pre-training verification
+(the check caught it loudly; training ran on reference kernels).
+
+**Verdict vs §5: NO-GO for shipping, unchanged** — 8 false drafts
+remain, and the best #2514 arm (gemini-3.1-flash-lite, 29/30, 0 false
+drafts) still dominates. The format problem is solved and refusal
+training caused no over-refusal, but the bottleneck is now capability
+(schema/semantics near-misses). Per §5 the false drafts are the
+designed DPO signal; DPO remains a separate approval. Full write-up:
+V2-RESULTS.md with the v2 artifacts outside the repo.
