@@ -149,7 +149,12 @@ lora_rank=16)`, `total_tokens = 1,184,706 × 2 epochs`.
 - **Price**: brewery-ai's GPU catalog, `src/brewery_ai/hardware/gpus.py`, which
   states its prices are "on-demand $/hour for one GPU, checked on 2026-10-04
   (Runpod pricing page; Vast.ai live offers API)" (`PRICES_CHECKED =
-"2026-10-04"`). Access date for this plan: **2026-10-31**.
+"2026-10-04"`). Access date for this plan: **2026-10-31**. One correction,
+  applied 2026-11-10: the catalog's $0.34/h for the RTX 4090 is Runpod's
+  Community Cloud rate, not the Secure Cloud on-demand rate this plan rents.
+  The 4090's Secure Cloud rate was read directly from Runpod's pricing page
+  on **2026-11-09**: **$0.89/h** — the table and totals below use that figure
+  for the 4090.
 - **Token count** is an estimate: characters / 4. No tokenizer was downloaded
   (model downloads are out of scope for this task), so the real token count
   could be 10–25% off in either direction.
@@ -160,9 +165,12 @@ lora_rank=16)`, `total_tokens = 1,184,706 × 2 epochs`.
 ### Rented-GPU options (ESTIMATE)
 
 Prices are Runpod / Vast.ai on-demand $/hour per GPU, as published in
-brewery-ai's catalog (`gpus.py`, checked 2026-10-04). Runpod's published
+brewery-ai's catalog (`gpus.py`, checked 2026-10-04) — except the Runpod
+RTX 4090 figure, which is the Secure Cloud on-demand rate read directly from
+Runpod's pricing page on 2026-11-09 ($0.89/h; the catalog's $0.34/h for this
+card is its Community Cloud rate). Runpod's published
 pricing page is <https://www.runpod.io/pricing> and Vast.ai's live-offer API is
-behind <https://vast.ai>; both were read via brewery-ai's catalog on
+behind <https://vast.ai>; the other prices were read via brewery-ai's catalog on
 2026-10-31, not directly, because this task allows only brewery-ai doc reads
 on the network. **Confirm the live price on the provider's page on the day of
 the run — these are estimates, not quotes.**
@@ -170,7 +178,7 @@ the run — these are estimates, not quotes.**
 | GPU          | VRAM  | Fits 2B LoRA @4096? | Training hours (EST.) | Price $/h (Runpod / Vast.ai) | Training cost (EST.) |
 | ------------ | ----- | ------------------- | --------------------- | ---------------------------- | -------------------- |
 | RTX 3090     | 24 GB | yes (16.6 GB)       | 0.21 – 0.44           | 0.22 / 0.11–0.18             | $0.02 – $0.10        |
-| RTX 4090     | 24 GB | yes                 | 0.09 – 0.19           | 0.34 / 0.27–0.42             | $0.02 – $0.08        |
+| RTX 4090     | 24 GB | yes                 | 0.09 – 0.19           | 0.89 / 0.27–0.42             | $0.02 – $0.17        |
 | RTX 5090     | 32 GB | yes                 | 0.07 – 0.15           | 0.69 / 0.28–0.54             | $0.02 – $0.10        |
 | RTX A6000    | 48 GB | yes                 | 0.11 – 0.23           | 0.33 / 0.36–0.40             | $0.04 – $0.09        |
 | RTX 6000 Ada | 48 GB | yes                 | 0.05 – 0.10           | 0.74 / 0.52–0.76             | $0.03 – $0.08        |
@@ -184,15 +192,15 @@ these cards.** The realistic bill is dominated by everything around it:
 
 | Line item                                             | ESTIMATE         | Notes                                                                                                                 |
 | ----------------------------------------------------- | ---------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Training (2B LoRA, 2 epochs)                          | $0.02 – $0.10    | from the table above                                                                                                  |
-| Setup + data upload + model download on the pod       | $0.06 – $0.26    | ~0.25–0.75 h of pod time at $0.22–$0.34/h; a 4 GB model download dominates the low end                                |
+| Training (2B LoRA, 2 epochs)                          | $0.02 – $0.17    | from the table above                                                                                                  |
+| Setup + data upload + model download on the pod       | $0.06 – $0.67    | ~0.25–0.75 h of pod time at $0.22–$0.89/h; a 4 GB model download dominates the low end                                |
 | Serving the fine-tuned model for the 50-card bake-off | $0.02 – $0.10    | same pod, 50 cards × ~3.5k prompt tokens                                                                              |
 | Disk / storage until the pod is destroyed             | unknown          | provider-specific; brewery's rental guide warns that stopped pods still bill storage                                  |
 | **DPO step (step 2 data → preference tuning)**        | **not included** | needs a real draft log first: no rejected draft is stored in this repo yet (`scripts/card-scripts/preference-lib.ts`) |
 | **Wider bake-off / second bake-off arm set**          | **not included** | out of scope for the pilot                                                                                            |
 | **Anything past the pilot (full run, 4B, sweeps)**    | **not included** | each is a new approval                                                                                                |
 
-**Total pilot estimate: roughly $0.10 – $0.50 of rented GPU time, plus $10 of
+**Total pilot estimate: roughly $0.30 – $0.84 of rented GPU time, plus $10 of
 provider credit to open the account (brewery's rental guide suggests $10 is
 plenty for a first small brew).** The number that matters for the decision is
 the order of magnitude: this is a few cents of training, and the decision is
@@ -216,6 +224,25 @@ the money is irrelevant next to these two constraints:
 **Alex must confirm his desktop GPU (model, VRAM, and CUDA or ROCm version)
 meets this requirement before the local path is chosen. This plan does not
 assert what his machine has — that is unknown from the repo.**
+
+### Colab CLI alternative (tried 2026-11-10 — No-go / Kill)
+
+On 2026-11-10 a Colab CLI spike (google-colab-cli v0.7.5, agent-driven via
+ADC auth) was run as a Phase 1 measurement against this pilot's shape — a
+20-record smoke slice at the real `max_seq_len` 4096 configuration — and
+returned a **No-go / Kill** verdict. Both GPU allocation attempts (L4, then
+A100) were rejected by the Colab frontend with HTTP 411 "Length Required"
+on the CLI's assignment POST: a client bug in the CLI, and the requests
+never reached quota or entitlement evaluation. The account side was
+verified healthy (600 CU paid balance, ADC auth working, no active
+assignments). The run burned 0 CU, teardown was verified clean, and no
+training measurements (VRAM, step time) were obtained. **This changes
+nothing in this plan:** RunPod Secure Cloud on-demand RTX 4090 (repriced
+$0.89/hr on 2026-11-09) remains the approved backend, exactly as above.
+Colab CLI is not to be re-proposed for this pilot without new evidence,
+e.g. a CLI release fixing the assign POST. Full spike record:
+`~/workspace/colab-cli-phase0/phase1/PHASE1-REPORT.md` (local record, not a
+repo link).
 
 ---
 
@@ -253,9 +280,19 @@ after approval):
 
 **Leakage control:** the 20 gold cards are the held-out eval split and are
 never in `train.jsonl`; the export fails loudly if one leaks. The 6 few-shot
-examples the bake-off uses are not gold cards. The new (non-gold) 30 cards
-were never in the training set either. No card in the bake-off is a training
-example.
+examples the bake-off uses are not gold cards.
+
+**Correction (2026-11-10, Pilot A leakage audit):** the claim that the new
+(non-gold) 30 cards were never in the training set was WRONG for Pilot A.
+The export guards only the gold set; 6 of the 30 new cards (Shock, Release
+the Dogs, Auspicious Arrival, Sephiroth's Intervention, Skeleton Archer,
+Lightshell Duo) have hand-written scripts in the corpus — they were
+scripted after the bake-off list was curated — and so entered
+`train.jsonl` legitimately under the gold-only guard. Their bake-off
+annotations are stale for the same reason (Auspicious Arrival is annotated
+`needs_new_op` but is scripted). Any future export must exclude all 50
+bake-off cards, and the bake-off list's annotations for scripted cards
+should be refreshed.
 
 ---
 
@@ -307,7 +344,7 @@ run on 334 examples, plus the 50-card bake-off), and nothing beyond it.
 Options:
 
 - **A — approve the pilot.** Alex says go; the pilot runs on a rented GPU
-  (estimated well under $0.50 of GPU time) or on his own GPU if he confirms
+  (estimated at roughly $0.30 – $0.84 of GPU time) or on his own GPU if he confirms
   it meets the requirement above. Nothing else is started. The pilot ends with
   a #2514-format report and a go/no-go against section 5.
 - **B — approve a full run instead of a pilot.** Only sensible with a stated
@@ -401,3 +438,103 @@ Repository sources for this repo's own facts: `scripts/card-scripts/dataset-lib.
 `scripts/card-scripts/preference-lib.ts`, `scripts/export-card-script-dataset.ts`,
 `scripts/card-scripts/bakeoff-lib.ts`, `scripts/data/bakeoff-cards.json`,
 `docs/card-scripts.md`.
+
+---
+
+## 8. Pilot A results (2026-11-10)
+
+Qwen3.5-2B LoRA SFT (rank 16 / alpha 32, LR 2e-4, 2 epochs, effective
+batch 8, 84 steps, 334 train / 20 held-out), RunPod Secure Cloud RTX 4090
+($0.89/hr). Training: 84/84 steps, final step loss 0.171, average train
+loss 0.275, final held-out eval loss 0.359 (eval curve plateaued ~0.359
+from epoch ~1.19).
+
+### Bake-off (same 50 cards, same prompts, same judge)
+
+The stock harness row is an interface artifact: the SFT targets are BARE
+script objects (`{"name": ..., "triggers": [...]}`) while `judgeReply`
+requires the `{"script": ...}` envelope, so 39 replies were rejected
+unread and 11 cards were lost to tunnel drops. The corrected row wraps
+bare-script replies in the envelope before judging (50/50 replies needed
+it) and adds bounded retries.
+
+| Arm | Gold exact | New correct | False drafts | Invalid | Errors | Time |
+| --- | --- | --- | --- | --- | --- | --- |
+| local:qwen3.5-2b (stock) | 0/20 | 0/30 | 0 | 39 | 11 | 321 s |
+| local:qwen3.5-2b (SFT, corrected) | **20/20** | 8/30 | 11 | 11 | 0 | 487 s |
+
+Best #2514 arm (gemini-3.1-flash-lite): 29/30 new correct, 0 false
+drafts, ~$0.18 / 1,000 cards.
+
+### Leakage audit
+
+Gold (20) is the held-out eval split, verified absent from train — the
+20/20 exact is genuine. The new set is not clean: 6 of the 30 new cards
+(Shock, Release the Dogs, Auspicious Arrival, Sephiroth's Intervention,
+Skeleton Archer, Lightshell Duo) ARE in `train.jsonl` (see the §4
+correction above). Clean-24 split: **3 correct / 10 false drafts / 11
+invalid / 0 refusals**. Refusals are not in the SFT data, so the model
+always drafts — exactly the failure mode §6 predicted.
+
+### Verdict vs §5
+
+**NO-GO for shipping.** False drafts (11) > best arm (0), and invalid
+(11) not lower than the best arm's. Per §5 the false drafts are the
+designed signal that DPO pairs (chosen = refusal, rejected = forced
+script) are needed — DPO is a separate decision, not covered by the
+pilot's approval.
+
+### Deviations
+
+- Serving: vLLM install abandoned (PyPI → pod crawled at ~36 KB/s);
+  served with a stdlib OpenAI-compatible shim on the pod's
+  transformers/peft stack, reached via a bore.pub TCP tunnel after
+  RunPod's proxy 404'd port 8000 and Cloudflare's quick tunnel 403'd
+  the VM's egress IP.
+- Training ran on reference PyTorch kernels: the flash-linear-attention
+  install silently failed (install `flash-linear-attention` +
+  `causal-conv1d` before training and verify they engage on the next
+  run), roughly doubling step time (~37 min for 84 steps).
+- Pod terminated 2026-11-10; total spend $2.29 (balance $15.00 →
+  $12.71). Adapter, raw replies, and full write-up live outside the
+  repo with the pilot artifacts.
+
+### Direction approved 2026-11-10: SFT v2 (data fix first)
+
+Fix the dataset, not the optimizer: envelope-format targets, refusal
+examples for inexpressible cards (sourced from the `docs/card-scripts/
+drafts/` missing-op reports), and an export disjoint from all 50
+bake-off cards. DPO only if v2 still false-drafts.
+
+### SFT v2 results (2026-11-10)
+
+Ran the same night (pod pnym6ps6u2dsca, $0.83). Data: 399 train
+(328 envelope-wrapped drafts + 71 refusals), 20 eval. One sourcing
+correction to the direction above: the drafts/ missing-op reports
+proved stale against the current 36-op schema, so the 71 refusals were
+sourced mechanically instead — real cards whose mechanics are verified
+absent from `card-scripts/` (planeswalker loyalty, battles, gift,
+dungeon/initiative, the Ring tempts you, poison, experience counters).
+
+| | Pilot A (corrected) | SFT v2 |
+|---|---|---|
+| Replies needing envelope wrap | 50/50 | 0/50 |
+| Gold exact | 20/20 | 20/20 |
+| Gold refused | 0 | 0 |
+| New correct | 8/30 | 8/30 |
+| New false drafts | 11 | 8 |
+| New invalid | 11 | 14 |
+
+Like-for-like on unseen cards only (Pilot A's new set included 6
+leaked cards): Pilot A clean split 3/24 correct; v2's new set is 100%
+unseen at 8/30 correct. Training: 100/100 steps, final eval_loss 0.339.
+FLA kernels failed to install again despite pre-training verification
+(the check caught it loudly; training ran on reference kernels).
+
+**Verdict vs §5: NO-GO for shipping, unchanged** — 8 false drafts
+remain, and the best #2514 arm (gemini-3.1-flash-lite, 29/30, 0 false
+drafts) still dominates. The format problem is solved and refusal
+training caused no over-refusal, but the bottleneck is now capability
+(schema/semantics near-misses). Per §5 the false drafts are the
+designed DPO signal; DPO remains a separate approval. Full write-up:
+V2-RESULTS.md with the v2 artifacts outside the repo.
