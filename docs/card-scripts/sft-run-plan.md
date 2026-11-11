@@ -280,9 +280,19 @@ after approval):
 
 **Leakage control:** the 20 gold cards are the held-out eval split and are
 never in `train.jsonl`; the export fails loudly if one leaks. The 6 few-shot
-examples the bake-off uses are not gold cards. The new (non-gold) 30 cards
-were never in the training set either. No card in the bake-off is a training
-example.
+examples the bake-off uses are not gold cards.
+
+**Correction (2026-11-10, Pilot A leakage audit):** the claim that the new
+(non-gold) 30 cards were never in the training set was WRONG for Pilot A.
+The export guards only the gold set; 6 of the 30 new cards (Shock, Release
+the Dogs, Auspicious Arrival, Sephiroth's Intervention, Skeleton Archer,
+Lightshell Duo) have hand-written scripts in the corpus — they were
+scripted after the bake-off list was curated — and so entered
+`train.jsonl` legitimately under the gold-only guard. Their bake-off
+annotations are stale for the same reason (Auspicious Arrival is annotated
+`needs_new_op` but is scripted). Any future export must exclude all 50
+bake-off cards, and the bake-off list's annotations for scripted cards
+should be refreshed.
 
 ---
 
@@ -428,3 +438,70 @@ Repository sources for this repo's own facts: `scripts/card-scripts/dataset-lib.
 `scripts/card-scripts/preference-lib.ts`, `scripts/export-card-script-dataset.ts`,
 `scripts/card-scripts/bakeoff-lib.ts`, `scripts/data/bakeoff-cards.json`,
 `docs/card-scripts.md`.
+
+---
+
+## 8. Pilot A results (2026-11-10)
+
+Qwen3.5-2B LoRA SFT (rank 16 / alpha 32, LR 2e-4, 2 epochs, effective
+batch 8, 84 steps, 334 train / 20 held-out), RunPod Secure Cloud RTX 4090
+($0.89/hr). Training: 84/84 steps, final step loss 0.171, average train
+loss 0.275, final held-out eval loss 0.359 (eval curve plateaued ~0.359
+from epoch ~1.19).
+
+### Bake-off (same 50 cards, same prompts, same judge)
+
+The stock harness row is an interface artifact: the SFT targets are BARE
+script objects (`{"name": ..., "triggers": [...]}`) while `judgeReply`
+requires the `{"script": ...}` envelope, so 39 replies were rejected
+unread and 11 cards were lost to tunnel drops. The corrected row wraps
+bare-script replies in the envelope before judging (50/50 replies needed
+it) and adds bounded retries.
+
+| Arm | Gold exact | New correct | False drafts | Invalid | Errors | Time |
+| --- | --- | --- | --- | --- | --- | --- |
+| local:qwen3.5-2b (stock) | 0/20 | 0/30 | 0 | 39 | 11 | 321 s |
+| local:qwen3.5-2b (SFT, corrected) | **20/20** | 8/30 | 11 | 11 | 0 | 487 s |
+
+Best #2514 arm (gemini-3.1-flash-lite): 29/30 new correct, 0 false
+drafts, ~$0.18 / 1,000 cards.
+
+### Leakage audit
+
+Gold (20) is the held-out eval split, verified absent from train — the
+20/20 exact is genuine. The new set is not clean: 6 of the 30 new cards
+(Shock, Release the Dogs, Auspicious Arrival, Sephiroth's Intervention,
+Skeleton Archer, Lightshell Duo) ARE in `train.jsonl` (see the §4
+correction above). Clean-24 split: **3 correct / 10 false drafts / 11
+invalid / 0 refusals**. Refusals are not in the SFT data, so the model
+always drafts — exactly the failure mode §6 predicted.
+
+### Verdict vs §5
+
+**NO-GO for shipping.** False drafts (11) > best arm (0), and invalid
+(11) not lower than the best arm's. Per §5 the false drafts are the
+designed signal that DPO pairs (chosen = refusal, rejected = forced
+script) are needed — DPO is a separate decision, not covered by the
+pilot's approval.
+
+### Deviations
+
+- Serving: vLLM install abandoned (PyPI → pod crawled at ~36 KB/s);
+  served with a stdlib OpenAI-compatible shim on the pod's
+  transformers/peft stack, reached via a bore.pub TCP tunnel after
+  RunPod's proxy 404'd port 8000 and Cloudflare's quick tunnel 403'd
+  the VM's egress IP.
+- Training ran on reference PyTorch kernels: the flash-linear-attention
+  install silently failed (install `flash-linear-attention` +
+  `causal-conv1d` before training and verify they engage on the next
+  run), roughly doubling step time (~37 min for 84 steps).
+- Pod terminated 2026-11-10; total spend $2.29 (balance $15.00 →
+  $12.71). Adapter, raw replies, and full write-up live outside the
+  repo with the pilot artifacts.
+
+### Direction approved 2026-11-10: SFT v2 (data fix first)
+
+Fix the dataset, not the optimizer: envelope-format targets, refusal
+examples for inexpressible cards (sourced from the `docs/card-scripts/
+drafts/` missing-op reports), and an export disjoint from all 50
+bake-off cards. DPO only if v2 still false-drafts.
