@@ -163,6 +163,8 @@ export const scenarioSchema = z
     actions: z.array(actionSchema),
     observe: z.array(observedFieldSchema).optional(),
     expect: z.tuple([expectedPlayerSchema, expectedPlayerSchema]).optional(),
+    /** Expected stack contents (card names), compared as a set. */
+    expectStack: z.array(z.string().min(1)).optional(),
   })
   .strict();
 

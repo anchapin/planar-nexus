@@ -98,6 +98,21 @@ export function diffExpected(
   const differences = (scenario.expect ?? []).flatMap((w, i) =>
     diffPlayer(`P${i}`, w, outcome.players[i] ?? {}),
   );
+  // The stack is compared as a SET: the order in which spells sit on the
+  // stack is not what a scenario asserts. A missing stack in the outcome is
+  // a mismatch, never a silent pass.
+  if (scenario.expectStack !== undefined) {
+    const want = [...scenario.expectStack].sort();
+    const got =
+      outcome.stack === undefined ? undefined : [...outcome.stack].sort();
+    if (got === undefined || show(want) !== show(got)) {
+      differences.push(
+        `stack: expected ${show(want)}, got ${
+          got === undefined ? "undefined" : show(got)
+        }`,
+      );
+    }
+  }
   return {
     scenario: scenario.id,
     verdict: differences.length ? "mismatch" : "match",
