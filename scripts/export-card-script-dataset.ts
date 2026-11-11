@@ -6,7 +6,8 @@
  * Reads every accepted card script under
  * `src/lib/game-state/card-scripts/cards/`, turns each one into an ETF
  * record (system = the drafting prompt's op-set description, user = the
- * oracle text, assistant = the script JSON) and writes two files:
+ * oracle text, assistant = the drafting reply `{"script": {...}}`) and
+ * writes two files:
  *
  *   <out>/train.jsonl   every script except the #2514 gold set
  *   <out>/eval.jsonl    the #2514 bake-off gold set (20 hand-scripted cards)

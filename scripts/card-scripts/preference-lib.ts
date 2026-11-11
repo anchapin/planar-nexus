@@ -20,7 +20,10 @@
  * `buildSystemPrompt()`) and the *same* user prompt (the oracle text) as
  * the step-1 SFT export, so SFT and DPO data agree on what a prompt and a
  * good answer look like. The chosen side of a draft pair is byte-identical
- * in shape to the step-1 assistant turn: the bare script object.
+ * to the step-1 assistant turn: the drafting reply `{"script": {...}}`
+ * (#2914). Both sides of a pair are replies in that same format, so the
+ * pair teaches the model which *script* is right, not which format is
+ * right.
  *
  * Validity is decided by the repo's own validator (`CardScriptSchema`, plus
  * the drafting pipeline's mode and spell/permanent checks) — never by a
@@ -277,15 +280,17 @@ export function refusalText(missing: readonly string[]): string {
 }
 
 /**
- * The assistant text of a rejected (invalid) reply: the script the model
- * wrote, exactly as it wrote it. Falls back to the whole reply object, and
- * then to the raw reply, when there is no script to take out of it.
+ * The assistant text of a rejected (invalid) reply: the reply the model
+ * wrote, in the drafting reply format (`{"script": {...}}`), so the pair's
+ * two sides differ only in the script, not in the format. Falls back to the
+ * whole reply object, and then to the raw reply, when there is no script
+ * to take out of it.
  */
 export function rejectedText(reply: string): string {
   try {
     const obj = extractJson(reply) as Record<string, unknown>;
     if (obj && typeof obj === "object" && obj.script) {
-      return JSON.stringify(obj.script);
+      return JSON.stringify({ script: obj.script });
     }
     return JSON.stringify(obj);
   } catch {
@@ -357,9 +362,9 @@ export function buildPreferencePairs(
           ? refusal.verdict.missing
           : ["unspecified"],
       );
-      rejected = JSON.stringify(
-        valid.verdict.kind === "drafted" ? valid.verdict.script : {},
-      );
+      rejected = JSON.stringify({
+        script: valid.verdict.kind === "drafted" ? valid.verdict.script : {},
+      });
       chosenSource = refusal.candidate.source;
       rejectedSource = valid.candidate.source;
     } else {
@@ -377,9 +382,9 @@ export function buildPreferencePairs(
         });
         continue;
       }
-      chosen = JSON.stringify(
-        valid.verdict.kind === "drafted" ? valid.verdict.script : {},
-      );
+      chosen = JSON.stringify({
+        script: valid.verdict.kind === "drafted" ? valid.verdict.script : {},
+      });
       rejected = rejectedText(invalid.candidate.reply);
       chosenSource = valid.candidate.source;
       rejectedSource = invalid.candidate.source;
@@ -408,6 +413,30 @@ export function buildPreferencePairs(
     });
   }
   return { pairs, skipped };
+}
+
+/**
+ * The script inside a drafting reply (`{"script": {...}}`). Returns the
+ * script or the problems found.
+ */
+function replyScript(text: string): { script: unknown } | { errors: string[] } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch {
+    return { errors: ["is not JSON"] };
+  }
+  const obj = (parsed ?? {}) as Record<string, unknown>;
+  if (
+    !obj.script ||
+    typeof obj.script !== "object" ||
+    Array.isArray(obj.script)
+  ) {
+    return {
+      errors: ['is not a drafting reply: it has no "script" object'],
+    };
+  }
+  return { script: obj.script };
 }
 
 /**
@@ -445,33 +474,29 @@ export function checkPreferencePair(pair: PreferencePair): string[] {
     if (!Array.isArray(missing) || missing.length === 0) {
       errors.push("chosen reply of a needs-new-op card is not a refusal");
     }
-    let rejected: unknown;
-    try {
-      rejected = JSON.parse(pair.rejected) as unknown;
-    } catch {
-      errors.push("rejected reply of a needs-new-op card is not JSON");
-      rejected = undefined;
-    }
-    if (
-      !CardScriptSchema.safeParse(rejected as unknown).success
+    const rejectedScript = replyScript(pair.rejected);
+    if ("errors" in rejectedScript) {
+      errors.push(
+        `rejected reply of a needs-new-op card ${rejectedScript.errors.join("; ")}`,
+      );
+    } else if (
+      !CardScriptSchema.safeParse(rejectedScript.script as unknown).success
     ) {
       errors.push("rejected reply of a needs-new-op card is not a card script");
     }
   } else {
-    let chosen: unknown;
-    try {
-      chosen = JSON.parse(pair.chosen) as unknown;
-    } catch {
-      errors.push("chosen reply is not JSON");
-      chosen = undefined;
-    }
-    const parsed = CardScriptSchema.safeParse(chosen as unknown);
-    if (!parsed.success) {
-      errors.push(
-        `chosen reply is not a valid card script: ${parsed.error.issues
-          .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
-          .join("; ")}`,
-      );
+    const chosen = replyScript(pair.chosen);
+    if ("errors" in chosen) {
+      errors.push(`chosen reply ${chosen.errors.join("; ")}`);
+    } else {
+      const parsed = CardScriptSchema.safeParse(chosen.script as unknown);
+      if (!parsed.success) {
+        errors.push(
+          `chosen reply is not a valid card script: ${parsed.error.issues
+            .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
+            .join("; ")}`,
+        );
+      }
     }
   }
   return errors;

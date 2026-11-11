@@ -280,14 +280,18 @@ describe("card-script drafting pipeline (draft log)", () => {
     expect(pair.user).toBe(BOLT.oracleText);
     expect(pair.system).toBe(buildSystemPrompt());
     expect(JSON.parse(pair.chosen)).toEqual({
-      name: "Ember Bolt",
-      oracle: BOLT.oracleText,
-      spell: [{ op: "DealDamage", amount: 3, target: "any" }],
+      script: {
+        name: "Ember Bolt",
+        oracle: BOLT.oracleText,
+        spell: [{ op: "DealDamage", amount: 3, target: "any" }],
+      },
     });
     expect(JSON.parse(pair.rejected)).toEqual({
-      name: "Ember Bolt",
-      oracle: BOLT.oracleText,
-      spell: [{ op: "DealDamage", target: "any" }],
+      script: {
+        name: "Ember Bolt",
+        oracle: BOLT.oracleText,
+        spell: [{ op: "DealDamage", target: "any" }],
+      },
     });
     // The refusal-only card has nothing to pair against.
     expect(skipped.map((s) => s.name)).toEqual(["Soul Snare"]);
