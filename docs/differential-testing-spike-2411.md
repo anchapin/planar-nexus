@@ -85,6 +85,20 @@ emits `{ scenario, engine, status, players: [...observed fields...], errors }`,
 which is exactly the artefact a reference-engine runner will later be
 diffed against with `diff.ts`.
 
+### Asserting the stack (`expectStack`, #2920)
+
+A scenario may add an optional top-level `expectStack: string[]` to assert
+what sits on the stack, by card name as observed; it is compared as a set
+(order-insensitive), and `[]` asserts an empty stack. When `expectStack` is
+present the runner always reports the stack, even if `"stack"` is not in
+`observe`. A missing stack in an outcome is a mismatch with a readable line
+(`stack: expected ["Shock"], got undefined`), never a silent pass; the
+validator accepts `expectStack` and still rejects a misspelled
+`expect_stack`. Two scenarios use it: `stack-shock-unresolved` (Shock cast
+at the opponent, left on the stack: `["Shock"]`, opponent still at 20) and
+`stack-shock-resolved` (same cast plus `resolveStack`: `[]`, opponent at
+18, Shock in the caster's graveyard).
+
 ## Verified runs (this machine, this PR)
 
 - `npx jest tests/differential-runner.test.ts --runInBand` — **14 passed**

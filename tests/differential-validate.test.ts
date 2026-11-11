@@ -79,6 +79,32 @@ describe("differential scenario validator (#2411)", () => {
     expect(result.ok).toBe(false);
   });
 
+  it("accepts a scenario with expectStack", () => {
+    const result = validateScenario({
+      ...VALID,
+      expectStack: ["Shock"],
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.scenario.expectStack).toEqual(["Shock"]);
+  });
+
+  it("accepts an empty expectStack (asserts an empty stack)", () => {
+    const result = validateScenario({ ...VALID, expectStack: [] });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.scenario.expectStack).toEqual([]);
+  });
+
+  it("rejects a misspelled expectStack key (expect_stack)", () => {
+    const result = validateScenario({
+      ...VALID,
+      expect_stack: ["Shock"],
+    } as unknown as Scenario);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.join("\n")).toMatch(/expect_stack|Unrecognized/);
+    }
+  });
+
   it("rejects a non-JSON file with a readable error", () => {
     const file = path.join(
       fs.mkdtempSync(path.join(os.tmpdir(), "diff-validate-")),

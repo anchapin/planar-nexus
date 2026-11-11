@@ -14,6 +14,7 @@ import { diffExpected, diffOutcomes } from "../scripts/differential/diff";
 import {
   scenarioCardNames,
   type Scenario,
+  type ScenarioOutcome,
 } from "../scripts/differential/scenario";
 
 const DIR = path.join(__dirname, "..", "scripts", "differential");
@@ -32,8 +33,8 @@ const scenarios: Scenario[] = fs
 const KNOWN_MISMATCHES: Record<string, string> = {};
 
 describe("differential scenarios: planar-nexus runner", () => {
-  it("has at least 8 scenarios, each with card data and an expect block", () => {
-    expect(scenarios.length).toBeGreaterThanOrEqual(8);
+  it("has 14 scenarios, each with card data and an expect block", () => {
+    expect(scenarios.length).toBe(14);
     for (const s of scenarios) {
       expect(s.expect).toHaveLength(2);
       for (const name of scenarioCardNames(s)) {
@@ -81,5 +82,71 @@ describe("differential scenarios: planar-nexus runner", () => {
     const row = diffOutcomes(a, b);
     expect(row.verdict).toBe("mismatch");
     expect(row.differences).toEqual(["P0 life: forge 20, planar-nexus 21"]);
+  });
+});
+
+describe("diffExpected: expectStack (#2920)", () => {
+  const base: Scenario = {
+    id: "stack-fixture",
+    description: "Scenario whose expect block asserts the stack.",
+    players: [{ life: 20 }, { life: 20 }],
+    actions: [],
+    expectStack: ["Shock"],
+    expect: [{ life: 20 }, { life: 20 }],
+  };
+
+  const outcomeWith = (stack?: string[]): ScenarioOutcome => ({
+    scenario: base.id,
+    engine: "planar-nexus",
+    status: "ok",
+    players: [{ life: 20 }, { life: 20 }],
+    ...(stack === undefined ? {} : { stack }),
+    errors: [],
+  });
+
+  it("matches when the observed stack agrees, ignoring order", () => {
+    const row = diffExpected(base, outcomeWith(["Shock"]));
+    expect(row.verdict).toBe("match");
+    expect(row.differences).toEqual([]);
+  });
+
+  it("reports a mismatch with a readable stack line when it differs", () => {
+    const row = diffExpected(base, outcomeWith(["Bolt"]));
+    expect(row.verdict).toBe("mismatch");
+    expect(row.differences).toEqual([
+      'stack: expected ["Shock"], got ["Bolt"]',
+    ]);
+  });
+
+  it("treats a missing observed stack as a mismatch, not a silent pass", () => {
+    const row = diffExpected(base, outcomeWith(undefined));
+    expect(row.verdict).toBe("mismatch");
+    expect(row.differences).toEqual([
+      'stack: expected ["Shock"], got undefined',
+    ]);
+  });
+
+  it("does not check the stack when the scenario omits expectStack", () => {
+    const s: Scenario = { ...base, expectStack: undefined };
+    expect(diffExpected(s, outcomeWith(undefined)).verdict).toBe("match");
+  });
+
+  it("runs the new stack scenarios and matches their expectations", () => {
+    for (const id of ["stack-shock-unresolved", "stack-shock-resolved"]) {
+      const s = scenarios.find((x) => x.id === id)!;
+      expect(s).toBeDefined();
+      const outcome = runScenario(s, cards);
+      expect(outcome.status).toBe("ok");
+      // The stack is reported even though "stack" is not in `observe`.
+      expect(outcome.stack).toBeDefined();
+      const row = diffExpected(s, outcome);
+      expect([id, row.verdict, row.differences]).toEqual([id, "match", []]);
+    }
+    const unresolved = scenarios.find(
+      (x) => x.id === "stack-shock-unresolved",
+    )!;
+    expect(runScenario(unresolved, cards).stack).toEqual(["Shock"]);
+    const resolved = scenarios.find((x) => x.id === "stack-shock-resolved")!;
+    expect(runScenario(resolved, cards).stack).toEqual([]);
   });
 });

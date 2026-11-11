@@ -95,6 +95,13 @@ export interface Scenario {
    * scenario be checked before a reference engine is wired in.
    */
   expect?: [ExpectedPlayer, ExpectedPlayer];
+  /**
+   * Expected contents of the stack, as card names, compared as a SET (order
+   * does not matter). Empty means "the stack must be empty". Omitted means
+   * "do not check the stack". A missing stack in an outcome is a mismatch,
+   * never a silent pass.
+   */
+  expectStack?: string[];
 }
 
 export interface ExpectedPlayer {
