@@ -18,12 +18,22 @@
  *      slice optimises), and
  *   2. `moveCardToZone` (measured for reference only — this slice does not
  *      migrate `keyword-actions/removal.ts` copy sites).
+ *
+ * Issue #2919 adds a third section:
+ *   3. `resolveCombatDamage` on a fixed combat state with several unblocked
+ *      and blocked attackers (the hot path the combat-damage slice
+ *      optimises: one working players map per resolution instead of one
+ *      copy per player-affecting event).
  */
 import {
   createInitialGameState,
   createCardInstance,
   checkStateBasedActions,
   moveCardToZone,
+  declareAttackers,
+  declareBlockers,
+  resolveCombatDamage,
+  Phase,
   ZoneType,
   type CardInstance,
   type GameState,
@@ -205,6 +215,121 @@ export function buildMidGameState(): {
   return { state, moverId: playerIds[0] };
 }
 
+/**
+ * Creature shapes for the combat-damage measurement (issue #2919).
+ *
+ * They cover every player-affecting branch of `resolveCombatDamage`:
+ * unblocked life loss, lifelink life gain, infect/toxic poison counters,
+ * blocked damage, blocker lifelink and trample excess.
+ */
+const COMBAT_CARDS = [
+  makeCard({ name: "Combat Bear", power: "3", toughness: "3" }),
+  makeCard({
+    name: "Combat Trampler",
+    power: "4",
+    toughness: "4",
+    keywords: ["Trample"],
+    oracle_text: "Trample",
+  }),
+  makeCard({
+    name: "Combat Leech",
+    power: "3",
+    toughness: "3",
+    keywords: ["Lifelink"],
+    oracle_text: "Lifelink",
+  }),
+  makeCard({
+    name: "Combat Plague",
+    power: "2",
+    toughness: "2",
+    keywords: ["Infect", "Toxic"],
+    oracle_text: "Infect. Toxic 1.",
+  }),
+  makeCard({ name: "Combat Grizzly", power: "2", toughness: "2" }),
+  makeCard({
+    name: "Combat Wall",
+    power: "1",
+    toughness: "1",
+    keywords: ["Lifelink"],
+    oracle_text: "Lifelink",
+  }),
+];
+
+/**
+ * Build a fixed combat state: Alice attacks Bob with six attackers, two of
+ * which are blocked (one by a plain blocker, one by a lifelink blocker).
+ * Deterministic — no RNG, no wall-clock input.
+ */
+export function buildCombatState(): { state: GameState } {
+  let state = createInitialGameState(["Alice", "Bob"], 20, false);
+  const playerIds = Array.from(state.players.keys());
+  const aliceId = playerIds[0];
+  const bobId = playerIds[1];
+
+  const battlefieldKey = `${aliceId}-${ZoneType.BATTLEFIELD}`;
+  const bobBattlefieldKey = `${bobId}-${ZoneType.BATTLEFIELD}`;
+
+  const put = (
+    cardData: ScryfallCard,
+    ownerId: string,
+    zoneKey: string,
+  ): string => {
+    const instance = createCardInstance(cardData, ownerId, ownerId, {
+      currentZoneKey: zoneKey,
+    });
+    instance.hasSummoningSickness = false;
+    state.cards.set(instance.id, instance);
+    const battlefield = state.zones.get(zoneKey)!;
+    state.zones.set(zoneKey, {
+      ...battlefield,
+      cardIds: [...battlefield.cardIds, instance.id],
+    });
+    return instance.id;
+  };
+
+  // Alice: four attackers (one per player-affecting branch) ...
+  const bear = put(COMBAT_CARDS[0], aliceId, battlefieldKey);
+  const trampler = put(COMBAT_CARDS[1], aliceId, battlefieldKey);
+  const leech = put(COMBAT_CARDS[2], aliceId, battlefieldKey);
+  const plague = put(COMBAT_CARDS[3], aliceId, battlefieldKey);
+  // ... plus two attackers that will be blocked.
+  const brawler = put(COMBAT_CARDS[0], aliceId, battlefieldKey);
+  const bruiser = put(COMBAT_CARDS[0], aliceId, battlefieldKey);
+  // Bob: one plain blocker and one lifelink blocker.
+  const grizzly = put(COMBAT_CARDS[4], bobId, bobBattlefieldKey);
+  const wall = put(COMBAT_CARDS[5], bobId, bobBattlefieldKey);
+
+  state.turn.currentPhase = Phase.DECLARE_ATTACKERS;
+  const attackResult = declareAttackers(state, [
+    { cardId: bear, defenderId: bobId },
+    { cardId: trampler, defenderId: bobId },
+    { cardId: leech, defenderId: bobId },
+    { cardId: plague, defenderId: bobId },
+    { cardId: brawler, defenderId: bobId },
+    { cardId: bruiser, defenderId: bobId },
+  ]);
+  if (!attackResult.success) {
+    throw new Error(`declareAttackers failed: ${attackResult.description}`);
+  }
+  state = attackResult.state;
+
+  state.turn.currentPhase = Phase.DECLARE_BLOCKERS;
+  const blockResult = declareBlockers(
+    state,
+    new Map([
+      [trampler, [grizzly]],
+      [brawler, [wall]],
+    ]),
+  );
+  if (!blockResult.success) {
+    throw new Error(`declareBlockers failed: ${blockResult.description}`);
+  }
+  state = blockResult.state;
+
+  state.turn.currentPhase = Phase.COMBAT_DAMAGE;
+  return { state };
+}
+
 /** Force the shared layer system into a clean state between measurements. */
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
@@ -271,6 +396,38 @@ function main(): void {
 
   console.log(
     `\nSummary: checkStateBasedActions = ${sbaMs.toFixed(4)} ms/action`,
+  );
+
+  // 3. The combat-damage hot path (issue #2919): one working players map
+  //    per resolution instead of one copy per player-affecting event.
+  const combatPasses = Number(arg("combat-passes", "100"));
+  const { state: combatState } = buildCombatState();
+  console.log(
+    `Combat state: ${combatState.combat.attackers.length} attackers, ` +
+      `${combatState.combat.blockers.size} blocked attackers`,
+  );
+  console.log(`Combat resolutions per measurement: ${combatPasses}`);
+
+  const combatMs = bench("resolveCombatDamage", combatPasses, () => {
+    const result = resolveCombatDamage(combatState);
+    if (!result.state) throw new Error("no state returned");
+  });
+
+  // Sanity: the input state must not be mutated by a combat resolution.
+  const beforeLife = combatState.players.get(
+    Array.from(combatState.players.keys())[1],
+  )!.life;
+  resolveCombatDamage(combatState);
+  const afterLife = combatState.players.get(
+    Array.from(combatState.players.keys())[1],
+  )!.life;
+  if (afterLife !== beforeLife) {
+    throw new Error("input state was mutated by resolveCombatDamage");
+  }
+
+  console.log(
+    `\nSummary: checkStateBasedActions = ${sbaMs.toFixed(4)} ms/action, ` +
+      `resolveCombatDamage = ${combatMs.toFixed(4)} ms/resolution`,
   );
 }
 
