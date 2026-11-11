@@ -538,3 +538,47 @@ training caused no over-refusal, but the bottleneck is now capability
 (schema/semantics near-misses). Per §5 the false drafts are the
 designed DPO signal; DPO remains a separate approval. Full write-up:
 V2-RESULTS.md with the v2 artifacts outside the repo.
+
+### DPO results (2026-11-11)
+
+DPO was approved 2026-11-10 and ran on the v2 adapter: brewery's native
+DPO objective (beta 0.1, sft_weight 0.1, LR 5e-5, 2 epochs, LoRA rank
+16 / alpha 32), init_from the v2 adapter merged into the base as both
+policy start and reference. Data: 155 preference pairs — 55 refusal
+pairs harvested from the v2 model's own drafts on fresh unsupported
+cards (chosen: canonical `needs_new_op` refusal) and 100 retention
+pairs (chosen: gold envelope script; rejected: refusal) — plus a
+31-card held-out refusal test set, all splits disjoint. Attempt 1
+(RTX 4090, 24 GB) OOM'd at step 0 in reference-score precomputation;
+attempt 2 (RTX PRO 6000, 96 GB) completed 40/40 steps, train_loss
+0.2186, final eval rewards/accuracy 0.714. FLA kernels failed to
+install for the fourth consecutive run (verification caught it;
+training ran on reference kernels). Harvest finding: v2 already
+refused 107/172 (62%) of the fresh refusal prompts unprompted.
+
+| | SFT v2 | DPO on v2 |
+|---|---|---|
+| Gold exact | 20/20 | 14/20 |
+| Gold refused / invalid | 0 / 0 | 1 / 4 |
+| New correct | 8/30 | 11/30 |
+| New false drafts | 8 | 5 |
+| New invalid | 14 | 12 |
+
+Refusal test (31 held-out unsupported cards): v2 = 15 correct
+refusals, 12 drafted, 4 unparseable; DPO = 22 correct refusals,
+1 drafted, 6 wrong-reason refusals (refusals naming a non-canonical
+op — 4 battles, 2 Ral planeswalkers), 2 unparseable. DPO did its
+specific job — drafts on unsupported cards collapsed 12 → 1 — but
+paid for it with a gold regression the retention pairs did not
+prevent.
+
+**Verdict vs §5: NO-GO, unchanged — and the thread is closed.** Five
+false drafts remain (GO requires zero), gold reliability regressed,
+and gemini-3.1-flash-lite (29/30, 0 false drafts) still dominates
+every local arm. The bottleneck is the 2B model's drafting
+capability on unseen cards; neither SFT data fixes nor refusal-pair
+DPO change that. Any future local attempt needs a materially larger
+base model, not more preference tuning of this one. Total program
+spend (Pilot A + v2 + both DPO attempts, incl. eval serving):
+$8.55. Full write-up: DPO-RESULTS.md with the DPO artifacts outside
+the repo.
