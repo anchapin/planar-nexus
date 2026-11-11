@@ -109,11 +109,7 @@ export function canCastSpell(
   // the downstream stamp in `castSpell`.
   const cardScript = getCardScript(card.cardData.name);
   const castableFromZones = cardScript?.castable_from ?? [];
-  let castableFromZone:
-    | "exile"
-    | "graveyard"
-    | "command"
-    | undefined;
+  let castableFromZone: "exile" | "graveyard" | "command" | undefined;
   if (castableFromZones.length > 0) {
     const matchedZone = castableFromZones.find((z) => {
       const zoneKey = `${playerId}-${z}`;
@@ -511,6 +507,10 @@ export function castSpell(
 
     // Add X value to the cost if applicable
     let totalGeneric = manaCost.generic + xValue;
+    // #2870: `{C}` pips are a real cost component — they must be paid from
+    // the pool's colorless bucket, not silently dropped (and not paid out of
+    // colored mana).
+    let totalColorless = manaCost.colorless;
     let totalWhite = manaCost.white;
     let totalBlue = manaCost.blue;
     let totalBlack = manaCost.black;
@@ -581,6 +581,7 @@ export function castSpell(
       if (kickerCost) {
         const n = effectiveTimesKicked;
         totalGeneric += kickerCost.generic * n;
+        totalColorless += kickerCost.colorless * n;
         totalWhite += kickerCost.white * n;
         totalBlue += kickerCost.blue * n;
         totalBlack += kickerCost.black * n;
@@ -708,6 +709,7 @@ export function castSpell(
           const buybackInfo = parseBuyback(card.cardData.oracle_text || "");
           if (buybackInfo.hasBuyback && buybackInfo.buybackCost) {
             totalGeneric += buybackInfo.buybackCost.generic;
+            totalColorless += buybackInfo.buybackCost.colorless;
             totalWhite += buybackInfo.buybackCost.white;
             totalBlue += buybackInfo.buybackCost.blue;
             totalBlack += buybackInfo.buybackCost.black;
@@ -749,6 +751,7 @@ export function castSpell(
           }
           if (flashbackCost) {
             totalGeneric += flashbackCost.generic - manaCost.generic;
+            totalColorless += flashbackCost.colorless - manaCost.colorless;
             totalWhite += flashbackCost.white - manaCost.white;
             totalBlue += flashbackCost.blue - manaCost.blue;
             totalBlack += flashbackCost.black - manaCost.black;
@@ -775,6 +778,7 @@ export function castSpell(
             return { success: false, state, error: "Invalid warp cost." };
           }
           totalGeneric += wc.generic - manaCost.generic;
+          totalColorless += wc.colorless - manaCost.colorless;
           totalWhite += wc.white - manaCost.white;
           totalBlue += wc.blue - manaCost.blue;
           totalBlack += wc.black - manaCost.black;
@@ -806,6 +810,7 @@ export function castSpell(
             };
           }
           totalGeneric += hc.generic - manaCost.generic;
+          totalColorless += hc.colorless - manaCost.colorless;
           totalWhite += hc.white - manaCost.white;
           totalBlue += hc.blue - manaCost.blue;
           totalBlack += hc.black - manaCost.black;
@@ -843,6 +848,7 @@ export function castSpell(
           const bestowInfo = parseBestow(card.cardData.oracle_text || "");
           if (bestowInfo.hasBestow && bestowInfo.bestowCost) {
             totalGeneric += bestowInfo.bestowCost.generic;
+            totalColorless += bestowInfo.bestowCost.colorless;
             totalWhite += bestowInfo.bestowCost.white;
             totalBlue += bestowInfo.bestowCost.blue;
             totalBlack += bestowInfo.bestowCost.black;
@@ -917,6 +923,8 @@ export function castSpell(
           // Replace printed-cost pips with mutate-cost pips (same shape as
           // Blitz/Foretell/Spectacle/Escape).
           totalGeneric += mutateInfo.mutateCost.generic - manaCost.generic;
+          totalColorless +=
+            mutateInfo.mutateCost.colorless - manaCost.colorless;
           totalWhite += mutateInfo.mutateCost.white - manaCost.white;
           totalBlue += mutateInfo.mutateCost.blue - manaCost.blue;
           totalBlack += mutateInfo.mutateCost.black - manaCost.black;
@@ -935,6 +943,8 @@ export function castSpell(
           const blitzInfo = parseBlitz(card.cardData.oracle_text || "");
           if (blitzInfo.hasBlitz && blitzInfo.blitzCost) {
             totalGeneric += blitzInfo.blitzCost.generic - manaCost.generic;
+            totalColorless +=
+              blitzInfo.blitzCost.colorless - manaCost.colorless;
             totalWhite += blitzInfo.blitzCost.white - manaCost.white;
             totalBlue += blitzInfo.blitzCost.blue - manaCost.blue;
             totalBlack += blitzInfo.blitzCost.black - manaCost.black;
@@ -955,6 +965,8 @@ export function castSpell(
           if (foretellInfo.hasForetell && foretellInfo.foretellCost) {
             totalGeneric +=
               foretellInfo.foretellCost.generic - manaCost.generic;
+            totalColorless +=
+              foretellInfo.foretellCost.colorless - manaCost.colorless;
             totalWhite += foretellInfo.foretellCost.white - manaCost.white;
             totalBlue += foretellInfo.foretellCost.blue - manaCost.blue;
             totalBlack += foretellInfo.foretellCost.black - manaCost.black;
@@ -992,6 +1004,8 @@ export function castSpell(
             if (opponentLostLife) {
               totalGeneric +=
                 spectacleInfo.spectacleCost.generic - manaCost.generic;
+              totalColorless +=
+                spectacleInfo.spectacleCost.colorless - manaCost.colorless;
               totalWhite += spectacleInfo.spectacleCost.white - manaCost.white;
               totalBlue += spectacleInfo.spectacleCost.blue - manaCost.blue;
               totalBlack += spectacleInfo.spectacleCost.black - manaCost.black;
@@ -1246,6 +1260,8 @@ export function castSpell(
             // so additional costs (kicker, taxes) layered on top are
             // preserved (same shape as Blitz/Foretell/Spectacle).
             totalGeneric += escapeInfo.escapeCost.generic - manaCost.generic;
+            totalColorless +=
+              escapeInfo.escapeCost.colorless - manaCost.colorless;
             totalWhite += escapeInfo.escapeCost.white - manaCost.white;
             totalBlue += escapeInfo.escapeCost.blue - manaCost.blue;
             totalBlack += escapeInfo.escapeCost.black - manaCost.black;
@@ -1394,11 +1410,9 @@ export function castSpell(
     // Phyrexian mana costs are separate follow-up lanes
     // (the schema enforces `colors.length === 1` for v1).
     let manaRestrictionApplied:
-      | { colors: ("W" | "U" | "B" | "R" | "G")[]; generic: number }
-      | undefined;
-    const manaRestrictionScript = getCardScript(
-      card.cardData.name,
-    )?.additionalCosts?.mana_restriction;
+      { colors: ("W" | "U" | "B" | "R" | "G")[]; generic: number } | undefined;
+    const manaRestrictionScript = getCardScript(card.cardData.name)
+      ?.additionalCosts?.mana_restriction;
     if (manaRestrictionScript) {
       const mrGeneric = manaRestrictionScript.generic;
       const mrColor = manaRestrictionScript.colors[0];
@@ -1410,13 +1424,14 @@ export function castSpell(
         poolAtCan.black >= totalBlack &&
         poolAtCan.red >= totalRed &&
         poolAtCan.green >= totalGreen &&
+        poolAtCan.colorless >= totalColorless &&
         poolAtCan.generic +
           poolAtCan.white +
           poolAtCan.blue +
           poolAtCan.black +
           poolAtCan.red +
           poolAtCan.green +
-          poolAtCan.colorless >=
+          (poolAtCan.colorless - totalColorless) >=
           totalWhite +
             totalBlue +
             totalBlack +
@@ -1501,11 +1516,9 @@ export function castSpell(
     // pools, per-creature-type pools, and opponent-only
     // creature pools are separate follow-up lanes.
     let creaturePaymentApplied:
-      | { generic: number; tappedCreatures: CardInstanceId[] }
-      | undefined;
-    const creaturePaymentScript = getCardScript(
-      card.cardData.name,
-    )?.additionalCosts?.creature_payment;
+      { generic: number; tappedCreatures: CardInstanceId[] } | undefined;
+    const creaturePaymentScript = getCardScript(card.cardData.name)
+      ?.additionalCosts?.creature_payment;
     if (creaturePaymentScript) {
       const cpGeneric = creaturePaymentScript.generic;
       const poolAtCan = state.players.get(playerId)?.manaPool;
@@ -1516,13 +1529,14 @@ export function castSpell(
         poolAtCan.black >= totalBlack &&
         poolAtCan.red >= totalRed &&
         poolAtCan.green >= totalGreen &&
+        poolAtCan.colorless >= totalColorless &&
         poolAtCan.generic +
           poolAtCan.white +
           poolAtCan.blue +
           poolAtCan.black +
           poolAtCan.red +
           poolAtCan.green +
-          poolAtCan.colorless >=
+          (poolAtCan.colorless - totalColorless) >=
           totalWhite +
             totalBlue +
             totalBlack +
@@ -1579,7 +1593,11 @@ export function castSpell(
     // Calculate total colored mana available for generic payment
     const totalColored =
       pool.white + pool.blue + pool.black + pool.red + pool.green;
-    const availableForGeneric = pool.generic + totalColored + pool.colorless;
+    // #2870: the `{C}` pips of the cost are paid from the pool's
+    // colorless bucket, so the colorless pool is only available for the
+    // generic portion AFTER the colorless requirement is satisfied.
+    const availableForGeneric =
+      pool.generic + totalColored + (pool.colorless - totalColorless);
 
     if (
       pool.white < totalWhite ||
@@ -1587,6 +1605,7 @@ export function castSpell(
       pool.black < totalBlack ||
       pool.red < totalRed ||
       pool.green < totalGreen ||
+      pool.colorless < totalColorless ||
       availableForGeneric < totalGeneric
     ) {
       return {
@@ -1599,6 +1618,7 @@ export function castSpell(
     // Spend the mana
     const poolBeforeSpend = { ...pool };
     const spendResult = spendMana(state, playerId, {
+      colorless: totalColorless,
       white: totalWhite,
       blue: totalBlue,
       black: totalBlack,

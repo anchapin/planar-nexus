@@ -17,6 +17,7 @@ import {
   Fragment,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -30,14 +31,12 @@ import { useToast } from "@/hooks/use-toast";
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 import type { ScryfallCard, SavedDeck } from "@/lib/card-database";
 import { gameLogger } from "@/lib/logger";
-import { GameTutorial } from "@/components/game-tutorial";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from "@/components/ui/dialog";
 
 // Game engine imports
@@ -109,7 +108,6 @@ import {
   isDiscardChoice,
   isOfferChoice,
 } from "@/ai/offer-choices";
-import { HandSizeDiscardDialog } from "@/components/choice-dialog";
 import {
   parseModes,
   parseXCost,
@@ -137,7 +135,6 @@ import {
   generateSimpleDeck,
   generateStarterDeck,
 } from "@/lib/deck-generation";
-import { BASIC_LAND_NAMES } from "@/lib/basic-land-data";
 
 import { GameHeader } from "./_components/GameHeader";
 import { GameFooter } from "./_components/GameFooter";
@@ -146,12 +143,77 @@ import {
   type MulliganCardView,
 } from "./_components/MulliganDialog";
 import { PhaseTracker } from "./_components/PhaseTracker";
-import { ZoneViewerDialog } from "./_components/ZoneViewerDialog";
-import {
-  AbilityChoiceDialog,
-  type AbilityChoiceOption,
-} from "./_components/AbilityChoiceDialog";
 import { GameLoading } from "./_components/GameLoading";
+import type { AbilityChoiceOption } from "./_components/AbilityChoiceDialog";
+import type { ManaAbilityOptionView } from "./_components/ManaAbilityDialog";
+import { BASIC_LAND_TYPE_OPTIONS } from "./_components/basic-land-type-options";
+
+/**
+ * Lazily loaded, conditionally rendered leaves (issue #2903).
+ *
+ * Every dialog below only ever appears in response to a pending game choice
+ * (or a pending hand-size discard), so none of them is needed for the board
+ * to paint. Loading them through `next/dynamic` keeps their code out of the
+ * route's first-load payload: the chunk is fetched the first time the dialog
+ * is actually opened instead of on every page load.
+ *
+ * The rendering CONDITIONS are unchanged — each dialog is still mounted with
+ * exactly the same props and the same `isOpen`/`open` flag as before, so it
+ * shows up at exactly the same moment in the game.
+ *
+ * `loading: () => null` keeps the placeholder invisible while the chunk is
+ * in flight (the dialogs themselves are modals that mount closed).
+ */
+const ZoneViewerDialog = dynamic(
+  () => import("./_components/ZoneViewerDialog").then((m) => m.ZoneViewerDialog),
+  { ssr: false, loading: () => null },
+);
+const AbilityChoiceDialog = dynamic(
+  () =>
+    import("./_components/AbilityChoiceDialog").then((m) => m.AbilityChoiceDialog),
+  { ssr: false, loading: () => null },
+);
+const ManaAbilityDialog = dynamic(
+  () =>
+    import("./_components/ManaAbilityDialog").then((m) => m.ManaAbilityDialog),
+  { ssr: false, loading: () => null },
+);
+const BasicLandTypeDialog = dynamic(
+  () =>
+    import("./_components/BasicLandTypeDialog").then(
+      (m) => m.BasicLandTypeDialog,
+    ),
+  { ssr: false, loading: () => null },
+);
+const ShocklandDialog = dynamic(
+  () => import("./_components/ShocklandDialog").then((m) => m.ShocklandDialog),
+  { ssr: false, loading: () => null },
+);
+const ModeChoiceDialog = dynamic(
+  () => import("./_components/ModeChoiceDialog").then((m) => m.ModeChoiceDialog),
+  { ssr: false, loading: () => null },
+);
+const XCostDialog = dynamic(
+  () => import("./_components/XCostDialog").then((m) => m.XCostDialog),
+  { ssr: false, loading: () => null },
+);
+const KickerDialog = dynamic(
+  () => import("./_components/KickerDialog").then((m) => m.KickerDialog),
+  { ssr: false, loading: () => null },
+);
+const AttractionDialog = dynamic(
+  () => import("./_components/AttractionDialog").then((m) => m.AttractionDialog),
+  { ssr: false, loading: () => null },
+);
+const GameTutorial = dynamic(
+  () => import("@/components/game-tutorial").then((m) => m.GameTutorial),
+  { ssr: false, loading: () => null },
+);
+const HandSizeDiscardDialog = dynamic(
+  () =>
+    import("@/components/choice-dialog").then((m) => m.HandSizeDiscardDialog),
+  { ssr: false, loading: () => null },
+);
 
 /**
  * Stable empty list of ability choices — keeps the `options` prop of the
@@ -159,6 +221,13 @@ import { GameLoading } from "./_components/GameLoading";
  * pending (issue #2418, slice 5).
  */
 const EMPTY_ABILITY_CHOICE_OPTIONS: AbilityChoiceOption[] = [];
+
+/**
+ * Stable empty list of revealed cards — keeps the `revealedCards` prop of the
+ * memoized <AttractionDialog /> referentially stable while no Attraction is
+ * pending (issue #2418, slice 9).
+ */
+const EMPTY_REVEALED_CARDS: string[] = [];
 
 async function getOrCreateActiveGame(
   gameId: string,
@@ -2307,6 +2376,57 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     [gameState, manaAbilityChoice, playerName, toast, autoSaveEnabled],
   );
 
+  // Slice 7 (issue #2418): the pending choice and its (stateful) handler are
+  // kept in a ref so the memoized <ManaAbilityDialog /> can be handed a
+  // selection callback whose identity never churns — `handleManaChoice`
+  // depends on the game state, which changes on every board update.
+  const manaAbilityRef = useRef({
+    choice: manaAbilityChoice,
+    handler: handleManaChoice,
+  });
+  useEffect(() => {
+    manaAbilityRef.current = {
+      choice: manaAbilityChoice,
+      handler: handleManaChoice,
+    };
+  }, [manaAbilityChoice, handleManaChoice]);
+
+  // Slice 7 (issue #2418): stable close handler handed to the memoized
+  // ManaAbilityDialog.
+  const handleManaAbilityClose = useCallback(() => {
+    setManaAbilityChoice(null);
+  }, []);
+
+  // Slice 7 (issue #2418): stable selection handler handed to the memoized
+  // ManaAbilityDialog. It only forwards the picked index to the (stateful)
+  // `handleManaChoice`.
+  const handleManaAbilitySelect = useCallback((index: number) => {
+    const option = manaAbilityRef.current.choice?.options[index];
+    if (!option) return;
+    void manaAbilityRef.current.handler(option);
+  }, []);
+
+  // Slice 7 (issue #2418): the mana choices are pre-formatted for the
+  // memoized <ManaAbilityDialog /> so the dialog stays a dumb leaf. The array
+  // identity only changes while a choice is pending.
+  const manaAbilityOptionViews = useMemo<ManaAbilityOptionView[]>(
+    () =>
+      (manaAbilityChoice?.options ?? []).map((option) => ({
+        description: option.description,
+        manaText: formatManaPool({
+          colorless: 0,
+          white: 0,
+          blue: 0,
+          black: 0,
+          red: 0,
+          green: 0,
+          generic: 0,
+          ...option.mana,
+        }),
+      })),
+    [manaAbilityChoice],
+  );
+
   // Pick a mode of a modal ability on the stack; commits once enough are picked.
   const handleAbilityModeSelect = useCallback(
     (mode: string) => {
@@ -2553,17 +2673,57 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     setAttractionChoice(null);
   }, [gameState, attractionChoice, playerName, toast, autoSaveEnabled]);
 
-  // Helper to get description for basic land types
-  const getBasicLandTypeDescription = (landType: string): string => {
-    const descriptions: Record<string, string> = {
-      Plains: "Produces white mana",
-      Island: "Produces blue mana",
-      Swamp: "Produces black mana",
-      Mountain: "Produces red mana",
-      Forest: "Produces green mana",
-    };
-    return descriptions[landType] || "";
-  };
+  // Slice 9 (issue #2418): the (stateful) handlers of the three small choice
+  // dialogs are kept in refs so the memoized leaves can be handed callbacks
+  // whose identity never churns — they depend on the game state, which
+  // changes on every board update.
+  const xCostHandlerRef = useRef(handleXValueSelect);
+  useEffect(() => {
+    xCostHandlerRef.current = handleXValueSelect;
+  }, [handleXValueSelect]);
+
+  const kickerHandlerRef = useRef(handleKickerSelect);
+  useEffect(() => {
+    kickerHandlerRef.current = handleKickerSelect;
+  }, [handleKickerSelect]);
+
+  const attractionHandlerRef = useRef(handleAttractionSpinAndCast);
+  useEffect(() => {
+    attractionHandlerRef.current = handleAttractionSpinAndCast;
+  }, [handleAttractionSpinAndCast]);
+
+  // Slice 9 (issue #2418): stable close handlers handed to the memoized
+  // XCostDialog / KickerDialog / AttractionDialog.
+  const handleXCostClose = useCallback(() => {
+    setXCostChoice(null);
+  }, []);
+
+  const handleKickerClose = useCallback(() => {
+    setKickerChoice(null);
+  }, []);
+
+  const handleAttractionClose = useCallback(() => {
+    setAttractionChoice(null);
+  }, []);
+
+  // Slice 9 (issue #2418): stable callbacks handed to the memoized leaves.
+  // The X value itself stays in the parent state, so the leaf only reports
+  // the new value / the chosen cast.
+  const handleXValueChange = useCallback((value: number) => {
+    setXCostChoice((prev) => (prev ? { ...prev, maxX: value } : null));
+  }, []);
+
+  const handleXCostCast = useCallback((value: number) => {
+    void xCostHandlerRef.current(value);
+  }, []);
+
+  const handleKickerSelectWith = useCallback((withKicker: boolean) => {
+    void kickerHandlerRef.current(withKicker);
+  }, []);
+
+  const handleAttractionSpinAndCastClick = useCallback(() => {
+    void attractionHandlerRef.current();
+  }, []);
 
   // Check if a card's ability requires choosing a basic land type
   const requiresBasicLandTypeChoice = (card: CardInstance): boolean => {
@@ -2638,6 +2798,28 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     },
     [gameState, basicLandTypeChoice, playerName, toast],
   );
+
+  // Slice 8 (issue #2418): the (stateful) handler is kept in a ref so the
+  // memoized <BasicLandTypeDialog /> can be handed a selection callback whose
+  // identity never churns — `handleBasicLandTypeChoice` depends on the game
+  // state, which changes on every board update.
+  const basicLandTypeHandlerRef = useRef(handleBasicLandTypeChoice);
+  useEffect(() => {
+    basicLandTypeHandlerRef.current = handleBasicLandTypeChoice;
+  }, [handleBasicLandTypeChoice]);
+
+  // Slice 8 (issue #2418): stable close handler handed to the memoized
+  // BasicLandTypeDialog.
+  const handleBasicLandTypeClose = useCallback(() => {
+    setBasicLandTypeChoice(null);
+  }, []);
+
+  // Slice 8 (issue #2418): stable selection handler handed to the memoized
+  // BasicLandTypeDialog. It only forwards the picked land type to the
+  // (stateful) `handleBasicLandTypeChoice`.
+  const handleBasicLandTypeSelect = useCallback((landType: string) => {
+    void basicLandTypeHandlerRef.current(landType);
+  }, []);
 
   // Handle end turn — pass through all remaining phases
   const handleEndTurn = useCallback(async () => {
@@ -3038,6 +3220,12 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     [abilityChoice, handleCardClick, applyHandActivation, activateFromBoard],
   );
 
+  // Slice 6 (issue #2418): stable open-state toggle handed to the memoized
+  // ShocklandDialog.
+  const handleShocklandOpenChange = useCallback(() => {
+    setShocklandChoice(null);
+  }, []);
+
   if (isLoading) {
     return (
       <div className="flex-1 p-2 md:p-4 flex items-center justify-center">
@@ -3231,374 +3419,91 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
         onSelect={handleAbilityChoiceSelect}
       />
 
-      {/* Shockland ETB Choice Dialog */}
-      <Dialog
-        open={!!shocklandChoice}
-        onOpenChange={() => setShocklandChoice(null)}
-      >
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Enter the Battlefield</DialogTitle>
-            <DialogDescription>
-              {shocklandChoice?.cardName} can enter tapped or you can pay 2 life
-              to have it enter untapped.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-3 py-4">
-            <Button
-              variant="outline"
-              onClick={handleShocklandEnterTapped}
-              className="justify-start h-auto py-3 px-4"
-            >
-              <div className="text-left">
-                <div className="font-medium">Enter Tapped</div>
-                <div className="text-xs text-muted-foreground">
-                  No life loss
-                </div>
-              </div>
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleShocklandPayLife}
-              className="justify-start h-auto py-3 px-4"
-            >
-              <div className="text-left">
-                <div className="font-medium">Pay 2 Life</div>
-                <div className="text-xs text-muted-foreground">
-                  Enters untapped
-                </div>
-              </div>
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Shockland ETB Choice Dialog — extracted to a memoized leaf (issue #2418, slice 6) */}
+      <ShocklandDialog
+        isOpen={!!shocklandChoice}
+        cardName={shocklandChoice?.cardName}
+        onOpenChange={handleShocklandOpenChange}
+        onEnterTapped={handleShocklandEnterTapped}
+        onPayLife={handleShocklandPayLife}
+      />
 
-      {/* Mana Ability Choice Dialog */}
-      <Dialog
-        open={!!manaAbilityChoice}
-        onOpenChange={() => setManaAbilityChoice(null)}
-      >
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Choose Mana</DialogTitle>
-            <DialogDescription>
-              {manaAbilityChoice?.cardName} can produce different colors of
-              mana. Choose one.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-3 py-4">
-            {manaAbilityChoice?.options.map((option, idx) => (
-              <Button
-                key={idx}
-                variant="outline"
-                onClick={() => handleManaChoice(option)}
-                className="justify-start h-auto py-3 px-4"
-              >
-                <div className="text-left">
-                  <div className="font-medium">{option.description}</div>
-                  <div className="text-xs text-muted-foreground">
-                    Add{" "}
-                    {formatManaPool({
-                      colorless: 0,
-                      white: 0,
-                      blue: 0,
-                      black: 0,
-                      red: 0,
-                      green: 0,
-                      generic: 0,
-                      ...option.mana,
-                    })}{" "}
-                    to your mana pool
-                  </div>
-                </div>
-              </Button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Mana Ability Choice Dialog — extracted to a memoized leaf
+          (issue #2418, slice 7) */}
+      <ManaAbilityDialog
+        isOpen={!!manaAbilityChoice}
+        onClose={handleManaAbilityClose}
+        cardName={manaAbilityChoice?.cardName ?? ""}
+        options={manaAbilityOptionViews}
+        onSelect={handleManaAbilitySelect}
+      />
 
-      {/* Basic Land Type Choice Dialog */}
-      <Dialog
-        open={!!basicLandTypeChoice}
-        onOpenChange={() => setBasicLandTypeChoice(null)}
-      >
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Choose Basic Land Type</DialogTitle>
-            <DialogDescription>
-              {basicLandTypeChoice?.cardName} allows you to choose a basic land
-              type. Select one.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-1 gap-2 py-4">
-            {BASIC_LAND_NAMES.map((landType) => (
-              <Button
-                key={landType}
-                variant="outline"
-                onClick={() => handleBasicLandTypeChoice(landType)}
-                className="justify-start h-auto py-3 px-4"
-              >
-                <div className="text-left">
-                  <div className="font-medium">{landType}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {getBasicLandTypeDescription(landType)}
-                  </div>
-                </div>
-              </Button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Basic Land Type Choice Dialog — extracted to a memoized leaf
+          (issue #2418, slice 8) */}
+      <BasicLandTypeDialog
+        isOpen={!!basicLandTypeChoice}
+        onClose={handleBasicLandTypeClose}
+        cardName={basicLandTypeChoice?.cardName ?? ""}
+        options={BASIC_LAND_TYPE_OPTIONS}
+        onSelect={handleBasicLandTypeSelect}
+      />
 
-      {/* Modal Spell Mode Choice Dialog */}
-      <Dialog
-        open={!!spellModeChoice}
-        onOpenChange={() => setSpellModeChoice(null)}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Choose Mode</DialogTitle>
-            <DialogDescription>
-              {spellModeChoice?.cardName} has multiple modes. Choose one.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-3 py-4">
-            {spellModeChoice?.modes.map((mode, idx) => (
-              <Button
-                key={idx}
-                variant="outline"
-                onClick={() => handleModeSelect(idx)}
-                className="justify-start h-auto py-3 px-4 text-left"
-              >
-                <div className="text-left">
-                  <div className="font-medium">Mode {idx + 1}</div>
-                  <div className="text-xs text-muted-foreground line-clamp-3 mt-1">
-                    {mode}
-                  </div>
-                </div>
-              </Button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Modal Spell Mode Choice Dialog — extracted to a memoized leaf
+          (issue #2418, slice 9) */}
+      <ModeChoiceDialog
+        isOpen={!!spellModeChoice}
+        onClose={() => setSpellModeChoice(null)}
+        cardName={spellModeChoice?.cardName ?? ""}
+        modes={spellModeChoice?.modes}
+        selectionMode="single"
+        onSelectIndex={handleModeSelect}
+      />
 
-      {/* Modal Ability Mode Choice Dialog (#2525): a mode must be chosen */}
-      <Dialog open={!!abilityModeChoice} onOpenChange={() => undefined}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Choose Mode</DialogTitle>
-            <DialogDescription>
-              {abilityModeChoice?.cardName}: choose{" "}
-              {abilityModeChoice?.choose === 1
-                ? "one"
-                : abilityModeChoice?.choose}
-              .
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-3 py-4">
-            {abilityModeChoice?.modes.map((mode, idx) => (
-              <Button
-                key={idx}
-                variant={
-                  abilityModeChoice.picked.includes(mode)
-                    ? "default"
-                    : "outline"
-                }
-                onClick={() => handleAbilityModeSelect(mode)}
-                className="justify-start h-auto py-3 px-4 text-left"
-              >
-                <div className="text-left">
-                  <div className="font-medium">Mode {idx + 1}</div>
-                  <div className="text-xs text-muted-foreground line-clamp-3 mt-1">
-                    {mode}
-                  </div>
-                </div>
-              </Button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Modal Ability Mode Choice Dialog (#2525): a mode must be chosen —
+          extracted to a memoized leaf (issue #2418, slice 9) */}
+      <ModeChoiceDialog
+        isOpen={!!abilityModeChoice}
+        dismissable={false}
+        cardName={abilityModeChoice?.cardName ?? ""}
+        modes={abilityModeChoice?.modes}
+        selectionMode="multi"
+        choose={abilityModeChoice?.choose}
+        picked={abilityModeChoice?.picked}
+        onSelect={handleAbilityModeSelect}
+      />
 
-      {/* X-Cost Spell Dialog */}
-      <Dialog open={!!xCostChoice} onOpenChange={() => setXCostChoice(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Choose X Value</DialogTitle>
-            <DialogDescription>
-              {xCostChoice?.description ||
-                `Choose a value for ${xCostChoice?.cardName}`}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col items-center gap-4 py-6">
-            <div className="flex items-center gap-6">
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() =>
-                  setXCostChoice((prev) =>
-                    prev ? { ...prev, maxX: Math.max(0, prev.maxX - 1) } : null,
-                  )
-                }
-                disabled={xCostChoice ? xCostChoice.maxX <= 0 : true}
-              >
-                <span className="text-xl">−</span>
-              </Button>
-              <div className="text-5xl font-bold tabular-nums min-w-[80px] text-center">
-                {xCostChoice?.maxX || 0}
-              </div>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() =>
-                  setXCostChoice((prev) =>
-                    prev ? { ...prev, maxX: prev.maxX + 1 } : null,
-                  )
-                }
-              >
-                <span className="text-xl">+</span>
-              </Button>
-            </div>
-            <div className="text-sm text-muted-foreground">
-              Max: {xCostChoice?.maxX || 0}
-            </div>
-            <div className="flex gap-2 mt-2">
-              {[0, 1, 2, 3].map((n) => (
-                <Button
-                  key={n}
-                  variant={xCostChoice?.maxX === n ? "default" : "outline"}
-                  size="sm"
-                  onClick={() =>
-                    setXCostChoice((prev) =>
-                      prev ? { ...prev, maxX: n } : null,
-                    )
-                  }
-                  disabled={n > (xCostChoice?.maxX || 0)}
-                >
-                  {n}
-                </Button>
-              ))}
-              {(xCostChoice?.maxX || 0) > 3 && (
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={() => handleXValueSelect(xCostChoice?.maxX || 0)}
-                >
-                  Cast X={xCostChoice?.maxX || 0}
-                </Button>
-              )}
-            </div>
-          </div>
-          <DialogFooter className="flex-row gap-2 sm:flex-col">
-            <Button variant="outline" onClick={() => setXCostChoice(null)}>
-              Cancel
-            </Button>
-            <Button onClick={() => handleXValueSelect(xCostChoice?.maxX || 0)}>
-              Cast with X={xCostChoice?.maxX || 0}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* X-Cost Spell Dialog — extracted to a memoized leaf
+          (issue #2418, slice 9) */}
+      <XCostDialog
+        isOpen={!!xCostChoice}
+        onClose={handleXCostClose}
+        cardName={xCostChoice?.cardName ?? ""}
+        description={xCostChoice?.description ?? ""}
+        value={xCostChoice?.maxX ?? 0}
+        onValueChange={handleXValueChange}
+        onCast={handleXCostCast}
+      />
 
-      {/* Kicker Spell Dialog */}
-      <Dialog open={!!kickerChoice} onOpenChange={() => setKickerChoice(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Kicker Option</DialogTitle>
-            <DialogDescription>
-              {kickerChoice?.cardName} has an optional kicker cost.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-3 py-4">
-            <Button
-              variant="outline"
-              onClick={() => handleKickerSelect(false)}
-              className="justify-start h-auto py-3 px-4"
-            >
-              <div className="text-left">
-                <div className="font-medium">Cast without kicker</div>
-                <div className="text-xs text-muted-foreground">
-                  Pay only the base mana cost
-                </div>
-              </div>
-            </Button>
-            <Button
-              variant="default"
-              onClick={() => handleKickerSelect(true)}
-              className="justify-start h-auto py-3 px-4"
-            >
-              <div className="text-left">
-                <div className="font-medium">Cast with kicker</div>
-                <div className="text-xs text-muted-foreground">
-                  {kickerChoice?.description ||
-                    "Pay extra cost for additional effect"}
-                </div>
-              </div>
-            </Button>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setKickerChoice(null)}>
-              Cancel
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Kicker Spell Dialog — extracted to a memoized leaf
+          (issue #2418, slice 9) */}
+      <KickerDialog
+        isOpen={!!kickerChoice}
+        onClose={handleKickerClose}
+        cardName={kickerChoice?.cardName ?? ""}
+        description={kickerChoice?.description ?? ""}
+        onSelect={handleKickerSelectWith}
+      />
 
-      {/* Attraction Spell Dialog (Unfinity) */}
-      <Dialog
-        open={!!attractionChoice}
-        onOpenChange={() => setAttractionChoice(null)}
-      >
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Attraction!</DialogTitle>
-            <DialogDescription>
-              {attractionChoice?.cardName} - Spin the die to reveal cards
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col items-center gap-4 py-6">
-            {attractionChoice?.spinResult ? (
-              <>
-                <div className="text-6xl font-bold">
-                  {attractionChoice.spinResult}
-                </div>
-                <div className="text-sm text-muted-foreground">Rolled!</div>
-                {attractionChoice.revealedCards.length > 0 && (
-                  <div className="text-sm text-center">
-                    <div className="font-medium">Revealed cards:</div>
-                    <div className="text-xs text-muted-foreground">
-                      {attractionChoice.revealedCards.join(", ")}
-                    </div>
-                  </div>
-                )}
-              </>
-            ) : (
-              <>
-                <div className="text-4xl">🎲</div>
-                <div className="text-sm text-muted-foreground text-center">
-                  Spin the Attraction die to determine the result
-                </div>
-              </>
-            )}
-          </div>
-          <DialogFooter className="flex-col gap-2 sm:flex-col">
-            {!attractionChoice?.spinResult ? (
-              <Button onClick={handleAttractionSpinAndCast} className="w-full">
-                Spin & Cast
-              </Button>
-            ) : (
-              <Button
-                onClick={() => setAttractionChoice(null)}
-                className="w-full"
-              >
-                Done
-              </Button>
-            )}
-            <Button variant="outline" onClick={() => setAttractionChoice(null)}>
-              Cancel
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Attraction Spell Dialog (Unfinity) — extracted to a memoized leaf
+          (issue #2418, slice 9) */}
+      <AttractionDialog
+        isOpen={!!attractionChoice}
+        onClose={handleAttractionClose}
+        cardName={attractionChoice?.cardName ?? ""}
+        spinResult={attractionChoice?.spinResult ?? 0}
+        revealedCards={attractionChoice?.revealedCards ?? EMPTY_REVEALED_CARDS}
+        onSpinAndCast={handleAttractionSpinAndCastClick}
+      />
 
       {/* Zone Viewer Dialog — extracted to a memoized leaf (issue #2418, slice 4) */}
       <ZoneViewerDialog

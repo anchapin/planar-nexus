@@ -267,15 +267,19 @@ export function judgeReply(card: DraftCard, reply: string): DraftOutcome {
     };
   }
   const script = result.data;
+  // An empty type line means "unknown" (a card list without type lines):
+  // the spell/permanent cross-check needs the type line, so it is skipped
+  // and only the schema check runs.
+  const knownType = card.type_line.trim() !== "";
   const spell = isSpellType(card.type_line);
-  if (spell && !script.spell && !script.modes) {
+  if (knownType && spell && !script.spell && !script.modes) {
     return {
       kind: "invalid",
       name: card.name,
       errors: ["instant or sorcery scripted without spell effects"],
     };
   }
-  if (!spell && (script.spell || script.modes)) {
+  if (knownType && !spell && (script.spell || script.modes)) {
     return {
       kind: "invalid",
       name: card.name,

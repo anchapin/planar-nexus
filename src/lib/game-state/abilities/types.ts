@@ -1,4 +1,9 @@
 import type { CardInstanceId, PlayerId, GameState } from "../types";
+// Type-only import: erased at runtime, so this does NOT introduce a runtime
+// module cycle (the trigger-system types module imports the abilities barrel
+// for value exports). The enum stays the single source of truth for the
+// detector-side `triggerType` values (issue #2874).
+import type { TriggerConditionType } from "../trigger-system/types";
 
 export type TriggerEvent =
   | "landfall"
@@ -33,6 +38,13 @@ export type TriggerEvent =
 
 export interface TriggerContext {
   sourceCardId?: CardInstanceId;
+  /**
+   * Which trigger condition produced this context. The detector side
+   * (`TriggerDetectionContext`, issue #2874) always sets it; it stays
+   * optional here because non-detector producers (granted triggers,
+   * scripted triggers) have no single trigger condition.
+   */
+  triggerType?: TriggerConditionType;
   /**
    * Saga chapters (CR 714.2b): the lore count before and after lore
    * counters were added to `sourceCardId`.

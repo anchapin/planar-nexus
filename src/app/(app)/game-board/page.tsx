@@ -59,11 +59,27 @@ import {
   type GameMode,
   type GameResult,
 } from "@/lib/game-history";
-import {
-  XValueChoiceDialog,
-  ModeChoiceDialog,
-  HandSizeDiscardDialog,
-} from "@/components/choice-dialog";
+import dynamic from "next/dynamic";
+
+/**
+ * Lazily loaded, conditionally rendered choice dialogs (issue #2903).
+ * These only appear in response to a pending game choice, so loading them
+ * through `next/dynamic` keeps the choice-dialog module out of this route's
+ * first-load payload. Rendering conditions and props are unchanged.
+ */
+const XValueChoiceDialog = dynamic(
+  () => import("@/components/choice-dialog").then((m) => m.XValueChoiceDialog),
+  { ssr: false, loading: () => null },
+);
+const ModeChoiceDialog = dynamic(
+  () => import("@/components/choice-dialog").then((m) => m.ModeChoiceDialog),
+  { ssr: false, loading: () => null },
+);
+const HandSizeDiscardDialog = dynamic(
+  () =>
+    import("@/components/choice-dialog").then((m) => m.HandSizeDiscardDialog),
+  { ssr: false, loading: () => null },
+);
 import { useAchievementTracking } from "@/hooks/use-achievement-tracking";
 import { evaluateGameState, quickScore } from "@/ai/game-state-evaluator";
 import { summarizeGame } from "@/lib/game-summarizer";

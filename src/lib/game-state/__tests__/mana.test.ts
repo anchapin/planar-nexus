@@ -747,6 +747,14 @@ describe("Mana Cost Parsing", () => {
       expect(cost.hasX).toBe(false);
     });
 
+    it("should parse a colorless {C} pip as a colorless cost (#2870)", () => {
+      const cost = getSpellManaCost({ mana_cost: "{1}{C}" });
+
+      expect(cost.colorless).toBe(1);
+      expect(cost.generic).toBe(1);
+      expect(cost.hasX).toBe(false);
+    });
+
     it("should parse a cost with X", () => {
       const cost = getSpellManaCost({ mana_cost: "{X}{G}" });
 

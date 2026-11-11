@@ -428,6 +428,56 @@ describe("Spell Casting - Casting Process", () => {
   });
 });
 
+describe("Spell Casting - Colorless mana costs (#2870)", () => {
+  it("cannot cast a {1}{C} instant with only generic mana in the pool", () => {
+    const { state, aliceId, cardId } = setupGameWithCardInHand(
+      createMockInstant("Warping Wail", "{1}{C}"),
+    );
+
+    state.priorityPlayerId = aliceId;
+    state.stack = [];
+
+    const poolBefore = state.players.get(aliceId)!.manaPool;
+    expect(poolBefore.colorless).toBe(0);
+    expect(poolBefore.generic).toBeGreaterThan(0);
+
+    const result = castSpell(state, aliceId, cardId);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Not enough energy");
+
+    // No mana was spent.
+    const poolAfter = result.state.players.get(aliceId)!.manaPool;
+    expect(poolAfter).toEqual(poolBefore);
+  });
+
+  it("casts a {1}{C} instant once colorless mana is available and pays the {C} from the colorless bucket", () => {
+    const { state, aliceId, cardId } = setupGameWithCardInHand(
+      createMockInstant("Warping Wail", "{1}{C}"),
+    );
+
+    state.priorityPlayerId = aliceId;
+    state.stack = [];
+
+    const withColorless = addMana(state, aliceId, { colorless: 1 });
+    const poolBefore = withColorless.players.get(aliceId)!.manaPool;
+
+    const result = castSpell(withColorless, aliceId, cardId);
+
+    expect(result.success).toBe(true);
+
+    const poolAfter = result.state.players.get(aliceId)!.manaPool;
+    // The {C} pip comes out of the colorless bucket...
+    expect(poolAfter.colorless).toBe(poolBefore.colorless - 1);
+    // ...the generic pip out of the generic bucket...
+    expect(poolAfter.generic).toBe(poolBefore.generic - 1);
+    // ...and NOT out of the colored mana.
+    expect(poolAfter.blue).toBe(poolBefore.blue);
+    expect(poolAfter.red).toBe(poolBefore.red);
+    expect(poolAfter.green).toBe(poolBefore.green);
+  });
+});
+
 describe("Spell Casting - Stack Resolution", () => {
   describe("resolveTopOfStack", () => {
     it("should move instant to graveyard after resolution", () => {

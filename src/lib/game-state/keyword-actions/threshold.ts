@@ -17,6 +17,7 @@ import type {
   CardInstance,
   CardInstanceId,
 } from "../types";
+import { acquireCardMap } from "../sba-pass-cards";
 
 export const THRESHOLD_GRAVEYARD_COUNT = 7;
 
@@ -218,7 +219,7 @@ export function refreshThresholdBonuses(state: GameState): GameState {
       card.thresholdAnthemPT?.power === nextAnthem?.power &&
       card.thresholdAnthemPT?.toughness === nextAnthem?.toughness;
     if (bonusSame && anthemSame) continue;
-    cards ??= new Map(state.cards);
+    cards ??= acquireCardMap(state);
     cards.set(card.id, {
       ...card,
       thresholdBonus: nextBonus,

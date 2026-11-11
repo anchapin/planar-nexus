@@ -320,6 +320,67 @@ interface CardInstanceWithEffectiveColors extends CardInstance {
 }
 
 /**
+ * Compare two override values by content.
+ *
+ * Used by the override tracking proxy to decide whether a write actually
+ * changed the hashed inputs: re-applying the same effect must not
+ * invalidate the memoised state hash (issue #2892), while a real change
+ * must.
+ *
+ * @param a - Previous value
+ * @param b - Newly written value
+ * @returns true when both values carry the same content
+ */
+function overrideValuesEqual(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (!overrideValuesEqual(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  if (
+    a !== null &&
+    b !== null &&
+    typeof a === "object" &&
+    typeof b === "object" &&
+    !Array.isArray(a) &&
+    !Array.isArray(b)
+  ) {
+    const aKeys = Object.keys(a);
+    const bKeys = Object.keys(b);
+    if (aKeys.length !== bKeys.length) return false;
+    for (const key of aKeys) {
+      if (!Object.prototype.hasOwnProperty.call(b, key)) return false;
+      if (
+        !overrideValuesEqual(
+          (a as Record<string, unknown>)[key],
+          (b as Record<string, unknown>)[key],
+        )
+      ) {
+        return false;
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Per-LayerSystem cache of raw override object -> tracking proxy. Kept at
+ * module level (not an instance field) on purpose: `cloneGameState` snapshots
+ * game state through a JSON round-trip, and a WeakMap instance field would
+ * serialize to `{}` — the snapshot would then differ from the live state and
+ * break replay deep-equality. Entries die with their LayerSystem instance
+ * because the outer map is itself a WeakMap.
+ */
+const trackedOverrideProxiesBySystem: WeakMap<
+  LayerSystem,
+  WeakMap<object, object>
+> = new WeakMap();
+
+/**
  * Resolve the copy chain for a card (CR 613.2 - Layer 1)
  *
  * When a card copies another card that is itself copying a third card,
@@ -421,11 +482,154 @@ export class LayerSystem {
   private sortedEffectsVersion = 0;
 
   /**
+   * Monotonic version of every input that feeds {@link computeStateHash}.
+   *
+   * The state hash is a pure function of four inputs: the registered
+   * effects, the effect dependencies, the per-card overrides and the
+   * characteristic-defining abilities. `computeStateHash` used to rebuild
+   * that string from scratch on every call, which made an SBA pass cost
+   * O(cards x inputs) (issue #2892).
+   *
+   * `stateVersion` is bumped by *every* mutation of those four inputs, so
+   * the memoised hash below can never be stale:
+   *
+   * - effects: `registerEffect`, `removeEffectsFromSource`, `clear`
+   * - dependencies: `addDependency`, `removeDependencies`, `clear`
+   * - overrides: `getOverrides` (entry creation), `clearOverrides`,
+   *   `clear`, plus in-place writes to an override object (tracked through
+   *   the proxy installed by {@link trackOverrideMutations})
+   * - CDAs: `registerCDA`, `clear`
+   *
+   * Registered effect / dependency / CDA *objects* are treated as immutable
+   * once registered (see the audit in WORKER_REPORT.md): the engine creates
+   * them with the `create*Effect` factories and never mutates their
+   * hash-relevant fields afterwards.
+   */
+  private stateVersion = 0;
+
+  /** Memoised state hash; valid while `cachedStateHashVersion` is current. */
+  private cachedStateHash: string | null = null;
+  private cachedStateHashVersion = -1;
+
+  /**
+   * The tracking-proxy cache for this LayerSystem (see
+   * `trackedOverrideProxiesBySystem`). Kept behind an accessor so the cache
+   * stays per-instance while living outside the instance's own properties.
+   */
+  private trackedProxies(): WeakMap<object, object> {
+    let proxies = trackedOverrideProxiesBySystem.get(this);
+    if (!proxies) {
+      proxies = new WeakMap();
+      trackedOverrideProxiesBySystem.set(this, proxies);
+    }
+    return proxies;
+  }
+
+  /**
+   * Bump the version of the hash inputs. Any change to the registered
+   * effects, dependencies, overrides or CDAs must go through here.
+   */
+  private bumpStateVersion(): void {
+    this.stateVersion++;
+  }
+
+  /**
+   * Wrap an override object in a proxy that reports in-place writes.
+   *
+   * Overrides are mutated in place (e.g. `overrides.powerSet = 4` inside an
+   * effect's `apply` callback), so the mutation cannot be observed by
+   * comparing the override map. The proxy bumps {@link stateVersion} whenever
+   * a tracked value actually changes, which keeps the memoised state hash
+   * exactly as fresh as a from-scratch computation (issue #2892).
+   *
+   * @param target - The raw override object to track
+   * @returns The tracking proxy (stable per raw object)
+   */
+  private trackOverrideMutations(target: CardOverrides): CardOverrides {
+    const cached = this.trackedProxies().get(target);
+    if (cached) {
+      return cached as CardOverrides;
+    }
+    const proxy = this.createTrackedProxy(target);
+    this.trackedProxies().set(target, proxy);
+    return proxy;
+  }
+
+  /**
+   * Create a tracking proxy for a plain object or array. Nested objects and
+   * arrays are proxied lazily so that mutations such as
+   * `overrides.controllerHistory.push(...)` are reported as well.
+   */
+  private createTrackedProxy<T extends object>(target: T): T {
+    return new Proxy(target, {
+      get: (obj, prop, receiver) => {
+        const value = Reflect.get(obj, prop, receiver);
+        if (value !== null && typeof value === "object") {
+          return this.trackedValue(value);
+        }
+        return value;
+      },
+      set: (obj, prop, value) => {
+        const previous = Reflect.get(obj, prop);
+        const result = Reflect.set(obj, prop, value, obj);
+        if (!overrideValuesEqual(previous, value)) {
+          this.bumpStateVersion();
+        }
+        return result;
+      },
+      deleteProperty: (obj, prop) => {
+        const existed = Reflect.has(obj, prop);
+        const result = Reflect.deleteProperty(obj, prop);
+        if (existed) {
+          this.bumpStateVersion();
+        }
+        return result;
+      },
+    });
+  }
+
+  /**
+   * Return the tracking proxy for a nested object/array, creating it on
+   * first use so that proxy identity stays stable.
+   */
+  private trackedValue(value: object): object {
+    const cached = this.trackedProxies().get(value);
+    if (cached) {
+      return cached;
+    }
+    const proxy = this.createTrackedProxy(value);
+    this.trackedProxies().set(value, proxy);
+    return proxy;
+  }
+
+  /**
    * Compute a state hash based on all registered effects, dependencies, and overrides.
    * This hash uniquely identifies the current state that affects card characteristics.
    * Cache entries are invalidated when the state hash changes.
+   *
+   * The hash is memoised against {@link stateVersion}: it is only rebuilt
+   * when one of its inputs has actually changed (issue #2892). The returned
+   * value is identical to a from-scratch computation, because the version
+   * is bumped by every mutation of the hashed inputs.
    */
   computeStateHash(): string {
+    if (
+      this.cachedStateHash !== null &&
+      this.cachedStateHashVersion === this.stateVersion
+    ) {
+      return this.cachedStateHash;
+    }
+
+    const hash = this.buildStateHash();
+    this.cachedStateHash = hash;
+    this.cachedStateHashVersion = this.stateVersion;
+    return hash;
+  }
+
+  /**
+   * Build the state hash from scratch. See {@link computeStateHash}.
+   */
+  private buildStateHash(): string {
     const stateParts: string[] = [];
 
     // Add effect signatures (layer, sublayer, source, timestamp)
@@ -476,6 +680,7 @@ export class LayerSystem {
   registerEffect(effect: ContinuousEffect): void {
     this.effects.push(effect);
     this.effectsVersion++;
+    this.bumpStateVersion();
     this.sortEffects();
     this.invalidateCache();
   }
@@ -487,6 +692,7 @@ export class LayerSystem {
   removeEffectsFromSource(sourceCardId: CardInstanceId): void {
     this.effects = this.effects.filter((e) => e.sourceCardId !== sourceCardId);
     this.effectsVersion++;
+    this.bumpStateVersion();
     this.invalidateCache();
   }
 
@@ -497,6 +703,7 @@ export class LayerSystem {
   registerCDA(cda: CharacteristicDefiningAbility): void {
     this.cdas.push(cda);
     this.effectsVersion++;
+    this.bumpStateVersion();
     this.sortEffects();
     this.invalidateCache();
   }
@@ -521,6 +728,7 @@ export class LayerSystem {
     }
     this.dependencies.push(dependency);
     this.effectsVersion++;
+    this.bumpStateVersion();
     // Re-sort effects to account for the new dependency
     this.sortEffects();
     this.invalidateCache();
@@ -646,6 +854,11 @@ export class LayerSystem {
     this.dependencies = this.dependencies.filter(
       (d) => d.effectId !== effectId && d.dependsOnId !== effectId,
     );
+    // The dependency list feeds the state hash, so the memoised hash has to
+    // be invalidated. `effectsVersion` is deliberately left alone: removing a
+    // dependency does not re-sort effects today and this change must not
+    // alter the effect ordering.
+    this.bumpStateVersion();
   }
 
   /**
@@ -653,10 +866,16 @@ export class LayerSystem {
    * @param cardId - The card instance ID
    */
   getOverrides(cardId: CardInstanceId): CardOverrides {
-    if (!this.overrides.has(cardId)) {
-      this.overrides.set(cardId, {});
+    const existing = this.overrides.get(cardId);
+    if (existing) {
+      return existing;
     }
-    return this.overrides.get(cardId)!;
+    // Creating the entry changes the hashed inputs, so the memoised state
+    // hash has to be invalidated (issue #2892).
+    const created = this.trackOverrideMutations({} as CardOverrides);
+    this.overrides.set(cardId, created);
+    this.bumpStateVersion();
+    return created;
   }
 
   /**
@@ -665,6 +884,7 @@ export class LayerSystem {
    */
   clearOverrides(cardId: CardInstanceId): void {
     this.overrides.delete(cardId);
+    this.bumpStateVersion();
     this.invalidateCache(cardId);
   }
 
@@ -1180,6 +1400,7 @@ export class LayerSystem {
     this.effectiveCharacteristicsCache.clear();
     this.sortedEffectsCache = null;
     this.effectsVersion++;
+    this.bumpStateVersion();
   }
 
   /** Number of cards with override entries (for leak tests, #2620). */

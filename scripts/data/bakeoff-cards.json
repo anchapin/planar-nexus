@@ -1,5 +1,5 @@
 {
-  "note": "Fixed 50-card set for the card-script model bake-off (#2491). gold = cards this repo already scripts by hand (never used as few-shot examples); a draft is scored against the hand-written script. new = unscripted Standard cards with the outcome the current op set should produce: draft when every ability fits the documented ops, needs_new_op when any part doesn't, either when it is ambiguous.",
+  "note": "Fixed 50-card set for the card-script model bake-off (#2491). gold = cards this repo already scripts by hand (never used as few-shot examples); a draft is scored against the hand-written script. new = unscripted Standard cards with the outcome the current op set should produce: draft when every ability fits the documented ops, needs_new_op when any part doesn't, either when it is ambiguous. Both sets are held out of the SFT training export (#2915): the export fails if any bake-off card reaches train.jsonl, or if a 'new' card gains an accepted script (refresh this list instead). 'new' refreshed 2026-11-11 (#2915): the 6 cards scripted since curation (Shock, Release the Dogs, Auspicious Arrival, Sephiroth's Intervention, Skeleton Archer, Lightshell Duo) replaced by Billowing Shriekmass, Ethereal Armor, Rancorous Archaic, Searslicer Goblin (all needs_new_op: threshold conditional static / scaling aura static / converge / end-step raid trigger), Doomed Traveler and Archon of Sun's Grace (both draft: dies-token trigger / ETB gain-life, both inside the documented op set).",
   "gold": [
     "Bilbo's Deadly Slice",
     "Cancel",
@@ -36,10 +36,6 @@
       "expect": "needs_new_op"
     },
     {
-      "name": "Shock",
-      "expect": "draft"
-    },
-    {
       "name": "Blitzball Shot",
       "expect": "needs_new_op"
     },
@@ -52,24 +48,12 @@
       "expect": "needs_new_op"
     },
     {
-      "name": "Release the Dogs",
-      "expect": "draft"
-    },
-    {
       "name": "Defibrillating Current",
       "expect": "needs_new_op"
     },
     {
       "name": "The Chase Is On",
       "expect": "needs_new_op"
-    },
-    {
-      "name": "Auspicious Arrival",
-      "expect": "needs_new_op"
-    },
-    {
-      "name": "Sephiroth's Intervention",
-      "expect": "draft"
     },
     {
       "name": "Crustacean Commando",
@@ -100,10 +84,6 @@
       "expect": "needs_new_op"
     },
     {
-      "name": "Skeleton Archer",
-      "expect": "draft"
-    },
-    {
       "name": "Tunnel Surveyor",
       "expect": "needs_new_op"
     },
@@ -124,10 +104,6 @@
       "expect": "draft"
     },
     {
-      "name": "Lightshell Duo",
-      "expect": "draft"
-    },
-    {
       "name": "Vault Plunderer",
       "expect": "draft"
     },
@@ -142,6 +118,30 @@
     {
       "name": "Mysidian Elder",
       "expect": "needs_new_op"
+    },
+    {
+      "name": "Billowing Shriekmass",
+      "expect": "needs_new_op"
+    },
+    {
+      "name": "Ethereal Armor",
+      "expect": "needs_new_op"
+    },
+    {
+      "name": "Rancorous Archaic",
+      "expect": "needs_new_op"
+    },
+    {
+      "name": "Searslicer Goblin",
+      "expect": "needs_new_op"
+    },
+    {
+      "name": "Doomed Traveler",
+      "expect": "draft"
+    },
+    {
+      "name": "Archon of Sun's Grace",
+      "expect": "draft"
     }
   ]
 }

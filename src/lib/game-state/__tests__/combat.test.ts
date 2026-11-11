@@ -209,6 +209,53 @@ describe("Combat System - Attacker Declaration", () => {
       expect(result.canAttack).toBe(true);
     });
 
+    // Issue #2872 — CR 702.3d / 702.13: a creature with defender can't attack.
+    it("should prevent a defender creature from attacking (untapped)", () => {
+      const { state, aliceId, bobId } = setupGameWithCreatures([
+        { name: "Wall of Wood", power: 0, toughness: 3, keywords: ["Defender"] },
+      ]);
+
+      const battlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      const creatureId = battlefield.cardIds[0];
+
+      const result = canAttack(state, creatureId, bobId);
+      expect(result.canAttack).toBe(false);
+      expect(result.reason).toBe("Creature has defender");
+    });
+
+    it("should report the defender reason for a tapped defender creature", () => {
+      const { state, aliceId, bobId } = setupGameWithCreatures([
+        { name: "Wall of Wood", power: 0, toughness: 3, keywords: ["Defender"] },
+      ]);
+
+      const battlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      const creatureId = battlefield.cardIds[0];
+      state.cards.get(creatureId)!.isTapped = true;
+
+      const result = canAttack(state, creatureId, bobId);
+      expect(result.canAttack).toBe(false);
+      expect(result.reason).toBe("Creature has defender");
+    });
+
+    it("should prevent a defender creature with haste from attacking despite summoning sickness", () => {
+      const { state, aliceId, bobId } = setupGameWithCreatures([
+        {
+          name: "Hasty Wall",
+          power: 0,
+          toughness: 3,
+          keywords: ["Defender", "Haste"],
+        },
+      ]);
+
+      const battlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      const creatureId = battlefield.cardIds[0];
+      state.cards.get(creatureId)!.hasSummoningSickness = true;
+
+      const result = canAttack(state, creatureId, bobId);
+      expect(result.canAttack).toBe(false);
+      expect(result.reason).toBe("Creature has defender");
+    });
+
     it("should prevent non-creature from attacking", () => {
       let state = createInitialGameState(["Alice", "Bob"], 20, false);
       state = startGame(state);
@@ -1446,6 +1493,23 @@ describe("Combat System - Utility Functions", () => {
       expect(available).toContain(creatureIds[2]);
       expect(available).not.toContain(creatureIds[1]);
     });
+
+    it("should exclude defender creatures but include normal creatures (issue #2872)", () => {
+      const { state, aliceId } = setupGameWithCreatures(
+        [
+          { name: "Grizzly Bears", power: 2, toughness: 2 },
+          { name: "Wall of Wood", power: 0, toughness: 3, keywords: ["Defender"] },
+        ],
+        [],
+      );
+
+      const aliceBattlefield = state.zones.get(`${aliceId}-battlefield`)!;
+      const creatureIds = aliceBattlefield.cardIds;
+
+      const available = getAvailableAttackers(state, aliceId);
+      expect(available).toContain(creatureIds[0]);
+      expect(available).not.toContain(creatureIds[1]);
+    });
   });
 
   describe("getAvailableBlockers", () => {
@@ -1469,6 +1533,19 @@ describe("Combat System - Utility Functions", () => {
 
       expect(available).toContain(creatureIds[0]);
       expect(available).not.toContain(creatureIds[1]);
+    });
+
+    it("should return defender creatures as available blockers (issue #2872)", () => {
+      const { state, bobId } = setupGameWithCreatures(
+        [],
+        [{ name: "Wall of Wood", power: 0, toughness: 3, keywords: ["Defender"] }],
+      );
+
+      const bobBattlefield = state.zones.get(`${bobId}-battlefield`)!;
+      const creatureIds = bobBattlefield.cardIds;
+
+      const available = getAvailableBlockers(state, bobId);
+      expect(available).toContain(creatureIds[0]);
     });
   });
 });

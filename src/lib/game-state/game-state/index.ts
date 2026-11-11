@@ -13,9 +13,13 @@ import type {
   Zone,
   Player,
 } from "../types";
-import { Phase } from "../types";
+import { Phase, ZoneType } from "../types";
 import type { ScryfallCard } from "../types";
-import { createCardInstance, untapOrRemoveStun } from "../card-instance";
+import {
+  createCardInstance,
+  resetDamage,
+  untapOrRemoveStun,
+} from "../card-instance";
 import { createPlayerZones, createSharedZones } from "../zones";
 import { isPriorityPlayer } from "../priority-guard";
 import {
@@ -46,6 +50,7 @@ import {
   HAND_SIZE_DISCARD_CHOICE_TYPE,
   createHandSizeDiscardChoice,
   discardToHandSize,
+  getPlayerMaxHandSize,
   validateHandSizeDiscard,
 } from "../keyword-actions/hand-size";
 import {
@@ -585,6 +590,55 @@ export function processUntapStep(state: GameState): UntapStepResult {
 }
 
 /**
+ * CR 514.2: at the cleanup step, all damage marked on permanents is removed.
+ *
+ * Applies {@link resetDamage} to every card on every battlefield so that
+ * marked damage does not linger into the next turn (issue #2873).
+ *
+ * The returned state keeps the surrounding code's immutable style: a fresh
+ * `cards` Map is built and only the changed entries are replaced.
+ */
+function applyCleanupDamageRemoval(state: GameState): GameState {
+  const updatedCards = new Map(state.cards);
+  let changed = false;
+
+  // Battlefield zones are per-player; collect every card that is a permanent
+  // on one of them (both the zone card list and the card's cached zone key
+  // are consulted so legacy cards are not missed).
+  const battlefieldZoneKeys = new Set<string>();
+  for (const [zoneKey, zone] of state.zones) {
+    if (zone.type === ZoneType.BATTLEFIELD) battlefieldZoneKeys.add(zoneKey);
+  }
+
+  const battlefieldCardIds = new Set<CardInstanceId>();
+  for (const zone of state.zones.values()) {
+    if (zone.type !== ZoneType.BATTLEFIELD) continue;
+    for (const cardId of zone.cardIds) battlefieldCardIds.add(cardId);
+  }
+  for (const card of updatedCards.values()) {
+    if (card.currentZoneKey && battlefieldZoneKeys.has(card.currentZoneKey)) {
+      battlefieldCardIds.add(card.id);
+    }
+  }
+
+  for (const cardId of battlefieldCardIds) {
+    const card = updatedCards.get(cardId);
+    if (!card || card.damage === 0) continue;
+
+    updatedCards.set(cardId, resetDamage(card));
+    changed = true;
+  }
+
+  if (!changed) return state;
+
+  return {
+    ...state,
+    cards: updatedCards,
+    lastModifiedAt: Date.now(),
+  };
+}
+
+/**
  * Advance to the next phase
  */
 function advanceToNextPhase(state: GameState): GameState {
@@ -732,6 +786,41 @@ function advanceToNextPhase(state: GameState): GameState {
     priorityPlayerId: state.turn.activePlayerId,
   };
 
+  // CR 514.2 (issue #2873): at the cleanup step, all damage marked on
+  // permanents is removed. Without this, damage lingers across turns and a
+  // later ping can wrongly kill a creature that already "survived" cleanup.
+  if (nextPhase.currentPhase === Phase.CLEANUP) {
+    const afterCleanup = applyCleanupDamageRemoval(advanced);
+
+    // CR 514.1 (issue #2875): the cleanup step opens with the active player
+    // discarding down to their maximum hand size (7 by default). Only the
+    // ACTIVE player's hand is ever touched; the other players keep theirs.
+    //
+    // The player picks the cards, so the turn pauses on a waiting choice of
+    // the existing cleanup-discard shape (`discard_to_hand_size`, the
+    // machinery shipped with issue #2446): answering it moves the chosen
+    // cards hand -> graveyard and the turn continues. A player whose
+    // maximum hand size is not finite (e.g. Infinity) is skipped, and so is
+    // a state that already has a choice pending (never clobber it).
+    const activePlayerId = state.turn.activePlayerId;
+    const maxHandSize = getPlayerMaxHandSize(afterCleanup, activePlayerId);
+    if (Number.isFinite(maxHandSize) && !afterCleanup.waitingChoice) {
+      const discardChoice = createHandSizeDiscardChoice(
+        afterCleanup,
+        activePlayerId,
+      );
+      if (discardChoice) {
+        return {
+          ...afterCleanup,
+          waitingChoice: discardChoice,
+          priorityPlayerId: activePlayerId,
+        };
+      }
+    }
+
+    return afterCleanup;
+  }
+
   // CR 503.1a: "at the beginning of your/each upkeep" triggers (#2498).
   if (nextPhase.currentPhase === Phase.UPKEEP) {
     return fireUpkeepTriggers(advanced, state.turn.activePlayerId);
@@ -788,9 +877,13 @@ function resolveHandSizeDiscard(
   if (!discarded.success) {
     return { success: false, state, description: discarded.description };
   }
+  // CR 514.3 (issue #2875): re-check the state-based actions after the
+  // discard, so the post-discard state is stable when the cleanup step is
+  // looked at again (a second cleanup pass must not discard any more).
+  const afterSBA = checkSBAs(discarded.state).state;
   return {
     success: true,
-    state: advanceToNextPhase(discarded.state),
+    state: advanceToNextPhase(afterSBA),
     description: discarded.description,
   };
 }

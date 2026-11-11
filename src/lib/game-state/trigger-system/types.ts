@@ -5,7 +5,7 @@ import type {
   CardInstanceId,
   CardInstance,
 } from "../types";
-import type { TriggeredAbilityInstance } from "../abilities";
+import type { TriggerContext, TriggeredAbilityInstance } from "../abilities";
 import { evaluateInterveningIfClause } from "../abilities";
 import { hasProwess, getProwessInstanceCount } from "../evergreen-keywords";
 import {
@@ -47,13 +47,24 @@ export enum TriggerConditionType {
   MONARCHY_CHANGE = "monarchyChange",
 }
 
-export interface TriggerDetectionContext {
-  sourceCardId?: CardInstanceId;
-  damageAmount?: number;
-  damageTarget?: PlayerId | CardInstanceId;
-  lifeLostPlayer?: PlayerId;
-  lifeLostAmount?: number;
-  spellCardId?: CardInstanceId;
+/**
+ * Detector-side trigger context. It is a narrowed view of the shared
+ * `TriggerContext` (issue #2874): the detector always knows which trigger
+ * condition fired, so `triggerType` is required here, while the shared
+ * context keeps it optional for non-detector producers. Because every field
+ * is drawn from `TriggerContext`, a detection context is assignable to it
+ * without a cast.
+ */
+export interface TriggerDetectionContext
+  extends Pick<
+    TriggerContext,
+    | "sourceCardId"
+    | "damageAmount"
+    | "damageTarget"
+    | "lifeLostPlayer"
+    | "lifeLostAmount"
+    | "spellCardId"
+  > {
   triggerType: TriggerConditionType;
 }
 

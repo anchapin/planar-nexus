@@ -24,6 +24,18 @@
  * with both decks. `--expert-record both` (manamind#96) also records the
  * Expert AI's decisions as one-hot targets with `source: "expert"`;
  * default `net` keeps the old format. Prints a one-line throughput summary.
+ *
+ * `--opponent-model <path>` (manamind#27): the net plays a frozen snapshot
+ * loaded from an ONNX path, same search recipe as the net. Its seat
+ * alternates like the Expert games; only the net's decisions are recorded
+ * and rows carry `opponent: "model"` plus `netSeat`. Mutually exclusive
+ * with `--opponent expert`.
+ *
+ * `--probe collect` (manamind#106): each net decision also carries
+ * the search's per-candidate value-head reads (`probe.visits`, the
+ * mean leaf `q` over dealt worlds, null when unvisited) and the
+ * search's own pick index, for the prediction-rerank analysis.
+ * Recording only; play is unchanged.
  */
 import { createWriteStream, readFileSync } from "node:fs";
 import { createGzip } from "node:zlib";
@@ -61,9 +73,18 @@ async function main() {
     throw new Error(`--c-scale must be a positive number, not ${cScaleArg}`);
   const deckNames = [arg("deck-a", "aggro"), arg("deck-b", "midrange")];
   const decks = [simDeck(deckNames[0]), simDeck(deckNames[1])];
-  const opponent = arg("opponent", "self");
-  if (opponent !== "self" && opponent !== "expert")
-    throw new Error(`--opponent must be self or expert, not ${opponent}`);
+  const opponentArg = arg("opponent", "self");
+  if (opponentArg !== "self" && opponentArg !== "expert")
+    throw new Error(`--opponent must be self or expert, not ${opponentArg}`);
+  const opponentModelPath = arg("opponent-model", "");
+  if (opponentModelPath && opponentArg === "expert")
+    throw new Error(
+      "--opponent-model replaces --opponent; drop --opponent expert (manamind#27)",
+    );
+  const opponent = opponentModelPath ? "model" : opponentArg;
+  const probe = arg("probe", "") === "collect";
+  if (!probe && process.argv.includes("--probe"))
+    throw new Error("--probe must be collect (manamind#106)");
   const expertRecord = arg("expert-record", "net");
   if (expertRecord !== "net" && expertRecord !== "both")
     throw new Error(`--expert-record must be net or both, not ${expertRecord}`);
@@ -72,6 +93,12 @@ async function main() {
     ortNode as unknown as ForgeOrtLike,
     readFileSync(modelPath),
   );
+  const opponentModel = opponentModelPath
+    ? await createForgePointerModel(
+        ortNode as unknown as ForgeOrtLike,
+        readFileSync(opponentModelPath),
+      )
+    : undefined;
   const file = createWriteStream(out);
   const sink = out.endsWith(".gz") ? createGzip() : null;
   if (sink) sink.pipe(file);
@@ -97,10 +124,12 @@ async function main() {
       exploreMoves,
       maxTurns,
       opponent,
+      ...(opponentModel ? { opponentModel } : {}),
       netSeat,
       expertRecord,
       pick,
       cScale,
+      probe,
     });
     decisions += game.decisions.length;
     expertDecisions += game.decisions.filter(
@@ -113,9 +142,9 @@ async function main() {
     wins[game.winner === null ? 2 : game.winner]++;
     write(
       JSON.stringify(
-        opponent === "expert"
-          ? { ...game, swap, opponent, netSeat }
-          : { ...game, swap },
+        opponent === "self"
+          ? { ...game, swap }
+          : { ...game, swap, opponent, netSeat },
       ) + "\n",
     );
   }
@@ -130,6 +159,7 @@ async function main() {
       opponent,
       decisions,
       ...(opponent === "expert" ? { expert_decisions: expertDecisions } : {}),
+      ...(opponent === "model" ? { opponent_model: opponentModelPath } : {}),
       seat0_wins: wins[0],
       seat1_wins: wins[1],
       draws: wins[2],

@@ -707,6 +707,7 @@ describe("mana mutation suite — getSpellManaCost boundaries (#1717)", () => {
     const cost = getSpellManaCost({ mana_cost: "{X}{2}{R}" });
     expect(cost).toEqual({
       generic: 2,
+      colorless: 0,
       white: 0,
       blue: 0,
       black: 0,
@@ -719,6 +720,24 @@ describe("mana mutation suite — getSpellManaCost boundaries (#1717)", () => {
   it("an unhandled symbol contributes nothing and does not set hasX", () => {
     expect(getSpellManaCost({ mana_cost: "{S}" })).toEqual({
       generic: 0,
+      colorless: 0,
+      white: 0,
+      blue: 0,
+      black: 0,
+      red: 0,
+      green: 0,
+      hasX: false,
+    });
+  });
+
+  // #2870: `{C}` is a first-class mana type in this subsystem (the
+  // oracle-text parser counts it as `colorless` and mana production puts
+  // it in the pool's colorless bucket), so the cost parser must count it
+  // too instead of dropping the pip.
+  it("a {C} symbol is counted as a colorless pip", () => {
+    expect(getSpellManaCost({ mana_cost: "{1}{C}" })).toEqual({
+      generic: 1,
+      colorless: 1,
       white: 0,
       blue: 0,
       black: 0,

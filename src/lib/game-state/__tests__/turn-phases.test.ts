@@ -30,6 +30,80 @@ import {
   getPhaseShortName,
 } from '../turn-phases';
 import { Phase } from '../types';
+import {
+  createInitialGameState,
+  startGame,
+  passPriority,
+  checkStateBasedActions,
+} from '../game-state';
+import { createCardInstance } from '../card-instance';
+import { dealDamageToCard } from '../keyword-actions';
+import { discardToHandSize } from '../keyword-actions/hand-size';
+import { resolveWaitingChoice } from '../spell-casting';
+import type { GameState, PlayerId, ScryfallCard } from '../types';
+
+/**
+ * Mock creature card data for the cleanup-step tests (CR 514.2, #2873).
+ */
+function mockCreature(name: string, power: number, toughness: number): ScryfallCard {
+  return {
+    id: `mock-${name.toLowerCase().replace(/\s+/g, '-')}`,
+    name,
+    type_line: 'Creature — Test',
+    power: power.toString(),
+    toughness: toughness.toString(),
+    keywords: [],
+    oracle_text: '',
+    mana_cost: '{1}',
+    cmc: 1,
+    colors: ['G'],
+    color_identity: ['G'],
+    legalities: { standard: 'legal', commander: 'legal' },
+    card_faces: undefined,
+    layout: 'normal',
+  } as ScryfallCard;
+}
+
+/**
+ * Put a creature with `damage` marked on the given player's battlefield.
+ */
+function putDamagedCreature(
+  state: GameState,
+  playerId: PlayerId,
+  damage: number,
+  toughness = 4,
+): { state: GameState; cardId: string } {
+  const data = mockCreature('Damaged Bear', 2, toughness);
+  const zoneKey = `${playerId}-battlefield`;
+  const card = createCardInstance(data, playerId, playerId, {
+    currentZoneKey: zoneKey,
+  });
+  const damaged = { ...card, damage };
+
+  const cards = new Map(state.cards);
+  cards.set(card.id, damaged);
+  const zones = new Map(state.zones);
+  const zone = zones.get(zoneKey)!;
+  zones.set(zoneKey, { ...zone, cardIds: [...zone.cardIds, card.id] });
+
+  return {
+    state: { ...state, cards, zones },
+    cardId: card.id,
+  };
+}
+
+/**
+ * Advance the game until the turn reaches `target` by passing priority for
+ * the player who currently holds it (CR 117.4).
+ */
+function advanceToPhase(state: GameState, target: Phase): GameState {
+  let current = state;
+  for (let i = 0; i < 60 && current.turn.currentPhase !== target; i++) {
+    const holder = current.priorityPlayerId!;
+    current = passPriority(current, holder);
+  }
+  return current;
+}
 
 describe('Turn Phases - Phase Progression', () => {
   describe('getNextPhase', () => {
@@ -448,5 +522,256 @@ describe('Turn Phases - Edge Cases', () => {
     turn = startNextTurn(turn, 'player-1', false);
     expect(turn.extraTurns).toBe(0);
     expect(hasExtraTurn(turn)).toBe(false);
+  });
+});
+describe('Cleanup step - CR 514.2 damage removal (issue #2873)', () => {
+  function setup(damage = 3, toughness = 4) {
+    const state = startGame(createInitialGameState(['Alice', 'Bob'], 20, false));
+    const aliceId = Array.from(state.players.keys())[0] as PlayerId;
+    const placed = putDamagedCreature(state, aliceId, damage, toughness);
+    return { state: placed.state, cardId: placed.cardId, aliceId };
+  }
+
+  it('removes marked damage when the phase advances into cleanup, and not before', () => {
+    const { state, cardId } = setup(3, 4);
+
+    const midTurn = advanceToPhase(state, Phase.POSTCOMBAT_MAIN);
+    expect(midTurn.turn.currentPhase).toBe(Phase.POSTCOMBAT_MAIN);
+    expect(midTurn.cards.get(cardId as never)?.damage).toBe(3);
+
+    const cleanup = advanceToPhase(midTurn, Phase.CLEANUP);
+    expect(cleanup.turn.currentPhase).toBe(Phase.CLEANUP);
+    expect(cleanup.cards.get(cardId as never)?.damage).toBe(0);
+  });
+
+  it('a creature at toughness - damage = 1 is not killed by a 1-damage ping after cleanup', () => {
+    const { state, cardId, aliceId } = setup(3, 4);
+
+    const cleanup = advanceToPhase(state, Phase.CLEANUP);
+    expect(cleanup.cards.get(cardId as never)?.damage).toBe(0);
+
+    // Advance into the next turn.
+    let next = cleanup;
+    for (let i = 0; i < 80 && next.turn.turnNumber < 2; i++) {
+      next = passPriority(next, next.priorityPlayerId!);
+    }
+    expect(next.turn.turnNumber).toBe(2);
+    expect(next.cards.get(cardId as never)?.damage).toBe(0);
+
+    // A fresh 1-damage ping is not lethal on its own terms (1 < 4).
+    const pinged = dealDamageToCard(next, cardId as never, 1);
+    expect(pinged.success).toBe(true);
+    const afterSba = checkStateBasedActions(pinged.state);
+    const battlefield = afterSba.zones.get(`${aliceId}-battlefield`)!;
+    expect(battlefield.cardIds).toContain(cardId);
+    expect(afterSba.cards.get(cardId as never)?.damage).toBe(1);
+  });
+});
+
+/**
+ * Cleanup step - CR 514.1 maximum hand size (issue #2875).
+ *
+ * As the cleanup step begins, the ACTIVE player discards down to their
+ * maximum hand size (7 by default). The player picks the cards, so the turn
+ * pauses on a pending discard choice; answering it moves the chosen cards
+ * hand -> graveyard and the turn continues. Only the active player's hand is
+ * ever touched.
+ */
+describe('Cleanup step - CR 514.1 maximum hand size (issue #2875)', () => {
+  /** Mock card data for the hand-size cards. */
+  function mockCard(name: string): ScryfallCard {
+    return {
+      id: `mock-${name.toLowerCase().replace(/\s+/g, '-')}`,
+      name,
+      type_line: 'Instant',
+      oracle_text: '',
+      mana_cost: '{U}',
+      cmc: 1,
+      colors: ['U'],
+      color_identity: ['U'],
+      keywords: [],
+      legalities: { standard: 'legal' },
+      layout: 'normal',
+    } as unknown as ScryfallCard;
+  }
+
+  /** Replace the player's hand with `count` fresh cards named `${prefix}-N`. */
+  function setHand(
+    state: GameState,
+    playerId: PlayerId,
+    count: number,
+    prefix: string,
+  ): GameState {
+    const zoneKey = `${playerId}-hand`;
+    const cards = new Map(state.cards);
+    const zones = new Map(state.zones);
+    const zone = zones.get(zoneKey)!;
+    const ids: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const id = `${prefix}-${i}`;
+      cards.set(
+        id,
+        createCardInstance(mockCard(`${prefix} ${i}`), playerId, playerId, {
+          id,
+          currentZoneKey: zoneKey,
+        }),
+      );
+      ids.push(id);
+    }
+    zones.set(zoneKey, { ...zone, cardIds: ids });
+    return { ...state, cards, zones };
+  }
+
+  /** Raise (or lower) the player's maximum hand size directly. */
+  function setMaxHandSize(
+    state: GameState,
+    playerId: PlayerId,
+    size: number,
+  ): GameState {
+    const players = new Map(state.players);
+    players.set(playerId, {
+      ...players.get(playerId)!,
+      maxHandSize: size,
+    });
+    return { ...state, players };
+  }
+
+  const handSize = (state: GameState, playerId: PlayerId) =>
+    state.zones.get(`${playerId}-hand`)!.cardIds.length;
+
+  const graveyardSize = (state: GameState, playerId: PlayerId) =>
+    state.zones.get(`${playerId}-graveyard`)!.cardIds.length;
+
+  /**
+   * A two-player game with the active player's hand set to `active` cards,
+   * the other player's hand set to `other` cards, and (optionally) the
+   * active player's maximum hand size raised to `maxHandSize`.
+   */
+  function setup(
+    active: number,
+    other: number,
+    maxHandSize?: number,
+  ): { state: GameState; active: PlayerId; other: PlayerId } {
+    let state = startGame(createInitialGameState(['Alice', 'Bob'], 20, false));
+    const activeId = state.turn.activePlayerId;
+    const otherId = Array.from(state.players.keys()).find(
+      (id) => id !== activeId,
+    )!;
+    state = setHand(state, activeId, active, 'a');
+    state = setHand(state, otherId, other, 'b');
+    if (maxHandSize !== undefined) {
+      state = setMaxHandSize(state, activeId, maxHandSize);
+    }
+    return { state, active: activeId, other: otherId };
+  }
+
+  it('offers a discard choice for exactly the excess cards when cleanup begins', () => {
+    const { state, active } = setup(9, 3);
+
+    const cleanup = advanceToPhase(state, Phase.CLEANUP);
+    expect(cleanup.turn.currentPhase).toBe(Phase.CLEANUP);
+
+    const choice = cleanup.waitingChoice;
+    expect(choice).not.toBeNull();
+    expect(choice!.type).toBe('discard_to_hand_size');
+    expect(choice!.playerId).toBe(active);
+    expect(choice!.minChoices).toBe(2);
+    expect(choice!.maxChoices).toBe(2);
+    expect(choice!.choices).toHaveLength(9);
+  });
+
+  it('offers no choice when the hand is exactly at the limit', () => {
+    const { state, active } = setup(7, 3);
+
+    const cleanup = advanceToPhase(state, Phase.CLEANUP);
+    expect(cleanup.turn.currentPhase).toBe(Phase.CLEANUP);
+    expect(cleanup.waitingChoice).toBeNull();
+    expect(handSize(cleanup, active)).toBe(7);
+    expect(graveyardSize(cleanup, active)).toBe(0);
+  });
+
+  it('offers no choice when the maximum hand size is raised', () => {
+    const { state, active } = setup(8, 3, 9);
+
+    const cleanup = advanceToPhase(state, Phase.CLEANUP);
+    expect(cleanup.turn.currentPhase).toBe(Phase.CLEANUP);
+    expect(cleanup.waitingChoice).toBeNull();
+    expect(handSize(cleanup, active)).toBe(8);
+    expect(graveyardSize(cleanup, active)).toBe(0);
+  });
+
+  it('skips a player whose maximum hand size is not finite', () => {
+    const { state, active } = setup(9, 3, Infinity);
+
+    const cleanup = advanceToPhase(state, Phase.CLEANUP);
+    expect(cleanup.turn.currentPhase).toBe(Phase.CLEANUP);
+    expect(cleanup.waitingChoice).toBeNull();
+    expect(handSize(cleanup, active)).toBe(9);
+    expect(graveyardSize(cleanup, active)).toBe(0);
+  });
+
+  it('never touches the other players hands', () => {
+    const { state, active, other } = setup(9, 5);
+
+    const cleanup = advanceToPhase(state, Phase.CLEANUP);
+    expect(cleanup.waitingChoice!.playerId).toBe(active);
+    expect(handSize(cleanup, other)).toBe(5);
+    expect(graveyardSize(cleanup, other)).toBe(0);
+
+    const answered = resolveWaitingChoice(cleanup, active, ['a-0', 'a-1']);
+    expect(answered.success).toBe(true);
+    expect(handSize(answered.state, other)).toBe(5);
+    expect(graveyardSize(answered.state, other)).toBe(0);
+  });
+
+  it('moves exactly the chosen cards to the graveyard and finishes the turn', () => {
+    const { state, active, other } = setup(9, 3);
+
+    const cleanup = advanceToPhase(state, Phase.CLEANUP);
+    const result = resolveWaitingChoice(cleanup, active, ['a-0', 'a-1']);
+    expect(result.success).toBe(true);
+
+    const after = result.state;
+    expect(after.waitingChoice).toBeNull();
+    expect(handSize(after, active)).toBe(7);
+    expect(graveyardSize(after, active)).toBe(2);
+    expect(after.zones.get(`${active}-graveyard`)!.cardIds).toEqual(
+      expect.arrayContaining(['a-0', 'a-1']),
+    );
+    expect(after.turn.activePlayerId).toBe(other);
+  });
+
+  it('discards exactly two cards under the deterministic default', () => {
+    const { state, active } = setup(9, 3);
+
+    const cleanup = advanceToPhase(state, Phase.CLEANUP);
+    expect(cleanup.waitingChoice).not.toBeNull();
+
+    // No human answer: the engine default drops the tail of the hand.
+    const defaulted = discardToHandSize(
+      { ...cleanup, waitingChoice: null },
+      active,
+    );
+    expect(defaulted.success).toBe(true);
+    expect(handSize(defaulted.state, active)).toBe(7);
+    expect(graveyardSize(defaulted.state, active)).toBe(2);
+  });
+
+  it('is stable: a later cleanup pass discards nothing more', () => {
+    const { state, active } = setup(9, 3);
+
+    const cleanup = advanceToPhase(state, Phase.CLEANUP);
+    const answered = resolveWaitingChoice(cleanup, active, ['a-0', 'a-1']);
+    expect(answered.success).toBe(true);
+    const after = answered.state;
+
+    // The next cleanup step (the other player's turn) must not offer a
+    // second discard for the player who already discarded, and the cards
+    // that were discarded stay in the graveyard.
+    const nextCleanup = advanceToPhase(after, Phase.CLEANUP);
+    expect(nextCleanup.turn.currentPhase).toBe(Phase.CLEANUP);
+    expect(nextCleanup.waitingChoice).toBeNull();
+    expect(handSize(nextCleanup, active)).toBe(7);
+    expect(graveyardSize(nextCleanup, active)).toBe(2);
   });
 });

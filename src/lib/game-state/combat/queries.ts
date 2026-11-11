@@ -5,7 +5,12 @@
  * Issue #817: First Strike and Double Strike combat implementation (CR 702.7, CR 702.4)
  */
 
-import type { GameState, CardInstanceId, PlayerId } from "../types";
+import type {
+  GameState,
+  CardInstance,
+  CardInstanceId,
+  PlayerId,
+} from "../types";
 import { Phase, isOnBattlefield } from "../types";
 import {
   isCreature,
@@ -29,13 +34,52 @@ import {
   getMenaceMinimumBlockers,
   getLandwalkTypes,
   hasHaste,
+  hasDefender,
 } from "../evergreen-keywords";
-import { hasDefenderStrict } from "../keyword-actions/defender";
 import { hasFlyingStrict } from "../keyword-actions/flying";
 import { hasReachStrict } from "../keyword-actions/reach";
 import { hasVigilanceStrict } from "../keyword-actions/vigilance";
 import { isThresholdUnblockable } from "../keyword-actions/threshold";
 import { cantBeBlockedThisTurn } from "../pt-until-end-of-turn";
+
+/**
+ * CR 702.13 — does this permanent have the defender keyword?
+ *
+ * Issue #2872. Two sources are consulted:
+ *
+ *   1. `evergreen-keywords.hasDefender` — the canonical predicate for the
+ *      card's OWN defender keyword. It delegates to `hasDefenderStrict`,
+ *      which reads ONLY the parsed `cardData.keywords` array, so a card
+ *      whose oracle text merely MENTIONS "defender" (a grant to other
+ *      creatures, flavor text) does not become a defender. This matches
+ *      the local pattern used by the neighbouring checks in this file
+ *      (`hasVigilanceStrict`, `hasFlyingStrict`, …).
+ *   2. The granted-keyword ledgers (`auraKeywords`, `equipmentKeywords`,
+ *      `scriptStaticKeywords`, `embeddedStaticKeywords`,
+ *      `untilEndOfTurnKeywords`, `grantedKeywordsUntilEot`) — a creature
+ *      that has been GIVEN defender by a continuous effect also cannot
+ *      attack (CR 702.13). These ledgers are consulted directly rather
+ *      than through `evergreen-keywords.hasKeyword`, because that helper
+ *      falls back to the anchored oracle parse, which would keep reading
+ *      "Defender" off a card whose parsed keyword array was stripped by a
+ *      layer-6 effect (the `hasDefenderStrict` contract requires the
+ *      stripped card to be able to attack again).
+ */
+function hasDefenderKeyword(card: CardInstance): boolean {
+  if (hasDefender(card)) return true;
+
+  const grantedLedgers = [
+    card.auraKeywords,
+    card.equipmentKeywords,
+    card.scriptStaticKeywords,
+    card.embeddedStaticKeywords,
+    card.untilEndOfTurnKeywords,
+    card.grantedKeywordsUntilEot,
+  ];
+  return grantedLedgers.some(
+    (ledger) => ledger?.some((k) => k.trim().toLowerCase() === "defender") ?? false,
+  );
+}
 
 /**
  * Result of a combat action
@@ -61,6 +105,28 @@ export function canAttack(
   const battlefield = state.zones.get(battlefieldZoneKey);
   if (!battlefield || !battlefield.cardIds.includes(cardId)) {
     return { canAttack: false, reason: "Card must be on the battlefield" };
+  }
+
+  // CR 702.13 — defender: this creature can't attack.
+  //
+  // Issue #2872: this guard is evaluated BEFORE the tapped / summoning
+  // sickness checks so a defender creature always reports the defender
+  // reason, whatever else is true of it (tapped, summoning sickness,
+  // haste or no haste). Previously the check sat after those two, so a
+  // tapped defender reported "Creature is tapped" and a defender with
+  // summoning sickness reported the sickness instead of the reason that
+  // actually makes it unable to attack.
+  //
+  // Keyword source: `hasDefenderKeyword` above — the card's own parsed
+  // defender keyword (`evergreen-keywords.hasDefender`) plus the
+  // granted-keyword ledgers, so a defender granted by a continuous
+  // effect (Aura / Equipment / scripted static / until-end-of-turn)
+  // also prevents attacking (CR 702.13).
+  if (hasDefenderKeyword(card)) {
+    return {
+      canAttack: false,
+      reason: "Creature has defender",
+    };
   }
 
   // Must not be tapped (unless has vigilance)
@@ -92,17 +158,6 @@ export function canAttack(
         reason: "Summoning sickness (haste not granted)",
       };
     }
-  }
-
-  // CR 702.13 — defender: this creature can't attack.
-  // Consult the strict parsed-keywords check (not substring oracle text) so
-  // a card whose oracle text merely mentions "defender" (e.g. a continuous
-  // effect grant) is not incorrectly rejected. Issue #2293.
-  if (hasDefenderStrict(card)) {
-    return {
-      canAttack: false,
-      reason: "Creature has defender (CR 702.13)",
-    };
   }
 
   // CR 303.4 / Pacifism-style scripted Auras (issue #2568): an attached
@@ -298,8 +353,10 @@ export function getAvailableAttackers(
       if (!hasHaste(card)) return false;
     }
 
-    // CR 702.13 — defender creatures cannot attack. Issue #2293.
-    if (hasDefenderStrict(card)) return false;
+    // CR 702.13 — defender creatures cannot attack. Issue #2293, extended
+    // in issue #2872 to use the same layer-aware keyword source as
+    // `canAttack` (own parsed keyword + granted keyword ledgers).
+    if (hasDefenderKeyword(card)) return false;
 
     return true;
   });

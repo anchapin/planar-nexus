@@ -21,6 +21,11 @@
  * recorded; with `expertRecord: "both"` (manamind#96) the Expert AI's are
  * too, as one-hot targets with `source: "expert"`. Mixing these games into
  * the buffer keeps self-play training tied to an outside opponent.
+ *
+ * `opponent: "model"` (manamind#27) searches the other seat with a second
+ * ForgePointerModel (`opponentModel`, a frozen past snapshot), same search
+ * recipe as the net; only the net's decisions are recorded. The pool games
+ * diversify the training opponents beyond the current lineage.
  */
 
 import {
@@ -58,6 +63,15 @@ export interface SelfPlayDecision extends ForgeDecision {
    * none (the Expert AI's move is not search-scored).
    */
   rootValue?: number;
+  /**
+   * manamind#106 rerank probe (`selfplay-forge --probe collect`): the
+   * search's per-candidate value-head reads at this decision, in the
+   * search's candidate order (`visits` counts, mean leaf `q` over the
+   * dealt worlds, null when never visited) plus the search's own pick
+   * index. Analysis derives the value-head favorite from these;
+   * recording changes no play.
+   */
+  probe?: { visits: number[]; q: (number | null)[]; pick: number };
 }
 
 export interface SelfPlayGame {
@@ -106,15 +120,26 @@ export interface SelfPlayOptions {
    */
   cScale?: number;
   maxTurns?: number;
-  /** Who plays the other seat: the net itself (default) or the Expert AI. */
-  opponent?: "self" | "expert";
-  /** The net's seat when `opponent` is `"expert"` (default 0). */
+  /**
+   * Who plays the other seat: the net itself (default), the Expert AI, or
+   * a second model (`opponentModel`, manamind#27).
+   */
+  opponent?: "self" | "expert" | "model";
+  /** The frozen past snapshot when `opponent` is `"model"` (manamind#27). */
+  opponentModel?: ForgePointerModel;
+  /** The net's seat when the other seat is not the net (default 0). */
   netSeat?: 0 | 1;
   /**
    * When `opponent` is `"expert"`: record only the net's decisions
    * (`"net"`, default) or the Expert AI's too (`"both"`, manamind#96).
    */
   expertRecord?: "net" | "both";
+  /**
+   * Record the manamind#106 rerank probe on each net decision (the
+   * search's per-candidate value-head reads and its own pick).
+   * Default off; recording only.
+   */
+  probe?: boolean;
 }
 
 /**
@@ -275,9 +300,11 @@ export async function playSelfPlayGame(
     exploreMoves = Number.POSITIVE_INFINITY,
     maxTurns,
     opponent = "self",
+    opponentModel,
     netSeat = 0,
     expertRecord = "net",
     pick = "sample",
+    probe = false,
     cScale,
   } = options;
   const session = new TrainingSession({ maxTurns });
@@ -293,10 +320,28 @@ export async function playSelfPlayGame(
   // Exploration counts real choices only; forced passes would use it up
   // in the first turn.
   let choices = 0;
+  // The model opponent tracks its own exploration budget (manamind#27).
+  let oppChoices = 0;
   const attack = { prompts: 0, offered: 0, declared: 0 };
   while (prompt.kind !== "game_over") {
-    if (opponent === "expert" && seats.indexOf(prompt.playerId) !== netSeat) {
+    const oppSeat = seats.indexOf(prompt.playerId) !== netSeat;
+    if (oppSeat && opponent !== "self") {
       move++;
+      if (opponent === "model") {
+        if (!opponentModel)
+          throw new Error("opponent 'model' needs opponentModel");
+        const oppExploring = oppChoices < exploreMoves;
+        const oppResult = await forgeSearch(session, opponentModel, {
+          simulations,
+          seed: (seed * 7919 + move) >>> 0,
+          gumbel: pick === "gumbel" && oppExploring,
+          ...(cScale === undefined ? {} : { cScale }),
+          deckNames,
+        });
+        if (oppResult.candidates.length > 1) oppChoices++;
+        prompt = session.step(oppResult.action);
+        continue;
+      }
       const action = expertAction(session, prompt);
       if (expertRecord === "both") {
         const pi = expertTarget(prompt, action);
@@ -327,6 +372,15 @@ export async function playSelfPlayGame(
         source: "net",
         pi,
         rootValue: result.rootValue,
+        ...(probe && result.stats
+          ? {
+              probe: {
+                visits: result.stats.map((c) => c.visits),
+                q: result.stats.map((c) => c.q),
+                pick: result.index,
+              },
+            }
+          : {}),
       });
     }
     let action: TrainingAction = result.action;
