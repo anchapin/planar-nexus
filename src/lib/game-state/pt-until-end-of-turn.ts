@@ -9,6 +9,7 @@
  * triggers.
  */
 import type { GameState, CardInstanceId } from "./types";
+import { acquireCardMap } from "./sba-pass-cards";
 
 export interface PTUntilEndOfTurn {
   power: number;
@@ -119,7 +120,7 @@ export function clearUntilEndOfTurnPT(state: GameState): GameState {
       !card.animatedUntilEndOfTurn
     )
       continue;
-    cards ??= new Map(state.cards);
+    cards ??= acquireCardMap(state);
     const updated = {
       ...card,
       untilEndOfTurnPT: undefined,
@@ -180,7 +181,7 @@ export function restoreAnimatedOffBattlefield(state: GameState): GameState {
   for (const [id, card] of state.cards) {
     if (!card.animatedUntilEndOfTurn) continue;
     if (card.currentZoneKey?.endsWith("-battlefield")) continue;
-    cards ??= new Map(state.cards);
+    cards ??= acquireCardMap(state);
     const updated = { ...card, cardData: card.animatedUntilEndOfTurn.cardData };
     delete updated.animatedUntilEndOfTurn;
     cards.set(id, updated);
@@ -204,7 +205,7 @@ export function restorePermanentTypeOverlay(state: GameState): GameState {
   for (const [id, card] of state.cards) {
     if (!card.permanentTypeOverlay) continue;
     if (card.currentZoneKey?.endsWith("-battlefield")) continue;
-    cards ??= new Map(state.cards);
+    cards ??= acquireCardMap(state);
     const updated = { ...card, cardData: card.permanentTypeOverlay.cardData };
     delete updated.permanentTypeOverlay;
     cards.set(id, updated);
@@ -232,12 +233,14 @@ export function restorePermanentTypeOverlay(state: GameState): GameState {
  *
  * Returns the same state when nothing changed.
  */
-export function restorePermanentCopyOffBattlefield(state: GameState): GameState {
+export function restorePermanentCopyOffBattlefield(
+  state: GameState,
+): GameState {
   let cards: GameState["cards"] | null = null;
   for (const [id, card] of state.cards) {
     if (!card.permanentCopyPrintedCardData) continue;
     if (card.currentZoneKey?.endsWith("-battlefield")) continue;
-    cards ??= new Map(state.cards);
+    cards ??= acquireCardMap(state);
     const updated = {
       ...card,
       cardData: card.permanentCopyPrintedCardData,
@@ -277,7 +280,7 @@ export function clearUntilEndOfTurnKeywords(state: GameState): GameState {
   let cards: GameState["cards"] | null = null;
   for (const [id, card] of state.cards) {
     if (!card.untilEndOfTurnKeywords) continue;
-    cards ??= new Map(state.cards);
+    cards ??= acquireCardMap(state);
     cards.set(id, { ...card, untilEndOfTurnKeywords: undefined });
   }
   return cards ? { ...state, cards } : state;
