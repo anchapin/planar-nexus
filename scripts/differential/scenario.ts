@@ -32,6 +32,18 @@ export interface ScenarioPermanent {
 /** A card in a hidden or public zone, by name with an optional label. */
 export type ScenarioZoneCard = string | { card: string; id?: string };
 
+/**
+ * The six mana letters a scenario can seed and observe: white, blue, black,
+ * red, green and colorless. The engine's generic bucket is not seedable
+ * through the scenario shape, so it is never reported either.
+ */
+export const MANA_LETTERS = ["W", "U", "B", "R", "G", "C"] as const;
+
+export type ManaLetter = (typeof MANA_LETTERS)[number];
+
+/** A mana pool by colour letter. A letter left out means zero. */
+export type ManaPoolSpec = Partial<Record<ManaLetter, number>>;
+
 export interface ScenarioPlayer {
   life?: number;
   battlefield?: ScenarioPermanent[];
@@ -40,7 +52,7 @@ export interface ScenarioPlayer {
   /** Library contents, top first. A number means that many basic Forests. */
   library?: ScenarioZoneCard[] | number;
   /** Mana already in the pool, by colour letter: W U B R G C. */
-  manaPool?: Partial<Record<"W" | "U" | "B" | "R" | "G" | "C", number>>;
+  manaPool?: ManaPoolSpec;
 }
 
 /** A target: a labelled card (or the first card with that name), or a player. */
@@ -75,7 +87,14 @@ export type ScenarioAction =
     };
 
 export type ObservedField =
-  "life" | "battlefield" | "hand" | "graveyard" | "exile" | "library" | "stack";
+  | "life"
+  | "battlefield"
+  | "hand"
+  | "graveyard"
+  | "exile"
+  | "library"
+  | "stack"
+  | "manaPool";
 
 export interface Scenario {
   id: string;
@@ -111,6 +130,14 @@ export interface ExpectedPlayer {
   graveyard?: string[];
   exile?: string[];
   library?: number;
+  /**
+   * Expected mana pool, by colour letter (W U B R G C). ALL six letters are
+   * compared: a letter left out of the expectation means an expected value of
+   * zero, so `{}` asserts that the pool is completely empty. When the
+   * expectation is present and the observed player has no pool at all, that
+   * is a mismatch, never a silent pass.
+   */
+  manaPool?: ManaPoolSpec;
 }
 
 export interface ObservedPermanent {
@@ -129,6 +156,8 @@ export interface ObservedPlayer {
   graveyard?: string[];
   exile?: string[];
   library?: number;
+  /** The six mana letters, as observed. */
+  manaPool?: ManaPoolSpec;
 }
 
 /** Normalised outcome: every list is sorted so engines compare as sets. */
@@ -151,6 +180,7 @@ export const ALL_FIELDS: ObservedField[] = [
   "exile",
   "library",
   "stack",
+  "manaPool",
 ];
 
 /** Every card name a scenario mentions, for prefetching card data. */

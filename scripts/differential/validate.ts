@@ -34,6 +34,7 @@ export const OBSERVED_FIELDS = [
   "exile",
   "library",
   "stack",
+  "manaPool",
 ] as const;
 
 const phaseSchema = z.enum(PHASES);
@@ -59,6 +60,17 @@ const zoneCardSchema = z.union([
     .strict(),
 ]);
 
+/**
+ * A mana pool by colour letter (W U B R G C). A letter left out means zero:
+ * an expectation of `{}` asserts an empty pool.
+ */
+const manaPoolSchema = z
+  .partialRecord(
+    z.enum(["W", "U", "B", "R", "G", "C"]),
+    z.number().int().nonnegative(),
+  )
+  .optional();
+
 const playerSchema = z
   .object({
     life: z.number().int().optional(),
@@ -68,12 +80,7 @@ const playerSchema = z
     library: z
       .union([z.array(zoneCardSchema), z.number().int().nonnegative()])
       .optional(),
-    manaPool: z
-      .partialRecord(
-        z.enum(["W", "U", "B", "R", "G", "C"]),
-        z.number().int().nonnegative(),
-      )
-      .optional(),
+    manaPool: manaPoolSchema,
   })
   .strict();
 
@@ -149,6 +156,8 @@ const expectedPlayerSchema = z
     graveyard: z.array(z.string().min(1)).optional(),
     exile: z.array(z.string().min(1)).optional(),
     library: z.number().int().nonnegative().optional(),
+    /** Expected mana pool by colour letter; `{}` asserts an empty pool. */
+    manaPool: manaPoolSchema,
   })
   .strict();
 
