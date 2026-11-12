@@ -169,6 +169,25 @@ export interface CardInstance {
    */
   chosenProtectionFrom: string | null;
   /**
+   * Issue #2939: the player id chosen for a permanent with an
+   * `enter_choice` of `kind: "player"` ("as this enters, choose a
+   * player" — the True-Name Nemesis pattern). Stamped by
+   * `resolveEnterChoice` in `keyword-actions/enter-choice.ts`
+   * when the controller answers the `enter_choice` waiting
+   * choice; the stamped value is the `PlayerId` of a player who
+   * has not lost the game (the option list is built from the
+   * live `state.players` map, and the resolver re-validates
+   * `hasLost` against the live state at resolve time).
+   * `null` until the choice resolves, or on permanents that
+   * don't carry an `enter_choice: { kind: "player" }` script.
+   *
+   * The field is the bare engine arm only: no downstream static
+   * reads it yet (a "protection from the chosen player" consumer
+   * is a separate lane), so a stamped value is inert until such a
+   * consumer lands.
+   */
+  chosenPlayer: string | null;
+  /**
    * Wave 4.8 follow-up 31 priority 4
    * (lane 71) (#2614 follow-up): the
    * per-pair independent

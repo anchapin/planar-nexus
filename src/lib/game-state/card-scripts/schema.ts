@@ -5477,23 +5477,25 @@ export const CardScriptSchema = z
      *
      * v1 supports `kind: "color"` (W | U | B | R | G; Wave 4.7 lane
      * 39) and `kind: "creature_type"` (Wave 4.7 follow-up lane 44,
-     * #2705a; curated list of 10 types). The `player` arm is
-     * documented but not yet implemented in the engine — schema
-     * accepts it for forward compatibility, but
-     * `resolveEnterChoice` returns a friendly error if a card
-     * opts in.
+     * #2705a; curated list of 10 types). The `player` arm
+     * (issue #2939) is implemented: the engine surfaces ONE
+     * waitingChoice whose options are the LIVE player ids of the
+     * players who have not lost (the controller included — "as
+     * this enters, choose a player", the True-Name Nemesis
+     * pattern), and the resolver stamps `card.chosenPlayer`
+     * after re-validating the pick against the live state.
      *
      * `kind: "chosen_name"` (Wave 4.7 follow-up lane 48 schema
      * baseline, #2708 phase 1) is the Sorcerous Spyglass pattern
      * — "as this enters, look at an opponent's hand, then choose
-     * a card name". The schema accepts the enum value for
-     * forward compatibility; the full engine arm
-     * (look-at-hand, pick-a-card-name, stamp a chosen-name
-     * static) is multi-lane and tracks under #2708. Cards that
-     * opt in here today see `resolveEnterChoice` return a
-     * "not yet supported" error — same shape as the `player`
-     * arm. Phase 1 only adds the schema enum + a default-null
-     * `chosenCardName` field on `CardInstance`.
+     * a card name". The schema baseline only added the enum value
+     * + a default-null `chosenCardName` field on `CardInstance`;
+     * the ENGINE arm shipped in Wave 4.7 phase 2 lane 49
+     * (#2708 phase 2a) — it surfaces a `choose_cards`
+     * waitingChoice pointing at an opponent's hand and resolves
+     * through `resolveChosenName` (not through the
+     * `resolveEnterChoice` value-list path), stamping
+     * `card.chosenCardName`.
      *
      * `kind: "color_and_creature_type"` (Wave 4.8 follow-up lane
      * 56, #2614 follow-up) is the compound arm for "as this
