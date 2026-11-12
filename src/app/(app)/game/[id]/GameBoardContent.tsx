@@ -2712,6 +2712,13 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     setAttractionChoice(null);
   }, []);
 
+  // Slice 9 (issue #2418): stable close handler handed to the memoized
+  // ModeChoiceDialog (spell mode). Without it the inline arrow was a new
+  // function identity on every render and defeated the leaf's `memo`.
+  const handleSpellModeClose = useCallback(() => {
+    setSpellModeChoice(null);
+  }, []);
+
   // Slice 9 (issue #2418): stable callbacks handed to the memoized leaves.
   // The X value itself stays in the parent state, so the leaf only reports
   // the new value / the chosen cast.
@@ -3430,7 +3437,7 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
           (issue #2418, slice 9) */}
       <ModeChoiceDialog
         isOpen={!!spellModeChoice}
-        onClose={() => setSpellModeChoice(null)}
+        onClose={handleSpellModeClose}
         cardName={spellModeChoice?.cardName ?? ""}
         modes={spellModeChoice?.modes}
         selectionMode="single"
