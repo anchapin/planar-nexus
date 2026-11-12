@@ -103,13 +103,13 @@ source code would trigger false-positive `no-undef` errors.
 ```bash
 # 0 placeholders remain
 rg 'TODO: Implement validation' src/lib/game-state/__tests__/video-derived/   # → 1 (the guard file, by design)
-rg 'expect\([a-z_]+\.gameState\)\.toBeDefined\(\)' src/lib/game-state/__tests__/video-derived/   # → 0
+rg 'expect\\([a-z_]+\\.gameState\\)\\.toBeDefined\\(\\)' src/lib/game-state/__tests__/video-derived/   # → 0
 
 # Full test suite
 npm test --silent
 <!-- TEST_COUNT:START -->
-# → Test Suites: 881 passed, 881 total  (--listTests: 881 files)
-# → Tests: 15112 passed, 7 skipped, 15119 total
+# → Test Suites: 882 passed, 882 total  (--listTests: 882 files)
+# → Tests: 15122 passed, 7 skipped, 15129 total
 <!-- TEST_COUNT:END -->
 
 # Guard test alone
