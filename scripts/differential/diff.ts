@@ -113,6 +113,14 @@ export function diffExpected(
       );
     }
   }
+  // An ok-path error means an action failed inside the engine (a rejected
+  // cast, a stack that did not empty, an advanceTo that stopped short, an
+  // engine finding). The board can still coincide with `expect`, so the
+  // errors are differences in their own right: a failed action must never
+  // pass silently (#2928).
+  for (const e of outcome.errors) {
+    differences.push(`error: ${e}`);
+  }
   return {
     scenario: scenario.id,
     verdict: differences.length ? "mismatch" : "match",
@@ -149,12 +157,22 @@ export function diffOutcomes(a: ScenarioOutcome, b: ScenarioOutcome): DiffRow {
       `stack: ${a.engine} ${show(a.stack)}, ${b.engine} ${show(b.stack)}`,
     );
   }
+  // Symmetric treatment of ok-path errors (#2928): either engine's error
+  // list makes the comparison a mismatch, for the same reason as in
+  // `diffExpected` — a failed action whose board coincides with the other
+  // engine's must not pass silently. Error lines are appended after the
+  // field rewrite so their text is never mangled by it.
+  const errorLines = [
+    ...a.errors.map((e) => `error: ${a.engine}: ${e}`),
+    ...b.errors.map((e) => `error: ${b.engine}: ${e}`),
+  ];
+  const rewritten = differences.map((d) =>
+    d.replace("expected", b.engine).replace("got", a.engine),
+  );
   return {
     scenario: a.scenario,
-    verdict: differences.length ? "mismatch" : "match",
-    differences: differences.map((d) =>
-      d.replace("expected", b.engine).replace("got", a.engine),
-    ),
+    verdict: rewritten.length || errorLines.length ? "mismatch" : "match",
+    differences: [...rewritten, ...errorLines],
   };
 }
 
