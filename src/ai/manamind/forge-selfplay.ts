@@ -36,6 +36,8 @@ import {
 } from "@/ai/simulation/training-session";
 import { expertAction } from "@/ai/simulation/expert-agent";
 import type { ForgeDecision } from "./forge-pointer-features";
+import { historiesFor } from "./forge-search";
+import { OpponentHistoryTracker } from "@/ai/simulation/player-history";
 import type { ForgePointerModel } from "./forge-pointer-model";
 import {
   blockAttackers,
@@ -309,6 +311,10 @@ export async function playSelfPlayGame(
   } = options;
   const session = new TrainingSession({ maxTurns });
   const seats = session.reset(seed, deckA, deckB);
+  // Per-seat opponent-history trackers (manamind #44): each diffs its
+  // viewer's opponent's public zones, observed at every decision that
+  // seat makes, so the summary a decision carries is what its seat knew.
+  const trackers = seats.map((seat) => new OpponentHistoryTracker(seat));
   const deckNames = [
     deckAName ?? deckName(deckA),
     deckBName ?? deckName(deckB),
@@ -331,23 +337,34 @@ export async function playSelfPlayGame(
         if (!opponentModel)
           throw new Error("opponent 'model' needs opponentModel");
         const oppExploring = oppChoices < exploreMoves;
+        const oppHistories = historiesFor(
+          session,
+          seats.indexOf(prompt.playerId),
+          trackers,
+        );
         const oppResult = await forgeSearch(session, opponentModel, {
           simulations,
           seed: (seed * 7919 + move) >>> 0,
           gumbel: pick === "gumbel" && oppExploring,
           ...(cScale === undefined ? {} : { cScale }),
           deckNames,
+          oppHistories,
         });
         if (oppResult.candidates.length > 1) oppChoices++;
         prompt = session.step(oppResult.action);
         continue;
       }
       const action = expertAction(session, prompt);
+      const expertHistories = historiesFor(
+        session,
+        seats.indexOf(prompt.playerId),
+        trackers,
+      );
       if (expertRecord === "both") {
         const pi = expertTarget(prompt, action);
         if (pi)
           decisions.push({
-            ...forgeDecision(session, prompt, deckNames),
+            ...forgeDecision(session, prompt, deckNames, expertHistories),
             seat: seats.indexOf(prompt.playerId),
             source: "expert",
             pi,
@@ -357,17 +374,20 @@ export async function playSelfPlayGame(
       continue;
     }
     const exploring = choices < exploreMoves;
+    const seat = seats.indexOf(prompt.playerId);
+    const oppHistories = historiesFor(session, seat, trackers);
     const result = await forgeSearch(session, model, {
       simulations,
       seed: (seed * 7919 + move) >>> 0,
       gumbel: pick === "gumbel" && exploring,
       ...(cScale === undefined ? {} : { cScale }),
       deckNames,
+      oppHistories,
     });
     const pi = searchTarget(prompt, result);
     if (pi && result.candidates.length > 1) {
       decisions.push({
-        ...forgeDecision(session, prompt, deckNames),
+        ...forgeDecision(session, prompt, deckNames, oppHistories),
         seat: seats.indexOf(prompt.playerId),
         source: "net",
         pi,
