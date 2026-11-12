@@ -19,10 +19,12 @@
  *   - The memoized leaf set is *derived* from the leaf sources in
  *     `src/app/(app)/game/[id]/_components/` (`export const X = memo(`),
  *     so the guard does not hard-code a component list.
- *   - `HandSizeDiscardDialog` (in `src/components/choice-dialog.tsx`) is
- *     NOT memoized — it is a plain function component — so its inline
- *     `humanDiscardChoice.choices.map(...)` prop is deliberately out of
- *     scope and must never be flagged (asserted below).
+ *   - `HandSizeDiscardDialog` (in `src/components/choice-dialog.tsx`) used
+ *     to be a plain function component and was therefore a documented
+ *     exception: its inline `choices.map(...)` prop was out of scope.
+ *     Issue #2940 memoized the dialog, so it is now guarded like every
+ *     other memoized leaf — at BOTH call sites (the single-player board
+ *     and the legacy `/game-board` route).
  *
  * Style: mirrors the other repo-level source-scan guards under `tests/`
  * (e.g. `tests/test-count-docs-guard.test.ts`, `tests/jest-mock-boundary-guard.test.ts`).
@@ -50,6 +52,29 @@ const LEAF_DIR = path.join(
   "[id]",
   "_components",
 );
+/** The legacy board route — the second `HandSizeDiscardDialog` call site. */
+const LEGACY_BOARD_PATH = path.join(
+  REPO_ROOT,
+  "src",
+  "app",
+  "(app)",
+  "game-board",
+  "page.tsx",
+);
+/** The module that owns the memoized `HandSizeDiscardDialog` (#2940). */
+const CHOICE_DIALOG_PATH = path.join(
+  REPO_ROOT,
+  "src",
+  "components",
+  "choice-dialog.tsx",
+);
+
+/**
+ * Memoized components that live outside the leaf directory. `HandSizeDiscardDialog`
+ * was memoized in issue #2940, so its props must be referentially stable
+ * exactly like every other memoized leaf.
+ */
+const EXTRA_MEMOIZED_LEAVES = ["HandSizeDiscardDialog"];
 
 interface Violation {
   component: string;
@@ -165,12 +190,14 @@ function propValues(attributes: string): PropValue[] {
 
 /** Classify an inline prop expression, or return null when it is stable. */
 function classify(value: string): string | null {
+  // Array construction is checked first: an inline `choices.map((c) => ...)`
+  // also contains an arrow, but the array is the actual memo defeat.
+  if (/\.(map|filter)\(/.test(value)) return "inline array construction";
   if (value.includes("=>")) return "inline arrow function";
   if (value.startsWith("[")) return "inline array literal";
   if (/^\{\s*[A-Za-z_$][A-Za-z0-9_$]*\s*:/.test(value)) {
     return "inline object literal";
   }
-  if (/\.(map|filter)\(/.test(value)) return "inline array construction";
   return null;
 }
 
@@ -206,11 +233,12 @@ function findUnstableProps(source: string, leaves: string[]): Violation[] {
 
 describe("GameBoardContent memoized-leaf prop guard (#2929)", () => {
   const boardSource = fs.readFileSync(BOARD_PATH, "utf-8");
+  const legacyBoardSource = fs.readFileSync(LEGACY_BOARD_PATH, "utf-8");
+  const choiceDialogSource = fs.readFileSync(CHOICE_DIALOG_PATH, "utf-8");
   const leaves = memoizedLeafNames();
 
   it("derives the memoized leaf set from the leaf sources", () => {
-    // Sanity: the derivation must find the dialog leaves, and must not
-    // include the non-memoized HandSizeDiscardDialog.
+    // Sanity: the derivation must find the dialog leaves.
     expect(leaves).toEqual(
       expect.arrayContaining([
         "ModeChoiceDialog",
@@ -222,11 +250,36 @@ describe("GameBoardContent memoized-leaf prop guard (#2929)", () => {
         "GameFooter",
       ]),
     );
+    // `HandSizeDiscardDialog` lives outside the leaf directory; it is
+    // watched explicitly (see EXTRA_MEMOIZED_LEAVES) because it is
+    // memoized since issue #2940.
     expect(leaves).not.toContain("HandSizeDiscardDialog");
   });
 
+  it("memoizes HandSizeDiscardDialog (#2940)", () => {
+    // The dialog is only safe to memoize once its props are stable; the
+    // source scan below pins that it really is a memoized component.
+    expect(choiceDialogSource).toContain(
+      "export const HandSizeDiscardDialog = React.memo(",
+    );
+  });
+
   it("passes no memoized leaf an inline arrow / array / object prop", () => {
-    const violations = findUnstableProps(boardSource, leaves);
+    const violations = findUnstableProps(boardSource, [
+      ...leaves,
+      ...EXTRA_MEMOIZED_LEAVES,
+    ]);
+    expect(violations).toEqual([]);
+  });
+
+  it("passes no memoized leaf an inline prop at the legacy board call site", () => {
+    // The legacy `/game-board` route renders the same memoized dialog; it
+    // must not hand it an inline `choices.map(...)` or an inline
+    // `onConfirm` arrow either (#2940).
+    const violations = findUnstableProps(
+      legacyBoardSource,
+      EXTRA_MEMOIZED_LEAVES,
+    );
     expect(violations).toEqual([]);
   });
 
@@ -274,10 +327,10 @@ describe("GameBoardContent memoized-leaf prop guard (#2929)", () => {
     ]);
   });
 
-  it("does not flag the non-memoized HandSizeDiscardDialog inline array", () => {
-    // Out of scope by design: HandSizeDiscardDialog is a plain function
-    // component, so its inline `choices.map(...)` prop is not a memo
-    // defeat.
+  it("flags an inline .map() card list on HandSizeDiscardDialog (#2940)", () => {
+    // The pre-fix tree handed the dialog a fresh `choices.map(...)` array on
+    // every render, which re-ran the dialog's reset effect and silently
+    // cleared the player's selection.
     const snippet = `
       <HandSizeDiscardDialog
         open
@@ -291,6 +344,39 @@ describe("GameBoardContent memoized-leaf prop guard (#2929)", () => {
         onConfirm={handleHandSizeDiscard}
       />;
     `;
-    expect(findUnstableProps(snippet, leaves)).toEqual([]);
+    const violations = findUnstableProps(snippet, EXTRA_MEMOIZED_LEAVES);
+    expect(violations.map((v) => `${v.component}.${v.prop}: ${v.kind}`)).toEqual([
+      "HandSizeDiscardDialog.cards: inline array construction",
+    ]);
+  });
+
+  it("flags an inline onConfirm arrow on HandSizeDiscardDialog (#2940)", () => {
+    const snippet = `
+      <HandSizeDiscardDialog
+        open
+        prompt={waitingChoice.prompt}
+        count={waitingChoice.minChoices}
+        cards={handSizeDiscardCards}
+        onConfirm={(cardIds) => {
+          resolveWaitingChoice(cardIds);
+        }}
+      />;
+    `;
+    const violations = findUnstableProps(snippet, EXTRA_MEMOIZED_LEAVES);
+    expect(violations.map((v) => `${v.component}.${v.prop}: ${v.kind}`)).toEqual([
+      "HandSizeDiscardDialog.onConfirm: inline arrow function",
+    ]);
+  });
+
+  it("keeps both call sites on the memoized card list (#2940)", () => {
+    // Both call sites must derive the card list with `useMemo` and hand the
+    // dialog the stable identifier.
+    expect(boardSource).toContain("const handSizeDiscardCards = useMemo(");
+    expect(boardSource).toContain("cards={handSizeDiscardCards}");
+    expect(legacyBoardSource).toContain(
+      "const handSizeDiscardCards = React.useMemo(",
+    );
+    expect(legacyBoardSource).toContain("cards={handSizeDiscardCards}");
+    expect(legacyBoardSource).toContain("onConfirm={handleHandSizeDiscard}");
   });
 });

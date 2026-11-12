@@ -211,6 +211,38 @@ export default function GameBoardPage() {
     return null;
   }, [engineState]);
 
+  // Issue #2940: the cleanup-discard dialog is memoized and clears its
+  // selection when the offered cards change, so its props must be
+  // referentially stable: the card list is derived with `useMemo` (keyed on
+  // the pending choice) and the confirm callback is a stable `useCallback`.
+  const waitingChoice = engineState?.waitingChoice ?? null;
+  const handSizeDiscardChoice =
+    waitingChoice &&
+    (waitingChoice.type === "discard_to_hand_size" ||
+      waitingChoice.type === "discard_cards")
+      ? waitingChoice
+      : null;
+
+  const handSizeDiscardCards = React.useMemo(
+    () =>
+      (handSizeDiscardChoice?.choices ?? []).map((c) => ({
+        id: String(c.value),
+        name: c.label,
+      })),
+    [handSizeDiscardChoice],
+  );
+
+  // `resolveWaitingChoice` is re-created on every render of the engine
+  // hook, so the dialog's callback reads it through a ref to stay stable.
+  const resolveWaitingChoiceRef = React.useRef(resolveWaitingChoice);
+  React.useEffect(() => {
+    resolveWaitingChoiceRef.current = resolveWaitingChoice;
+  });
+
+  const handleHandSizeDiscard = React.useCallback((cardIds: string[]) => {
+    resolveWaitingChoiceRef.current(cardIds);
+  }, []);
+
   // Track an action and check for mistakes
   const trackAction = React.useCallback(
     async (type: ActionType, data: any) => {
@@ -1198,25 +1230,19 @@ export default function GameBoardPage() {
 
       {/* Cleanup discard to maximum hand size (issue #2446) */}
       {/* Issue #2536: a scripted discard uses the same dialog. */}
-      {(engineState?.waitingChoice?.type === "discard_to_hand_size" ||
-        engineState?.waitingChoice?.type === "discard_cards") &&
-        engineState.waitingChoice.playerId === currentPlayerId && (
+      {handSizeDiscardChoice &&
+        handSizeDiscardChoice.playerId === currentPlayerId && (
           <HandSizeDiscardDialog
             open
             title={
-              engineState.waitingChoice.type === "discard_cards"
+              handSizeDiscardChoice.type === "discard_cards"
                 ? "Discard"
                 : undefined
             }
-            prompt={engineState.waitingChoice.prompt}
-            count={engineState.waitingChoice.minChoices}
-            cards={engineState.waitingChoice.choices.map((c) => ({
-              id: String(c.value),
-              name: c.label,
-            }))}
-            onConfirm={(cardIds) => {
-              resolveWaitingChoice(cardIds);
-            }}
+            prompt={handSizeDiscardChoice.prompt}
+            count={handSizeDiscardChoice.minChoices}
+            cards={handSizeDiscardCards}
+            onConfirm={handleHandSizeDiscard}
           />
         )}
 

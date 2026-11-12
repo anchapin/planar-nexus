@@ -809,19 +809,44 @@ export interface HandSizeDiscardDialogProps {
   title?: string;
 }
 
-export function HandSizeDiscardDialog({
-  open,
-  prompt,
-  cards,
-  count,
-  onConfirm,
-  title = "Discard to hand size",
-}: HandSizeDiscardDialogProps) {
+/**
+ * The card identity of the offered discard options.
+ *
+ * The selection is cleared when the *content* of the offer changes, not
+ * when the `cards` array instance changes: an unrelated parent re-render
+ * that hands over an equal-but-new array must not wipe the player's
+ * selection (issue #2940).
+ */
+function discardCardsKey(cards: { id: string; name: string }[]): string {
+  return cards.map((card) => card.id).join("\u0000");
+}
+
+/**
+ * The cleanup-discard dialog is memoized (issue #2940) so that an
+ * unrelated re-render of its parent cannot re-render the dialog at all.
+ * All of its props must therefore be referentially stable — see the
+ * `useMemo` derivations at both call sites
+ * (`src/app/(app)/game/[id]/GameBoardContent.tsx` and
+ * `src/app/(app)/game-board/page.tsx`).
+ */
+export const HandSizeDiscardDialog = React.memo(
+  function HandSizeDiscardDialog({
+    open,
+    prompt,
+    cards,
+    count,
+    onConfirm,
+    title = "Discard to hand size",
+  }: HandSizeDiscardDialogProps) {
   const [selected, setSelected] = React.useState<string[]>([]);
+
+  // Content-derived key: stable while the same cards are offered, even when
+  // the parent hands over a fresh array instance.
+  const cardsKey = React.useMemo(() => discardCardsKey(cards), [cards]);
 
   React.useEffect(() => {
     if (open) setSelected([]);
-  }, [open, cards]);
+  }, [open, cardsKey]);
 
   const toggle = (id: string) => {
     setSelected((prev) =>
@@ -907,4 +932,4 @@ export function HandSizeDiscardDialog({
       </DialogContent>
     </Dialog>
   );
-}
+});
