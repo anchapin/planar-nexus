@@ -784,6 +784,20 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
       ? gameState.waitingChoice
       : null;
 
+  // Issue #2940: the discard dialog is memoized and clears its selection
+  // when the offered cards change. The card view is therefore derived with
+  // `useMemo` (keyed on the pending choice) so an unrelated re-render of
+  // the board cannot hand the dialog a fresh array and silently wipe the
+  // player's selection.
+  const handSizeDiscardCards = useMemo(
+    () =>
+      (humanDiscardChoice?.choices ?? []).map((c) => ({
+        id: String(c.value),
+        name: c.label,
+      })),
+    [humanDiscardChoice],
+  );
+
   const handleHandSizeDiscard = useCallback(
     (cardIds: string[]) => {
       const latest = gameStateRef.current;
@@ -3509,10 +3523,7 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
           }
           prompt={humanDiscardChoice.prompt}
           count={humanDiscardChoice.minChoices}
-          cards={humanDiscardChoice.choices.map((c) => ({
-            id: String(c.value),
-            name: c.label,
-          }))}
+          cards={handSizeDiscardCards}
           onConfirm={handleHandSizeDiscard}
         />
       )}
