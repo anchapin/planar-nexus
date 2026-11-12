@@ -455,7 +455,7 @@ describe("IndexedDB Storage", () => {
       await backupStorage.close();
     });
 
-    it.skip("should import backup with checksum validation", async () => {
+    it("should import backup with checksum validation", async () => {
       // Create a storage instance with standard stores for backup tests
       const backupStorage = new IndexedDBStorage({
         dbName: "TestPlanarNexusBackupStorage2",
