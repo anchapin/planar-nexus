@@ -1,12 +1,15 @@
 /**
  * anchapin/manamind#86: the Forge-pointer input builder matches manamind's
- * `forge_pointer_onnx.pack` exactly. The fixture is `pack` run on
- * manamind's own test decisions (tests/unit/test_forge_pointer.py), plus an
- * empty decision and one with an unknown phase, a hybrid cost, and a
- * non-ASCII card name; the priority case carries deck identity
- * (deck "red" / opp_deck "green", manamind #96).
+ * `forge_pointer_onnx.pack` exactly. The v2 fixture is that `pack` (schema
+ * v2) run on manamind's own test decisions, plus an empty decision and one
+ * with an unknown phase, a hybrid cost, and a non-ASCII card name; the
+ * priority case carries deck identity (deck "red" / opp_deck "green",
+ * manamind #96). The v3 fixture (manamind #44) is the schema v3 pack on a
+ * priority decision carrying an `OpponentHistorySummary`; decisions without
+ * history pack unchanged, so the v2 cases still match input for input.
  */
-import fixture from "./fixtures/forge_pointer_v3_pack.json";
+import v2fixture from "./fixtures/forge_pointer_v2_pack.json";
+import v3fixture from "./fixtures/forge_pointer_v3_pack.json";
 import {
   CARD_FEATURES,
   deckBucket,
@@ -18,6 +21,8 @@ import {
   historyFeatures,
   packDecision,
   type ForgeDecision,
+  type ForgePointerInputName,
+  type PackedInput,
 } from "../forge-pointer-features";
 import { playerView } from "@/ai/simulation/player-view";
 import {
@@ -25,41 +30,60 @@ import {
   trainingDeck,
 } from "@/ai/simulation/training-session";
 
+type FixtureCase = {
+  name: string;
+  decision: ForgeDecision;
+  inputs: Record<string, { dims: number[]; data: number[] }>;
+};
+
+function expectParity(
+  packed: Record<ForgePointerInputName, PackedInput>,
+  want: FixtureCase["inputs"],
+  names: readonly string[],
+) {
+  for (const name of names) {
+    const got = packed[name as ForgePointerInputName];
+    const expected = want[name];
+    expect([name, got.dims]).toEqual([name, expected.dims]);
+    const values = Array.from(got.data, Number);
+    expect(values).toHaveLength(expected.data.length);
+    values.forEach((v, i) => expect(v).toBeCloseTo(expected.data[i], 6));
+  }
+}
+
 describe("forge pointer features", () => {
   it("uses manamind's schema version and input order", () => {
-    expect(fixture.schema_version).toBe(FORGE_POINTER_SCHEMA_VERSION);
-    expect(fixture.input_names).toEqual([...FORGE_POINTER_INPUTS]);
+    expect(v3fixture.schema_version).toBe(FORGE_POINTER_SCHEMA_VERSION);
+    expect(v3fixture.input_names).toEqual([...FORGE_POINTER_INPUTS]);
   });
 
   it("hashes card names into the same buckets", () => {
-    for (const [name, bucket] of Object.entries(fixture.name_buckets)) {
+    for (const [name, bucket] of Object.entries(v3fixture.name_buckets)) {
       expect(nameBucket(name)).toBe(bucket);
     }
   });
 
   it("hashes deck names into the same buckets", () => {
-    for (const [name, bucket] of Object.entries(fixture.deck_buckets)) {
+    for (const [name, bucket] of Object.entries(v3fixture.deck_buckets)) {
       expect(deckBucket(name)).toBe(bucket);
     }
   });
 
-  it.each(fixture.cases.map((c) => [c.name, c] as const))(
+  it.each(v2fixture.cases.map((c) => [c.name, c] as const))(
     "packs the %s decision exactly like manamind",
     (_name, c) => {
       const packed = packDecision(c.decision as ForgeDecision);
-      const want = c.inputs as Record<
-        string,
-        { dims: number[]; data: number[] }
-      >;
-      for (const name of FORGE_POINTER_INPUTS) {
-        const got = packed[name];
-        expect([name, got.dims]).toEqual([name, want[name].dims]);
-        const values = Array.from(got.data, Number);
-        expect(values).toHaveLength(want[name].data.length);
-        values.forEach((v, i) => expect(v).toBeCloseTo(want[name].data[i], 6));
-      }
+      // The v2 fixture predates the hist input (manamind #44): compare
+      // every input it carries, all of which pack unchanged at schema v3.
+      expectParity(packed, c.inputs, Object.keys(c.inputs));
     },
   );
+
+  it("packs the history decision exactly like manamind", () => {
+    const c = v3fixture.cases[0];
+    const packed = packDecision(c.decision as unknown as ForgeDecision);
+    expectParity(packed, c.inputs, FORGE_POINTER_INPUTS);
+  });
 
   it("flattens a missing history to zeros at the v3 width", () => {
     const packed = packDecision({ t: "priority", options: [] });
@@ -70,8 +94,7 @@ describe("forge pointer features", () => {
   });
 
   it("packs history the way the fixture's summary reads", () => {
-    const summary = fixture.cases.find((c) => c.name === "history")?.decision
-      .opp_history;
+    const summary = v3fixture.cases[0].decision.opp_history;
     expect(summary).toBeDefined();
     const feats = historyFeatures({ opp_history: summary });
     expect(feats).toHaveLength(HISTORY_FEATURES);
@@ -99,6 +122,7 @@ describe("forge pointer features", () => {
     });
     expect(packed.hand_x.dims).toEqual([7, CARD_FEATURES]);
     expect(packed.glob.dims).toEqual([GLOBAL_FEATURES]);
+    expect(packed.hist.dims).toEqual([HISTORY_FEATURES]);
     expect(packed.pri_flags.dims).toEqual([1, 2]);
   });
 });
