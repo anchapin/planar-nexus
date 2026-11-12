@@ -11,6 +11,7 @@ import type {
   CardInstance,
   CardInstanceId,
   PlayerId,
+  Zone,
 } from "./types";
 import { ZoneType, isOnBattlefield, parseZoneKey } from "./types";
 import {
@@ -277,22 +278,35 @@ export function checkStateBasedActions(
       (card) => card.isToken === true,
     );
     if (tokensToCease.length > 0) {
-      const ceasingZones = new Map(updatedState.zones);
-      const ceasingCards = new Map(updatedState.cards);
+      // #2936: copy the zones map ONLY when a zone actually changes, and
+      // delete the ceased tokens from the PASS-OWNED card map instead of
+      // from a private copy.
+      //
+      // The old code copied the whole cards map and the whole zones map as
+      // soon as ANY token existed and published those copies. The published
+      // copy was not in the pass-owned set, so every later `acquireCardMap`
+      // call in the same pass copied the map AGAIN, and the `finally` at the
+      // end of the pass released a map that was no longer the published one.
+      // Now: the zones copy is made lazily (only when a token leaves a
+      // zone) and the card deletions go through `acquireCardMap`, so a later
+      // same-pass effect observes the ceased state.
+      let ceasingZones: Map<string, Zone> | null = null;
+      let ceasingCards: Map<CardInstanceId, CardInstance> | null = null;
       for (const token of tokensToCease) {
+        // Read from the working zones copy once it exists, from the state
+        // before that.
+        const zones = ceasingZones ?? updatedState.zones;
         // Locate the token's zone (cached key first, then a scan for legacy
         // cards whose zone cache was never populated).
         let tokenZoneKey = token.currentZoneKey;
-        let tokenZone = tokenZoneKey
-          ? (ceasingZones.get(tokenZoneKey) ?? null)
-          : null;
+        let tokenZone = tokenZoneKey ? (zones.get(tokenZoneKey) ?? null) : null;
         if (tokenZone && !tokenZone.cardIds.includes(token.id)) {
           // Stale zone cache — fall back to the scan below.
           tokenZone = null;
           tokenZoneKey = null;
         }
         if (!tokenZone || !tokenZoneKey) {
-          for (const [zoneKey, zone] of ceasingZones) {
+          for (const [zoneKey, zone] of zones) {
             if (zone.cardIds.includes(token.id)) {
               tokenZone = zone;
               tokenZoneKey = zoneKey;
@@ -306,6 +320,8 @@ export function checkStateBasedActions(
           // The stack is out of scope for this rule (hard stop).
           if (tokenZone.type === ZoneType.STACK) continue;
 
+          // The zone really changes — copy the zones map once.
+          ceasingZones ??= new Map(updatedState.zones);
           ceasingZones.set(tokenZoneKey, {
             ...tokenZone,
             cardIds: tokenZone.cardIds.filter((id) => id !== token.id),
@@ -313,17 +329,22 @@ export function checkStateBasedActions(
         }
         // A token that is in no zone at all is not on the battlefield either:
         // only the phantom `state.cards` entry is left, so it goes too.
+        //
+        // The deletion goes into the pass-owned card map, so any later
+        // `acquireCardMap` effect in this pass sees the ceased state.
+        if (!ceasingCards) {
+          ceasingCards = acquireCardMap(updatedState);
+          updatedState = { ...updatedState, cards: ceasingCards };
+        }
         ceasingCards.delete(token.id);
         descriptions.push(
           `${token.cardData.name} ceases to exist (token, CR 704.5d)`,
         );
         actionsPerformed = true;
       }
-      updatedState = {
-        ...updatedState,
-        zones: ceasingZones,
-        cards: ceasingCards,
-      };
+      if (ceasingZones) {
+        updatedState = { ...updatedState, zones: ceasingZones };
+      }
     }
 
     // Check cards for SBAs

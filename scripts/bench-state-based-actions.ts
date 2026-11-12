@@ -35,6 +35,7 @@
 import {
   createInitialGameState,
   createCardInstance,
+  createToken,
   checkStateBasedActions,
   moveCardToZone,
   declareAttackers,
@@ -128,6 +129,23 @@ const LANDS = 6;
 const CREATURES_PER_PLAYER = 10;
 
 /**
+ * The token shape put on the fixed board (issue #2936).
+ *
+ * The CR 704.5d token-cease block only runs when the board holds a token,
+ * so the fixed mid-game board carries one per player: the block then
+ * walks the token list on every SBA pass. Before #2936 that walk also
+ * copied the whole cards map and the whole zones map.
+ */
+const TOKEN_CARD = makeCard({
+  name: "Bench Soldier",
+  type_line: "Token Creature — Soldier",
+  power: "1",
+  toughness: "1",
+  mana_cost: "",
+  cmc: 0,
+});
+
+/**
  * Build a fixed mid-game state: two players, a full-ish board, hands,
  * libraries and graveyards. Deterministic — no RNG, no wall-clock input.
  */
@@ -179,6 +197,15 @@ export function buildMidGameState(): {
       state.cards.set(creature.id, creature);
       battlefieldIds.push(creature.id);
     }
+
+    // One battlefield token per player (issue #2936): the CR 704.5d
+    // token-cease block only runs when the board holds a token.
+    const token = {
+      ...createToken(TOKEN_CARD, playerId, playerId),
+      currentZoneKey: battlefieldKey,
+    };
+    state.cards.set(token.id, token);
+    battlefieldIds.push(token.id);
 
     for (let i = 0; i < 5; i++) {
       const card = createCardInstance(
