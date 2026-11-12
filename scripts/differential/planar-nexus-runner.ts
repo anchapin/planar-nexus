@@ -414,7 +414,7 @@ export function runScenario(
       ...base,
       status: "ok",
       players: observe(ctx, fields),
-      ...(fields.includes("stack")
+      ...(fields.includes("stack") || scenario.expectStack !== undefined
         ? {
             stack: ctx.state.stack
               .map(
