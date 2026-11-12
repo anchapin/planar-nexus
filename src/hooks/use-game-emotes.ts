@@ -1,7 +1,10 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { EmoteType, EmoteMessage } from '@/components/emote-picker';
+// Type-only import: the emote picker module itself is loaded on demand by
+// the game-board route (issue #2946), so this statement must not pull it
+// into the first-load payload.
+import type { EmoteType, EmoteMessage } from '@/components/emote-picker';
 
 interface UseGameEmotesOptions {
   currentPlayerId: string;
