@@ -24,6 +24,13 @@
  *      and blocked attackers (the hot path the combat-damage slice
  *      optimises: one working players map per resolution instead of one
  *      copy per player-affecting event).
+ *
+ * Issue #2927 adds a fourth section:
+ *   4. `activateAbility` on a fixed mid-game state, activating a
+ *      multi-cost ability ({2}{G}, {T}, once-per-turn) so every cost
+ *      step runs (the hot path the activateAbility slice optimises: one
+ *      working cards map and one working players map per activation
+ *      instead of one copy per cost step).
  */
 import {
   createInitialGameState,
@@ -33,9 +40,12 @@ import {
   declareAttackers,
   declareBlockers,
   resolveCombatDamage,
+  activateAbility,
+  addMana,
   Phase,
   ZoneType,
   type CardInstance,
+  type CardInstanceId,
   type GameState,
   type PlayerId,
   type ScryfallCard,
@@ -359,6 +369,55 @@ function bench(label: string, iterations: number, fn: () => void): number {
   return ms;
 }
 
+/**
+ * Build the activation state for section 4 (issue #2927): a started game
+ * whose first player controls a creature with a multi-cost activated
+ * ability ({2}{G}, {T}, once-per-turn) and the mana to pay for it. The
+ * same input state is activated repeatedly — the input is never mutated,
+ * so every call pays the full cost path again.
+ */
+export function buildActivationState(): {
+  state: GameState;
+  playerId: PlayerId;
+  cardId: CardInstanceId;
+} {
+  // Start from the fixed mid-game board so the cards/players maps the
+  // activation used to copy per cost step are realistically sized.
+  let { state } = buildMidGameState();
+  const playerId = Array.from(state.players.keys())[0];
+  const battlefieldKey = `${playerId}-${ZoneType.BATTLEFIELD}`;
+  const cardData = makeCard({
+    name: "Bench Multi Cat",
+    type_line: "Creature — Cat",
+    oracle_text:
+      "{2}{G}, {T}: This creature gets +2/+2 until end of turn. Activate only once each turn.",
+    mana_cost: "{2}{G}",
+    cmc: 3,
+  });
+  const inst = createCardInstance(cardData, playerId, playerId, {
+    currentZoneKey: battlefieldKey,
+  });
+  const cards = new Map(state.cards);
+  cards.set(inst.id, { ...inst, hasSummoningSickness: false });
+  const zones = new Map(state.zones);
+  const zone = zones.get(battlefieldKey)!;
+  zones.set(battlefieldKey, { ...zone, cardIds: [...zone.cardIds, inst.id] });
+  state = {
+    ...state,
+    cards,
+    zones,
+    stack: [],
+    priorityPlayerId: playerId,
+    turn: {
+      ...state.turn,
+      activePlayerId: playerId,
+      currentPhase: Phase.PRECOMBAT_MAIN,
+    },
+  };
+  state = addMana(state, playerId, { green: 6 });
+  return { state, playerId, cardId: inst.id };
+}
+
 function main(): void {
   const passes = Number(arg("passes", "200"));
   const { state, moverId } = buildMidGameState();
@@ -428,6 +487,42 @@ function main(): void {
   console.log(
     `\nSummary: checkStateBasedActions = ${sbaMs.toFixed(4)} ms/action, ` +
       `resolveCombatDamage = ${combatMs.toFixed(4)} ms/resolution`,
+  );
+
+  // 4. The activateAbility hot path (issue #2927): one working cards map
+  //    and one working players map per activation instead of one copy
+  //    per cost step.
+  const activationPasses = Number(arg("activation-passes", "100"));
+  const {
+    state: activationState,
+    playerId: activationPlayerId,
+    cardId: activationCardId,
+  } = buildActivationState();
+  console.log(
+    `Activation state: ${activationState.cards.size} cards, ` +
+      `${activationState.players.size} players`,
+  );
+  console.log(`Activations per measurement: ${activationPasses}`);
+
+  const activationMs = bench("activateAbility", activationPasses, () => {
+    const result = activateAbility(
+      activationState,
+      activationPlayerId,
+      activationCardId,
+      0,
+    );
+    if (!result.success) throw new Error("activation failed");
+  });
+
+  // Sanity: the input state must not be mutated by an activation.
+  if (activationState.cards.get(activationCardId)!.isTapped) {
+    throw new Error("input state was mutated by activateAbility");
+  }
+
+  console.log(
+    `\nSummary: checkStateBasedActions = ${sbaMs.toFixed(4)} ms/action, ` +
+      `resolveCombatDamage = ${combatMs.toFixed(4)} ms/resolution, ` +
+      `activateAbility = ${activationMs.toFixed(4)} ms/activation`,
   );
 }
 
