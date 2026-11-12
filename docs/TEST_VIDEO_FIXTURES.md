@@ -103,7 +103,7 @@ source code would trigger false-positive `no-undef` errors.
 ```bash
 # 0 placeholders remain
 rg 'TODO: Implement validation' src/lib/game-state/__tests__/video-derived/   # → 1 (the guard file, by design)
-rg 'expect\\([a-z_]+\\.gameState\\)\\.toBeDefined\\(\\)' src/lib/game-state/__tests__/video-derived/   # → 0
+rg 'expect\([a-z_]+\.gameState\)\.toBeDefined\(\)' src/lib/game-state/__tests__/video-derived/   # → 0
 
 # Full test suite
 npm test --silent
