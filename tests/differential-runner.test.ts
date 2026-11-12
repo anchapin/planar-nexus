@@ -85,6 +85,49 @@ describe("differential scenarios: planar-nexus runner", () => {
   });
 });
 
+describe("diffExpected: ok-path errors (#2928)", () => {
+  const base: Scenario = {
+    id: "error-fixture",
+    description: "Scenario whose outcome reports an engine error.",
+    players: [{ life: 20 }, { life: 20 }],
+    actions: [],
+    expect: [{ life: 20 }, { life: 20 }],
+  };
+
+  const outcomeWith = (errors: string[]): ScenarioOutcome => ({
+    scenario: base.id,
+    engine: "planar-nexus",
+    status: "ok",
+    players: [{ life: 20 }, { life: 20 }],
+    errors,
+  });
+
+  it("fails the verdict when an ok-path outcome carries errors", () => {
+    const row = diffExpected(base, outcomeWith(["cast Shock: no mana"]));
+    expect(row.verdict).toBe("mismatch");
+    expect(row.differences).toEqual(["error: cast Shock: no mana"]);
+  });
+
+  it("matches when an ok-path outcome carries no errors", () => {
+    const row = diffExpected(base, outcomeWith([]));
+    expect(row.verdict).toBe("match");
+    expect(row.differences).toEqual([]);
+  });
+
+  it("treats errors as differences on either engine in diffOutcomes", () => {
+    const a = outcomeWith([]);
+    const b: ScenarioOutcome = {
+      ...outcomeWith([]),
+      engine: "forge",
+      errors: ["stack did not empty"],
+    };
+    expect(diffOutcomes(a, a).verdict).toBe("match");
+    const row = diffOutcomes(a, b);
+    expect(row.verdict).toBe("mismatch");
+    expect(row.differences).toEqual(["error: forge: stack did not empty"]);
+  });
+});
+
 describe("diffExpected: expectStack (#2920)", () => {
   const base: Scenario = {
     id: "stack-fixture",
