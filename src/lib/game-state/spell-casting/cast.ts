@@ -32,6 +32,7 @@ import {
   parseImprovise,
   grantsNoncreatureImprovise,
   parseDelve,
+  parseEmerge,
   parseEscape,
   parseMutate,
   parseSplitSecond,
@@ -55,7 +56,7 @@ import {
 import { copySpellOnStack } from "./resolve";
 import { getCardScript } from "../card-scripts/registry";
 import { affinityReduction } from "./affinity";
-import { isCreature, getPower } from "../card-instance";
+import { isCreature, getPower, getManaValue } from "../card-instance";
 import { scriptedModeChoiceError } from "../card-scripts/script-guards";
 import { fireCastTriggers } from "../keyword-actions/cast-triggers";
 import { fireTargetedTriggers } from "../keyword-actions/targeted";
@@ -247,6 +248,7 @@ export function castSpell(
       | "convoke"
       | "improvise"
       | "delve"
+      | "emerge"
       | "mutate";
     buybackReturnToHand?: boolean;
     bestowTarget?: CardInstanceId;
@@ -302,6 +304,15 @@ export function castSpell(
      * cards..." → N=5).
      */
     escapeExileCards?: CardInstanceId[];
+    /**
+     * CR 702.119 - Emerge: the creature the player sacrifices as part of
+     * casting this spell for its emerge cost. The emerge cost is the spell's
+     * mana cost reduced by the mana value of this creature (CR 702.119a) —
+     * the GENERIC portion only (coloured pips are unaffected), floored at
+     * zero generic. The creature is sacrificed to its owner's graveyard as
+     * part of paying the cost.
+     */
+    emergeSacrificeCreature?: CardInstanceId;
   },
   /**
    * CR 702.85 — number of times the kicker (or multikicker) cost was paid.
@@ -554,6 +565,14 @@ export function castSpell(
     }
     /** Harmonize: the creature tapped to reduce the cost, tapped on cast. */
     let harmonizeTapId: CardInstanceId | undefined;
+    /**
+     * CR 702.119 - Emerge: the creature sacrificed to pay the emerge cost.
+     * Validated inside the `case "emerge":` branch; the actual sacrifice
+     * (battlefield -> owner's graveyard) is applied AFTER mana is spent (see
+     * the emerge sacrifice block below) so the pre-cast state used for
+     * validation is not mutated.
+     */
+    let emergeSacrificeId: CardInstanceId | undefined;
 
     // Add kicker cost if spell is kicked (CR 702.85).
     // For multikicker (CR 702.85 multikicker variant) the cost is paid N times
@@ -1226,6 +1245,92 @@ export function castSpell(
           }
           break;
         }
+        case "emerge": {
+          // CR 702.119 - Emerge: "You may cast this spell by paying its
+          // emerge cost rather than its mana cost. The emerge cost is equal
+          // to its mana cost reduced by the mana value of a creature you
+          // sacrifice."
+          //
+          // CR 702.119a — casting for the emerge cost:
+          // 1. The spell's mana value is unchanged.
+          // 2. You sacrifice a creature you control as an additional cost.
+          // 3. The GENERIC portion of the mana cost is reduced by the mana
+          //    value of the sacrificed creature (coloured pips are
+          //    unaffected, and the generic portion never drops below zero —
+          //    same generic-only reduction shape as harmonize / delve).
+          //
+          // The sacrifice is part of paying the cost, so it happens as part
+          // of casting (not on resolution). Validation happens here, before
+          // mana is spent, so a rejected cast mutates nothing.
+          const emergeInfo = parseEmerge(card.cardData.oracle_text || "");
+          if (!emergeInfo.hasEmerge) {
+            return {
+              success: false,
+              state,
+              error: "This card does not have emerge.",
+            };
+          }
+          const sacrificeId = alternativeCost.emergeSacrificeCreature;
+          if (sacrificeId === undefined) {
+            return {
+              success: false,
+              state,
+              error: "Emerge: you must sacrifice a creature you control.",
+            };
+          }
+          const sacrifice = state.cards.get(sacrificeId);
+          if (!sacrifice) {
+            return {
+              success: false,
+              state,
+              error: "Emerge: creature not found.",
+            };
+          }
+          // Must be controlled by the caster (CR 702.119a: "a creature you
+          // sacrifice" — you can only sacrifice permanents you control).
+          if (sacrifice.controllerId !== playerId) {
+            return {
+              success: false,
+              state,
+              error:
+                "Emerge: sacrificed creature must be controlled by the spell's controller.",
+            };
+          }
+          // Must be on the battlefield.
+          const sacrificeZoneKey = sacrifice.currentZoneKey;
+          const sacrificeZone = sacrificeZoneKey
+            ? state.zones.get(sacrificeZoneKey)
+            : undefined;
+          if (
+            !sacrificeZone ||
+            sacrificeZone.type !== ZoneType.BATTLEFIELD ||
+            !sacrificeZone.cardIds.includes(sacrificeId)
+          ) {
+            return {
+              success: false,
+              state,
+              error: "Emerge: sacrificed creature must be on the battlefield.",
+            };
+          }
+          // Must actually be a creature.
+          if (!isCreature(sacrifice)) {
+            return {
+              success: false,
+              state,
+              error: "Emerge: sacrificed permanent is not a creature.",
+            };
+          }
+          alternativeCostsUsed.push("emerge");
+          // CR 702.119a: reduce the GENERIC portion by the sacrificed
+          // creature's mana value. Coloured pips are unaffected and the
+          // generic portion never goes below zero.
+          totalGeneric = Math.max(
+            0,
+            totalGeneric - Math.max(0, getManaValue(sacrifice)),
+          );
+          emergeSacrificeId = sacrificeId;
+          break;
+        }
         case "escape": {
           // CR 702.138 - Escape: "Escape—[cost], Exile N other cards from
           // your graveyard." Escape is an alternative cost that REPLACES the
@@ -1663,6 +1768,52 @@ export function castSpell(
         cards: updatedConvokeCards,
         lastModifiedAt: Date.now(),
       };
+    }
+
+    // CR 702.119 - Emerge: now that mana is spent and the cast is committed,
+    // sacrifice the chosen creature to its owner's graveyard. The sacrifice
+    // is an ADDITIONAL cost paid as part of casting (CR 702.119a), so it
+    // happens here — after the mana was spent, alongside the other
+    // "additional cost" applications (convoke taps, delve exiles, escape
+    // exiles). The generic-cost reduction was already applied in the
+    // `case "emerge":` branch.
+    if (emergeSacrificeId !== undefined) {
+      const sacrifice = currentState.cards.get(emergeSacrificeId);
+      // The source zone is the creature's own zone (validated above as a
+      // battlefield zone containing it).
+      const battlefieldKey = sacrifice?.currentZoneKey;
+      // A sacrificed card is put into its OWNER's graveyard (CR 400.3).
+      const graveyardKey = `${sacrifice?.ownerId ?? playerId}-graveyard`;
+      const updatedZonesEmerge = new Map(currentState.zones);
+      let updatedBattlefieldEmerge = battlefieldKey
+        ? updatedZonesEmerge.get(battlefieldKey)
+        : undefined;
+      let updatedGraveEmerge = updatedZonesEmerge.get(graveyardKey);
+      const updatedCardsEmerge = new Map(currentState.cards);
+      if (updatedBattlefieldEmerge && updatedGraveEmerge) {
+        const moved = moveCardBetweenZones(
+          updatedBattlefieldEmerge,
+          updatedGraveEmerge,
+          emergeSacrificeId,
+        );
+        updatedBattlefieldEmerge = moved.from;
+        updatedGraveEmerge = moved.to;
+        const sc = updatedCardsEmerge.get(emergeSacrificeId);
+        if (sc) {
+          updatedCardsEmerge.set(emergeSacrificeId, {
+            ...sc,
+            currentZoneKey: graveyardKey,
+          });
+        }
+        updatedZonesEmerge.set(battlefieldKey, updatedBattlefieldEmerge);
+        updatedZonesEmerge.set(graveyardKey, updatedGraveEmerge);
+        currentState = {
+          ...currentState,
+          zones: updatedZonesEmerge,
+          cards: updatedCardsEmerge,
+          lastModifiedAt: Date.now(),
+        };
+      }
     }
 
     // CR 702.61 - Delve: now that mana is spent and the cast is committed,
