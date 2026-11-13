@@ -35,8 +35,10 @@ import {
  *    globalSetup).
  *  - Uses whichever browser is installed: the chromium job only installs
  *    chromium, the cross-browser job only firefox + webkit.
- *  - Never fails the run: a route that errors or times out is logged and
- *    skipped, and the specs report real failures as before.
+ *  - Fails the run when a route cannot be warmed: a route that stays cold
+ *    makes the first spec that visits it blow the 30s test timeout, and the
+ *    resulting cascade of unrelated timeouts hides the real cause (#2948).
+ *    A route that answers with an error status is only reported, not fatal.
  *  - Set `E2E_SKIP_WARMUP=1` to skip (e.g. against a warm local server).
  */
 
@@ -58,10 +60,23 @@ export const WARMUP_ROUTES = [
   "/set-browser/",
   "/settings/",
   "/game/board/",
+  // Issue #2948: `e2e/manamind-simple-model.spec.ts` navigates to
+  // /simple-mode, which was missing from the warmup list, so that route
+  // was still cold when the spec hit it.
+  "/simple-mode/",
 ] as const;
 
 const NAV_TIMEOUT_MS = 180_000;
-const IDLE_TIMEOUT_MS = 20_000;
+// Issue #2948: the warmup must not give up on a route *before* the specs
+// would. The specs wait up to 30s (the Playwright test timeout) for the
+// page to settle - `e2e/multiplayer-lobby.spec.ts` calls
+// `page.waitForLoadState("networkidle")` and several specs wait for a URL
+// that only changes after the client bundle hydrated. The warmup used to
+// settle for 20s only, so a route whose data/API fetches were still
+// compiling was abandoned by the warmup and then hit the cold cost inside
+// a test, which then blew its own 30s budget. Wait longer than any spec
+// waits, so the warmup absorbs the compile instead of the test.
+const IDLE_TIMEOUT_MS = 60_000;
 
 async function launchAnyBrowser(): Promise<Browser | null> {
   const candidates: BrowserType[] = [chromium, firefox, webkit];
@@ -98,6 +113,14 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
       `with ${browser.browserType().name()}`,
   );
 
+  // Issue #2948: a route the warmup could not load stays cold, and the
+  // first spec that hits it pays the full `next dev` compile inside the
+  // 30s test timeout - that is exactly the navigation-timeout cascade
+  // this issue reports. Remember the failures and fail the setup with a
+  // single, actionable message instead of skipping the route and letting
+  // 15 unrelated specs time out one by one.
+  const failures: string[] = [];
+
   try {
     const context = await browser.newContext({ baseURL });
     const page = await context.newPage();
@@ -123,6 +146,10 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
             `${((Date.now() - t0) / 1000).toFixed(1)}s: ` +
             message.split("\n")[0],
         );
+        failures.push(
+          `${route} (${((Date.now() - t0) / 1000).toFixed(1)}s): ` +
+            message.split("\n")[0],
+        );
       }
     }
     await context.close();
@@ -133,4 +160,12 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
   console.info(
     `[warmup] done in ${((Date.now() - started) / 1000).toFixed(1)}s`,
   );
+
+  if (failures.length > 0) {
+    throw new Error(
+      `[warmup] ${failures.length}/${WARMUP_ROUTES.length} routes could not ` +
+        `be warmed - they would stay cold and blow the 30s test timeout in ` +
+        `whichever spec visits them:\n  ${failures.join("\n  ")}`,
+    );
+  }
 }
