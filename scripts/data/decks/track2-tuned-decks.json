@@ -1,5 +1,5 @@
 {
-  "note": "Track 2 tuning ladder: red-aggro vs green-ramp variants (v1: green-ramp -2 Pelakka Wurm -> +2 Forest), brewed from the scripted card pool; tuned 2026-11-12 for the balanced-second-deck-pair lever",
+  "note": "Track 2 tuning ladder: red-aggro vs green-ramp variants (v1a: green-ramp -2 Pelakka Wurm -> +2 Forest), brewed from the scripted card pool; tuned 2026-11-12 for the balanced-second-deck-pair lever",
   "decks": {
     "red-aggro-tuned": {
       "source": "https://www.mtggoldfish.com/deck/7954752",
