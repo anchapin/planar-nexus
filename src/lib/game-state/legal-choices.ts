@@ -192,6 +192,14 @@ function auraTargets(
       }
     }
   }
+  // An "Enchant player" Aura targets a player, not a permanent (#2949).
+  // The check itself rejects the wrong kind of target, so only the legal
+  // player targets make it through.
+  for (const id of state.players.keys()) {
+    if (validateAuraSpellTarget(state, aura, playerId, id).valid) {
+      ids.push(id);
+    }
+  }
   return ids;
 }
 

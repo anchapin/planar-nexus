@@ -3,6 +3,7 @@
  */
 import {
   canEnchantTarget,
+  getAuraHostPlayerId,
   isAuraIllegallyAttached,
   parseEnchantRestriction,
 } from "../keyword-actions";
@@ -164,10 +165,23 @@ describe("enchant", () => {
     expect(
       parseEnchantRestriction("Enchant nonland permanent")?.alternatives,
     ).toEqual([["nonland", "permanent"]]);
-    expect(parseEnchantRestriction("Enchant player")?.unsupported).toBe(true);
+    expect(parseEnchantRestriction("Enchant player")?.unsupported).toBe(false);
+    expect(parseEnchantRestriction("Enchant player")?.targetKind).toBe("player");
     expect(
       parseEnchantRestriction("Enchanted creature gets +1/+1."),
     ).toBeNull();
+  });
+
+  it("keeps a graveyard-targeting Enchant line unsupported", () => {
+    // Animate Dead class: "Enchant card in a graveyard" is recognised but
+    // the engine cannot attach to a card in a graveyard (#2949 keeps the
+    // deferral).
+    expect(
+      parseEnchantRestriction("Enchant card in a graveyard")?.unsupported,
+    ).toBe(true);
+    expect(
+      parseEnchantRestriction("Enchant card in a graveyard")?.targetKind,
+    ).toBe("permanent");
   });
 
   it("checks the Enchant quality and controller against the target", () => {
@@ -257,7 +271,7 @@ describe("enchant", () => {
     expect(zoneOf(after, "pacifism")).toBe(`${p1}-graveyard`);
   });
 
-  it("SBA keeps a correctly attached Aura and leaves player Auras alone", () => {
+  it("SBA keeps a correctly attached Aura and a player Aura on its player", () => {
     let st = put(state, p1, "pacifism", PACIFISM);
     st = put(st, p1, "curse", CURSE);
     const cards = new Map(st.cards);
@@ -265,9 +279,99 @@ describe("enchant", () => {
       ...cards.get(id("pacifism"))!,
       attachedToId: id("rival"),
     });
+    cards.set(id("curse"), {
+      ...cards.get(id("curse"))!,
+      attachedToId: p2,
+    });
     st = { ...st, cards };
     const after = checkStateBasedActions(st).state;
     expect(zoneOf(after, "pacifism")).toBe(`${p1}-battlefield`);
     expect(zoneOf(after, "curse")).toBe(`${p1}-battlefield`);
+  });
+
+  it("casts an 'Enchant player' Aura at a player and attaches it on resolution", () => {
+    const st = put(state, p1, "curse", CURSE, "hand");
+    const cast = castSpell(st, p1, id("curse"), [
+      { type: "player", targetId: p2, isValid: true },
+    ]);
+    expect(cast.success).toBe(true);
+    const after = resolveTopOfStack(cast.state);
+    expect(zoneOf(after, "curse")).toBe(`${p1}-battlefield`);
+    expect(after.cards.get(id("curse"))!.attachedToId).toBe(p2);
+  });
+
+  it("reads the enchanted player back from the Aura's own state", () => {
+    const st = put(state, p1, "curse", CURSE);
+    const cards = new Map(st.cards);
+    cards.set(id("curse"), {
+      ...cards.get(id("curse"))!,
+      attachedToId: p2,
+    });
+    const withCurse = { ...st, cards };
+    const aura = withCurse.cards.get(id("curse"))!;
+    expect(getAuraHostPlayerId(withCurse, aura)).toBe(p2);
+    // A permanent-hosting Aura has no enchanted player.
+    const pacifism = withCurse.cards.get(id("pacifism"));
+    if (pacifism) expect(getAuraHostPlayerId(withCurse, pacifism)).toBeUndefined();
+  });
+
+  it("refuses to cast an 'Enchant player' Aura at a permanent", () => {
+    const st = put(state, p1, "curse", CURSE, "hand");
+    const result = castSpell(st, p1, id("curse"), [
+      { type: "card", targetId: "rival", isValid: true },
+    ]);
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/needs a player target/);
+  });
+
+  it("refuses to cast an 'Enchant player' Aura at a player who left the game", () => {
+    const players = new Map(state.players);
+    players.set(p2, { ...players.get(p2)!, hasLost: true });
+    const st = { ...put(state, p1, "curse", CURSE, "hand"), players };
+    const result = castSpell(st, p1, id("curse"), [
+      { type: "player", targetId: p2, isValid: true },
+    ]);
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/left the game/);
+  });
+
+  it("checks the target kind of an 'Enchant player' Aura", () => {
+    const curse = createCardInstance(CURSE, p1, p1);
+    expect(canEnchantTarget(state, curse, p2).canEnchant).toBe(true);
+    // A permanent is never a legal target for a player Aura.
+    expect(canEnchantTarget(state, curse, id("rival")).canEnchant).toBe(false);
+    // A player who left the game is not a legal target either.
+    const players = new Map(state.players);
+    players.set(p2, { ...players.get(p2)!, hasLost: true });
+    expect(
+      canEnchantTarget({ ...state, players }, curse, p2).canEnchant,
+    ).toBe(false);
+  });
+
+  it("SBA puts an 'Enchant player' Aura in the graveyard when its player leaves", () => {
+    let st = put(state, p1, "curse", CURSE);
+    const cards = new Map(st.cards);
+    cards.set(id("curse"), {
+      ...cards.get(id("curse"))!,
+      attachedToId: p2,
+    });
+    st = { ...st, cards };
+    expect(
+      isAuraIllegallyAttached(st, st.cards.get(id("curse"))!).illegal,
+    ).toBe(false);
+    const players = new Map(st.players);
+    players.set(p2, { ...players.get(p2)!, hasLost: true });
+    st = { ...st, players };
+    const after = checkStateBasedActions(st).state;
+    expect(zoneOf(after, "curse")).toBe(`${p1}-graveyard`);
+  });
+
+  it("SBA puts an unattached 'Enchant player' Aura in the graveyard", () => {
+    const st = put(state, p1, "curse", CURSE);
+    expect(
+      isAuraIllegallyAttached(st, st.cards.get(id("curse"))!).illegal,
+    ).toBe(true);
+    const after = checkStateBasedActions(st).state;
+    expect(zoneOf(after, "curse")).toBe(`${p1}-graveyard`);
   });
 });

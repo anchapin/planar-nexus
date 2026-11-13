@@ -96,8 +96,13 @@ export interface CardInstance {
   powerModifier: number;
 
   // Attachments and relationships
-  /** ID of card this is attached to (for Equipment, Auras, Fortifications) */
-  attachedToId: CardInstanceId | null;
+  /**
+   * ID of the card or player this is attached to (for Equipment, Auras,
+   * Fortifications). An "Enchant player" Aura keeps the enchanted player's
+   * id here (#2949) — a player is not a card, so there is no matching
+   * entry in `attachedCardIds`.
+   */
+  attachedToId: CardInstanceId | PlayerId | null;
   /** IDs of cards attached to this (for creatures with Equipment/Auras) */
   attachedCardIds: CardInstanceId[];
   /** IDs of cards merged with this one via mutate (CR 702.140) */
