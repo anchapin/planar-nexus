@@ -8,6 +8,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -26,6 +27,14 @@ import { Label } from "@/components/ui/label";
 import { useTrading } from "@/hooks/use-trading";
 import type { TradeOffer, TradeCardItem } from "@/lib/trading";
 import type { ScryfallCard } from "@/lib/card-database";
+
+/**
+ * React's keyboard-event type does not declare `isComposing` in every
+ * `@types/react` release, so widen it locally (issue #2963).
+ */
+type IMEKeyboardEvent<T = Element> = ReactKeyboardEvent<T> & {
+  isComposing?: boolean;
+};
 
 /**
  * Card item display props
@@ -456,8 +465,19 @@ export function TradeDialog({
                         value={notesInput}
                         onChange={(e) => setNotesInput(e.target.value)}
                         placeholder="Type a message..."
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
+                        onKeyDown={(e: IMEKeyboardEvent<HTMLInputElement>) => {
+                          // IME-safe Enter (issue #2963): Enter confirms an IME
+                          // candidate, so it must not send the note
+                          // mid-composition. `keyCode === 229` is the legacy
+                          // "composition in progress" signal; the native event
+                          // is consulted too because React does not always copy
+                          // `isComposing` onto the synthetic one.
+                          if (
+                            e.key === "Enter" &&
+                            !e.isComposing &&
+                            e.keyCode !== 229 &&
+                            !e.nativeEvent.isComposing
+                          ) {
                             handleAddNotes();
                           }
                         }}

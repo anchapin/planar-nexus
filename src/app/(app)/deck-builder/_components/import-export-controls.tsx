@@ -25,6 +25,7 @@ import {
   Share2,
 } from "lucide-react";
 import { useState } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -55,6 +56,14 @@ import {
   triggerBrowserDownload,
 } from "@/lib/deck-export";
 import { AlertCircle, CheckCircle2, HelpCircle } from "lucide-react";
+
+/**
+ * React's keyboard-event type does not declare `isComposing` in every
+ * `@types/react` release, so widen it locally (issue #2963).
+ */
+type IMEKeyboardEvent<T = Element> = ReactKeyboardEvent<T> & {
+  isComposing?: boolean;
+};
 
 type ImportDeckResult = ImportDeckResultType;
 
@@ -521,8 +530,19 @@ export function ImportExportControls({
                     value={importUrl}
                     onChange={(e) => setImportUrl(e.target.value)}
                     disabled={isUrlImporting}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
+                    onKeyDown={(e: IMEKeyboardEvent<HTMLInputElement>) => {
+                      // IME-safe Enter (issue #2963): Enter confirms an IME
+                      // candidate, so it must not trigger the import
+                      // mid-composition. `keyCode === 229` is the legacy
+                      // "composition in progress" signal; the native event is
+                      // consulted too because React does not always copy
+                      // `isComposing` onto the synthetic one.
+                      if (
+                        e.key === "Enter" &&
+                        !e.isComposing &&
+                        e.keyCode !== 229 &&
+                        !e.nativeEvent.isComposing
+                      ) {
                         handleUrlImport();
                       }
                     }}
