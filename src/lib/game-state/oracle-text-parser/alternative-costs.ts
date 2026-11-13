@@ -149,6 +149,7 @@ export enum AlternativeCostType {
   BLITZ = "blitz",
   FORETELL = "foretell",
   MUTATE = "mutate",
+  EMERGE = "emerge",
   OTHER = "other",
 }
 
@@ -255,6 +256,25 @@ export function parseAlternativeCost(oracleText: string): AlternativeCostInfo {
         "Merges onto target non-Human creature you control",
       isAvailable: true,
       description: `Mutate ${mutateMatch[1]}`,
+    };
+  }
+
+  // Check for Emerge (CR 702.119)
+  // Emerge [cost] — You may cast this spell by paying its emerge cost rather
+  // than its mana cost. The emerge cost is the spell's mana cost reduced by
+  // the mana value of a creature you sacrifice (CR 702.119a).
+  const emergeMatch = oracleText.match(
+    /emerge\s*(\{[^}]+\}(?:\{[^}]+\})*)/i,
+  );
+  if (emergeMatch) {
+    const manaCost = parseManaCost(emergeMatch[1]);
+    return {
+      hasAlternativeCost: true,
+      costType: AlternativeCostType.EMERGE,
+      manaCost,
+      additionalRequirement: "Sacrifice a creature you control",
+      isAvailable: true,
+      description: `Emerge ${emergeMatch[1]}`,
     };
   }
 
@@ -618,6 +638,62 @@ export function parseSpectacle(oracleText: string): {
     hasSpectacle: true,
     spectacleCost,
     description: `Spectacle ${spectacleMatch[1]}`,
+  };
+}
+
+/**
+ * Parse the Emerge keyword from oracle text.
+ *
+ * CR 702.119: "Emerge [cost]" is a static ability that functions while the
+ * spell with emerge is on the stack. It offers an alternative cost: "You may
+ * cast this spell by paying its emerge cost rather than its mana cost. The
+ * emerge cost is equal to its mana cost reduced by the mana value of a
+ * creature you sacrifice."
+ *
+ * Casting for the emerge cost follows these rules (CR 702.119a):
+ * 1. The spell's mana value is unchanged.
+ * 2. You sacrifice a creature you control as an additional cost.
+ * 3. The GENERIC portion of the spell's mana cost is reduced by the mana
+ *    value of the creature you sacrificed (never below zero generic;
+ *    coloured pips are unaffected).
+ *
+ * The parser surfaces the printed "Emerge [cost]" reminder (e.g. Fling's
+ * "Emerge {U}{U}") for inspection / UI. The cost actually charged is computed
+ * by the casting pipeline from the spell's mana cost and the sacrificed
+ * creature's mana value — the printed value is only the minimum shown on the
+ * card.
+ *
+ * Example oracle text: "Emerge {U}{U}\nFling target creature." (Fling).
+ */
+export function parseEmerge(oracleText: string): {
+  hasEmerge: boolean;
+  emergeCost: ParsedManaCost | null;
+  description: string;
+} {
+  if (!oracleText) {
+    return { hasEmerge: false, emergeCost: null, description: "" };
+  }
+
+  const emergeMatch = oracleText.match(
+    /emerge\s*(\{[^}]+\}(?:\{[^}]+\})*)/i,
+  );
+  if (emergeMatch) {
+    const emergeCost = parseManaCost(emergeMatch[1]);
+    return {
+      hasEmerge: true,
+      emergeCost,
+      description: `Emerge ${emergeMatch[1]}`,
+    };
+  }
+
+  // The bare keyword form ("Emerge" with the cost printed elsewhere) still
+  // grants the alternative cost — the cost charged is computed from the
+  // sacrificed creature's mana value, so no printed cost is required.
+  const hasEmerge = /\bemerge\b/i.test(oracleText);
+  return {
+    hasEmerge,
+    emergeCost: null,
+    description: hasEmerge ? "Emerge" : "",
   };
 }
 
