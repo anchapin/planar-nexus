@@ -17,6 +17,7 @@ import {
   parseNinjutsu,
   parseTurnCreatureForm,
 } from "./ninjutsu";
+import { activateBloodrush, parseBloodrush } from "./bloodrush";
 import { KeywordActionResult } from "./shared";
 import { activateManaAbility, canAffordMana, parseManaAbility } from "../mana";
 import { parseManaCost } from "../oracle-text-parser/mana-cost";
@@ -28,6 +29,12 @@ export type HandActivation =
       cardId: CardInstanceId;
       attackerId: CardInstanceId;
       label: string;
+    }
+  | {
+      kind: "bloodrush";
+      cardId: CardInstanceId;
+      attackerId: CardInstanceId;
+      label: string;
     };
 
 const NINJUTSU_STEPS: ReadonlySet<Phase> = new Set([
@@ -36,6 +43,22 @@ const NINJUTSU_STEPS: ReadonlySet<Phase> = new Set([
   Phase.COMBAT_DAMAGE,
   Phase.END_COMBAT,
 ]);
+
+/** Steps in which creatures are attacking (bloodrush needs an attacker). */
+const BLOODRUSH_STEPS: ReadonlySet<Phase> = new Set([
+  Phase.DECLARE_ATTACKERS,
+  Phase.DECLARE_BLOCKERS,
+  Phase.COMBAT_DAMAGE_FIRST_STRIKE,
+  Phase.COMBAT_DAMAGE,
+  Phase.END_COMBAT,
+]);
+
+/** Creatures that are currently attacking (bloodrush targets). */
+export function getAttackingCreatures(
+  state: GameState,
+): CardInstanceId[] {
+  return state.combat.attackers.map((a) => a.cardId);
+}
 
 /** Unblocked attackers `playerId` controls (candidates to return for ninjutsu). */
 export function getUnblockedAttackers(
@@ -92,6 +115,19 @@ export function getHandActivations(
       });
     }
   }
+
+  const bloodrush = parseBloodrush(text);
+  if (bloodrush && BLOODRUSH_STEPS.has(state.turn.currentPhase)) {
+    for (const attackerId of getAttackingCreatures(state)) {
+      const name = state.cards.get(attackerId)?.cardData.name ?? "attacker";
+      out.push({
+        kind: "bloodrush",
+        cardId,
+        attackerId,
+        label: `Bloodrush ${bloodrush}: ${name} gets +X/+X until end of turn`,
+      });
+    }
+  }
   return out;
 }
 
@@ -101,9 +137,19 @@ export function activateFromHand(
   playerId: PlayerId,
   option: HandActivation,
 ): KeywordActionResult {
-  return option.kind === "channel"
-    ? channelCard(state, playerId, option.cardId)
-    : activateNinjutsu(state, playerId, option.cardId, option.attackerId);
+  switch (option.kind) {
+    case "channel":
+      return channelCard(state, playerId, option.cardId);
+    case "ninjutsu":
+      return activateNinjutsu(state, playerId, option.cardId, option.attackerId);
+    case "bloodrush":
+      return activateBloodrush(
+        state,
+        playerId,
+        option.cardId,
+        option.attackerId,
+      );
+  }
 }
 
 /**
@@ -145,6 +191,26 @@ export function chooseAIHandActivation(
         0;
       if (ninjaPower > power(weakest.attackerId)) return weakest;
     }
+    const bloodrush = options.filter(
+      (o): o is Extract<HandActivation, { kind: "bloodrush" }> =>
+        o.kind === "bloodrush" &&
+        state.cards.get(o.attackerId)?.controllerId === playerId,
+    );
+    if (bloodrush.length > 0) {
+      const card = state.cards.get(cardId);
+      // Same trade-off as channel: never discard a card the AI could still
+      // cast this turn for the cheaper bloodrush pump.
+      if (card && (card.cardData.cmc ?? 0) > lands) {
+        const power = (id: CardInstanceId) => {
+          const c = state.cards.get(id);
+          return c ? getEffectivePower(c) : 0;
+        };
+        const best = [...bloodrush].sort(
+          (a, b) => power(b.attackerId) - power(a.attackerId),
+        )[0];
+        return best;
+      }
+    }
     const channel = options.find((o) => o.kind === "channel");
     const card = state.cards.get(cardId);
     if (channel && card && (card.cardData.cmc ?? 0) > lands) return channel;
@@ -156,9 +222,14 @@ const COLORS = ["white", "blue", "black", "red", "green", "colorless"] as const;
 
 function costOf(state: GameState, option: HandActivation): string | null {
   const text = state.cards.get(option.cardId)?.cardData.oracle_text || "";
-  return option.kind === "channel"
-    ? (parseChannel(text)?.cost ?? null)
-    : parseNinjutsu(text);
+  switch (option.kind) {
+    case "channel":
+      return parseChannel(text)?.cost ?? null;
+    case "ninjutsu":
+      return parseNinjutsu(text);
+    case "bloodrush":
+      return parseBloodrush(text);
+  }
 }
 
 /**
