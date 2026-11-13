@@ -43,11 +43,24 @@ describe("oracle-text-parser — Stryker mutation suite", () => {
       expect(parseManaCost("")).toBeNull();
     });
 
-    it("parses phyrexian mana as generic+1", () => {
-      // Phyrexian mana ({W/P}) is not recognized by parseManaCost in the
-      // current implementation — it returns null (not yet implemented).
+    it("parses phyrexian mana as a phyrexian pip worth 1 (CR 202.3c)", () => {
+      // Issue #2966: phyrexian mana was not recognized at all, so a cost of
+      // only {W/P} parsed to null. CR 202.3c: the mana value of a phyrexian
+      // symbol is 1, and the symbol is parsed as its own pip kind.
       const result = parseManaCost("{W/P}");
-      expect(result).toBeNull();
+      expect(result).not.toBeNull();
+      expect(result!.pips!.phyrexian).toBe(1);
+      expect(result!.pips!.symbols).toEqual(["W/P"]);
+      expect(getManaValue(result)).toBe(1);
+    });
+
+    it("parses every phyrexian color variant (CR 202.3c)", () => {
+      for (const symbol of ["W/P", "U/P", "B/P", "R/P", "G/P"]) {
+        const result = parseManaCost(`{${symbol}}`);
+        expect(result).not.toBeNull();
+        expect(result!.pips!.phyrexian).toBe(1);
+        expect(getManaValue(result)).toBe(1);
+      }
     });
   });
 
@@ -64,6 +77,20 @@ describe("oracle-text-parser — Stryker mutation suite", () => {
 
     it("returns empty string for null", () => {
       expect(formatManaCost(null)).toBe("");
+    });
+
+    it("round-trips a hybrid cost instead of flattening it (issue #2966)", () => {
+      // A hybrid pip is one symbol; formatting must keep it (and re-parse to
+      // an equal cost) rather than splitting it into two colored pips.
+      const parsed = parseManaCost("{W/U}");
+      const formatted = formatManaCost(parsed);
+      expect(formatted).not.toBe("");
+      expect(formatted).toBe("{W/U}");
+      expect(manaCostsEqual(parseManaCost(formatted), parsed)).toBe(true);
+    });
+
+    it("formats a phyrexian cost", () => {
+      expect(formatManaCost(parseManaCost("{W/P}"))).toBe("{W/P}");
     });
   });
 
@@ -94,13 +121,43 @@ describe("oracle-text-parser — Stryker mutation suite", () => {
       const withoutX = parseManaCost("{R}");
       expect(manaCostsEqual(withX, withoutX)).toBe(false);
     });
+
+    it("distinguishes phyrexian colors (issue #2966)", () => {
+      // {W/P} and {U/P} are different symbols (CR 202.3c).
+      expect(manaCostsEqual(parseManaCost("{W/P}"), parseManaCost("{U/P}"))).toBe(
+        false,
+      );
+      expect(
+        manaCostsEqual(parseManaCost("{W/P}"), parseManaCost("{W/P}")),
+      ).toBe(true);
+    });
   });
 
   describe("getManaValue", () => {
-    it("counts hybrid colored as 1 each via ceil", () => {
-      // Hybrid W/U: each half is 0.5, ceil(0.5) = 1 each, total = 2
+    it("counts a hybrid pip as 1 (CR 202.3b)", () => {
+      // Issue #2966: the old implementation summed ceil() of each half-color,
+      // so the single hybrid pip {W/U} counted as 2. CR 202.3b: a hybrid
+      // symbol has a mana value of 1.
       const cost = parseManaCost("{W/U}");
-      expect(getManaValue(cost)).toBe(2);
+      expect(getManaValue(cost)).toBe(1);
+    });
+
+    it("counts a colorless pip as 1 (CR 202.3a)", () => {
+      // A {C} pip is worth one mana value; it used to count as 0.
+      expect(getManaValue(parseManaCost("{C}"))).toBe(1);
+    });
+
+    it("counts a monocolored hybrid pip as 2 (CR 202.3b)", () => {
+      expect(getManaValue(parseManaCost("{2/W}"))).toBe(2);
+    });
+
+    it("counts a phyrexian pip as 1 (CR 202.3c)", () => {
+      expect(getManaValue(parseManaCost("{W/P}"))).toBe(1);
+    });
+
+    it("sums every pip of a mixed cost", () => {
+      // {X} adds nothing; {R}{R} = 2, {2/G} = 2, {C} = 1 -> 5.
+      expect(getManaValue(parseManaCost("{X}{R}{R}{2/G}{C}"))).toBe(5);
     });
 
     it("snow mana is generic", () => {
