@@ -26,7 +26,7 @@ Package manager is **npm** (`package-lock.json` + CI `npm ci`, Node 22). No `pnp
 
 ## CI gate (`.github/workflows/ci.yml`)
 
-The `build` job `needs:` **all** of: `test, lint, typecheck, commitlint, mutation-smoke, security, cargo-audit, rust-checks, a11y-contrast, e2e, workflow-lint, tauri-updater-config, turn-credentials-guard, engine-size-budget, coverage-docs-guard, test-count-docs-guard`. Failing any one blocks merge. Run `typecheck && lint && test` locally before pushing.
+The `build` job `needs:` **all** of: `test, lint, typecheck, commitlint, mutation-smoke, security, cargo-audit, rust-checks, a11y-contrast, e2e, workflow-lint, tauri-updater-config, turn-credentials-guard, engine-size-budget, coverage-docs-guard, test-count-docs-guard, law-suite`. Failing any one blocks merge. Run `typecheck && lint && test` locally before pushing.
 
 - **Update the test-count docs in the same commit as any test change, before pushing.** `test-count-docs-guard` re-measures live Jest and fails on anchored drift in `docs/onboarding.md` or `docs/TEST_VIDEO_FIXTURES.md` (mismatch on `Test Suites`, `Test cases total`, `Snapshots`, or `--listTests` files — these only move when a test file is added, removed, or renamed without rerunning the ratchet). The non-anchored counters (`Tests passed`, `Tests skipped`, `Tests todo`) are decoupled: a flake-induced drop prints a `WARN` but never fails the gate (#2353). A guard-only failure costs a full extra CI run for a one-line docs fix, so never push a commit that adds, removes, or renames test files without the matching bump:
   - Preferred: `npm run ratchet:test-count`, which runs full Jest and rewrites both anchored blocks.
