@@ -12,6 +12,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 
+/**
+ * React's keyboard-event type does not declare `isComposing` in every
+ * `@types/react` release, so widen it locally (issue #2963).
+ */
+type IMEKeyboardEvent<T = Element> = KeyboardEvent<T> & {
+  isComposing?: boolean;
+};
+
 interface ChatInputProps {
   onSend: (content: string) => void;
   disabled?: boolean;
@@ -42,8 +50,20 @@ export function ChatInput({
   );
 
   const handleKeyDown = useCallback(
-    (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === "Enter" && !e.shiftKey) {
+    (e: IMEKeyboardEvent<HTMLTextAreaElement>) => {
+      // IME-safe Enter (issue #2963): while an IME composition is active the
+      // Enter key confirms the candidate word — it must NOT submit. The
+      // `keyCode === 229` check covers browsers that do not expose
+      // `isComposing` on the keyboard event, and the native event is consulted
+      // as well because React does not always copy `isComposing` onto the
+      // synthetic one.
+      if (
+        e.key === "Enter" &&
+        !e.shiftKey &&
+        !e.isComposing &&
+        e.keyCode !== 229 &&
+        !e.nativeEvent.isComposing
+      ) {
         e.preventDefault();
         handleSubmit();
       }
@@ -55,8 +75,16 @@ export function ChatInput({
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       setInput(e.target.value);
-      // Reset height to auto to calculate new height
-      if (textareaRef.current) {
+      // Progressive enhancement (issue #2963): with `field-sizing: content`
+      // the browser grows the textarea natively (still capped by
+      // `max-h-[150px]`), so the imperative resize below is only the fallback
+      // and must run when `!CSS.supports("field-sizing", "content")`.
+      const needsJsResize =
+        typeof CSS === "undefined" ||
+        typeof CSS.supports !== "function" ||
+        !CSS.supports("field-sizing", "content");
+      if (needsJsResize && textareaRef.current) {
+        // Reset height to auto to calculate new height
         textareaRef.current.style.height = "auto";
         textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 150)}px`;
       }
@@ -77,7 +105,7 @@ export function ChatInput({
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           disabled={disabled}
-          className="min-h-[44px] max-h-[150px] resize-none shadow-none border-none focus-visible:ring-1"
+          className="min-h-[44px] max-h-[150px] resize-none shadow-none border-none focus-visible:ring-1 [field-sizing:content]"
           aria-label="Chat message input"
           rows={1}
         />

@@ -8,6 +8,7 @@ import {
   forwardRef,
   useImperativeHandle,
   useRef,
+  type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import type { ScryfallCard } from "@/lib/card-database";
 import {
@@ -83,6 +84,14 @@ import { useSearchWorker } from "@/hooks/use-search-worker";
 import { VirtualizedCardGrid } from "@/components/shared/virtualized-card-grid";
 import type { VirtualizedCardGridHandle } from "@/components/shared/virtualized-card-grid";
 import { CardResultTile } from "./card-result-tile";
+
+/**
+ * React's keyboard-event type does not declare `isComposing` in every
+ * `@types/react` release, so widen it locally (issue #2963).
+ */
+type IMEKeyboardEvent<T = Element> = ReactKeyboardEvent<T> & {
+  isComposing?: boolean;
+};
 
 interface CardSearchHandle {
   focus: () => void;
@@ -1192,8 +1201,18 @@ export const CardSearch = forwardRef<CardSearchHandle, CardSearchProps>(
                 placeholder="Preset name (e.g., 'Blue Control')"
                 value={newPresetName}
                 onChange={(e) => setNewPresetName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
+                onKeyDown={(e: IMEKeyboardEvent<HTMLInputElement>) => {
+                  // IME-safe Enter (issue #2963): Enter confirms an IME
+                  // candidate, so it must not save the preset mid-composition.
+                  // `keyCode === 229` is the legacy "composition in progress"
+                  // signal; the native event is consulted too because React
+                  // does not always copy `isComposing` onto the synthetic one.
+                  if (
+                    e.key === "Enter" &&
+                    !e.isComposing &&
+                    e.keyCode !== 229 &&
+                    !e.nativeEvent.isComposing
+                  ) {
                     handleSavePreset();
                   }
                 }}
