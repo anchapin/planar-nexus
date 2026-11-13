@@ -1,10 +1,24 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+import { gotoReady, waitForReady } from "./helpers/navigation";
+
+/**
+ * Issue #2958 — the specs used to synchronise with
+ * `page.waitForLoadState("networkidle")` after every `goto()`. `networkidle`
+ * is a *global* "the network is quiet" guess that never settles under CI
+ * load (the dev server keeps compiling chunks / streaming RSC), so it burned
+ * the whole 30 s test budget and took every test in the file down with it.
+ * These specs now wait for the condition they actually need — the landing
+ * page's own heading / the element under test — via the shared helpers.
+ */
+
+/** Readiness signal: the multiplayer landing page's own <h1>. */
+function multiplayerReady(page: Page) {
+  return page.getByRole("heading", { name: /Multiplayer/i, level: 1 });
+}
 
 test.describe("Multiplayer Lobby", () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto("/multiplayer");
-    // Wait for page to fully load before running assertions
-    await page.waitForLoadState("networkidle");
+    await gotoReady(page, "/multiplayer", multiplayerReady(page));
   });
 
   test("should load multiplayer page", async ({ page }) => {
@@ -25,16 +39,14 @@ test.describe("Multiplayer Lobby", () => {
   });
 
   test("should navigate to host page", async ({ page }) => {
-    await page.goto("/multiplayer");
-    await page.waitForLoadState("networkidle");
+    await gotoReady(page, "/multiplayer", multiplayerReady(page));
     await page.getByRole("link", { name: /create p2p game/i }).click();
     await page.waitForURL(/.*p2p-host/, { timeout: 10000 });
     await expect(page).toHaveURL(/.*multiplayer\/p2p-host/);
   });
 
   test("should navigate to join page", async ({ page }) => {
-    await page.goto("/multiplayer");
-    await page.waitForLoadState("networkidle");
+    await gotoReady(page, "/multiplayer", multiplayerReady(page));
 
     // Wait for the link to be visible before clicking
     const joinLink = page.getByRole("link", { name: /enter code manually/i });
@@ -74,7 +86,7 @@ test.describe("Issue #1255 — lobby ready-check countdown", () => {
       }
     });
     await page.goto("/multiplayer");
-    await page.waitForLoadState("networkidle");
+    await waitForReady(multiplayerReady(page));
   });
 
   test("the host page exposes a `data-testid=ready-check-banner` slot for the countdown", async ({
@@ -96,8 +108,7 @@ test.describe("Issue #1255 — lobby ready-check countdown", () => {
     // shows the "Start Ready Check" copy. We don't drive a full lobby
     // creation in E2E (the P2P setup would require a second browser
     // context) — this test only pins the default state.
-    await page.goto("/multiplayer");
-    await page.waitForLoadState("networkidle");
+    await gotoReady(page, "/multiplayer", multiplayerReady(page));
     await expect(
       page.getByRole("link", { name: /create p2p game/i }),
     ).toBeVisible();
@@ -141,8 +152,7 @@ test.describe("Issue #1254 — reconnect tokens on the multiplayer landing page"
   test("the resume section is hidden when there are no persisted tokens", async ({
     page,
   }) => {
-    await page.goto("/multiplayer");
-    await page.waitForLoadState("networkidle");
+    await gotoReady(page, "/multiplayer", multiplayerReady(page));
     await expect(
       page.locator('[data-testid="reconnect-token-list"]'),
     ).toHaveCount(0);
@@ -184,8 +194,11 @@ test.describe("Issue #1254 — reconnect tokens on the multiplayer landing page"
       };
     });
 
-    await page.goto("/multiplayer");
-    await page.waitForLoadState("networkidle");
+    await gotoReady(
+      page,
+      "/multiplayer",
+      page.locator('[data-testid="reconnect-token-list"]'),
+    );
     await expect(
       page.locator('[data-testid="reconnect-token-list"]'),
     ).toBeVisible();
@@ -229,8 +242,11 @@ test.describe("Issue #1254 — reconnect tokens on the multiplayer landing page"
       };
     });
 
-    await page.goto("/multiplayer");
-    await page.waitForLoadState("networkidle");
+    await gotoReady(
+      page,
+      "/multiplayer",
+      page.locator('[data-testid="reconnect-token-row-TESTGAME"]'),
+    );
     await expect(
       page.locator('[data-testid="reconnect-token-row-TESTGAME"]'),
     ).toBeVisible();
@@ -276,8 +292,7 @@ test.describe("Issue #1253 — spectator slot wiring on the multiplayer page", (
         /* ignore */
       }
     });
-    await page.goto("/multiplayer");
-    await page.waitForLoadState("networkidle");
+    await gotoReady(page, "/multiplayer", multiplayerReady(page));
   });
 
   test("the page-header spectator badge is hidden when no lobby is active", async ({
