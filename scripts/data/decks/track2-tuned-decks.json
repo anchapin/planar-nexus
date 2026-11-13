@@ -1,0 +1,556 @@
+{
+  "note": "Track 2 tuning ladder: red-aggro vs green-ramp variants (v1: green-ramp -2 Pelakka Wurm -> +2 Forest), brewed from the scripted card pool; tuned 2026-11-12 for the balanced-second-deck-pair lever",
+  "decks": {
+    "red-aggro-tuned": {
+      "source": "https://www.mtggoldfish.com/deck/7954752",
+      "main": {
+        "Burst Lightning": 4,
+        "Channeled Dragonfire": 2,
+        "Generous Plunderer": 1,
+        "Hired Claw": 4,
+        "Magda, the Hoardmaster": 4,
+        "Magmatic Hellkite": 4,
+        "Mountain": 20,
+        "Nova Hellkite": 4,
+        "Sarkhan, Dragon Ascendant": 4,
+        "Shock": 4,
+        "Smaug the Magnificent": 4,
+        "Soulstone Sanctuary": 3,
+        "Sunspine Lynx": 2
+      }
+    },
+    "green-ramp-tuned": {
+      "source": "brewed from the scripted card pool, 2026-11-09",
+      "main": {
+        "Llanowar Elves": 4,
+        "Druid of the Cowl": 4,
+        "Thrashing Brontodon": 4,
+        "Regal Imperiosaur": 4,
+        "Rampaging Baloths": 4,
+        "Elfsworn Giant": 4,
+        "Apothecary Stomper": 4,
+        "Pelakka Wurm": 2,
+        "Rabid Bite": 4,
+        "Oracle's Restoration": 2,
+        "Forest": 24
+      }
+    }
+  },
+  "cards": {
+    "Apothecary Stomper": {
+      "name": "Apothecary Stomper",
+      "mana_cost": "{4}{G}{G}",
+      "cmc": 6.0,
+      "type_line": "Creature \u2014 Elephant",
+      "oracle_text": "Vigilance (Attacking doesn't cause this creature to tap.)\nWhen this creature enters, choose one \u2014\n\u2022 Put two +1/+1 counters on target creature you control.\n\u2022 You gain 4 life.",
+      "colors": [
+        "G"
+      ],
+      "color_identity": [
+        "G"
+      ],
+      "keywords": [
+        "Vigilance"
+      ],
+      "layout": "normal",
+      "power": "4",
+      "toughness": "4",
+      "legalities": {
+        "standard": "legal"
+      },
+      "id": "680b7b0c-0e1b-46ce-9917-9fc6e05aa148"
+    },
+    "Burst Lightning": {
+      "name": "Burst Lightning",
+      "mana_cost": "{R}",
+      "cmc": 1.0,
+      "type_line": "Instant",
+      "oracle_text": "Kicker {4} (You may pay an additional {4} as you cast this spell.)\nBurst Lightning deals 2 damage to any target. If this spell was kicked, it deals 4 damage instead.",
+      "colors": [
+        "R"
+      ],
+      "color_identity": [
+        "R"
+      ],
+      "keywords": [
+        "Kicker"
+      ],
+      "layout": "normal",
+      "legalities": {
+        "standard": "legal"
+      },
+      "id": "aec5d380-d354-4750-931a-6c91853e2edc"
+    },
+    "Channeled Dragonfire": {
+      "name": "Channeled Dragonfire",
+      "mana_cost": "{R}",
+      "cmc": 1.0,
+      "type_line": "Sorcery",
+      "oracle_text": "Channeled Dragonfire deals 2 damage to any target.\nHarmonize {5}{R}{R} (You may cast this card from your graveyard for its harmonize cost. You may tap a creature you control to reduce that cost by {X}, where X is its power. Then exile this spell.)",
+      "colors": [
+        "R"
+      ],
+      "color_identity": [
+        "R"
+      ],
+      "keywords": [
+        "Harmonize"
+      ],
+      "layout": "normal",
+      "legalities": {
+        "standard": "legal"
+      },
+      "id": "24204881-690c-4043-8771-20cb93385072"
+    },
+    "Druid of the Cowl": {
+      "name": "Druid of the Cowl",
+      "mana_cost": "{1}{G}",
+      "cmc": 2.0,
+      "type_line": "Creature \u2014 Elf Druid",
+      "oracle_text": "{T}: Add {G}.",
+      "colors": [
+        "G"
+      ],
+      "color_identity": [
+        "G"
+      ],
+      "keywords": [],
+      "layout": "normal",
+      "power": "1",
+      "toughness": "3",
+      "legalities": {
+        "standard": "legal"
+      },
+      "id": "db2d0ee9-865c-4fc9-8cb6-540c597e1bf4"
+    },
+    "Elfsworn Giant": {
+      "name": "Elfsworn Giant",
+      "mana_cost": "{3}{G}{G}",
+      "cmc": 5.0,
+      "type_line": "Creature \u2014 Giant",
+      "oracle_text": "Reach (This creature can block creatures with flying.)\nLandfall \u2014 Whenever a land you control enters, create a 1/1 green Elf Warrior creature token.",
+      "colors": [
+        "G"
+      ],
+      "color_identity": [
+        "G"
+      ],
+      "keywords": [
+        "Reach",
+        "Landfall"
+      ],
+      "layout": "normal",
+      "power": "5",
+      "toughness": "3",
+      "legalities": {
+        "standard": "legal"
+      },
+      "id": "5128a5be-ffa6-4998-8488-872d80b24cb2"
+    },
+    "Forest": {
+      "name": "Forest",
+      "mana_cost": "",
+      "cmc": 0.0,
+      "type_line": "Basic Land \u2014 Forest",
+      "oracle_text": "({T}: Add {G}.)",
+      "colors": [],
+      "color_identity": [
+        "G"
+      ],
+      "keywords": [],
+      "layout": "normal",
+      "legalities": {
+        "standard": "legal"
+      },
+      "id": "2e781bfd-f8cb-4d20-b977-4359f3a21311"
+    },
+    "Generous Plunderer": {
+      "name": "Generous Plunderer",
+      "mana_cost": "{1}{R}",
+      "cmc": 2.0,
+      "type_line": "Creature \u2014 Human Rogue",
+      "oracle_text": "Menace\nAt the beginning of your upkeep, you may create a Treasure token. When you do, target opponent creates a tapped Treasure token.\nWhenever this creature attacks, it deals damage to defending player equal to the number of artifacts they control.",
+      "colors": [
+        "R"
+      ],
+      "color_identity": [
+        "R"
+      ],
+      "keywords": [
+        "Treasure",
+        "Menace"
+      ],
+      "layout": "normal",
+      "power": "2",
+      "toughness": "2",
+      "legalities": {
+        "standard": "legal"
+      },
+      "id": "4c6cf93a-d073-48ac-88db-c46bf3e10beb"
+    },
+    "Hired Claw": {
+      "name": "Hired Claw",
+      "mana_cost": "{R}",
+      "cmc": 1.0,
+      "type_line": "Creature \u2014 Lizard Mercenary",
+      "oracle_text": "Whenever you attack with one or more Lizards, this creature deals 1 damage to target opponent.\n{1}{R}: Put a +1/+1 counter on this creature. Activate only if an opponent lost life this turn and only once each turn.",
+      "colors": [
+        "R"
+      ],
+      "color_identity": [
+        "R"
+      ],
+      "keywords": [],
+      "layout": "normal",
+      "power": "1",
+      "toughness": "2",
+      "legalities": {
+        "standard": "legal"
+      },
+      "id": "1ae41080-0d67-4719-adb2-49bf2a268b6c"
+    },
+    "Llanowar Elves": {
+      "name": "Llanowar Elves",
+      "mana_cost": "{G}",
+      "cmc": 1.0,
+      "type_line": "Creature \u2014 Elf Druid",
+      "oracle_text": "{T}: Add {G}.",
+      "colors": [
+        "G"
+      ],
+      "color_identity": [
+        "G"
+      ],
+      "keywords": [],
+      "layout": "normal",
+      "power": "1",
+      "toughness": "1",
+      "legalities": {
+        "standard": "legal"
+      },
+      "id": "6a0b230b-d391-4998-a3f7-7b158a0ec2cd"
+    },
+    "Magda, the Hoardmaster": {
+      "name": "Magda, the Hoardmaster",
+      "mana_cost": "{1}{R}",
+      "cmc": 2.0,
+      "type_line": "Legendary Creature \u2014 Dwarf Berserker",
+      "oracle_text": "Whenever you commit a crime, create a tapped Treasure token. This ability triggers only once each turn. (Targeting opponents, anything they control, and/or cards in their graveyards is a crime.)\nSacrifice three Treasures: Create a 4/4 red Scorpion Dragon creature token with flying and haste. Activate only as a sorcery.",
+      "colors": [
+        "R"
+      ],
+      "color_identity": [
+        "R"
+      ],
+      "keywords": [
+        "Treasure"
+      ],
+      "layout": "normal",
+      "power": "2",
+      "toughness": "2",
+      "legalities": {
+        "standard": "legal"
+      },
+      "id": "4443d112-209b-49ec-bc40-3a11dcdb092e"
+    },
+    "Magmatic Hellkite": {
+      "name": "Magmatic Hellkite",
+      "mana_cost": "{2}{R}{R}",
+      "cmc": 4.0,
+      "type_line": "Creature \u2014 Dragon",
+      "oracle_text": "Flying\nWhen this creature enters, destroy target nonbasic land an opponent controls. Its controller searches their library for a basic land card, puts it onto the battlefield tapped with a stun counter on it, then shuffles. (If a permanent with a stun counter would become untapped, remove one from it instead.)",
+      "colors": [
+        "R"
+      ],
+      "color_identity": [
+        "R"
+      ],
+      "keywords": [
+        "Flying"
+      ],
+      "layout": "normal",
+      "power": "4",
+      "toughness": "5",
+      "legalities": {
+        "standard": "legal"
+      },
+      "id": "b3b3aec8-d931-4c7f-86b5-1e7dfb717b59"
+    },
+    "Mountain": {
+      "name": "Mountain",
+      "mana_cost": "",
+      "cmc": 0.0,
+      "type_line": "Basic Land \u2014 Mountain",
+      "oracle_text": "({T}: Add {R}.)",
+      "colors": [],
+      "color_identity": [
+        "R"
+      ],
+      "keywords": [],
+      "layout": "normal",
+      "produced_mana": [
+        "R"
+      ],
+      "legalities": {
+        "standard": "legal"
+      },
+      "id": "2a844b96-6616-4c39-8f4f-5d14a3b2bd55"
+    },
+    "Nova Hellkite": {
+      "name": "Nova Hellkite",
+      "mana_cost": "{3}{R}{R}",
+      "cmc": 5.0,
+      "type_line": "Creature \u2014 Dragon",
+      "oracle_text": "Flying, haste\nWhen this creature enters, it deals 1 damage to target creature an opponent controls.\nWarp {2}{R} (You may cast this card from your hand for its warp cost. Exile this creature at the beginning of the next end step, then you may cast it from exile on a later turn.)",
+      "colors": [
+        "R"
+      ],
+      "color_identity": [
+        "R"
+      ],
+      "keywords": [
+        "Flying",
+        "Haste",
+        "Warp"
+      ],
+      "layout": "normal",
+      "power": "4",
+      "toughness": "5",
+      "legalities": {
+        "standard": "legal"
+      },
+      "id": "424af0d0-398c-4d78-9ad5-2171bf1bcbd1"
+    },
+    "Oracle's Restoration": {
+      "name": "Oracle's Restoration",
+      "mana_cost": "{G}",
+      "cmc": 1.0,
+      "type_line": "Sorcery",
+      "oracle_text": "Target creature you control gets +1/+1 until end of turn. You draw a card and gain 1 life.",
+      "colors": [
+        "G"
+      ],
+      "color_identity": [
+        "G"
+      ],
+      "keywords": [],
+      "layout": "normal",
+      "legalities": {
+        "standard": "legal"
+      },
+      "id": "0863a19d-4511-4a78-98dd-d194afd1c39b"
+    },
+    "Pelakka Wurm": {
+      "name": "Pelakka Wurm",
+      "mana_cost": "{4}{G}{G}{G}",
+      "cmc": 7.0,
+      "type_line": "Creature \u2014 Wurm",
+      "oracle_text": "Trample (This creature can deal excess combat damage to the player or planeswalker it's attacking.)\nWhen this creature enters, you gain 7 life.\nWhen this creature dies, draw a card.",
+      "colors": [
+        "G"
+      ],
+      "color_identity": [
+        "G"
+      ],
+      "keywords": [
+        "Trample"
+      ],
+      "layout": "normal",
+      "power": "7",
+      "toughness": "7",
+      "legalities": {
+        "standard": "legal"
+      },
+      "id": "304c635c-de4d-46ee-8ab0-e5c4d55b61b3"
+    },
+    "Rabid Bite": {
+      "name": "Rabid Bite",
+      "mana_cost": "{1}{G}",
+      "cmc": 2.0,
+      "type_line": "Sorcery",
+      "oracle_text": "Target creature you control deals damage equal to its power to target creature you don't control.",
+      "colors": [
+        "G"
+      ],
+      "color_identity": [
+        "G"
+      ],
+      "keywords": [],
+      "layout": "normal",
+      "legalities": {
+        "standard": "legal"
+      },
+      "id": "53a73200-b798-4bfd-a431-8b94e17b70be"
+    },
+    "Rampaging Baloths": {
+      "name": "Rampaging Baloths",
+      "mana_cost": "{4}{G}{G}",
+      "cmc": 6.0,
+      "type_line": "Creature \u2014 Beast",
+      "oracle_text": "Trample\nLandfall \u2014 Whenever a land you control enters, create a 4/4 green Beast creature token.",
+      "colors": [
+        "G"
+      ],
+      "color_identity": [
+        "G"
+      ],
+      "keywords": [
+        "Trample",
+        "Landfall"
+      ],
+      "layout": "normal",
+      "power": "6",
+      "toughness": "6",
+      "legalities": {
+        "standard": "legal"
+      },
+      "id": "84aa18de-6acc-46cc-8e28-3046790a6751"
+    },
+    "Regal Imperiosaur": {
+      "name": "Regal Imperiosaur",
+      "mana_cost": "{1}{G}{G}",
+      "cmc": 3.0,
+      "type_line": "Creature \u2014 Dinosaur",
+      "oracle_text": "Other Dinosaurs you control get +1/+1.",
+      "colors": [
+        "G"
+      ],
+      "color_identity": [
+        "G"
+      ],
+      "keywords": [],
+      "layout": "normal",
+      "power": "5",
+      "toughness": "4",
+      "legalities": {
+        "standard": "legal"
+      },
+      "id": "36f569cc-ed09-4c27-b753-18b22ad7f425"
+    },
+    "Sarkhan, Dragon Ascendant": {
+      "name": "Sarkhan, Dragon Ascendant",
+      "mana_cost": "{1}{R}",
+      "cmc": 2.0,
+      "type_line": "Legendary Creature \u2014 Human Druid",
+      "oracle_text": "When Sarkhan enters, you may behold a Dragon. If you do, create a Treasure token. (To behold a Dragon, choose a Dragon you control or reveal a Dragon card from your hand.)\nWhenever a Dragon you control enters, put a +1/+1 counter on Sarkhan. Until end of turn, Sarkhan becomes a Dragon in addition to his other types and gains flying.",
+      "colors": [
+        "R"
+      ],
+      "color_identity": [
+        "R"
+      ],
+      "keywords": [
+        "Behold",
+        "Treasure"
+      ],
+      "layout": "normal",
+      "power": "2",
+      "toughness": "2",
+      "legalities": {
+        "standard": "legal"
+      },
+      "id": "c2200646-7b7c-489d-bbae-16b03e1d7fb2"
+    },
+    "Shock": {
+      "name": "Shock",
+      "mana_cost": "{R}",
+      "cmc": 1.0,
+      "type_line": "Instant",
+      "oracle_text": "Shock deals 2 damage to any target.",
+      "colors": [
+        "R"
+      ],
+      "color_identity": [
+        "R"
+      ],
+      "keywords": [],
+      "layout": "normal",
+      "legalities": {
+        "standard": "legal"
+      },
+      "id": "b23900fb-efe9-43ab-9f67-4545dd01fb9c"
+    },
+    "Smaug the Magnificent": {
+      "name": "Smaug the Magnificent",
+      "mana_cost": "{2}{R}{R}",
+      "cmc": 4.0,
+      "type_line": "Legendary Creature \u2014 Dragon",
+      "oracle_text": "Flying, haste\nWhenever Smaug attacks, he deals damage equal to the number of Treasures you control to any target.\nAt the beginning of your upkeep, create a Treasure token.",
+      "colors": [
+        "R"
+      ],
+      "color_identity": [
+        "R"
+      ],
+      "keywords": [
+        "Flying",
+        "Treasure",
+        "Haste"
+      ],
+      "layout": "normal",
+      "power": "4",
+      "toughness": "3",
+      "legalities": {
+        "standard": "legal"
+      },
+      "id": "6a5d8fad-2ffd-4645-8c49-907999b6cecf"
+    },
+    "Soulstone Sanctuary": {
+      "name": "Soulstone Sanctuary",
+      "mana_cost": "",
+      "cmc": 0.0,
+      "type_line": "Land",
+      "oracle_text": "{T}: Add {C}.\n{4}: This land becomes a 3/3 creature with vigilance and all creature types. It's still a land.",
+      "colors": [],
+      "color_identity": [],
+      "keywords": [],
+      "layout": "normal",
+      "legalities": {
+        "standard": "legal"
+      },
+      "id": "642553a7-6d0f-483d-a873-3a703786db42"
+    },
+    "Sunspine Lynx": {
+      "name": "Sunspine Lynx",
+      "mana_cost": "{2}{R}{R}",
+      "cmc": 4.0,
+      "type_line": "Creature \u2014 Elemental Cat",
+      "oracle_text": "Players can't gain life.\nDamage can't be prevented.\nWhen this creature enters, it deals damage to each player equal to the number of nonbasic lands that player controls.",
+      "colors": [
+        "R"
+      ],
+      "color_identity": [
+        "R"
+      ],
+      "keywords": [],
+      "layout": "normal",
+      "power": "5",
+      "toughness": "4",
+      "legalities": {
+        "standard": "legal"
+      },
+      "id": "8995ceaf-b7e0-423c-8f3e-25212d522502"
+    },
+    "Thrashing Brontodon": {
+      "name": "Thrashing Brontodon",
+      "mana_cost": "{1}{G}{G}",
+      "cmc": 3.0,
+      "type_line": "Creature \u2014 Dinosaur",
+      "oracle_text": "{1}, Sacrifice this creature: Destroy target artifact or enchantment.",
+      "colors": [
+        "G"
+      ],
+      "color_identity": [
+        "G"
+      ],
+      "keywords": [],
+      "layout": "normal",
+      "power": "3",
+      "toughness": "4",
+      "legalities": {
+        "standard": "legal"
+      },
+      "id": "592364bf-68b5-4ea0-97d6-c7cadce940fd"
+    }
+  }
+}
