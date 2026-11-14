@@ -1,3 +1,18 @@
+/**
+ * @fileoverview Tests for the single canonical ValidationService.
+ *
+ * Issue #2967 — `@/lib/validation-service` used to be a second, diverged
+ * copy of the action-validation rules. It is now a re-export shim over
+ * `@/lib/game-state/validation-service`, and the convenience statics
+ * (`canPlayLand` / `canCastSpell` / `canPassPriority`) delegate to that
+ * engine implementation instead of duplicating it.
+ *
+ * The expectations below therefore assert the canonical engine's `reason`
+ * / `message` strings. Where the legacy copy diverged (different reason
+ * wording, cmc-based mana check instead of the parsed mana cost, hand-only
+ * casting), the assertions were adapted to the engine behaviour and the
+ * divergence is documented in the test names/comments.
+ */
 import {
   type GameAction,
   type GameState,
@@ -6,8 +21,10 @@ import {
   Phase,
   ZoneType,
   type LinkedEffectRegistry,
+  type StackObject,
 } from "@/lib/game-state";
 import { ValidationService } from "@/lib/validation-service";
+import { ValidationService as EngineValidationService } from "@/lib/game-state/validation-service";
 import { ScryfallCard } from "@/lib/card-database";
 import { ReplacementEffectManager } from "@/lib/game-state";
 import { LayerSystem } from "@/lib/game-state";
@@ -170,26 +187,31 @@ describe("ValidationService", () => {
       expect(result.isValid).toBe(true);
     });
 
+    // The legacy copy reported "It is not your turn." as the reason; the
+    // canonical engine reports "Not your turn" with a UI message.
     it("should not allow playing a land when it is not the player's turn", () => {
       gameState.turn.activePlayerId = "player2";
       const result = ValidationService.canPlayLand(gameState, playerId, cardId);
       expect(result.isValid).toBe(false);
-      expect(result.reason).toBe("It is not your turn.");
+      expect(result.reason).toBe("Not your turn");
+      expect(result.message).toBe("You can only play lands during your turn.");
     });
 
     it("should not allow playing a land when the player does not have priority", () => {
       gameState.priorityPlayerId = "player2";
       const result = ValidationService.canPlayLand(gameState, playerId, cardId);
       expect(result.isValid).toBe(false);
-      expect(result.reason).toBe("You do not have priority.");
+      expect(result.reason).toBe("Player does not have priority");
+      expect(result.message).toBe("You do not have priority.");
     });
 
     it("should not allow playing a land outside of main phases", () => {
       gameState.turn.currentPhase = Phase.BEGIN_COMBAT;
       const result = ValidationService.canPlayLand(gameState, playerId, cardId);
       expect(result.isValid).toBe(false);
-      expect(result.reason).toBe(
-        "Lands can only be played during main phases.",
+      expect(result.reason).toBe("Wrong phase");
+      expect(result.message).toBe(
+        "Lands can only be played during a main phase.",
       );
     });
 
@@ -197,7 +219,8 @@ describe("ValidationService", () => {
       gameState.stack.push({} as any);
       const result = ValidationService.canPlayLand(gameState, playerId, cardId);
       expect(result.isValid).toBe(false);
-      expect(result.reason).toBe(
+      expect(result.reason).toBe("Stack not empty");
+      expect(result.message).toBe(
         "You can only play a land when the stack is empty.",
       );
     });
@@ -207,14 +230,16 @@ describe("ValidationService", () => {
       player.landsPlayedThisTurn = 1;
       const result = ValidationService.canPlayLand(gameState, playerId, cardId);
       expect(result.isValid).toBe(false);
-      expect(result.reason).toBe("Already played a land this turn.");
+      expect(result.reason).toBe("Land limit reached");
+      expect(result.message).toBe("You have already played a land this turn.");
     });
 
     it("should not allow playing a land if card is not in hand", () => {
       gameState.zones.get(`${playerId}-hand`)!.cardIds = [];
       const result = ValidationService.canPlayLand(gameState, playerId, cardId);
       expect(result.isValid).toBe(false);
-      expect(result.reason).toBe("Card not in hand.");
+      expect(result.reason).toBe("Card not in hand");
+      expect(result.message).toBe("Card is not in your hand.");
     });
   });
 
@@ -224,6 +249,7 @@ describe("ValidationService", () => {
       card.cardData = {
         name: "Shock",
         type_line: "Instant",
+        mana_cost: "{R}",
         cmc: 1,
         oracle_text: "Shock deals 2 damage to any target.",
       } as any;
@@ -240,6 +266,9 @@ describe("ValidationService", () => {
       expect(result.isValid).toBe(true);
     });
 
+    // The legacy copy compared the pool total against `cmc`; the canonical
+    // engine parses the printed mana cost, so a card with a colored pips
+    // requires that specific color in the pool.
     it("should not allow casting a spell without enough mana", () => {
       const result = ValidationService.canCastSpell(
         gameState,
@@ -247,12 +276,16 @@ describe("ValidationService", () => {
         cardId,
       );
       expect(result.isValid).toBe(false);
-      expect(result.reason).toBe("Not enough mana.");
+      expect(result.reason).toBe("Not enough colored mana");
+      expect(result.message).toBe(
+        "Not enough colored mana to cast this spell.",
+      );
     });
 
     it("should allow casting a sorcery-speed spell during main phase with empty stack", () => {
       const card = gameState.cards.get(cardId)!;
       card.cardData.type_line = "Sorcery";
+      card.cardData.mana_cost = "{1}";
       const player = gameState.players.get(playerId)!;
       player.manaPool.generic = 1;
 
@@ -267,6 +300,7 @@ describe("ValidationService", () => {
     it("should not allow casting a sorcery-speed spell during combat", () => {
       const card = gameState.cards.get(cardId)!;
       card.cardData.type_line = "Sorcery";
+      card.cardData.mana_cost = "{1}";
       const player = gameState.players.get(playerId)!;
       player.manaPool.generic = 1;
       gameState.turn.currentPhase = Phase.BEGIN_COMBAT;
@@ -277,7 +311,10 @@ describe("ValidationService", () => {
         cardId,
       );
       expect(result.isValid).toBe(false);
-      expect(result.reason).toBe("Not a main phase.");
+      expect(result.reason).toBe("Wrong phase");
+      expect(result.message).toBe(
+        "You can only cast this during a main phase.",
+      );
     });
   });
 
@@ -291,7 +328,8 @@ describe("ValidationService", () => {
       gameState.priorityPlayerId = "player2";
       const result = ValidationService.canPassPriority(gameState, playerId);
       expect(result.isValid).toBe(false);
-      expect(result.reason).toBe("You do not have priority.");
+      expect(result.reason).toBe("Player does not have priority");
+      expect(result.message).toBe("You do not have priority.");
     });
   });
 
@@ -309,6 +347,225 @@ describe("ValidationService", () => {
       // Sanity: the value still exists at runtime (type was stripped); the
       // important guarantee is the compile-time rejection above.
       expect(action.type).toBe("undo");
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // Issue #2967 — the legacy `src/lib/validation-service.ts` was a second,
+  // diverged copy of the rules. The shim now re-exports the engine's
+  // ValidationService, and the convenience statics delegate to it. These
+  // tests pin the UI-path parity that the dedupe is supposed to deliver.
+  // -------------------------------------------------------------------------
+  describe("issue #2967 — single ValidationService / UI-path parity", () => {
+    /** Put a card into a non-hand zone of the player. */
+    function moveCardToZone(
+      zone: ZoneType,
+      key: string,
+      targetCardId: string,
+    ): void {
+      gameState.zones.set(key, {
+        type: zone,
+        playerId,
+        cardIds: [targetCardId],
+        isRevealed: false,
+        visibleTo: [],
+      });
+      const hand = gameState.zones.get(`${playerId}-hand`)!;
+      hand.cardIds = hand.cardIds.filter((id) => id !== targetCardId);
+    }
+
+    it("the legacy import path resolves to the engine ValidationService", () => {
+      expect(ValidationService).toBe(EngineValidationService);
+    });
+
+    it("canCastSpell matches validateAction for an ordinary in-hand cast", () => {
+      const card = gameState.cards.get(cardId)!;
+      card.cardData = {
+        name: "Shock",
+        type_line: "Instant",
+        mana_cost: "{R}",
+        cmc: 1,
+        oracle_text: "Shock deals 2 damage to any target.",
+      } as any;
+      gameState.players.get(playerId)!.manaPool.red = 1;
+
+      const viaHelper = ValidationService.canCastSpell(
+        gameState,
+        playerId,
+        cardId,
+      );
+      const viaAction = EngineValidationService.validateAction(gameState, {
+        type: "cast_spell",
+        playerId,
+        timestamp: Date.now(),
+        data: { cardId },
+      });
+      expect(viaHelper).toEqual(viaAction);
+      expect(viaHelper.isValid).toBe(true);
+    });
+
+    it("canPlayLand matches validateAction", () => {
+      const viaHelper = ValidationService.canPlayLand(
+        gameState,
+        playerId,
+        cardId,
+      );
+      const viaAction = EngineValidationService.validateAction(gameState, {
+        type: "play_land",
+        playerId,
+        timestamp: Date.now(),
+        data: { cardId },
+      });
+      expect(viaHelper).toEqual(viaAction);
+      expect(viaHelper.isValid).toBe(true);
+    });
+
+    it("canPassPriority matches validateAction", () => {
+      const viaHelper = ValidationService.canPassPriority(gameState, playerId);
+      const viaAction = EngineValidationService.validateAction(gameState, {
+        type: "pass_priority",
+        playerId,
+        timestamp: Date.now(),
+        data: {},
+      });
+      expect(viaHelper).toEqual(viaAction);
+      expect(viaHelper.isValid).toBe(true);
+    });
+
+    it("validates a flashback cast from the graveyard with alternativeCost", () => {
+      const card = gameState.cards.get(cardId)!;
+      card.cardData = {
+        name: "Past in Flames",
+        type_line: "Instant",
+        mana_cost: "{1}",
+        cmc: 1,
+        oracle_text:
+          "Flashback (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+      } as any;
+      moveCardToZone(
+        ZoneType.GRAVEYARD,
+        `${playerId}-graveyard`,
+        cardId,
+      );
+      gameState.players.get(playerId)!.manaPool.generic = 1;
+
+      // With the alternative cost declared, the graveyard cast is legal.
+      const withFlashback = ValidationService.canCastSpell(
+        gameState,
+        playerId,
+        cardId,
+        { type: "flashback" },
+      );
+      expect(withFlashback.isValid).toBe(true);
+      expect(
+        EngineValidationService.validateAction(gameState, {
+          type: "cast_spell",
+          playerId,
+          timestamp: Date.now(),
+          data: { cardId, alternativeCost: { type: "flashback" } },
+        }),
+      ).toEqual(withFlashback);
+
+      // Without it, the card is not in hand and the cast is rejected.
+      const withoutFlashback = ValidationService.canCastSpell(
+        gameState,
+        playerId,
+        cardId,
+      );
+      expect(withoutFlashback.isValid).toBe(false);
+      expect(withoutFlashback.reason).toBe("Card not in hand");
+    });
+
+    it("validates a foretold face-down card cast from exile", () => {
+      const card = gameState.cards.get(cardId)!;
+      card.cardData = {
+        name: "Fabled Passage",
+        type_line: "Instant",
+        mana_cost: "{3}{W}",
+        cmc: 4,
+        oracle_text: "Foretell (You may cast this card from exile for its foretell cost.)",
+      } as any;
+      card.foretold = true;
+      card.isFaceDown = true;
+      moveCardToZone(ZoneType.EXILE, `${playerId}-exile`, cardId);
+
+      const withForetell = ValidationService.canCastSpell(
+        gameState,
+        playerId,
+        cardId,
+        { type: "foretell" },
+      );
+      expect(withForetell.isValid).toBe(true);
+
+      const withoutForetell = ValidationService.canCastSpell(
+        gameState,
+        playerId,
+        cardId,
+      );
+      expect(withoutForetell.isValid).toBe(false);
+      expect(withoutForetell.reason).toBe("Card not in hand");
+    });
+
+    it("rejects a cast while a split-second spell is on the stack", () => {
+      const card = gameState.cards.get(cardId)!;
+      card.cardData = {
+        name: "Counterspell",
+        type_line: "Instant",
+        mana_cost: "{1}{U}",
+        cmc: 2,
+        oracle_text: "Counter target spell.",
+      } as any;
+      gameState.players.get(playerId)!.manaPool.generic = 1;
+      gameState.players.get(playerId)!.manaPool.blue = 1;
+
+      const splitSecond: StackObject = {
+        id: "ss-spell-on-stack",
+        type: "spell",
+        sourceCardId: null,
+        controllerId: playerId,
+        name: "Sudden Shock",
+        text: "Split second",
+        manaCost: "{1}{R}",
+        targets: [],
+        chosenModes: [],
+        variableValues: new Map(),
+        isCountered: false,
+        timestamp: Date.now(),
+        splitSecond: true,
+      };
+      gameState.stack.push(splitSecond);
+
+      const result = ValidationService.canCastSpell(
+        gameState,
+        playerId,
+        cardId,
+      );
+      expect(result.isValid).toBe(false);
+      expect(result.reason).toBe("Split second active");
+      expect(result.message).toBe(
+        "A spell with split second is on the stack. You can't cast other spells.",
+      );
+    });
+
+    it("rejects a cast when the pool total covers cmc but the colors are wrong", () => {
+      const card = gameState.cards.get(cardId)!;
+      card.cardData = {
+        name: "Flame Rift",
+        type_line: "Sorcery",
+        mana_cost: "{R}{R}",
+        cmc: 2,
+        oracle_text: "Flame Rift deals 4 damage to each player.",
+      } as any;
+      const player = gameState.players.get(playerId)!;
+      player.manaPool.green = 2;
+
+      const result = ValidationService.canCastSpell(
+        gameState,
+        playerId,
+        cardId,
+      );
+      expect(result.isValid).toBe(false);
+      expect(result.reason).toBe("Not enough colored mana");
     });
   });
 });
