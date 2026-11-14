@@ -1,0 +1,57 @@
+{
+  "id": "mana-pool-colorless-spent",
+  "refs": "#2937",
+  "description": "Casting It That Heralds the End ({1}{C}) out of a seeded {R:1, C:1} pool spends the whole pool: the generic pip is paid with the red mana and the {C} pip with the colorless mana. Guards the #2870 class of bug, where a colorless pip dropped out of a spell's cost left the pip sitting in the pool (#2876).",
+  "players": [
+    {
+      "life": 20,
+      "hand": [
+        "It That Heralds the End"
+      ],
+      "library": 0,
+      "manaPool": {
+        "R": 1,
+        "C": 1
+      }
+    },
+    {
+      "life": 20,
+      "library": 0
+    }
+  ],
+  "phase": "precombat_main",
+  "actions": [
+    {
+      "do": "cast",
+      "player": 0,
+      "card": "It That Heralds the End"
+    },
+    {
+      "do": "resolveStack"
+    }
+  ],
+  "observe": [
+    "life",
+    "battlefield",
+    "hand",
+    "graveyard",
+    "manaPool"
+  ],
+  "expect": [
+    {
+      "life": 20,
+      "hand": [],
+      "graveyard": [],
+      "manaPool": {},
+      "battlefield": [
+        {
+          "name": "It That Heralds the End",
+          "tapped": false
+        }
+      ]
+    },
+    {
+      "life": 20
+    }
+  ]
+}

@@ -390,6 +390,19 @@ function observe(ctx: Ctx, fields: ObservedField[]): ObservedPlayer[] {
     if (want.has("library")) {
       o.library = ctx.state.zones.get(`${pid}-library`)?.cardIds.length ?? 0;
     }
+    if (want.has("manaPool")) {
+      // The six colour letters the scenario format can seed. The engine's
+      // generic bucket is not seedable through the scenario shape, so it is
+      // not reported (it stays zero for a scenario-seeded pool).
+      o.manaPool = {
+        W: p.manaPool.white ?? 0,
+        U: p.manaPool.blue ?? 0,
+        B: p.manaPool.black ?? 0,
+        R: p.manaPool.red ?? 0,
+        G: p.manaPool.green ?? 0,
+        C: p.manaPool.colorless ?? 0,
+      };
+    }
     return o;
   });
 }
