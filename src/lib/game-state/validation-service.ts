@@ -4,6 +4,7 @@ import type {
   CardInstance,
   Player,
   CardInstanceId,
+  PlayerId,
 } from "./types";
 import { ZoneType } from "./types";
 import { getGameMode } from "./format-rules";
@@ -25,6 +26,18 @@ export interface ValidationResult {
   isValid: boolean;
   reason?: string;
   message?: string; // For UI display
+}
+
+/**
+ * Alternative-cost descriptor accepted by the convenience statics below.
+ *
+ * The `type` values understood by the engine are the ones handled by
+ * `validateCastSpell` (e.g. "flashback", "foretell", "escape", "mutate",
+ * "warp", "harmonize", "spectacle", "convoke", "delve", "improvise").
+ */
+export interface CastAlternativeCost {
+  type?: string;
+  improviseArtifacts?: unknown[];
 }
 
 /**
@@ -101,6 +114,72 @@ export class ValidationService {
         // but a real engine should have strict rules for every type
         return { isValid: true };
     }
+  }
+
+  /**
+   * Convenience wrapper (issue #2967): validate a "play_land" action for a
+   * player/card pair without the caller having to build a `GameAction`.
+   *
+   * Delegates to `validateAction`, so the UI path and the engine path can
+   * never drift apart: there is exactly one copy of the land rules.
+   */
+  public static canPlayLand(
+    state: GameState,
+    playerId: PlayerId,
+    cardId: CardInstanceId,
+    modeId?: string,
+  ): ValidationResult {
+    return this.validateAction(
+      state,
+      {
+        type: "play_land",
+        playerId,
+        timestamp: Date.now(),
+        data: { cardId },
+      },
+      modeId,
+    );
+  }
+
+  /**
+   * Convenience wrapper (issue #2967): validate a "cast_spell" action for a
+   * player/card pair without the caller having to build a `GameAction`.
+   *
+   * `alternativeCost` carries the alternative cost the player intends to pay
+   * (e.g. `{ type: "flashback" }` for a cast from the graveyard, or
+   * `{ type: "foretell" }` for a foretold card in exile). It is forwarded to
+   * `validateCastSpell` untouched — this method owns no rules of its own.
+   */
+  public static canCastSpell(
+    state: GameState,
+    playerId: PlayerId,
+    cardId: CardInstanceId,
+    alternativeCost?: CastAlternativeCost,
+  ): ValidationResult {
+    return this.validateAction(state, {
+      type: "cast_spell",
+      playerId,
+      timestamp: Date.now(),
+      data: { cardId, alternativeCost },
+    });
+  }
+
+  /**
+   * Convenience wrapper (issue #2967): validate a "pass_priority" action.
+   *
+   * Delegates to `validateAction` so the priority rule has a single
+   * implementation.
+   */
+  public static canPassPriority(
+    state: GameState,
+    playerId: PlayerId,
+  ): ValidationResult {
+    return this.validateAction(state, {
+      type: "pass_priority",
+      playerId,
+      timestamp: Date.now(),
+      data: {},
+    });
   }
 
   /**
