@@ -460,6 +460,7 @@ export type StackEffectType =
   | "venture_dungeon"
   | "surveil"
   | "scry"
+  | "explore"
   | "attach"
   | "transform"
   | "crew"
@@ -561,6 +562,15 @@ export type StackEffect =
     }
   | { effectType: "surveil"; amount: number; targetId?: PlayerId }
   | { effectType: "scry"; amount: number; targetId?: PlayerId }
+  | {
+      /**
+       * Explore (CR 701.18): the source permanent reveals the top card of
+       * its controller's library. A land goes to that player's hand;
+       * anything else gives the permanent a +1/+1 counter.
+       */
+      effectType: "explore";
+      targetId?: CardInstanceId;
+    }
   | { effectType: "transform"; targetId?: CardInstanceId }
   | { effectType: "reveal_until_instant_sorcery"; targetId?: PlayerId }
   | {
