@@ -240,10 +240,13 @@ export function resetDamage(card: CardInstance): CardInstance {
 
 /**
  * Attach a card to another (Equipment, Aura, Fortification)
+ *
+ * The host may be a player as well as a card: an "Enchant player" Aura
+ * attaches to the enchanted player (#2949).
  */
 export function attachCard(
   card: CardInstance,
-  attachToId: CardInstanceId,
+  attachToId: CardInstanceId | PlayerId,
 ): CardInstance {
   return {
     ...card,

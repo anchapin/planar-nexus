@@ -48,7 +48,7 @@ import { applyProwessBoost } from "../evergreen-keywords";
 import { canCastAtInstantSpeed } from "../keyword-actions/flash";
 import { canCastWithMutate } from "../mutate";
 import {
-  getAuraSpellTarget,
+  getAuraSpellHostId,
   isAuraCard,
   validateAuraSpellTarget,
 } from "../keyword-actions/enchant";
@@ -453,7 +453,7 @@ export function castSpell(
         state,
         card,
         playerId,
-        getAuraSpellTarget(targets),
+        getAuraSpellHostId(card, targets),
       );
       if (!auraCheck.valid) {
         return { success: false, state, error: auraCheck.reason };
