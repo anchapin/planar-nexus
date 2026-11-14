@@ -96,10 +96,15 @@ function deckCards(key: string): ScryfallCard[] | null {
 export function simDeck(name: string): ScryfallCard[] {
   const key = ALIASES[name];
   if (key) {
-    const cards = deckCards(key);
-    if (!cards) throw new Error(`Unknown deck ${name}`);
-    return cards;
+    const aliased = deckCards(key);
+    if (!aliased) throw new Error(`Unknown deck ${name}`);
+    return aliased;
   }
+  // Deck files beyond 2614 and the Track 2 candidates (e.g.
+  // track2-tuned-decks.json, manamind#44) are reachable by name too; the
+  // docstring above promises file-wide resolution.
+  const cards = deckCards(name);
+  if (cards) return cards;
   if (!ARCHETYPES.has(name)) throw new Error(`Unknown deck ${name}`);
   return trainingDeck(name as SimDeckArchetype);
 }
