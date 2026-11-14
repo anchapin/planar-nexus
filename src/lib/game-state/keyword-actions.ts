@@ -41,6 +41,7 @@ export * from "./keyword-actions/tribute-renown";
 export * from "./keyword-actions/enter-choice";
 export * from "./keyword-actions/cascade";
 export * from "./keyword-actions/surveil";
+export * from "./keyword-actions/explore";
 export * from "./keyword-actions/equip";
 export * from "./keyword-actions/enchant";
 export * from "./keyword-actions/transform";
