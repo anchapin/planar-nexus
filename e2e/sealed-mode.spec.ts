@@ -32,8 +32,36 @@ import {
   waitForLimitedSessionSeed,
   SESSION_ID,
 } from "./test-utils";
+import { gotoReady, reloadReady, clickUntil } from "./helpers/navigation";
+import type { Page } from "@playwright/test";
 
 const SESSION_SHORT = SESSION_ID.slice(0, 8);
+
+/**
+ * Issue #2958 — the specs used to synchronise with fixed
+ * `waitForTimeout(...)` sleeps and a `waitForLoadState("networkidle")`.
+ * Both are guesses: the sleep is either too short (the page is not ready
+ * yet under CI load) or too long, and `networkidle` never settles on the
+ * `next dev` server when the runner is loaded, so it burned the whole 30 s
+ * test budget and took every test in the file down with it. The waits below
+ * are now the conditions the tests actually need:
+ *
+ *   - the set browser finished loading the (mocked) Scryfall set list,
+ *   - the set-selection dialog is open,
+ *   - the sealed pool / error state is rendered.
+ */
+
+/** Condition: the set browser rendered the list of sets. */
+function setsLoaded(page: Page) {
+  return page.locator("body").getByText(/Showing \d+ sets/);
+}
+
+/** Condition: the set-selection dialog is open (it carries the CTA). */
+function setSelectionDialog(page: Page) {
+  return page
+    .getByRole("button", { name: /Start.*Sealed|Start.*Draft/i })
+    .first();
+}
 
 // Register the deck-seed init script BEFORE any navigation. Top-level
 // beforeEach so it covers all seven describe blocks (issue #1856).
@@ -59,8 +87,9 @@ test.describe("Sealed Mode - Set Browser", () => {
   });
 
   test("SET-01: should display MTG sets", async ({ page }) => {
-    // Wait for sets to load from Scryfall API
-    await page.waitForTimeout(2000);
+    // Wait for the set list to render (the condition the old fixed 2 s
+    // sleep was guessing at).
+    await expect(setsLoaded(page)).toBeVisible({ timeout: 15000 });
 
     // #1786: the sets grid must render once the API responds. See
     // #1856: a loaded deck makes the page render unconditionally,
@@ -76,19 +105,23 @@ test.describe("Sealed Mode - Set Browser", () => {
   });
 
   test("SET-02: should allow selecting a set", async ({ page }) => {
-    await page.waitForTimeout(2000); // Wait for sets to load
+    // Wait for the set list to render (replaces the old fixed 2 s sleep).
+    await expect(setsLoaded(page)).toBeVisible({ timeout: 15000 });
 
     // The set browser lists sets as cards with set codes like "TRK".
     // The first card with a 2+ letter set code is a valid click target.
     const firstSet = page.getByText(/^[A-Z]{2,}$/).first();
 
-    await expect(firstSet).toBeVisible({ timeout: 5000 });
-    await firstSet.click();
+    await expect(firstSet).toBeVisible({ timeout: 15000 });
 
-    // Click opens a detail modal/page. Verify by URL change OR modal.
-    // #1856: the click succeeds unconditionally; we just verify the
-    // page navigated to the set detail.
-    await page.waitForTimeout(1000);
+    // Click opens the set-selection dialog. A click that lands before
+    // React has hydrated is dropped, so re-click until the dialog is
+    // actually rendered instead of sleeping for a fixed 1 s.
+    await clickUntil(firstSet, async () => {
+      await expect(setSelectionDialog(page)).toBeVisible({ timeout: 1000 });
+    });
+
+    // The page is still the set browser (the detail is a dialog).
     const url = page.url();
     expect(url).toMatch(/\/(set|sealed|draft)/);
   });
@@ -96,16 +129,20 @@ test.describe("Sealed Mode - Set Browser", () => {
   test("SET-03: should show set details before confirming", async ({
     page,
   }) => {
-    await page.waitForTimeout(2000);
+    // Wait for the set list to render (replaces the old fixed 2 s sleep).
+    await expect(setsLoaded(page)).toBeVisible({ timeout: 15000 });
 
     // Click a set to open details
     const firstSet = page.getByText(/^[A-Z]{2,}$/).first();
 
-    await expect(firstSet).toBeVisible({ timeout: 5000 });
-    await firstSet.click();
+    await expect(firstSet).toBeVisible({ timeout: 15000 });
 
-    // Wait for modal or detail view
-    await page.waitForTimeout(500);
+    // Wait for the detail dialog to render (replaces the old fixed 500 ms
+    // sleep) - re-clicking until it opens keeps the spec correct no matter
+    // when hydration completes.
+    await clickUntil(firstSet, async () => {
+      await expect(setSelectionDialog(page)).toBeVisible({ timeout: 1000 });
+    });
 
     // The set detail page renders a "Start Sealed" or "Start Draft" CTA.
     const startSealedButton = page
@@ -113,7 +150,7 @@ test.describe("Sealed Mode - Set Browser", () => {
       .filter({ hasText: /sealed|draft/i })
       .first();
 
-    await expect(startSealedButton).toBeVisible({ timeout: 2000 });
+    await expect(startSealedButton).toBeVisible({ timeout: 15000 });
   });
 
   test("SET-02: should navigate to sealed page on Start Sealed", async ({
@@ -124,14 +161,17 @@ test.describe("Sealed Mode - Set Browser", () => {
     // the set detail modal/page rendering, which can be flaky. We
     // assert on the entry-point (set browser page renders) and the
     // page having responded to navigation.
-    await page.waitForTimeout(2000);
+    await expect(setsLoaded(page)).toBeVisible({ timeout: 15000 });
 
     // Click a set
     const firstSet = page.getByText(/^[A-Z]{2,}$/).first();
 
-    await expect(firstSet).toBeVisible({ timeout: 5000 });
-    await firstSet.click();
-    await page.waitForTimeout(1000);
+    await expect(firstSet).toBeVisible({ timeout: 15000 });
+
+    // Wait for the selection dialog (replaces the old fixed 1 s sleep).
+    await clickUntil(firstSet, async () => {
+      await expect(setSelectionDialog(page)).toBeVisible({ timeout: 1000 });
+    });
 
     // Click Start Sealed button (best-effort — may not exist if
     // the set detail didn't open correctly).
@@ -140,13 +180,11 @@ test.describe("Sealed Mode - Set Browser", () => {
       .filter({ hasText: /Start.*Sealed|Start.*sealed/i })
       .first();
 
-    const hasStart = await startButton
-      .isVisible({ timeout: 2000 })
-      .catch(() => false);
+    const hasStart = await startButton.isVisible().catch(() => false);
     if (hasStart) {
       await startButton.click();
       await page
-        .waitForURL(/\/sealed/, { timeout: 5000 })
+        .waitForURL(/\/sealed/, { timeout: 10000 })
         .catch(() => undefined);
     }
     // Either way, the page should have rendered something.
@@ -474,8 +512,11 @@ test.describe("Sealed Mode - Pool Isolation", () => {
     // Now go to the regular deck builder. The regular deck builder
     // searches the PlanarNexusCardDB (seeded by seedCardDatabase).
     // The pool is stored in a separate PlanarNexusLimited DB.
-    await page.goto("/deck-builder");
-    await page.waitForTimeout(2000);
+    await gotoReady(
+      page,
+      "/deck-builder",
+      page.getByRole("heading", { name: /Deck Builder/i }).first(),
+    );
 
     // Search for a pool-only card. None of the seeded pool cards
     // should appear in the regular deck builder search because
@@ -528,8 +569,7 @@ test.describe("Sealed Mode - Session Persistence", () => {
     await waitForLimitedSessionSeed(page);
     await expect(page.getByText(/84 cards in pool/)).toBeVisible();
 
-    await page.reload();
-    await page.waitForLoadState("networkidle");
+    await reloadReady(page, page.getByText(/84 cards in pool/));
     await expect(page.getByText(/84 cards in pool/)).toBeVisible();
     await expect(page.getByText(new RegExp(SESSION_SHORT))).toBeVisible();
   });
@@ -538,8 +578,11 @@ test.describe("Sealed Mode - Session Persistence", () => {
     // Visiting /sealed?session=<id> with no seed must error —
     // confirms the URL is what scopes the load (no seed = no row).
     const OTHER_SESSION_ID = "00000000-0000-0000-0000-000000000000";
-    await page.goto(`/sealed?session=${OTHER_SESSION_ID}`);
-    await page.waitForTimeout(2000);
+    await gotoReady(
+      page,
+      `/sealed?session=${OTHER_SESSION_ID}`,
+      page.getByText(/Session not found/i),
+    );
 
     // Error state reads "Session not found" (production copy from
     // `src/app/(app)/sealed/page.tsx`). The page should NOT show
@@ -557,7 +600,7 @@ test.describe("Sealed Mode - Navigation Flow", () => {
     await mockScryfallApi(page);
     await page.goto("/set-browser");
     await expect(page).toHaveURL(/\/set-browser/);
-    await page.waitForTimeout(2000);
+    await expect(setsLoaded(page)).toBeVisible({ timeout: 15000 });
     await expect(
       page.locator("body").getByText(/Showing \d+ sets/),
     ).toBeVisible();

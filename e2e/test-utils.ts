@@ -13,6 +13,16 @@ export {
   waitForDraftSessionSeed,
   DRAFT_SESSION_ID,
 } from "./utils/seed-draft-session";
+// Issue #2958: shared, condition-based navigation helpers. They replace the
+// `waitForLoadState("networkidle")` / fixed-sleep synchronisation that made
+// whole spec files fail together under CI load.
+export {
+  READY_TIMEOUT_MS,
+  waitForReady,
+  gotoReady,
+  reloadReady,
+  clickUntil,
+} from "./helpers/navigation";
 
 const testCards = JSON.parse(
   fs.readFileSync(path.join(__dirname, "fixtures/test-cards.json"), "utf8"),
