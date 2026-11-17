@@ -1,4 +1,12 @@
 {
   "$comment": "Time-boxed npm audit exceptions read by scripts/security/check-npm-audit.mjs. Each entry needs an advisory id, the package, why it is not reachable, an ISO expiry date, and a tracking issue. An expired entry fails CI so it gets re-reviewed rather than renewed on autopilot.",
-  "exceptions": []
+  "exceptions": [
+    {
+      "id": "GHSA-fc5q-39xc-vjpf",
+      "package": "picomatch",
+      "reason": "No patched picomatch release exists: 4.0.7 (2026-08-24) is the latest release and is inside the affected range for CVE-2026-112366 (introduced 0, last_affected 4.0.7, covering 2.3.2/3.0.2/4.0.7). The upstream maintainer disputes the CVE and closed the direct fix PR on 2026-10-21 with no ETA. picomatch reaches this repo only through build/test tooling (jest, lint-staged, and the micromatch/fast-glob chains) and never processes untrusted user-supplied glob patterns at runtime. On expiry, re-check upstream: bump if a fixed release exists, renew only if still unpatched, and drop this entry if the advisory is withdrawn.",
+      "expires": "2027-02-17",
+      "issue": "https://github.com/anchapin/planar-nexus/issues/2976"
+    }
+  ]
 }
