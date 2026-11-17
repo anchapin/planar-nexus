@@ -22,7 +22,7 @@ import type {
   GameState,
   Phase,
   PlayerId,
-} from "@/lib/game-state";
+} from "@/lib/game-state/lite";
 import {
   indexedDBStorage,
   LOCAL_GAME_CODES_STORE,

@@ -23,7 +23,7 @@
 // consumes the engine-owned data via the import below.
 
 import { gameModes } from "@/lib/game-state/lite";
-import type { DeckConstructionRules, Format } from "@/lib/game-state";
+import type { DeckConstructionRules, Format } from "@/lib/game-state/lite";
 
 export {
   DEFAULT_RULES,
@@ -38,7 +38,7 @@ export type {
   DeckConstructionRules,
   GameModeConfig,
   Format,
-} from "@/lib/game-state";
+} from "@/lib/game-state/lite";
 
 let _formatRules: Record<Format, DeckConstructionRules> | undefined;
 let _banLists: Record<Format, string[]> | undefined;

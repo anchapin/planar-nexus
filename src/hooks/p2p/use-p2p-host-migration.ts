@@ -11,7 +11,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
-import type { GameState } from "@/lib/game-state";
+import type { GameState } from "@/lib/game-state/lite";
 import type {
   P2PGameConnection,
   SignalingRole,
