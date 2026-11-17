@@ -5,7 +5,7 @@
  * between peers during connection establishment and game state synchronization.
  */
 
-import type { GameState } from "@/lib/game-state";
+import type { GameState } from "@/lib/game-state/lite";
 import { serializeGameState } from "@/lib/game-state/lite";
 import { TIMEOUTS } from "./config/timeouts";
 import type { PeerRole } from "./peer-role";

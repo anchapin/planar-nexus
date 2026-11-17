@@ -15,13 +15,14 @@
  *   signed under the pre-migration key, satisfying acceptance criterion #2.
  */
 
-import type { GameState, Phase, PlayerId, GameAction } from "@/lib/game-state";
 import {
   serializeGameState,
   deserializeGameState,
+  type GameState,
+  type Phase,
+  type PlayerId,
+  type SerializedGameState,
 } from "@/lib/game-state/lite";
-import { ValidationService } from "@/lib/game-state/lite-validation";
-import type { SerializedGameState } from "@/lib/game-state";
 import {
   LocalSignalingClient,
   createLocalSignalingClient,
@@ -342,7 +343,8 @@ export interface LobbyControlPayload {
  *
  * `peerAction` is the parsed `{ action, data }` payload of the `game-action`
  * message; `senderId` is the originating peer (the actor). Hosts typically
- * wire this to the rules engine via {@link createRulesEngineValidator}.
+ * wire this to the rules engine via `createRulesEngineValidator` (see
+ * `@/lib/p2p-rules-engine-validator`).
  * Issue #1089.
  */
 export type PeerActionValidator = (
@@ -435,7 +437,8 @@ export interface P2PGameConnectionOptions {
    * Rules-engine validator invoked for each peer `game-action` when
    * {@link validatePeerActions} is enabled. Must validate against the host's
    * OWN authoritative state — never peer-supplied state. Use
-   * {@link createRulesEngineValidator} to wire it to the rules engine.
+   * `createRulesEngineValidator` (see `@/lib/p2p-rules-engine-validator`) to
+   * wire it to the rules engine.
    * Issue #1089.
    */
   validatePeerAction?: PeerActionValidator;
@@ -2314,46 +2317,4 @@ export function createP2PGameConnection(
   options: P2PGameConnectionOptions,
 ): P2PGameConnection {
   return new P2PGameConnection(options);
-}
-
-/**
- * Build a {@link PeerActionValidator} that delegates to the rules engine
- * (`ValidationService.validateAction`) against the host's authoritative state.
- *
- * The host supplies `getState`, which must return its OWN authoritative
- * {@link GameState} at call time — never a state claimed by the peer. The wire
- * payload (`{ action, data }`) plus the originating `senderId` are mapped to
- * the engine's {@link GameAction} and validated in place; the action is NOT
- * applied (this only decides legality). Issue #1089.
- *
- * Example (authoritative host):
- * ```ts
- * createP2PGameConnection({
- *   // ...
- *   validatePeerActions: true,
- *   validatePeerAction: createRulesEngineValidator(
- *     () => authoritativeGameStateRef.current,
- *   ),
- * });
- * ```
- *
- * This wrapper only delegates — it does not reimplement rules. Unknown action
- * types therefore fall through to `ValidationService.validateAction`'s default
- * handling.
- */
-export function createRulesEngineValidator(
-  getState: () => GameState,
-  modeId?: string,
-): PeerActionValidator {
-  return (peerAction, senderId) => {
-    const state = getState();
-    const gameAction = {
-      type: peerAction.action,
-      playerId: senderId as PlayerId,
-      timestamp: Date.now(),
-      data: peerAction.data,
-    } as unknown as GameAction;
-    const result = ValidationService.validateAction(state, gameAction, modeId);
-    return { isValid: result.isValid, reason: result.reason };
-  };
 }

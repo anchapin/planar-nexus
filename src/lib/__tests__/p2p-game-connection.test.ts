@@ -6,7 +6,6 @@
 import {
   P2PGameConnection,
   createP2PGameConnection,
-  createRulesEngineValidator,
   isGameMessage,
   type P2PGameConnectionEvents,
   type P2PGameConnectionOptions,
@@ -19,6 +18,9 @@ import {
   type GameEndedPayload,
   type GameEndedStanding,
 } from "../p2p-game-connection";
+// Issue #2472: the rules-engine validator factory lives in its own module so
+// the lobby route's transport module never reaches the rules engine.
+import { createRulesEngineValidator } from "../p2p-rules-engine-validator";
 import { signMessageEnvelope } from "../p2p-json-validation";
 import { ValidationService } from "../game-state/validation-service";
 import { p2pLogger } from "../p2p-logger";
