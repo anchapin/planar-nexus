@@ -59,16 +59,19 @@ jest.mock("@/lib/saved-games", () => ({
 const canShareViaURLMock = jest.fn();
 const copyShareableLinkMock = jest.fn();
 const exportReplayToFileMock = jest.fn();
-jest.mock("@/lib/replay-sharing", () => ({
+// Issue #2947 — the share helpers moved to the engine-free
+// "@/lib/replay-share-link" module; the mock follows them there.
+jest.mock("@/lib/replay-share-link", () => ({
   canShareViaURL: (...args: unknown[]) => canShareViaURLMock(...args),
   copyShareableLink: (...args: unknown[]) => copyShareableLinkMock(...args),
   exportReplayToFile: (...args: unknown[]) => exportReplayToFileMock(...args),
 }));
 
-// The engine barrel stands in as a mock so the test can observe the
-// dynamic `await import("@/lib/game-state")` resolving to it.
+// The engine leaf stands in as a mock so the test can observe the
+// dynamic `await import("@/lib/game-state/lite")` resolving to it.
 const decompressReplayJsonMock = jest.fn();
-jest.mock("@/lib/game-state", () => ({
+jest.mock("@/lib/game-state/lite", () => ({
+  ...jest.requireActual("@/lib/game-state/lite"),
   decompressReplayJson: (...args: unknown[]) =>
     decompressReplayJsonMock(...args),
 }));
