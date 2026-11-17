@@ -1,7 +1,7 @@
 {
   "$comment": "Bundle size budgets (issue #1814) \u2014 per-route First Load JS, raw uncompressed bytes, measured by scripts/check-bundle-budget.mjs from the compiled .next/ output (see that script's header for the manifest mechanism). Values ratchet DOWN only: --check fails if a route exceeds its budget, if a built route has no entry, if an entry's route no longer exists, or if reality dropped >10 kB below the recorded budget (re-capture with `npm run check:bundle-budget:capture`). Entries are rounded up to the next whole kB at capture time.",
   "nextVersion": "16.4.0",
-  "capturedAt": "2026-11-17T15:56:04.000Z",
+  "capturedAt": "2026-11-17T17:51:42.000Z",
   "routes": {
     "/": 556032,
     "/_global-error": 607232,
@@ -19,7 +19,7 @@
     "/draft-assistant": 1426432,
     "/draft/complete": 1443840,
     "/game-analysis": 1430528,
-    "/game-board": 2006016,
+    "/game-board": 1977344,
     "/game-history": 1438720,
     "/game/[id]": 2068480,
     "/hand-display-demo": 1446912,
@@ -35,7 +35,7 @@
     "/procedural-art-demo": 1419264,
     "/register": 900096,
     "/replay": 1408000,
-    "/saved-games": 1849344,
+    "/saved-games": 1492992,
     "/sealed": 1429504,
     "/set-browser": 1465344,
     "/settings": 1472512,
