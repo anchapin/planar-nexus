@@ -10,8 +10,9 @@
  * These tests pin the post-fix invariants:
  *   1. The page source contains no static value import of the engine
  *      barrel (type-only imports are fine — they erase at build time).
- *   2. `decompressReplayJson` is loaded via `await import("@/lib/game-state")`
- *      at the share call site.
+ *   2. `decompressReplayJson` is loaded via
+ *      `await import("@/lib/game-state/lite")` at the share call site
+ *      (the lite leaf, since the #2947 route slimming).
  *   3. The Share Replay flow still works end-to-end through the dynamic
  *      import (link-copy success and decompress-failure toast paths).
  */
@@ -59,16 +60,19 @@ jest.mock("@/lib/saved-games", () => ({
 const canShareViaURLMock = jest.fn();
 const copyShareableLinkMock = jest.fn();
 const exportReplayToFileMock = jest.fn();
-jest.mock("@/lib/replay-sharing", () => ({
+// Issue #2947 — the share helpers moved to the engine-free
+// "@/lib/replay-share-link" module; the mock follows them there.
+jest.mock("@/lib/replay-share-link", () => ({
   canShareViaURL: (...args: unknown[]) => canShareViaURLMock(...args),
   copyShareableLink: (...args: unknown[]) => copyShareableLinkMock(...args),
   exportReplayToFile: (...args: unknown[]) => exportReplayToFileMock(...args),
 }));
 
-// The engine barrel stands in as a mock so the test can observe the
-// dynamic `await import("@/lib/game-state")` resolving to it.
+// The engine leaf stands in as a mock so the test can observe the
+// dynamic `await import("@/lib/game-state/lite")` resolving to it.
 const decompressReplayJsonMock = jest.fn();
-jest.mock("@/lib/game-state", () => ({
+jest.mock("@/lib/game-state/lite", () => ({
+  ...jest.requireActual("@/lib/game-state/lite"),
   decompressReplayJson: (...args: unknown[]) =>
     decompressReplayJsonMock(...args),
 }));
@@ -121,7 +125,7 @@ function makeGame(overrides: Partial<SavedGameMeta> = {}): SavedGameMeta {
 
 // --- Static lazy-import guards (#1817) --------------------------------------
 
-describe("#1817 — engine barrel is dynamically imported", () => {
+describe("#1817 — engine is dynamically imported via the lite leaf", () => {
   it("has no static value import of @/lib/game-state (type-only is allowed)", () => {
     // If an engine import ever returns, it must stay type-only — erased at
     // compile time, so it cannot pull the engine chunk into the route.
@@ -132,7 +136,7 @@ describe("#1817 — engine barrel is dynamically imported", () => {
 
   it("loads decompressReplayJson via await import at the share call site", () => {
     expect(pageSource).toMatch(
-      /await\s+import\(\s*["']@\/lib\/game-state["']\s*\)/,
+      /await\s+import\(\s*["']@\/lib\/game-state\/lite["']\s*\)/,
     );
   });
 });
@@ -158,7 +162,7 @@ describe("SavedGamesPage Share Replay", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /share replay/i }));
 
-    // The payload row is fetched, the engine barrel is dynamically
+    // The payload row is fetched, the engine lite leaf is dynamically
     // imported, and the inflated replay is handed to the share helper.
     await waitFor(() => {
       expect(decompressReplayJsonMock).toHaveBeenCalledWith("gzn:H4sIAAAAA");

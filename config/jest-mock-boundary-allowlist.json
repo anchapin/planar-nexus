@@ -13,6 +13,9 @@
     "src/ai/decision-making/__tests__/block-prediction.test.ts": {
       "reason": "Uses the AIPermanent type from the engine's `types/` submodule as a TYPE annotation only (import-type qualifier — runtime cost is zero, the eslint #1710 patterns miss this inline-qualifier form). The test does not import any runtime value from the engine. Migration to the barrel would require AIPermanent to be re-exported from @/lib/game-state (currently it isn't); tracking the migration as a follow-up rather than blocking this guard."
     },
+    "src/app/(app)/saved-games/__tests__/page.test.tsx": {
+      "reason": "The saved-games page consumes the engine only through the game-state lite leaf by design (route slimming, PR #2947): its replay share helpers live in the engine-free @/lib/replay-share-link module, and decompressReplayJson is loaded via a dynamic import of @/lib/game-state/lite at the share call site. The test mocks the lite leaf the page actually consumes so the dynamic import can be observed; mocking the barrel would stub a module the page no longer imports and could not intercept the call."
+    },
     "src/lib/__tests__/p2p-handshake.test.ts": {
       "reason": "The handshake test needs serializeGameState to return a deterministic stub (specific shape: {turnNumber, id}) so checksum-match/mismatch paths can be exercised without a full engine GameState. The mock path mirrors the source import specifier on purpose so the stub replaces only the serialization layer; mocking the barrel would replace every engine export and the handshake test would lose access to real non-serialization engine behaviour elsewhere."
     },

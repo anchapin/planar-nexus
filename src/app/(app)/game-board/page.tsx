@@ -6,8 +6,6 @@ import { useSearchParams } from "next/navigation";
 import { GameBoard } from "@/components/game-board";
 import { GameBoardErrorBoundary } from "@/components/error-boundaries";
 import { GameChat } from "@/components/game-chat";
-import { EmotePicker, EmoteFeed } from "@/components/emote-picker";
-import { TurnTimer } from "@/components/turn-timer";
 import { DamageOverlay, useDamageEvents } from "@/components/damage-indicator";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -20,45 +18,28 @@ import {
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { PlayerCount, ZoneType } from "@/types/game";
+import { cn } from "@/lib/utils";
 import {
   Swords,
   Eye,
   MessageCircle,
   Smile,
   Lightbulb,
-  AlertTriangle,
-  Zap,
-  Trophy,
   ArrowRight,
   Sparkles,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useGameChat } from "@/hooks/use-game-chat";
 import { useGameEmotes } from "@/hooks/use-game-emotes";
-import { cn } from "@/lib/utils";
-import {
-  analyzeCurrentGameState,
-  getManaAdvice,
-  evaluateBoardState,
-} from "@/ai/flows/ai-gameplay-assistance";
 import { useGameEngine } from "@/hooks/use-game-engine";
 import { useAIWorker } from "@/hooks/use-ai-worker";
-import { AIThinkingIndicator } from "@/components/ai/AIThinkingIndicator";
+
 import type { CardInstanceId, GameAction, ActionType } from "@/lib/game-state";
-import {
-  saveGameRecord,
-  createGameRecord,
-  type GameMode,
-  type GameResult,
-} from "@/lib/game-history";
+// Type-only import: the values (`createGameRecord` / `saveGameRecord`) are
+// loaded on demand at game end (issue #2946), so this statement is erased at
+// compile time and never reaches the route's first-load payload.
+import type { GameMode, GameResult } from "@/lib/game-history";
 import dynamic from "next/dynamic";
 
 /**
@@ -80,43 +61,89 @@ const HandSizeDiscardDialog = dynamic(
     import("@/components/choice-dialog").then((m) => m.HandSizeDiscardDialog),
   { ssr: false, loading: () => null },
 );
+
+/**
+ * Lazily loaded, conditionally rendered side-panel widgets (issue #2946).
+ *
+ * - The turn timer only exists once the player enables it, and it pulls in
+ *   the Radix progress primitives.
+ * - The emote picker is an on-demand popover; its panel (Radix popover
+ *   primitives plus the emote icon set) only matters once the player opens
+ *   it.
+ *
+ * Both keep their props and render exactly the same UI once loaded, but they
+ * no longer sit in this route's first-load payload.
+ */
+const TurnTimer = dynamic(
+  () => import("@/components/turn-timer").then((m) => m.TurnTimer),
+  { ssr: false, loading: () => null },
+);
+const EmotePicker = dynamic(
+  () => import("@/components/emote-picker").then((m) => m.EmotePicker),
+  {
+    ssr: false,
+    // Mirrors the picker's trigger button so the panel looks unchanged while
+    // the chunk is still in flight.
+    loading: () => (
+      <Button
+        variant="outline"
+        size="icon"
+        disabled
+        className="h-8 w-8"
+        aria-label="Open emote picker"
+        aria-expanded={false}
+      >
+        <Smile className="w-4 h-4" />
+      </Button>
+    ),
+  },
+);
+const EmoteFeed = dynamic(
+  () => import("@/components/emote-picker").then((m) => m.EmoteFeed),
+  { ssr: false, loading: () => null },
+);
+
+/**
+ * Lazily loaded, conditionally rendered end-of-game / on-demand widgets
+ * (issue #2946).
+ *
+ * - The game-over result dialog only appears once the game ends, and it
+ *   pulls in the Radix dialog primitives.
+ * - The floating AI assistance panel only appears once the player enables
+ *   AI assistance and an analysis is available.
+ *
+ * Both keep their props and render exactly the same UI once loaded, but
+ * they no longer sit in this route's first-load payload.
+ */
+const GameResultDialog = dynamic(
+  () => import("./_components/GameResultDialog").then((m) => m.GameResultDialog),
+  { ssr: false, loading: () => null },
+);
+const AIAssistancePanel = dynamic(
+  () =>
+    import("./_components/AIAssistancePanel").then((m) => m.AIAssistancePanel),
+  { ssr: false, loading: () => null },
+);
+const AIThinkingIndicator = dynamic(
+  () =>
+    import("@/components/ai/AIThinkingIndicator").then(
+      (m) => m.AIThinkingIndicator,
+    ),
+  { ssr: false, loading: () => null },
+);
 import { useAchievementTracking } from "@/hooks/use-achievement-tracking";
-import { evaluateGameState, quickScore } from "@/ai/game-state-evaluator";
-import { summarizeGame } from "@/lib/game-summarizer";
 import { engineToAIState } from "@/lib/game-state";
 
-// Type definitions for AI analysis results
-interface SuggestedPlay {
-  cardName: string;
-  reasoning: string;
-  priority: "high" | "medium" | "low";
-}
-
-interface Warning {
-  message: string;
-  type: "danger" | "warning" | "caution" | "info";
-  relatedCards?: string[];
-}
-
-interface ManaSuggestion {
-  action: string;
-  reasoning: string;
-}
-
-interface AIAnalysis {
-  suggestedPlays?: SuggestedPlay[];
-  warnings?: Warning[];
-  strategicAdvice?: string[];
-}
-
-interface AIManaAdvice {
-  suggestions?: ManaSuggestion[];
-}
-
-interface AIBoardEval {
-  playerWinChance?: number;
-  boardAdvantage?: string;
-}
+// Type-only imports: the AI analysis types now live with the lazily loaded
+// AI assistance panel, and the game-result summary type with the lazily
+// loaded result dialog. These statements are erased at compile time and
+// never reach the route's first-load payload.
+import type {
+  AIAnalysis,
+  AIManaAdvice,
+  AIBoardEval,
+} from "./_components/AIAssistancePanel";
+import type { GameResultSummary } from "./_components/GameResultDialog";
 
 export default function GameBoardPage() {
   const [playerCount, setPlayerCount] = React.useState<PlayerCount>(2);
@@ -128,11 +155,9 @@ export default function GameBoardPage() {
   const [aiManaAdvice, setAiManaAdvice] = useState<AIManaAdvice | null>(null);
   const [aiBoardEval, setAiBoardEval] = useState<AIBoardEval | null>(null);
   const [showGameResult, setShowGameResult] = useState(false);
-  const [gameResult, setGameResult] = useState<{
-    result: GameResult;
-    life: number;
-    turns: number;
-  } | null>(null);
+  const [gameResult, setGameResult] = useState<GameResultSummary | null>(
+    null,
+  );
   const [gameMode, setGameMode] = useState<GameMode>("self_play");
   const [difficulty, setDifficulty] = useState("medium");
   const [aiTheme, setAiTheme] = useState("aggressive");
@@ -509,6 +534,16 @@ export default function GameBoardPage() {
 
     startAnalysis(async () => {
       try {
+        // #2946 — the AI-assistance flow (and the evaluator / mulligan
+        // advisor it pulls in) is only needed once the player asks for
+        // analysis, so it is loaded on demand instead of shipping in this
+        // route's first-load payload. The analysis itself is unchanged.
+        const {
+          analyzeCurrentGameState,
+          getManaAdvice,
+          evaluateBoardState,
+        } = await import("@/ai/flows/ai-gameplay-assistance");
+
         const analysis = await analyzeCurrentGameState({
           gameState: analysisState,
           playerName: currentPlayerName,
@@ -551,10 +586,10 @@ export default function GameBoardPage() {
 
     const playerDeck = "Selected Deck"; // Would get from actual deck selection
 
-    // Generate AI summary of the game
-    const summary = summarizeGame(actions, result, playerDeck);
-
-    const record = createGameRecord({
+    // Capture the values the record is built from before handing control to
+    // the async persistence step, so the record always describes the game as
+    // it ended (issue #2946).
+    const recordInput = {
       mode: gameMode,
       result,
       playerDeck,
@@ -566,17 +601,47 @@ export default function GameBoardPage() {
       mulligans: 0, // Would track from actual game
       actions,
       mistakes,
-      summary,
-    });
+    };
 
-    saveGameRecord(record).catch(() => {
-      toast({
-        title: "Failed to save game",
-        description:
-          "Game history could not be saved. Your game is still in progress.",
-        variant: "destructive",
-      });
-    });
+    // #2946 — the summary helper and the game-history persistence layer
+    // (which drags in the IndexedDB storage module) are only needed once the
+    // game is over, so they load on demand instead of shipping in this
+    // route's first-load payload. Saving stays fire-and-forget, exactly as
+    // before: the result dialog and toasts are rendered synchronously.
+    void (async () => {
+      try {
+        const [{ createGameRecord, saveGameRecord }, { summarizeGame }] =
+          await Promise.all([
+            import("@/lib/game-history"),
+            import("@/lib/game-summarizer"),
+          ]);
+
+        // Generate AI summary of the game
+        const summary = summarizeGame(
+          recordInput.actions ?? [],
+          result,
+          playerDeck,
+        );
+
+        const record = createGameRecord({ ...recordInput, summary });
+
+        saveGameRecord(record).catch(() => {
+          toast({
+            title: "Failed to save game",
+            description:
+              "Game history could not be saved. Your game is still in progress.",
+            variant: "destructive",
+          });
+        });
+      } catch {
+        toast({
+          title: "Failed to save game",
+          description:
+            "Game history could not be saved. Your game is still in progress.",
+          variant: "destructive",
+        });
+      }
+    })();
 
     // Track achievements for this game
     onGameEnd({ gameState: engineState!, won: result === "win" });
@@ -981,193 +1046,20 @@ export default function GameBoardPage() {
 
         {/* Floating AI Assistance Panel */}
         {(aiAnalysis || aiManaAdvice || aiBoardEval) && aiAssistanceEnabled && (
-          <Card
-            className="absolute top-4 left-4 w-72 max-h-[60vh] overflow-y-auto z-10 shadow-lg bg-card/95"
-            role="complementary"
-            aria-label="AI Game Suggestions"
-            aria-live="polite"
-          >
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Lightbulb className="h-4 w-4 text-yellow-500" />
-                AI Suggestions
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3 text-xs">
-              {/* Board Evaluation */}
-              {aiBoardEval && (
-                <div className="p-2 rounded bg-muted">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-semibold">Win Chance:</span>
-                    <span
-                      className={cn(
-                        "font-bold",
-                        (aiBoardEval.playerWinChance ?? 0) >= 60
-                          ? "text-green-500"
-                          : (aiBoardEval.playerWinChance ?? 0) >= 40
-                            ? "text-yellow-500"
-                            : "text-red-500",
-                      )}
-                    >
-                      {aiBoardEval.playerWinChance ?? 0}%
-                    </span>
-                  </div>
-                  <div className="text-muted-foreground">
-                    Board: {aiBoardEval.boardAdvantage?.replace("_", " ")}
-                  </div>
-                </div>
-              )}
-
-              {/* Suggested Plays */}
-              {aiAnalysis?.suggestedPlays &&
-                aiAnalysis.suggestedPlays.length > 0 && (
-                  <div>
-                    <div className="font-semibold mb-1 flex items-center gap-1">
-                      <Zap className="h-3 w-3" /> Suggested Plays:
-                    </div>
-                    {aiAnalysis.suggestedPlays.slice(0, 3).map((play, idx) => (
-                      <div
-                        key={idx}
-                        className={cn(
-                          "p-2 rounded mb-1",
-                          play.priority === "high"
-                            ? "bg-green-50 border-l-2 border-green-500"
-                            : play.priority === "medium"
-                              ? "bg-yellow-50 border-l-2 border-yellow-500"
-                              : "bg-gray-50",
-                        )}
-                      >
-                        <div className="font-medium">{play.cardName}</div>
-                        <div className="text-muted-foreground text-[10px]">
-                          {play.reasoning}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-              {/* Warnings */}
-              {aiAnalysis?.warnings && aiAnalysis.warnings.length > 0 && (
-                <div>
-                  <div className="font-semibold mb-1 flex items-center gap-1">
-                    <AlertTriangle className="h-3 w-3 text-amber-500" />{" "}
-                    Warnings:
-                  </div>
-                  {aiAnalysis.warnings.slice(0, 2).map((warning, idx) => (
-                    <div
-                      key={idx}
-                      className={cn(
-                        "p-2 rounded mb-1 text-[10px]",
-                        warning.type === "danger"
-                          ? "bg-red-50 text-red-700"
-                          : "bg-amber-50 text-amber-700",
-                      )}
-                    >
-                      {warning.message}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Mana Advice */}
-              {aiManaAdvice?.suggestions &&
-                aiManaAdvice.suggestions.length > 0 && (
-                  <div>
-                    <div className="font-semibold mb-1">Mana Usage:</div>
-                    {aiManaAdvice.suggestions
-                      .slice(0, 2)
-                      .map((suggestion, idx) => (
-                        <div key={idx} className="p-2 rounded bg-blue-50 mb-1">
-                          <div className="font-medium">{suggestion.action}</div>
-                          <div className="text-muted-foreground text-[10px]">
-                            {suggestion.reasoning}
-                          </div>
-                        </div>
-                      ))}
-                  </div>
-                )}
-
-              {/* Strategic Advice */}
-              {aiAnalysis?.strategicAdvice &&
-                aiAnalysis.strategicAdvice.length > 0 && (
-                  <div className="pt-2 border-t">
-                    <div className="font-semibold mb-1">Strategic Advice:</div>
-                    {aiAnalysis.strategicAdvice
-                      .slice(0, 2)
-                      .map((advice: string, idx: number) => (
-                        <div
-                          key={idx}
-                          className="text-muted-foreground text-[10px] mb-1"
-                        >
-                          • {advice}
-                        </div>
-                      ))}
-                  </div>
-                )}
-            </CardContent>
-          </Card>
+          <AIAssistancePanel
+            aiAnalysis={aiAnalysis}
+            aiManaAdvice={aiManaAdvice}
+            aiBoardEval={aiBoardEval}
+          />
         )}
       </div>
 
       {/* Game Result Dialog */}
-      <Dialog open={showGameResult} onOpenChange={setShowGameResult}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Trophy
-                className={`h-6 w-6 ${gameResult?.result === "win" ? "text-yellow-500" : "text-gray-500"}`}
-              />
-              {gameResult?.result === "win"
-                ? "Victory!"
-                : gameResult?.result === "loss"
-                  ? "Defeat"
-                  : "Draw"}
-            </DialogTitle>
-            <DialogDescription>
-              Game completed after {gameResult?.turns} turns
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="grid gap-4 grid-cols-2">
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="text-center">
-                    <div className="text-3xl font-bold">{gameResult?.life}</div>
-                    <div className="text-sm text-muted-foreground">
-                      Your Life
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="text-center">
-                    <div className="text-3xl font-bold">
-                      {gameResult?.turns}
-                    </div>
-                    <div className="text-sm text-muted-foreground">Turns</div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                className="flex-1"
-                onClick={() => (window.location.href = "/single-player")}
-              >
-                Play Again
-              </Button>
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => (window.location.href = "/game-history")}
-              >
-                View History
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <GameResultDialog
+        open={showGameResult}
+        onOpenChange={setShowGameResult}
+        gameResult={gameResult}
+      />
 
       {/* X Value Choice Dialog for variable mana cost spells */}
       {xValueChoiceData && (
