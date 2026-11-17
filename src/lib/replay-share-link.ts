@@ -19,8 +19,8 @@
  *     time, so it adds no runtime edge;
  *   - `@/lib/game-state/lite` — the sanctioned leaf entry point
  *     (serialization / compression / hashing);
- *   - `getStateAtPosition` from `./replay-state-at-position`, the
- *     engine-free port of the engine's own helper.
+ *   - `getStateAtPosition` from "@/lib/game-state/lite", the
+ *     engine-free leaf home of the engine's own helper (issue #2975).
  *
  * The decode side (`decodeReplayFromURL`, `getReplayFromCurrentURL` and
  * the state expansion behind them) still needs the engine and stays in
@@ -34,7 +34,7 @@ import type {
   Replay,
   Zone,
 } from "@/lib/game-state";
-import { getStateAtPosition } from "./replay-state-at-position";
+import { getStateAtPosition } from "@/lib/game-state/lite";
 
 const REPLAY_PARAM = "replay";
 

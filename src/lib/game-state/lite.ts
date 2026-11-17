@@ -38,6 +38,13 @@ export {
 } from "./game-state-compression";
 export { compressReplayJson, decompressReplayJson } from "./replay-compression";
 export { computeStateHash, analyzeHashDiscrepancy } from "./state-hash";
+// Issue #2975: replay state reconstruction lives in its own leaf module, so
+// the light routes (e.g. /saved-games) can rebuild a game state from a
+// replay without pulling the rules engine into their module graph.
+export {
+  getStateAtPosition,
+  applyStateDeltaInPlace,
+} from "./replay-state";
 // format-rules is itself a leaf (constants and lookups only).
 export * from "./format-rules";
 export { gzipCompress, gzipDecompress, injectGzipComment } from "./native-gzip";
