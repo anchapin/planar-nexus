@@ -114,3 +114,67 @@ describe("differential scenario validator (#2411)", () => {
     expect(() => loadScenarioFile(file)).toThrow(/not valid JSON/);
   });
 });
+
+describe("differential scenario validator: mana pools (#2937)", () => {
+  it("accepts a mana pool seed on a player", () => {
+    const result = validateScenario({
+      ...VALID,
+      players: [
+        { life: 20, library: 0, manaPool: { R: 1, C: 1 } },
+        { life: 20, library: 0 },
+      ],
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.scenario.players[0].manaPool).toEqual({ R: 1, C: 1 });
+    }
+  });
+
+  it("accepts a mana pool expectation in the expect block", () => {
+    const result = validateScenario({
+      ...VALID,
+      expect: [{ life: 20, manaPool: {} }, { life: 20, manaPool: { R: 1 } }],
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.scenario.expect?.[0].manaPool).toEqual({});
+      expect(result.scenario.expect?.[1].manaPool).toEqual({ R: 1 });
+    }
+  });
+
+  it("accepts manaPool as an observed field", () => {
+    const result = validateScenario({
+      ...VALID,
+      observe: ["life", "manaPool"],
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.scenario.observe).toEqual(["life", "manaPool"]);
+  });
+
+  it("rejects a misspelled mana pool key (mana_pool)", () => {
+    const result = validateScenario({
+      ...VALID,
+      expect: [{ life: 20, mana_pool: { R: 1 } }, { life: 20 }],
+    } as unknown as Scenario);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.join("\n")).toMatch(/mana_pool|Unrecognized/);
+    }
+  });
+
+  it("rejects a mana pool letter the format does not know", () => {
+    const result = validateScenario({
+      ...VALID,
+      expect: [{ life: 20, manaPool: { X: 1 } }, { life: 20 }],
+    } as unknown as Scenario);
+    expect(result.ok).toBe(false);
+  });
+
+  it("rejects a negative mana pool count", () => {
+    const result = validateScenario({
+      ...VALID,
+      expect: [{ life: 20, manaPool: { R: -1 } }, { life: 20 }],
+    } as unknown as Scenario);
+    expect(result.ok).toBe(false);
+  });
+});
