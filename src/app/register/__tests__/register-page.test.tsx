@@ -19,7 +19,7 @@ jest.mock("next/navigation", () => ({
 }));
 
 jest.mock("@/lib/client-api-session", () => ({
-  syncApiSession: jest.fn().mockResolvedValue(undefined),
+  syncApiSession: jest.fn(() => Promise.resolve()),
 }));
 
 describe("RegisterPage — autofill hints (issue #2963)", () => {
