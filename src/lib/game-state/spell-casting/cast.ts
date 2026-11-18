@@ -1790,7 +1790,7 @@ export function castSpell(
         : undefined;
       let updatedGraveEmerge = updatedZonesEmerge.get(graveyardKey);
       const updatedCardsEmerge = new Map(currentState.cards);
-      if (updatedBattlefieldEmerge && updatedGraveEmerge) {
+      if (battlefieldKey && updatedBattlefieldEmerge && updatedGraveEmerge) {
         const moved = moveCardBetweenZones(
           updatedBattlefieldEmerge,
           updatedGraveEmerge,
