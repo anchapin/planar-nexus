@@ -437,6 +437,13 @@ export class ValidationService {
     // (an alternative cost). The authoritative affordability check happens in
     // castSpell after the mutate cost is substituted. Skip it (same rationale
     // as foretell/convoke/delve/spectacle/escape).
+    //
+    // Emerge (CR 702.119) REDUCES the printed mana cost by the mana value of
+    // a creature the caster sacrifices (generic portion only). The
+    // authoritative affordability check happens in castSpell after the emerge
+    // reduction is applied, so the printed-cost check here would falsely
+    // reject legal emerge casts. Skip it (same rationale as
+    // foretell/convoke/delve/spectacle/escape).
     if (
       altType !== "foretell" &&
       altType !== "convoke" &&
@@ -445,6 +452,7 @@ export class ValidationService {
       altType !== "spectacle" &&
       altType !== "escape" &&
       altType !== "mutate" &&
+      altType !== "emerge" &&
       // Warp / harmonize replace the printed cost with a script-declared one
       // (harmonize can also be reduced by tapping a creature); castSpell
       // checks the substituted cost.
