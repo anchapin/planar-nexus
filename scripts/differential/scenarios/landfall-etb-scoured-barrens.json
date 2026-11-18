@@ -1,0 +1,54 @@
+{
+  "id": "landfall-etb-scoured-barrens",
+  "refs": "#2399,#2410",
+  "description": "Playing Scoured Barrens with Rampaging Baloths out triggers landfall (a 4/4 green Beast token) and Scoured Barrens' ETB (enters tapped, gains 1 life).",
+  "players": [
+    {
+      "battlefield": [
+        {
+          "card": "Rampaging Baloths"
+        }
+      ],
+      "hand": ["Scoured Barrens"]
+    },
+    {}
+  ],
+  "actions": [
+    {
+      "do": "playLand",
+      "player": 0,
+      "card": "Scoured Barrens"
+    },
+    {
+      "do": "resolveStack"
+    }
+  ],
+  "observe": ["life", "battlefield", "hand", "stack"],
+  "expect": [
+    {
+      "life": 21,
+      "battlefield": [
+        {
+          "name": "Beast",
+          "power": 4,
+          "toughness": 4,
+          "token": true
+        },
+        {
+          "name": "Rampaging Baloths",
+          "power": 6,
+          "toughness": 6
+        },
+        {
+          "name": "Scoured Barrens",
+          "tapped": true
+        }
+      ],
+      "hand": []
+    },
+    {
+      "life": 20
+    }
+  ],
+  "expectStack": []
+}
