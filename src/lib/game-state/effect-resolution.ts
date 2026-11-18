@@ -36,6 +36,7 @@ import {
   isFightText,
 } from "./keyword-actions";
 import { performScry } from "./keyword-actions/scry";
+import { performExplore } from "./keyword-actions/explore";
 import { dealDamageToCard } from "./keyword-actions";
 import { hasLifelink } from "./evergreen-keywords";
 import { getModesForModalSpell } from "./oracle-text-parser";
@@ -749,6 +750,13 @@ export function parseSpellEffects(
     effects.push({ effectType: "surveil", amount });
   }
 
+  // Explore: "it explores", "explores" (CR 701.18, issue #2965). The
+  // exploring permanent is the source of the ability, so the effect carries
+  // no target of its own.
+  if (/\bexplores\b/.test(lowerText)) {
+    effects.push({ effectType: "explore" });
+  }
+
   // "Target creature gets +N/+N until end of turn" on a spell (CR 611.2a),
   // including "+X/+X" (Primal Might, issue #2451). Pushed before any fight so
   // "gets +X/+X ... Then it fights" pumps first (CR 608.2c).
@@ -1150,6 +1158,31 @@ export function resolveEffect(
         (sourceId ? state.cards.get(sourceId)?.controllerId : undefined) ??
         state.turn.activePlayerId;
       const result = performScry(state, scryPlayerId, effect.amount);
+      return {
+        success: result.success,
+        state: result.state,
+        description: result.description,
+        affectedCards: result.affectedCards,
+        error: result.error,
+      };
+    }
+
+    case "explore": {
+      // CR 701.18: the source permanent explores. Its controller reveals the
+      // top card of their library.
+      const exploringCardId = effect.targetId ?? sourceId;
+      if (!exploringCardId) {
+        return {
+          success: false,
+          state,
+          description: "",
+          error: "Nothing to explore with",
+        };
+      }
+      const explorePlayerId =
+        state.cards.get(exploringCardId)?.controllerId ??
+        state.turn.activePlayerId;
+      const result = performExplore(state, explorePlayerId, exploringCardId);
       return {
         success: result.success,
         state: result.state,
