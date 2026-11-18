@@ -20,6 +20,17 @@ import { loseLife } from "../player-actions";
 // (out of scope to widen — every other call-site
 // ignores it).
 import { moveCardBetweenZones } from "../zones";
+// #2419: copy-once-per-action working maps for the zone-move hot path
+// (the same pattern the state-based-action pass uses, see
+// `sba-pass-cards.ts`). One working copy of the card map and one of the
+// zone map per move action, mutated in place by the helpers on the path
+// and published once at the end.
+import {
+  acquireMoveCardMap,
+  acquireMoveZoneMap,
+  createZoneMoveMaps,
+  type ZoneMoveMaps,
+} from "../zone-move-maps";
 /**
  * Zone-removal keyword actions (CR 701): destroy, exile, sacrifice, regenerate, and generic zone moves.
  *
@@ -156,9 +167,14 @@ export function destroyCard(
   );
   const processedEvent = rem.processEvent(replacementEvent, apnapOrder);
 
+  // #2419: one working copy of the card map and one of the zone map for
+  // this destroy action. The regeneration branch and the move below both
+  // write into them instead of copying the maps again.
+  const maps = createZoneMoveMaps(state);
+
   if (processedEvent.type === "exile") {
     // Replacement effect changed destroy to exile
-    return exileCard(state, cardId);
+    return exileCard(state, cardId, false, maps);
   }
 
   // CR 701.13: If the permanent has a regeneration shield, consume exactly one
@@ -167,7 +183,7 @@ export function destroyCard(
   // Bypassed when ignoreIndestructible is set, matching the "cannot be
   // replaced" destroy contract used by the state-based annihilate paths.
   if (!ignoreIndestructible) {
-    const shieldResult = consumeRegenerationShield(state, cardId);
+    const shieldResult = consumeRegenerationShield(state, cardId, maps);
     if (shieldResult.hasShield) {
       const shieldedCard = shieldResult.state.cards.get(cardId);
       if (shieldedCard) {
@@ -176,7 +192,10 @@ export function destroyCard(
           damage: 0,
           isTapped: true,
         };
-        const regeneratedCards = new Map(shieldResult.state.cards);
+        const regeneratedCards = acquireMoveCardMap(
+          shieldResult.state,
+          maps,
+        );
         regeneratedCards.set(cardId, regeneratedCard);
         return {
           success: true,
@@ -193,17 +212,23 @@ export function destroyCard(
   }
 
   // Move card to graveyard
-  return moveCardToZone(state, cardId, "graveyard");
+  return moveCardToZone(state, cardId, "graveyard", maps);
 }
 
 /**
  * Exile a card
  * Can be face-up or face-down
+ *
+ * #2419: `maps` is the working copy set of the surrounding action (see
+ * `zone-move-maps.ts`). When it is omitted the helper makes its own
+ * copies, so a standalone call keeps the historical copy-on-write
+ * behaviour.
  */
 export function exileCard(
   state: GameState,
   cardId: CardInstanceId,
   faceDown: boolean = false,
+  maps?: ZoneMoveMaps,
 ): KeywordActionResult {
   const card = state.cards.get(cardId);
 
@@ -293,11 +318,11 @@ export function exileCard(
     cardIds: [...exileZone.cardIds, cardId],
   };
 
-  const updatedZones = new Map(state.zones);
+  const updatedZones = acquireMoveZoneMap(state, maps);
   updatedZones.set(currentZoneKey, updatedCurrentZone);
   updatedZones.set(exileZoneKey, updatedExileZone);
 
-  const updatedCards = new Map(state.cards);
+  const updatedCards = acquireMoveCardMap(state, maps);
   updatedCards.set(cardId, updatedCard);
 
   const faceDownText = faceDown ? " face down" : "";
@@ -335,7 +360,8 @@ export function sacrificeCard(
   }
 
   // Move to graveyard (sacrificed cards go to owner's graveyard)
-  return moveCardToZone(state, cardId, "graveyard");
+  // #2419: one working copy set for this action (see `zone-move-maps.ts`).
+  return moveCardToZone(state, cardId, "graveyard", createZoneMoveMaps(state));
 }
 
 // ---------------------------------------------------------------------------
@@ -404,10 +430,15 @@ export function regenerateCard(
 /**
  * Check and consume regeneration shield
  * Called when a card would be destroyed
+ *
+ * #2419: `maps` is the working copy set of the surrounding action (see
+ * `zone-move-maps.ts`); without it the helper copies the card map itself,
+ * exactly as before.
  */
 export function consumeRegenerationShield(
   state: GameState,
   cardId: CardInstanceId,
+  maps?: ZoneMoveMaps,
 ): { hasShield: boolean; state: GameState } {
   const card = state.cards.get(cardId);
 
@@ -418,7 +449,7 @@ export function consumeRegenerationShield(
   if (hasCounter(card, "regeneration-shield")) {
     // Remove one regeneration shield
     const updatedCard = removeCounters(card, "regeneration-shield", 1);
-    const updatedCards = new Map(state.cards);
+    const updatedCards = acquireMoveCardMap(state, maps);
     updatedCards.set(cardId, updatedCard);
 
     return {
@@ -436,11 +467,40 @@ export function consumeRegenerationShield(
 
 /**
  * Move a card to a specific zone
+ *
+ * #2419: the move path copies the card map and the zone map ONCE per
+ * action. The helpers on the path (the move itself, "enters with
+ * counters", "enters the battlefield", the saga lore counter) each used to
+ * copy the whole map again, so one card movement duplicated a 100+ entry
+ * card map up to four times. The working copies are created here (or
+ * handed in by the caller, e.g. `destroyCard`), mutated in place by the
+ * helpers and published once at the end.
+ *
+ * `maps` is optional so the public signature stays source-compatible for
+ * every existing caller.
  */
 export function moveCardToZone(
   state: GameState,
   cardId: CardInstanceId,
   targetZoneType: "graveyard" | "exile" | "hand" | "library" | "battlefield",
+  maps?: ZoneMoveMaps,
+): KeywordActionResult {
+  return moveCardToZoneWithMaps(
+    state,
+    cardId,
+    targetZoneType,
+    maps ?? createZoneMoveMaps(state),
+  );
+}
+
+/**
+ * The body of `moveCardToZone`, with the action's working maps in scope.
+ */
+function moveCardToZoneWithMaps(
+  state: GameState,
+  cardId: CardInstanceId,
+  targetZoneType: "graveyard" | "exile" | "hand" | "library" | "battlefield",
+  maps: ZoneMoveMaps,
 ): KeywordActionResult {
   // Finality counter (CR 122.1h): a creature with one that would die is
   // exiled instead, so it never dies (#2614 Esper Origins).
@@ -735,6 +795,7 @@ export function moveCardToZone(
       state,
       cardId,
       position,
+      maps,
     );
     if (!moved.success) {
       return moved;
@@ -749,7 +810,12 @@ export function moveCardToZone(
     targetZoneType === "graveyard" && !isSacrificeRedirect.value
       ? detectDiesTriggers(state, cardId)
       : [];
-  const result = moveCardToZoneWithoutTriggers(state, cardId, targetZoneType);
+  const result = moveCardToZoneWithoutTriggers(
+    state,
+    cardId,
+    targetZoneType,
+    maps,
+  );
   if (result.success && diesTriggers.length > 0) {
     return {
       ...result,
@@ -760,14 +826,15 @@ export function moveCardToZone(
   // controller's landfall abilities.
   if (result.success && targetZoneType === "battlefield") {
     // CR 614.1c: "enters with" counters are on it before any trigger sees it.
-    const withCounters = applyEntersWithCounters(result.state, cardId);
+    const withCounters = applyEntersWithCounters(result.state, cardId, {}, maps);
     const withLandfall = fireLandfallTriggers(withCounters, cardId);
-    const entered = fireEntersTriggers(withLandfall, cardId);
+    const entered = fireEntersTriggers(withLandfall, cardId, maps);
     // CR 714.3a: a Saga enters with a lore counter (chapter I triggers).
     const saga = entered.cards.get(cardId);
     return {
       ...result,
-      state: saga && isSaga(saga) ? addLoreCounters(entered, cardId) : entered,
+      state:
+        saga && isSaga(saga) ? addLoreCounters(entered, cardId, 1, maps) : entered,
     };
   }
   return result;
@@ -813,6 +880,7 @@ function moveCardToZoneWithPosition(
   state: GameState,
   cardId: CardInstanceId,
   position: "top" | "bottom",
+  maps?: ZoneMoveMaps,
 ): KeywordActionResult {
   const card = state.cards.get(cardId);
   if (!card) {
@@ -873,7 +941,7 @@ function moveCardToZoneWithPosition(
     cardId,
     position,
   );
-  const updatedZones = new Map(state.zones);
+  const updatedZones = acquireMoveZoneMap(state, maps);
   updatedZones.set(currentZoneKey, from);
   updatedZones.set(targetZoneKey, to);
   // Re-stamp `currentZoneKey` (CR 400.7: a card
@@ -887,7 +955,7 @@ function moveCardToZoneWithPosition(
     ...card,
     currentZoneKey: targetZoneKey,
   };
-  const updatedCards = new Map(state.cards);
+  const updatedCards = acquireMoveCardMap(state, maps);
   updatedCards.set(cardId, updatedCard);
   return {
     success: true,
@@ -980,7 +1048,14 @@ export function resolveRedirectZoneChoice(
   // — CR 614.5; dies triggers do NOT fire; the
   // move is a zone transfer with no ETB /
   // landfall / saga side-effects).
-  const moved = moveCardToZoneWithoutTriggers(state, cardId, zone);
+  //
+  // #2419: one working copy set for this action (see `zone-move-maps.ts`).
+  const moved = moveCardToZoneWithoutTriggers(
+    state,
+    cardId,
+    zone,
+    createZoneMoveMaps(state),
+  );
   if (!moved.success) {
     return {
       success: false,
@@ -1013,6 +1088,7 @@ function moveCardToZoneWithoutTriggers(
   state: GameState,
   cardId: CardInstanceId,
   targetZoneType: "graveyard" | "exile" | "hand" | "library" | "battlefield",
+  maps?: ZoneMoveMaps,
 ): KeywordActionResult {
   const card = state.cards.get(cardId);
 
@@ -1155,11 +1231,11 @@ function moveCardToZoneWithoutTriggers(
     cardIds: [...targetZone.cardIds, cardId],
   };
 
-  const updatedZones = new Map(state.zones);
+  const updatedZones = acquireMoveZoneMap(state, maps);
   updatedZones.set(currentZoneKey, updatedCurrentZone);
   updatedZones.set(targetZoneKey, updatedTargetZone);
 
-  const updatedCards = new Map(state.cards);
+  const updatedCards = acquireMoveCardMap(state, maps);
   updatedCards.set(cardId, updatedCard);
 
   const zoneNames: Record<string, string> = {
@@ -1188,9 +1264,9 @@ function moveCardToZoneWithoutTriggers(
   // CR 111.8: a token that leaves the battlefield ceases to exist (as a
   // state-based action, CR 704.5d). In a hand it would otherwise be playable.
   if (targetZoneType === "hand" && card.isToken) {
-    const zones = new Map(movedState.zones);
+    const zones = acquireMoveZoneMap(movedState, maps);
     zones.set(targetZoneKey, targetZone);
-    const cards = new Map(movedState.cards);
+    const cards = acquireMoveCardMap(movedState, maps);
     cards.delete(cardId);
     movedState = { ...movedState, zones, cards };
   }

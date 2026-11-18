@@ -14,6 +14,10 @@
 import type { GameState, CardInstanceId } from "../types";
 import { addCounters } from "../card-instance";
 import { hasAttackedThisTurn } from "./raid";
+import {
+  acquireMoveCardMap,
+  type ZoneMoveMaps,
+} from "../zone-move-maps";
 
 const NUMBER_WORDS: Record<string, number> = {
   a: 1,
@@ -101,16 +105,25 @@ export function entersWithCountersCount(
   return total;
 }
 
-/** Put the card's "enters with" +1/+1 counters on it. */
+/**
+ * Put the card's "enters with" +1/+1 counters on it.
+ *
+ * #2419: `maps` is the working copy set of the surrounding zone-move
+ * action (see `zone-move-maps.ts`). With it the helper writes into the
+ * action's single working copy of the card map instead of copying the
+ * whole map again; without it the helper copies the map itself, exactly
+ * as before.
+ */
 export function applyEntersWithCounters(
   state: GameState,
   cardId: CardInstanceId,
   ctx: EntersWithContext = {},
+  maps?: ZoneMoveMaps,
 ): GameState {
   const count = entersWithCountersCount(state, cardId, ctx);
   if (count <= 0) return state;
   const card = state.cards.get(cardId)!;
-  const cards = new Map(state.cards);
+  const cards = acquireMoveCardMap(state, maps);
   cards.set(cardId, addCounters(card, "+1/+1", count));
   return { ...state, cards };
 }

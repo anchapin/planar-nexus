@@ -20,6 +20,7 @@ import type {
 import { detectTriggeredAbilities } from "../abilities/triggered";
 import { putTriggersOnStack } from "../trigger-system/stack-ops";
 import { getCardScript } from "../card-scripts/registry";
+import { acquireMoveCardMap, type ZoneMoveMaps } from "../zone-move-maps";
 
 const ROMAN: Record<string, number> = {
   I: 1,
@@ -55,13 +56,14 @@ export function addLoreCounters(
   state: GameState,
   sagaId: CardInstanceId,
   amount = 1,
+  maps?: ZoneMoveMaps,
 ): GameState {
   const card = state.cards.get(sagaId);
   if (!card || !isSaga(card) || amount <= 0) return state;
   const from = loreCount(card);
   const to = from + amount;
   const others = (card.counters ?? []).filter((c) => c.type !== "lore");
-  const cards = new Map(state.cards);
+  const cards = acquireMoveCardMap(state, maps);
   cards.set(sagaId, {
     ...card,
     counters: [...others, { type: "lore", count: to }],
