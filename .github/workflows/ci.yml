@@ -63,7 +63,6 @@ jobs:
         run: node scripts/qa-coverage-gate.js
       
       - name: Upload coverage to Codecov
-        if: github.ref == 'refs/heads/main'
         uses: codecov/codecov-action@v7
         with:
           files: ./coverage/lcov.info
