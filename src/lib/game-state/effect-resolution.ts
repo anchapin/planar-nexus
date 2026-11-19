@@ -21,6 +21,8 @@ import type {
   CardInstanceId,
   StackEffect,
   StackObject,
+  Player,
+  CardInstance,
 } from "./types";
 import {
   drawCards,
@@ -52,6 +54,126 @@ import {
 import { addCounters } from "./card-instance";
 
 /**
+ * Issue #2419 — copy-once working maps for a single top-level resolution.
+ *
+ * The engine copies whole state maps (`new Map(state.players)`,
+ * `new Map(state.cards)`) on nearly every player- or card-affecting event.
+ * Effect resolution used to do that *per individual effect resolver*, so
+ * resolving a single stack object with several effects copied the same maps
+ * several times over.
+ *
+ * This module now follows the copy-once pattern established by
+ * `combat/resolution.ts` (issue #2919) and the SBA pass (issue #2884):
+ *
+ *  - A top-level resolution (`resolveEffect`, `resolveStackObjectEffects`)
+ *    takes ONE working copy of each map it touches — lazily, so a resolution
+ *    that never touches a map never copies it.
+ *  - The working copy is published into the threaded state BEFORE any helper
+ *    call that reads the map, so no helper ever observes a stale map.
+ *  - A helper that returns a state carrying its own copy of a map has that
+ *    copy *absorbed* (adopted) into the working map instead of being copied
+ *    again.
+ *  - The caller's input maps are NEVER mutated: the working map is always a
+ *    copy (or a helper's own fresh copy), never the caller's map.
+ *
+ * The exported per-effect resolvers keep working exactly as before when they
+ * are called standalone (outside a top-level resolution): they simply have no
+ * context and copy the map themselves, one map, one time.
+ */
+interface ResolutionContext {
+  /** The caller's input maps — never mutated, used to spot stale maps. */
+  inputPlayers: Map<PlayerId, Player>;
+  inputCards: Map<CardInstanceId, CardInstance>;
+  /** Working copy of the players map (created lazily, at most once). */
+  players?: Map<PlayerId, Player>;
+  /** Working copy of the cards map (created lazily, at most once). */
+  cards?: Map<CardInstanceId, CardInstance>;
+}
+
+/** Start a resolution context for a top-level resolution. */
+function createResolutionContext(state: GameState): ResolutionContext {
+  return { inputPlayers: state.players, inputCards: state.cards };
+}
+
+/**
+ * Publish the working maps into the state that is handed to the next helper,
+ * so no helper ever reads a stale map.
+ */
+function publishWorkingMaps(
+  ctx: ResolutionContext,
+  state: GameState,
+): GameState {
+  let out = state;
+  if (ctx.players) out = { ...out, players: ctx.players };
+  if (ctx.cards) out = { ...out, cards: ctx.cards };
+  return out;
+}
+
+/**
+ * Absorb the maps of a helper-returned state into the working maps.
+ *
+ * A helper that copied a map returns a state whose map is a *different*
+ * object. Adopting that copy keeps exactly one live map for the resolution
+ * without copying it again. A helper that returned the caller's own (stale)
+ * input map is ignored — the working map already holds the newer values.
+ */
+function absorbWorkingMaps(ctx: ResolutionContext, next: GameState): GameState {
+  let out = next;
+  if (next.players !== ctx.players) {
+    if (next.players === ctx.inputPlayers) {
+      // The helper handed back the caller's own (stale) map — keep the
+      // working map, which holds the newer values.
+      if (ctx.players) out = { ...out, players: ctx.players };
+    } else {
+      // A helper built its own fresh copy: adopt it (no second copy).
+      ctx.players = next.players;
+      out = { ...out, players: ctx.players };
+    }
+  }
+  if (next.cards !== ctx.cards) {
+    if (next.cards === ctx.inputCards) {
+      if (ctx.cards) out = { ...out, cards: ctx.cards };
+    } else {
+      ctx.cards = next.cards;
+      out = { ...out, cards: ctx.cards };
+    }
+  }
+  return out;
+}
+
+/**
+ * The working players map for this resolution — created (copied) at most
+ * once. Without a context (a standalone resolver call) the map is copied
+ * here, exactly as before.
+ */
+function workingPlayersMap(
+  ctx: ResolutionContext | undefined,
+  state: GameState,
+): Map<PlayerId, Player> {
+  if (ctx) {
+    if (!ctx.players) ctx.players = new Map(state.players);
+    return ctx.players;
+  }
+  return new Map(state.players);
+}
+
+/**
+ * The working cards map for this resolution — created (copied) at most once.
+ * Without a context (a standalone resolver call) the map is copied here,
+ * exactly as before.
+ */
+function workingCardsMap(
+  ctx: ResolutionContext | undefined,
+  state: GameState,
+): Map<CardInstanceId, CardInstance> {
+  if (ctx) {
+    if (!ctx.cards) ctx.cards = new Map(state.cards);
+    return ctx.cards;
+  }
+  return new Map(state.cards);
+}
+
+/**
  * Apply lifelink life gain for damage dealt by a source with lifelink.
  *
  * CR 702.15b: "Damage dealt by a source with lifelink causes that source's
@@ -65,6 +187,7 @@ function applyLifelinkLifeGain(
   state: GameState,
   sourceId: CardInstanceId | undefined,
   damageDealt: number,
+  ctx?: ResolutionContext,
 ): GameState {
   if (!sourceId || damageDealt <= 0) return state;
   const sourceCard = state.cards.get(sourceId);
@@ -74,12 +197,16 @@ function applyLifelinkLifeGain(
   const controllerId = sourceCard.controllerId;
   const controller = state.players.get(controllerId);
   if (!controller) return state;
+  // Issue #2419: reuse the resolution's working players map when there is
+  // one, so a resolution copies the map at most once.
+  const players = workingPlayersMap(ctx, state);
+  players.set(controllerId, {
+    ...controller,
+    life: controller.life + damageDealt,
+  });
   return {
     ...state,
-    players: new Map(state.players).set(controllerId, {
-      ...controller,
-      life: controller.life + damageDealt,
-    }),
+    players,
     lastModifiedAt: Date.now(),
   };
 }
@@ -137,6 +264,20 @@ export function resolveLifeGainEffect(
   amount: number,
   targetPlayerId?: PlayerId,
 ): EffectResolutionResult {
+  return resolveLifeGainEffectWithContext(state, sourceId, amount, targetPlayerId);
+}
+
+/**
+ * Life gain with an optional resolution context (issue #2419: the working
+ * players map is copied at most once per top-level resolution).
+ */
+function resolveLifeGainEffectWithContext(
+  state: GameState,
+  sourceId: CardInstanceId | undefined,
+  amount: number,
+  targetPlayerId: PlayerId | undefined,
+  ctx?: ResolutionContext,
+): EffectResolutionResult {
   const player = targetPlayerId || state.turn.activePlayerId;
   const playerData = state.players.get(player);
 
@@ -153,7 +294,7 @@ export function resolveLifeGainEffect(
   if (amount > 0 && scriptRuleActive(state, "players_cant_gain_life")) {
     return { success: true, state, description: "Players can't gain life" };
   }
-  const updatedPlayers = new Map(state.players);
+  const updatedPlayers = workingPlayersMap(ctx, state);
   const updatedPlayer = {
     ...playerData,
     life: playerData.life + amount,
@@ -181,6 +322,25 @@ export function resolveLifeLossEffect(
   amount: number,
   targetPlayerId?: PlayerId,
 ): EffectResolutionResult {
+  return resolveLifeLossEffectWithContext(
+    state,
+    sourceId,
+    amount,
+    targetPlayerId,
+  );
+}
+
+/**
+ * Life loss with an optional resolution context (issue #2419: the working
+ * players map is copied at most once per top-level resolution).
+ */
+function resolveLifeLossEffectWithContext(
+  state: GameState,
+  sourceId: CardInstanceId | undefined,
+  amount: number,
+  targetPlayerId: PlayerId | undefined,
+  ctx?: ResolutionContext,
+): EffectResolutionResult {
   const player = targetPlayerId || state.turn.activePlayerId;
   const playerData = state.players.get(player);
 
@@ -193,7 +353,7 @@ export function resolveLifeLossEffect(
     };
   }
 
-  const updatedPlayers = new Map(state.players);
+  const updatedPlayers = workingPlayersMap(ctx, state);
   const updatedPlayer = {
     ...playerData,
     life: Math.max(0, playerData.life - amount), // Life cannot go below 0
@@ -339,6 +499,27 @@ export function resolveDamageEffect(
   amount: number,
   isCombatDamage: boolean = false,
 ): EffectResolutionResult {
+  return resolveDamageEffectWithContext(
+    state,
+    sourceId,
+    targetId,
+    amount,
+    isCombatDamage,
+  );
+}
+
+/**
+ * Damage to a card with an optional resolution context (issue #2419: the
+ * working players map is copied at most once per top-level resolution).
+ */
+function resolveDamageEffectWithContext(
+  state: GameState,
+  sourceId: CardInstanceId | undefined,
+  targetId: CardInstanceId,
+  amount: number,
+  isCombatDamage: boolean,
+  ctx?: ResolutionContext,
+): EffectResolutionResult {
   // Capture damage marked on the target before resolution so we can derive
   // the actual damage dealt after prevention/replacement effects. CR 702.15b:
   // lifelink grants life equal to the damage actually dealt, not the
@@ -354,11 +535,15 @@ export function resolveDamageEffect(
     sourceId,
   );
 
+  // `dealDamageToCard` returns a state carrying its own copy of the cards
+  // map; adopt it (issue #2419) instead of copying it again.
+  const dealtState = ctx ? absorbWorkingMaps(ctx, result.state) : result.state;
+
   // dealDamageToCard marks `card.damage += actualDamage`, so the delta is the
   // actual damage dealt. Cap at the requested amount so deathtouch's lethality
   // bump (which marks extra damage up to toughness) does not inflate the
   // lifelink life gain.
-  const targetCardAfter = result.state.cards.get(targetId);
+  const targetCardAfter = dealtState.cards.get(targetId);
   const damageAfter = targetCardAfter?.damage ?? damageBefore;
   const actualDamageDealt = Math.max(
     0,
@@ -369,9 +554,10 @@ export function resolveDamageEffect(
   // or ability whose source has lifelink) grants its controller life equal to
   // the damage dealt.
   const stateWithLifelink = applyLifelinkLifeGain(
-    result.state,
+    dealtState,
     sourceId,
     actualDamageDealt,
+    ctx,
   );
 
   return {
@@ -396,16 +582,30 @@ export function resolveFight(
   fighterId: CardInstanceId,
   opponentId: CardInstanceId,
 ): EffectResolutionResult {
+  return resolveFightWithContext(state, fighterId, opponentId);
+}
+
+/**
+ * A fight with an optional resolution context (issue #2419: the working
+ * players map is copied at most once per top-level resolution).
+ */
+function resolveFightWithContext(
+  state: GameState,
+  fighterId: CardInstanceId,
+  opponentId: CardInstanceId,
+  ctx?: ResolutionContext,
+): EffectResolutionResult {
   const plan = getFightDamage(state, fighterId, opponentId);
   let currentState = state;
   const affected: CardInstanceId[] = [];
   for (const hit of plan) {
-    const result = resolveDamageEffect(
+    const result = resolveDamageEffectWithContext(
       currentState,
       hit.sourceId,
       hit.targetId,
       hit.amount,
       false,
+      ctx,
     );
     if (result.success) {
       currentState = result.state;
@@ -431,6 +631,25 @@ export function resolvePlayerDamageEffect(
   sourceId: CardInstanceId | undefined,
   targetPlayerId: PlayerId,
   amount: number,
+): EffectResolutionResult {
+  return resolvePlayerDamageEffectWithContext(
+    state,
+    sourceId,
+    targetPlayerId,
+    amount,
+  );
+}
+
+/**
+ * Damage to a player with an optional resolution context (issue #2419: the
+ * working players map is copied at most once per top-level resolution).
+ */
+function resolvePlayerDamageEffectWithContext(
+  state: GameState,
+  sourceId: CardInstanceId | undefined,
+  targetPlayerId: PlayerId,
+  amount: number,
+  ctx?: ResolutionContext,
 ): EffectResolutionResult {
   const playerData = state.players.get(targetPlayerId);
 
@@ -476,7 +695,7 @@ export function resolvePlayerDamageEffect(
   }
 
   // Deal damage to player - this reduces their life total
-  const updatedPlayers = new Map(state.players);
+  const updatedPlayers = workingPlayersMap(ctx, state);
   const updatedPlayer = {
     ...playerData,
     life: Math.max(0, playerData.life - actualDamage),
@@ -495,6 +714,7 @@ export function resolvePlayerDamageEffect(
     stateAfterDamage,
     sourceId,
     actualDamage,
+    ctx,
   );
 
   return {
@@ -946,6 +1166,29 @@ export function resolveEffect(
   effect: StackEffect,
   sourceId?: CardInstanceId,
 ): EffectResolutionResult {
+  // Issue #2419: a standalone `resolveEffect` call is its own top-level
+  // resolution — it takes one working copy of each map it touches.
+  return resolveEffectWithContext(
+    state,
+    effect,
+    sourceId,
+    createResolutionContext(state),
+  );
+}
+
+/**
+ * Dispatch effect resolution based on effect type, with an optional
+ * resolution context (issue #2419: the working maps are copied at most once
+ * per top-level resolution).
+ *
+ * CR 608.2 - For each effect, apply changes in the correct order
+ */
+function resolveEffectWithContext(
+  state: GameState,
+  effect: StackEffect,
+  sourceId: CardInstanceId | undefined,
+  ctx: ResolutionContext,
+): EffectResolutionResult {
   switch (effect.effectType) {
     case "counters_from_draws": {
       const targetId = effect.targetId;
@@ -966,7 +1209,7 @@ export function resolveEffect(
       if (x === 0) {
         return { success: true, state, description: "X is 0" };
       }
-      const cards = new Map(state.cards);
+      const cards = workingCardsMap(ctx, state);
       cards.set(targetId, addCounters(target, "+1/+1", x));
       return {
         success: true,
@@ -1008,19 +1251,21 @@ export function resolveEffect(
       );
 
     case "life_gain":
-      return resolveLifeGainEffect(
+      return resolveLifeGainEffectWithContext(
         state,
         sourceId,
         effect.amount,
         effect.targetId || undefined,
+        ctx,
       );
 
     case "life_loss":
-      return resolveLifeLossEffect(
+      return resolveLifeLossEffectWithContext(
         state,
         sourceId,
         effect.amount,
         effect.targetId || undefined,
+        ctx,
       );
 
     case "token_creation":
@@ -1084,7 +1329,12 @@ export function resolveEffect(
           error: "Fight needs two creatures",
         };
       }
-      return resolveFight(state, effect.fighterId, effect.opponentId);
+      return resolveFightWithContext(
+        state,
+        effect.fighterId,
+        effect.opponentId,
+        ctx,
+      );
     }
 
     case "crew": {
@@ -1202,19 +1452,21 @@ export function resolveEffect(
       // remove loyalty counters per CR 119.3c).
       const targetId = effect.targetId as string;
       if (targetId && state.players.has(targetId)) {
-        return resolvePlayerDamageEffect(
+        return resolvePlayerDamageEffectWithContext(
           state,
           sourceId,
           targetId as PlayerId,
           effect.amount,
+          ctx,
         );
       }
-      return resolveDamageEffect(
+      return resolveDamageEffectWithContext(
         state,
         sourceId,
         targetId as CardInstanceId,
         effect.amount,
         effect.isCombatDamage,
+        ctx,
       );
     }
 
@@ -1322,7 +1574,15 @@ export function resolveStackObjectEffects(
   targets?: Array<{ type: string; targetId: string }>,
   kickerBonus: number = 0,
 ): GameState {
-  let currentState = state;
+  // Issue #2419: ONE working copy of each map this resolution touches.
+  //
+  // The working maps are created lazily (a resolution that never touches a
+  // map never copies it) and are published into the threaded state before
+  // every helper call, so no helper ever reads a stale map. A helper that
+  // returns its own copy of a map has that copy absorbed into the working
+  // map instead of being copied again.
+  const ctx = createResolutionContext(state);
+  let currentState = publishWorkingMaps(ctx, state);
 
   for (const effect of effects) {
     // CR 702.85 — apply the kicker bonus once per effect so each scalable
@@ -1374,33 +1634,44 @@ export function resolveStackObjectEffects(
     // both IDs may contain hyphens. CR 119 / CR 119.3c.
     if (scaledEffect.effectType === "damage" && targets && targets.length > 0) {
       const target = targets[0];
+      // Publish the working maps before the helper call so it never reads a
+      // stale map (issue #2419).
+      currentState = publishWorkingMaps(ctx, currentState);
       let damageResult: EffectResolutionResult;
       if (target.type === "player") {
-        damageResult = resolvePlayerDamageEffect(
+        damageResult = resolvePlayerDamageEffectWithContext(
           currentState,
           sourceId,
           target.targetId as PlayerId,
           scaledEffect.amount,
+          ctx,
         );
       } else {
         // "card" covers creatures, planeswalkers, and battles
-        damageResult = resolveDamageEffect(
+        damageResult = resolveDamageEffectWithContext(
           currentState,
           sourceId,
           target.targetId as CardInstanceId,
           scaledEffect.amount,
           scaledEffect.isCombatDamage,
+          ctx,
         );
       }
       if (damageResult.success) {
-        currentState = damageResult.state;
+        currentState = absorbWorkingMaps(ctx, damageResult.state);
       }
       continue;
     }
 
-    const result = resolveEffect(currentState, scaledEffect, sourceId);
+    currentState = publishWorkingMaps(ctx, currentState);
+    const result = resolveEffectWithContext(
+      currentState,
+      scaledEffect,
+      sourceId,
+      ctx,
+    );
     if (result.success) {
-      currentState = result.state;
+      currentState = absorbWorkingMaps(ctx, result.state);
     }
   }
 
