@@ -91,6 +91,7 @@ describe("ValidationService", () => {
       // the field stays `null` and the static consult
       // ignores it.
       chosenProtectionFrom: null,
+      chosenPlayer: null,
       isToken: false,
       tokenData: null,
       attackedLastTurn: false,
