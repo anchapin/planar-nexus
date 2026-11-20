@@ -399,11 +399,11 @@ steps. When triaging a flake, **identify which category it belongs to
 before proposing a fix** — conflating them leads to fixes that target the
 wrong code path.
 
-| Category                | Where it runs                              | Browser                                                    | Tracking issue |
-| ----------------------- | ------------------------------------------ | ---------------------------------------------------------- | -------------- |
-| **chromium-flake**      | primary CI `e2e` job (every PR)            | chromium only                                              | #1881          |
-| **cross-browser-flake** | nightly cross-browser job (`.github/workflows/nightly.yml`) | firefox + webkit (chromium is stable here) | #1780          |
-| **cyan-flake**          | Tauri/desktop-fallback Playwright variants | the chrome-headless shell used by the cross-browser runner | #1780          |
+| Category                | Where it runs                                               | Browser                                                    | Tracking issue |
+| ----------------------- | ----------------------------------------------------------- | ---------------------------------------------------------- | -------------- |
+| **chromium-flake**      | primary CI `e2e` job (every PR)                             | chromium only                                              | #1881          |
+| **cross-browser-flake** | nightly cross-browser job (`.github/workflows/nightly.yml`) | firefox + webkit (chromium is stable here)                 | #1780          |
+| **cyan-flake**          | Tauri/desktop-fallback Playwright variants                  | the chrome-headless shell used by the cross-browser runner | #1780          |
 
 - **chromium-flake (#1881)** — fails on the primary Playwright `e2e` CI
   job against chromium, but passes consistently on a local re-run. Wave
@@ -619,9 +619,9 @@ npm test -- --testPathPattern=video-derived --coverage
 
 | Metric     | Project target | CI-enforced floor (`jest.config.js`) |
 | ---------- | -------------- | ------------------------------------ |
-| Lines      | **70%**        | 68%                                  |
-| Functions  | **70%**        | 60%                                  |
-| Statements | **70%**        | 67%                                  |
+| Lines      | **70%**        | 69%                                  |
+| Functions  | **70%**        | 61%                                  |
+| Statements | **70%**        | 68%                                  |
 | Branches   | **60%**        | 60%                                  |
 
 <!-- coverage-floor:end -->
