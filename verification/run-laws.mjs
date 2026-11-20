@@ -16,14 +16,17 @@
 //                                            skip, CR 510.5; pool emptying, CR 500.4)
 //
 // Simplifications (see README.md for the full account): the mana model keeps
-// one colored bucket (white) + colorless + the generic bucket — colored
-// buckets are symmetric in the real code for every quantity these laws state.
+// all seven buckets of the real pool — the five colors (white, blue, black,
+// red, green), colorless and the generic bucket — and the engine's own
+// generic-spillover order (generic bucket, then colorless, then WUBRG).
 // The models are drift-checked against the real functions by real-check.ts.
 //
 // Run: npm run test:laws   (exit 1 on any failed check)
-import {bool, fun, proveDecision, proveSteps} from 'gdp-wired'
+import {bool, fun, min, proveDecision, proveSteps} from 'gdp-wired'
 import {search} from 'gdp-wired/machine'
-import {combinedRule, manaRule, manaRuleWatched, PhaseKind, turnRule} from './models.mjs'
+import {
+  COLOR_BUCKETS, combinedRule, MANA_BUCKETS, manaRule, manaRuleWatched, PhaseKind, turnRule,
+} from './models.mjs'
 
 let failures = 0
 function expectProven(label, v) {
@@ -31,6 +34,7 @@ function expectProven(label, v) {
   console.log(`${ok ? 'PASS' : 'FAIL'} proven: ${label}` + (ok ? '' : ` (why=${v.why ?? v.stuck ?? ''} goal=${v.goal ?? ''})`))
   if (!ok) failures++
 }
+
 function expectRefused(label, v) {
   const ok = v.proven === false
   console.log(`${ok ? 'PASS' : 'FAIL'} refused: ${label}`)
@@ -44,23 +48,41 @@ function expectCrossCheck(label, r, laws, stepLaws) {
 }
 
 // ---------------------------------------------------------------- mana pool
-const total = ({w, c, p}) => w.plus(c).plus(p)
-const cost = ({sw, sc, sg}) => sw.plus(sc).plus(sg)
+const sumOf = (env, keys) => keys.reduce((acc, k) => acc.plus(env[k]), env[keys[0]].minus(env[keys[0]]))
+const total = (env) => sumOf(env, MANA_BUCKETS)
+const cost = (env) => sumOf(env, MANA_BUCKETS.map(k => 's' + k))
+const added = (env) => sumOf(env, MANA_BUCKETS.map(k => 'a' + k))
+const andAll = (conds) => conds.reduce((acc, c) => acc.and(c))
+
+// How much of the generic cost is still owed once the buckets before a given
+// one have paid what they can — the engine's order is generic bucket, then
+// colorless, then white, blue, black, red, green.
+function owedBefore(b, bucket) {
+  let owed = b.sp.minus(min(b.p, b.sp))
+  const colorlessSpec = b.c.minus(b.sc)
+  owed = owed.minus(min(colorlessSpec, owed))
+  for (const k of COLOR_BUCKETS) {
+    if (k === bucket) break
+    const spec = b[k].minus(b['s' + k])
+    owed = owed.minus(min(spec, owed))
+  }
+  return owed
+}
 
 const mana = manaRule('mana-pool')
 const manaLaws = [
   mana.stepLaw('a successful spend removes exactly the total cost',
-    (b, a) => a.w.plus(a.c).plus(a.p).plus(cost(b)).eq(total(b)),
+    (b, a) => total(a).plus(cost(b)).eq(total(b)),
     (b) => b.op.is('spend').and(b.affordable)),
   mana.stepLaw('a refused spend leaves the pool unchanged',
-    (b, a) => a.w.eq(b.w).and(a.c.eq(b.c), a.p.eq(b.p)),
+    (b, a) => andAll(MANA_BUCKETS.map(k => a[k].eq(b[k]))),
     (b) => b.op.is('spend').and(b.affordable.not())),
-  mana.stepLaw('a spend never increases any bucket',
-    (b, a) => a.w.atMost(b.w).and(a.c.atMost(b.c), a.p.atMost(b.p)),
+  mana.stepLaw('a spend never increases a bucket and never leaves one negative',
+    (b, a) => andAll(MANA_BUCKETS.map(k => a[k].atMost(b[k]).and(a[k].atLeast(0)))),
     (b) => b.op.is('spend')),
   mana.stepLaw('add increases the total by exactly the added amount and never decreases a bucket',
-    (b, a) => total(a).eq(total(b).plus(b.aw).plus(b.ac).plus(b.ap))
-      .and(a.w.atLeast(b.w), a.c.atLeast(b.c), a.p.atLeast(b.p)),
+    (b, a) => total(a).eq(total(b).plus(added(b)))
+      .and(andAll(MANA_BUCKETS.map(k => a[k].atLeast(b[k])))),
     (b) => b.op.is('add')),
   mana.stepLaw('empty sets the pool to zero',
     (b, a) => total(a).eq(0),
@@ -68,6 +90,46 @@ const manaLaws = [
 ]
 expectProven('mana-pool step laws (5)', proveSteps(mana, [], manaLaws))
 expectCrossCheck('mana-pool', mana, [], manaLaws)
+
+// The generic cost is paid exactly once, out of the generic bucket, then
+// colorless, then the colors in WUBRG order.
+const orderLaws = [
+  mana.stepLaw('the generic bucket pays the generic cost first',
+    (b, a) => a.p.eq(b.p.minus(min(b.p, b.sp))),
+    (b) => b.op.is('spend').and(b.affordable)),
+  mana.stepLaw('the colorless bucket pays its own cost and then the rest of the generic cost, before any color',
+    (b, a) => {
+      const owedAfterGeneric = b.sp.minus(min(b.p, b.sp))
+      const colorlessSpec = b.c.minus(b.sc)
+      return a.c.eq(colorlessSpec.minus(min(colorlessSpec, owedAfterGeneric)))
+    },
+    (b) => b.op.is('spend').and(b.affordable)),
+]
+for (const k of COLOR_BUCKETS) {
+  orderLaws.push(mana.stepLaw(
+    `the ${k} bucket pays its own cost and then the generic spillover, after the buckets before it`,
+    (b, a) => {
+      const spec = b[k].minus(b['s' + k])
+      return a[k].eq(spec.minus(min(spec, owedBefore(b, k))))
+    },
+    (b) => b.op.is('spend').and(b.affordable)))
+}
+expectProven('mana-pool generic-spillover laws (7)', proveSteps(mana, [], orderLaws))
+
+// The generic cost is covered exactly: what leaves the generic bucket, what
+// leaves colorless beyond its own cost, and what leaves each color beyond
+// its own cost add up to exactly the generic cost.
+const genericTotal = mana.stepLaw(
+  'the generic cost is paid exactly once, out of the generic bucket, colorless and the colors',
+  (b, a) => {
+    let paid = b.p.minus(a.p)
+    paid = paid.plus(b.c.minus(a.c).minus(b.sc))
+    for (const k of COLOR_BUCKETS) paid = paid.plus(b[k].minus(a[k]).minus(b['s' + k]))
+    return paid.eq(b.sp)
+  },
+  (b) => b.op.is('spend').and(b.affordable))
+expectProven('mana-pool generic-total law', proveSteps(mana, [], [genericTotal]))
+expectCrossCheck('mana-pool generic total', mana, [], [genericTotal])
 
 // Watched invariant: colorless spent never exceeds colorless added (ghost
 // counters track the history; the pool buckets alone cannot state this).
@@ -79,13 +141,16 @@ expectProven('mana-pool watched invariant', proveSteps(watched, [neverOverspendC
 // Negative control: spendMana with the colorless affordability check dropped.
 const bug = manaRuleWatched('mana-pool-bug', true)
 const bugConservation = bug.stepLaw('a successful spend removes exactly the total cost',
-  (b, a) => a.w.plus(a.c).plus(a.p).plus(cost(b)).eq(b.w.plus(b.c).plus(b.p)),
+  (b, a) => total(a).plus(cost(b)).eq(total(b)),
   (b) => b.op.is('spend').and(b.affordable))
 expectRefused('bug variant (dropped colorless check) conservation law', proveSteps(bug, [], [bugConservation]))
 const bugInv = bug.law('colorless spent never exceeds colorless added',
   ({spentC, addedC}) => spentC.atMost(addedC))
 expectRefused('bug variant watched invariant', proveSteps(bug, [bugInv], []))
-const cex = search(bug.machine, bugInv)
+// A single-step counterexample is enough here: one spend of 1 colorless from
+// an empty pool. The search is bounded (depth 1, amounts 0/1) because the
+// machine now has one input per bucket.
+const cex = search(bug.machine, bugInv, 1, 1)
 const cexOk = !!cex && cex.trace.length === 1 && cex.trace[0].op === 1 && cex.trace[0].sc >= 1
 console.log(`${cexOk ? 'PASS' : 'FAIL'} bug variant counterexample is one spend of un-added colorless: ${JSON.stringify(cex)}`)
 if (!cexOk) failures++
@@ -165,7 +230,7 @@ for (const l of [
 const game = combinedRule('phase-advance-empties-mana')
 const gameLaws = [
   game.stepLaw('advancing a phase empties the mana pool (CR 500.4)',
-    (b, a) => a.w.plus(a.c).plus(a.p).eq(0),
+    (b, a) => andAll(MANA_BUCKETS.map(k => a[k].eq(0))),
     (b) => b.op.is('advance')),
   game.stepLaw('advancing still moves exactly one phase step (or stays at cleanup)',
     (b, a) => a.phase.index.eq(b.phase.index.plus(1)).or(
