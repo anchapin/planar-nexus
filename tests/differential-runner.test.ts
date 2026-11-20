@@ -33,8 +33,8 @@ const scenarios: Scenario[] = fs
 const KNOWN_MISMATCHES: Record<string, string> = {};
 
 describe("differential scenarios: planar-nexus runner", () => {
-  it("has 15 scenarios, each with card data and an expect block", () => {
-    expect(scenarios.length).toBe(15);
+  it("has 16 scenarios, each with card data and an expect block", () => {
+    expect(scenarios.length).toBe(16);
     for (const s of scenarios) {
       expect(s.expect).toHaveLength(2);
       for (const name of scenarioCardNames(s)) {
