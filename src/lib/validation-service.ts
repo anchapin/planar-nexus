@@ -11,8 +11,5 @@
  * callers (e.g. the game board UI); there is exactly one `ValidationService`
  * implementation in the codebase now.
  */
-export { ValidationService } from "./game-state/validation-service";
-export type {
-  ValidationResult,
-  CastAlternativeCost,
-} from "./game-state/validation-service";
+export { ValidationService } from "@/lib/game-state";
+export type { ValidationResult, CastAlternativeCost } from "@/lib/game-state";
