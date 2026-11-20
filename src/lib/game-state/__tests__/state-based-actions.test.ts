@@ -25,9 +25,15 @@ import {
 } from "../game-state";
 import {
   createCardInstance,
+  createToken,
   initializePlaneswalkerLoyalty,
 } from "../card-instance";
-import { dealDamageToCard } from "../keyword-actions";
+import {
+  dealDamageToCard,
+  destroyCard,
+  exileCard,
+  moveCardToZone,
+} from "../keyword-actions";
 import { createToughnessSetEffect } from "../layer-system";
 import type { ScryfallCard } from "../types";
 
@@ -1822,5 +1828,185 @@ describe("State-Based Actions", () => {
         );
       });
     });
+  });
+});
+
+/**
+ * SBA 704.5d — a token in a zone other than the battlefield ceases to exist
+ * (CR 111.8). Issue #2871.
+ *
+ * Before this rule the engine kept phantom tokens forever: a destroyed or
+ * exiled token stayed in the graveyard / exile zone and in `state.cards`.
+ */
+describe("SBA 704.5d: tokens outside the battlefield cease to exist", () => {
+  const tokenData: ScryfallCard = {
+    id: "token-soldier-704-5d",
+    name: "Soldier",
+    type_line: "Token Creature — Soldier",
+    mana_cost: "",
+    cmc: 0,
+    colors: ["W"],
+    color_identity: ["W"],
+    oracle_text: "",
+    power: "1",
+    toughness: "1",
+    keywords: [],
+    legalities: { standard: "legal", commander: "legal" },
+    layout: "token",
+    card_faces: undefined,
+  } as ScryfallCard;
+
+  /** Create a game with one player and return the state + the player id. */
+  function setup() {
+    let state = createInitialGameState(["Alice"], 20, false);
+    state = startGame(state);
+    const playerId = Array.from(state.players.keys())[0];
+    return { state, playerId };
+  }
+
+  /** Put a token directly into one of the player's zones. */
+  function putTokenInZone(
+    state: ReturnType<typeof setup>["state"],
+    playerId: string,
+    zoneType: "battlefield" | "graveyard" | "exile" | "hand",
+  ) {
+    const token = createToken(tokenData, playerId, playerId);
+    const zoneKey = `${playerId}-${zoneType}`;
+    const zone = state.zones.get(zoneKey)!;
+    state.cards.set(token.id, token);
+    state.zones.set(zoneKey, {
+      ...zone,
+      cardIds: [...zone.cardIds, token.id],
+    });
+    return token;
+  }
+
+  it("removes a token from the graveyard and from state.cards", () => {
+    const { state, playerId } = setup();
+    const token = putTokenInZone(state, playerId, "graveyard");
+
+    const result = checkStateBasedActions(state);
+
+    expect(result.actionsPerformed).toBe(true);
+    expect(
+      result.state.zones.get(`${playerId}-graveyard`)!.cardIds,
+    ).not.toContain(token.id);
+    expect(result.state.cards.has(token.id)).toBe(false);
+    expect(result.descriptions.join(" ")).toContain(
+      "ceases to exist (token, CR 704.5d)",
+    );
+  });
+
+  it("removes a token from the exile zone and from state.cards", () => {
+    const { state, playerId } = setup();
+    const token = putTokenInZone(state, playerId, "exile");
+
+    const result = checkStateBasedActions(state);
+
+    expect(result.actionsPerformed).toBe(true);
+    expect(result.state.zones.get(`${playerId}-exile`)!.cardIds).not.toContain(
+      token.id,
+    );
+    expect(result.state.cards.has(token.id)).toBe(false);
+  });
+
+  it("removes a token from the hand and from state.cards", () => {
+    const { state, playerId } = setup();
+    const token = putTokenInZone(state, playerId, "hand");
+
+    const result = checkStateBasedActions(state);
+
+    expect(result.actionsPerformed).toBe(true);
+    expect(result.state.zones.get(`${playerId}-hand`)!.cardIds).not.toContain(
+      token.id,
+    );
+    expect(result.state.cards.has(token.id)).toBe(false);
+  });
+
+  it("leaves a token on the battlefield untouched", () => {
+    const { state, playerId } = setup();
+    const token = putTokenInZone(state, playerId, "battlefield");
+
+    const result = checkStateBasedActions(state);
+
+    expect(result.state.cards.has(token.id)).toBe(true);
+    expect(
+      result.state.zones.get(`${playerId}-battlefield`)!.cardIds,
+    ).toContain(token.id);
+    expect(result.descriptions.join(" ")).not.toContain("ceases to exist");
+  });
+
+  it("removes a destroyed token on the next SBA check (CR 704.5d ordering)", () => {
+    const { state, playerId } = setup();
+    const token = putTokenInZone(state, playerId, "battlefield");
+
+    // The token is destroyed: it transits the graveyard first so its dies
+    // triggers can fire (CR 603.10a). It only ceases to exist on the NEXT
+    // state-based action check.
+    const destroyed = destroyCard(state, token.id);
+    expect(destroyed.success).toBe(true);
+    const afterDestroy = destroyed.state;
+    expect(afterDestroy.zones.get(`${playerId}-graveyard`)!.cardIds).toContain(
+      token.id,
+    );
+
+    const firstCheck = checkStateBasedActions(afterDestroy);
+    expect(
+      firstCheck.state.zones.get(`${playerId}-graveyard`)!.cardIds,
+    ).not.toContain(token.id);
+    expect(firstCheck.state.cards.has(token.id)).toBe(false);
+  });
+
+  it("removes a token exiled by a planeswalker loyalty SBA", () => {
+    const { state, playerId } = setup();
+    const token = putTokenInZone(state, playerId, "battlefield");
+
+    const exiled = exileCard(state, token.id);
+    expect(exiled.success).toBe(true);
+    expect(exiled.state.zones.get(`${playerId}-exile`)!.cardIds).toContain(
+      token.id,
+    );
+
+    const result = checkStateBasedActions(exiled.state);
+    expect(result.state.zones.get(`${playerId}-exile`)!.cardIds).not.toContain(
+      token.id,
+    );
+    expect(result.state.cards.has(token.id)).toBe(false);
+  });
+
+  it("removes a token returned to its owner's hand", () => {
+    const { state, playerId } = setup();
+    const token = putTokenInZone(state, playerId, "battlefield");
+
+    const bounced = moveCardToZone(state, token.id, "hand");
+    expect(bounced.success).toBe(true);
+
+    const result = checkStateBasedActions(bounced.state);
+    expect(result.state.zones.get(`${playerId}-hand`)!.cardIds).not.toContain(
+      token.id,
+    );
+    expect(result.state.cards.has(token.id)).toBe(false);
+  });
+
+  it("does not touch non-token cards in the graveyard", () => {
+    const { state, playerId } = setup();
+    const creature = createCardInstance(
+      createMockCreature("Test Creature", 3, 3),
+      playerId,
+      playerId,
+    );
+    const graveyard = state.zones.get(`${playerId}-graveyard`)!;
+    state.cards.set(creature.id, creature);
+    state.zones.set(`${playerId}-graveyard`, {
+      ...graveyard,
+      cardIds: [...graveyard.cardIds, creature.id],
+    });
+
+    const result = checkStateBasedActions(state);
+
+    expect(result.state.cards.has(creature.id)).toBe(true);
+    expect(result.state.zones.get(`${playerId}-graveyard`)!.cardIds).toContain(
+      creature.id,
+    );
   });
 });

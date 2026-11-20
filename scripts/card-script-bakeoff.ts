@@ -7,6 +7,18 @@
  *       --arms "gemini-batch:gemini-3.1-flash-lite,zai:glm-5.3-flash,openrouter:openrouter/free" \
  *       [--out bakeoff-out] [--gemini-batch batches/abc]   # resume a submitted batch
  *
+ * A fourth arm type, "local", scores a self-hosted OpenAI-compatible server
+ * (the fine-tuned SFT adapter, e.g. vLLM or Ollama):
+ *
+ *   LOCAL_BAKEOFF_BASE_URL=http://localhost:8000/v1 \
+ *     npx tsx scripts/card-script-bakeoff.ts \
+ *       --arms "local:qwen3.5-2b" --out bakeoff-out
+ *
+ * LOCAL_BAKEOFF_BASE_URL defaults to http://localhost:8000/v1. No API key is
+ * needed; set LOCAL_BAKEOFF_API_KEY only if the server was started with an
+ * auth token. The local arm costs $0 (it is our own hardware), so its row
+ * reports tokens in/out and wall-clock time with a $0 cost.
+ *
  * An arm whose key is missing is skipped. Nothing is written to the card
  * scripts directory: drafts, replies and token counts land in --out
  * (results.json + report.md) for review. Every call's tokens are logged.
@@ -36,6 +48,11 @@ import {
   type Price,
 } from "./card-scripts/bakeoff-lib";
 import { runGeminiBatch } from "./card-scripts/gemini-batch";
+import {
+  localBaseUrl,
+  runLocalArm,
+  LOCAL_API_KEY_ENV,
+} from "./card-scripts/local-arm";
 
 const ROOT = join(__dirname, "..");
 const CARDS_DIR = join(
@@ -110,7 +127,7 @@ function logCall(arm: Arm, name: string, input: number, output: number) {
 
 async function chat(
   base: string,
-  key: string,
+  key: string | undefined,
   model: string,
   prompt: string,
   extra: Record<string, unknown> = {},
@@ -120,7 +137,8 @@ async function chat(
       method: "POST",
       headers: {
         "content-type": "application/json",
-        authorization: `Bearer ${key}`,
+        // A local server usually needs no key; never send a bogus one.
+        ...(key ? { authorization: `Bearer ${key}` } : {}),
         "HTTP-Referer": "https://github.com/anchapin/planar-nexus",
         "X-Title": "planar-nexus card-script bake-off",
       },
@@ -295,7 +313,12 @@ async function main() {
         const r =
           arm.provider === "gemini-batch"
             ? await runGeminiArm(arm, cards, prompts)
-            : await runChatArm(arm, cards, prompts);
+            : arm.provider === "local"
+              ? await runLocalArm(arm, cards, prompts, {
+                  baseUrl: localBaseUrl(),
+                  apiKey: process.env[LOCAL_API_KEY_ENV],
+                })
+              : await runChatArm(arm, cards, prompts);
         if (typeof r === "string") {
           notes.push(`${arm.id}: ${r}`);
           return;

@@ -1,0 +1,6 @@
+{
+  "Ember Bolt": "{\"script\":{\"name\":\"Ember Bolt\",\"oracle\":\"Ember Bolt deals 3 damage to any target.\",\"spell\":[{\"op\":\"DealDamage\",\"amount\":3,\"target\":\"any\"}]}}",
+  "Thornwood Sentry": "{\"script\":{\"name\":\"Thornwood Sentry\",\"oracle\":\"When Thornwood Sentry enters the battlefield, gain 2 life.\",\"triggers\":[{\"text\":\"When Thornwood Sentry enters the battlefield, gain 2 life.\",\"event\":\"etb\",\"subject\":\"self\",\"effects\":[{\"op\":\"GainLife\",\"amount\":2,\"who\":\"you\"}]}]}}",
+  "Soul Snare": "{\"needs_new_op\":[\"additional costs (exile a card from your hand)\"]}",
+  "Broken Codex": "Here you go: {\"script\": {\"name\": \"Broken Codex\", \"spell\": [{\"op\": \"DealDamage\", \"amount\": 2, \"target\": \"any\"}"
+}

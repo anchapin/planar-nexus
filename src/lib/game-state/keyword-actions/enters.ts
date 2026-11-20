@@ -13,11 +13,16 @@ import type { GameState, CardInstance, CardInstanceId } from "../types";
 import { checkTriggeredAbilities } from "../abilities/check";
 import { getCardScript } from "../card-scripts/registry";
 import { createEnterChoiceWaitingChoice, hasEnterChoice } from "./enter-choice";
+import {
+  acquireMoveCardMap,
+  type ZoneMoveMaps,
+} from "../zone-move-maps";
 
 /** Put every ETB trigger that cares about `enteringCardId` onto the stack. */
 export function fireEntersTriggers(
   state: GameState,
   enteringCardId: CardInstanceId,
+  maps?: ZoneMoveMaps,
 ): GameState {
   // Wave 4.8 follow-up 4 lane 67 (#2614 follow-up): stamp
   // `enters_with_counters` on the entering card BEFORE the
@@ -31,7 +36,7 @@ export function fireEntersTriggers(
   // the count directly, so the stamp runs at the
   // `fireEntersTriggers` call site (and at the spell-cast
   // resolve.ts path).
-  let next = applyScriptEntersWithCounters(state, enteringCardId);
+  let next = applyScriptEntersWithCounters(state, enteringCardId, maps);
   next = checkTriggeredAbilities(next, "entersBattlefield", {
     enteringCardId,
   }).state;
@@ -79,6 +84,7 @@ export function fireEntersTriggers(
 export function applyScriptEntersWithCounters(
   state: GameState,
   enteringCardId: CardInstanceId,
+  maps?: ZoneMoveMaps,
 ): GameState {
   const card = state.cards.get(enteringCardId);
   if (!card) return state;
@@ -106,7 +112,7 @@ export function applyScriptEntersWithCounters(
   }
   next = { ...next, instanceCounters: ledger, counters: countersList };
 
-  const cards = new Map(state.cards);
+  const cards = acquireMoveCardMap(state, maps);
   cards.set(enteringCardId, next);
   return { ...state, cards, lastModifiedAt: Date.now() };
 }

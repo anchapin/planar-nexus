@@ -17,29 +17,14 @@ import {
   Fragment,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  ArrowLeft,
-  Heart,
-  Clock,
-  Info,
-  RotateCcw,
-  Play,
-  Pause,
-  SkipForward,
-  Hand,
-  Sparkles,
-  Shuffle,
-  CheckCircle2,
-  ChevronRight,
-  Flag,
-} from "lucide-react";
-import Image from "next/image";
+import { ArrowLeft, ChevronRight } from "lucide-react";
 import { GameBoard } from "@/components/game-board";
 import { TargetHighlightContext } from "@/components/target-highlight-context";
+import { buildUiPlayers, type UiPlayer } from "./_components/ui-players";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { GameBoardErrorBoundary } from "@/components/error-boundaries";
 import type { PlayerCount, ZoneType } from "@/types/game";
@@ -47,14 +32,12 @@ import { useToast } from "@/hooks/use-toast";
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
 import type { ScryfallCard, SavedDeck } from "@/lib/card-database";
 import { gameLogger } from "@/lib/logger";
-import { GameTutorial } from "@/components/game-tutorial";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from "@/components/ui/dialog";
 
 // Game engine imports
@@ -126,7 +109,6 @@ import {
   isDiscardChoice,
   isOfferChoice,
 } from "@/ai/offer-choices";
-import { HandSizeDiscardDialog } from "@/components/choice-dialog";
 import {
   parseModes,
   parseXCost,
@@ -154,10 +136,104 @@ import {
   generateSimpleDeck,
   generateStarterDeck,
 } from "@/lib/deck-generation";
-import { BASIC_LAND_NAMES } from "@/lib/basic-land-data";
 
+import { GameHeader } from "./_components/GameHeader";
+import { GameFooter } from "./_components/GameFooter";
+import {
+  MulliganDialog,
+  type MulliganCardView,
+} from "./_components/MulliganDialog";
 import { PhaseTracker } from "./_components/PhaseTracker";
 import { GameLoading } from "./_components/GameLoading";
+import type { AbilityChoiceOption } from "./_components/AbilityChoiceDialog";
+import type { ManaAbilityOptionView } from "./_components/ManaAbilityDialog";
+import { BASIC_LAND_TYPE_OPTIONS } from "./_components/basic-land-type-options";
+
+/**
+ * Lazily loaded, conditionally rendered leaves (issue #2903).
+ *
+ * Every dialog below only ever appears in response to a pending game choice
+ * (or a pending hand-size discard), so none of them is needed for the board
+ * to paint. Loading them through `next/dynamic` keeps their code out of the
+ * route's first-load payload: the chunk is fetched the first time the dialog
+ * is actually opened instead of on every page load.
+ *
+ * The rendering CONDITIONS are unchanged — each dialog is still mounted with
+ * exactly the same props and the same `isOpen`/`open` flag as before, so it
+ * shows up at exactly the same moment in the game.
+ *
+ * `loading: () => null` keeps the placeholder invisible while the chunk is
+ * in flight (the dialogs themselves are modals that mount closed).
+ */
+const ZoneViewerDialog = dynamic(
+  () =>
+    import("./_components/ZoneViewerDialog").then((m) => m.ZoneViewerDialog),
+  { ssr: false, loading: () => null },
+);
+const AbilityChoiceDialog = dynamic(
+  () =>
+    import("./_components/AbilityChoiceDialog").then(
+      (m) => m.AbilityChoiceDialog,
+    ),
+  { ssr: false, loading: () => null },
+);
+const ManaAbilityDialog = dynamic(
+  () =>
+    import("./_components/ManaAbilityDialog").then((m) => m.ManaAbilityDialog),
+  { ssr: false, loading: () => null },
+);
+const BasicLandTypeDialog = dynamic(
+  () =>
+    import("./_components/BasicLandTypeDialog").then(
+      (m) => m.BasicLandTypeDialog,
+    ),
+  { ssr: false, loading: () => null },
+);
+const ShocklandDialog = dynamic(
+  () => import("./_components/ShocklandDialog").then((m) => m.ShocklandDialog),
+  { ssr: false, loading: () => null },
+);
+const ModeChoiceDialog = dynamic(
+  () =>
+    import("./_components/ModeChoiceDialog").then((m) => m.ModeChoiceDialog),
+  { ssr: false, loading: () => null },
+);
+const XCostDialog = dynamic(
+  () => import("./_components/XCostDialog").then((m) => m.XCostDialog),
+  { ssr: false, loading: () => null },
+);
+const KickerDialog = dynamic(
+  () => import("./_components/KickerDialog").then((m) => m.KickerDialog),
+  { ssr: false, loading: () => null },
+);
+const AttractionDialog = dynamic(
+  () =>
+    import("./_components/AttractionDialog").then((m) => m.AttractionDialog),
+  { ssr: false, loading: () => null },
+);
+const GameTutorial = dynamic(
+  () => import("@/components/game-tutorial").then((m) => m.GameTutorial),
+  { ssr: false, loading: () => null },
+);
+const HandSizeDiscardDialog = dynamic(
+  () =>
+    import("@/components/choice-dialog").then((m) => m.HandSizeDiscardDialog),
+  { ssr: false, loading: () => null },
+);
+
+/**
+ * Stable empty list of ability choices — keeps the `options` prop of the
+ * memoized <AbilityChoiceDialog /> referentially stable while no choice is
+ * pending (issue #2418, slice 5).
+ */
+const EMPTY_ABILITY_CHOICE_OPTIONS: AbilityChoiceOption[] = [];
+
+/**
+ * Stable empty list of revealed cards — keeps the `revealedCards` prop of the
+ * memoized <AttractionDialog /> referentially stable while no Attraction is
+ * pending (issue #2418, slice 9).
+ */
+const EMPTY_REVEALED_CARDS: string[] = [];
 
 async function getOrCreateActiveGame(
   gameId: string,
@@ -289,6 +365,22 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
   const [playerHandCards, setPlayerHandCards] = useState<CardInstance[]>([]);
   const [isGameStarted, setIsGameStarted] = useState(false);
   const [playerDeckName, setPlayerDeckName] = useState("Your Deck");
+
+  // Slice 3 (issue #2418): narrow hand view consumed by the memoized
+  // MulliganDialog. The memo keeps the array identity stable across
+  // unrelated re-renders, so the dialog only re-renders when the hand (or
+  // another one of its props) actually changes.
+  const mulliganHandCards = useMemo<MulliganCardView[]>(
+    () =>
+      playerHandCards.map((card) => ({
+        id: card.id,
+        name: card.cardData.name,
+        manaCost: card.cardData.mana_cost,
+        typeLine: card.cardData.type_line,
+        imageUrl: card.cardData.image_uris?.normal,
+      })),
+    [playerHandCards],
+  );
 
   // Shockland ETB choice state
   const [shocklandChoice, setShocklandChoice] = useState<{
@@ -691,6 +783,20 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     gameState.players.get(gameState.waitingChoice.playerId)?.name === playerName
       ? gameState.waitingChoice
       : null;
+
+  // Issue #2940: the discard dialog is memoized and clears its selection
+  // when the offered cards change. The card view is therefore derived with
+  // `useMemo` (keyed on the pending choice) so an unrelated re-render of
+  // the board cannot hand the dialog a fresh array and silently wipe the
+  // player's selection.
+  const handSizeDiscardCards = useMemo(
+    () =>
+      (humanDiscardChoice?.choices ?? []).map((c) => ({
+        id: String(c.value),
+        name: c.label,
+      })),
+    [humanDiscardChoice],
+  );
 
   const handleHandSizeDiscard = useCallback(
     (cardIds: string[]) => {
@@ -2290,6 +2396,57 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     [gameState, manaAbilityChoice, playerName, toast, autoSaveEnabled],
   );
 
+  // Slice 7 (issue #2418): the pending choice and its (stateful) handler are
+  // kept in a ref so the memoized <ManaAbilityDialog /> can be handed a
+  // selection callback whose identity never churns — `handleManaChoice`
+  // depends on the game state, which changes on every board update.
+  const manaAbilityRef = useRef({
+    choice: manaAbilityChoice,
+    handler: handleManaChoice,
+  });
+  useEffect(() => {
+    manaAbilityRef.current = {
+      choice: manaAbilityChoice,
+      handler: handleManaChoice,
+    };
+  }, [manaAbilityChoice, handleManaChoice]);
+
+  // Slice 7 (issue #2418): stable close handler handed to the memoized
+  // ManaAbilityDialog.
+  const handleManaAbilityClose = useCallback(() => {
+    setManaAbilityChoice(null);
+  }, []);
+
+  // Slice 7 (issue #2418): stable selection handler handed to the memoized
+  // ManaAbilityDialog. It only forwards the picked index to the (stateful)
+  // `handleManaChoice`.
+  const handleManaAbilitySelect = useCallback((index: number) => {
+    const option = manaAbilityRef.current.choice?.options[index];
+    if (!option) return;
+    void manaAbilityRef.current.handler(option);
+  }, []);
+
+  // Slice 7 (issue #2418): the mana choices are pre-formatted for the
+  // memoized <ManaAbilityDialog /> so the dialog stays a dumb leaf. The array
+  // identity only changes while a choice is pending.
+  const manaAbilityOptionViews = useMemo<ManaAbilityOptionView[]>(
+    () =>
+      (manaAbilityChoice?.options ?? []).map((option) => ({
+        description: option.description,
+        manaText: formatManaPool({
+          colorless: 0,
+          white: 0,
+          blue: 0,
+          black: 0,
+          red: 0,
+          green: 0,
+          generic: 0,
+          ...option.mana,
+        }),
+      })),
+    [manaAbilityChoice],
+  );
+
   // Pick a mode of a modal ability on the stack; commits once enough are picked.
   const handleAbilityModeSelect = useCallback(
     (mode: string) => {
@@ -2536,17 +2693,64 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     setAttractionChoice(null);
   }, [gameState, attractionChoice, playerName, toast, autoSaveEnabled]);
 
-  // Helper to get description for basic land types
-  const getBasicLandTypeDescription = (landType: string): string => {
-    const descriptions: Record<string, string> = {
-      Plains: "Produces white mana",
-      Island: "Produces blue mana",
-      Swamp: "Produces black mana",
-      Mountain: "Produces red mana",
-      Forest: "Produces green mana",
-    };
-    return descriptions[landType] || "";
-  };
+  // Slice 9 (issue #2418): the (stateful) handlers of the three small choice
+  // dialogs are kept in refs so the memoized leaves can be handed callbacks
+  // whose identity never churns — they depend on the game state, which
+  // changes on every board update.
+  const xCostHandlerRef = useRef(handleXValueSelect);
+  useEffect(() => {
+    xCostHandlerRef.current = handleXValueSelect;
+  }, [handleXValueSelect]);
+
+  const kickerHandlerRef = useRef(handleKickerSelect);
+  useEffect(() => {
+    kickerHandlerRef.current = handleKickerSelect;
+  }, [handleKickerSelect]);
+
+  const attractionHandlerRef = useRef(handleAttractionSpinAndCast);
+  useEffect(() => {
+    attractionHandlerRef.current = handleAttractionSpinAndCast;
+  }, [handleAttractionSpinAndCast]);
+
+  // Slice 9 (issue #2418): stable close handlers handed to the memoized
+  // XCostDialog / KickerDialog / AttractionDialog.
+  const handleXCostClose = useCallback(() => {
+    setXCostChoice(null);
+  }, []);
+
+  const handleKickerClose = useCallback(() => {
+    setKickerChoice(null);
+  }, []);
+
+  const handleAttractionClose = useCallback(() => {
+    setAttractionChoice(null);
+  }, []);
+
+  // Slice 9 (issue #2418): stable close handler handed to the memoized
+  // ModeChoiceDialog (spell mode). Without it the inline arrow was a new
+  // function identity on every render and defeated the leaf's `memo`.
+  const handleSpellModeClose = useCallback(() => {
+    setSpellModeChoice(null);
+  }, []);
+
+  // Slice 9 (issue #2418): stable callbacks handed to the memoized leaves.
+  // The X value itself stays in the parent state, so the leaf only reports
+  // the new value / the chosen cast.
+  const handleXValueChange = useCallback((value: number) => {
+    setXCostChoice((prev) => (prev ? { ...prev, maxX: value } : null));
+  }, []);
+
+  const handleXCostCast = useCallback((value: number) => {
+    void xCostHandlerRef.current(value);
+  }, []);
+
+  const handleKickerSelectWith = useCallback((withKicker: boolean) => {
+    void kickerHandlerRef.current(withKicker);
+  }, []);
+
+  const handleAttractionSpinAndCastClick = useCallback(() => {
+    void attractionHandlerRef.current();
+  }, []);
 
   // Check if a card's ability requires choosing a basic land type
   const requiresBasicLandTypeChoice = (card: CardInstance): boolean => {
@@ -2621,6 +2825,28 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     },
     [gameState, basicLandTypeChoice, playerName, toast],
   );
+
+  // Slice 8 (issue #2418): the (stateful) handler is kept in a ref so the
+  // memoized <BasicLandTypeDialog /> can be handed a selection callback whose
+  // identity never churns — `handleBasicLandTypeChoice` depends on the game
+  // state, which changes on every board update.
+  const basicLandTypeHandlerRef = useRef(handleBasicLandTypeChoice);
+  useEffect(() => {
+    basicLandTypeHandlerRef.current = handleBasicLandTypeChoice;
+  }, [handleBasicLandTypeChoice]);
+
+  // Slice 8 (issue #2418): stable close handler handed to the memoized
+  // BasicLandTypeDialog.
+  const handleBasicLandTypeClose = useCallback(() => {
+    setBasicLandTypeChoice(null);
+  }, []);
+
+  // Slice 8 (issue #2418): stable selection handler handed to the memoized
+  // BasicLandTypeDialog. It only forwards the picked land type to the
+  // (stateful) `handleBasicLandTypeChoice`.
+  const handleBasicLandTypeSelect = useCallback((landType: string) => {
+    void basicLandTypeHandlerRef.current(landType);
+  }, []);
 
   // Handle end turn — pass through all remaining phases
   const handleEndTurn = useCallback(async () => {
@@ -2970,6 +3196,77 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     }
   }, [gameState, autoSaveEnabled]);
 
+  // Stable callback for the memoized <GameHeader /> (issue #2418, slice 1).
+  const handleBackToMenu = useCallback(() => {
+    router.push("/single-player");
+  }, [router]);
+
+  // Slice 2 (issue #2418): stable toggle handed to the memoized GameFooter.
+  const handleToggleAutoSave = useCallback(() => {
+    setAutoSaveEnabled((prev) => !prev);
+  }, []);
+
+  // Slice 3 (issue #2418): stable open-state toggle handed to the memoized
+  // MulliganDialog.
+  const handleMulliganOpenChange = useCallback((open: boolean) => {
+    setShowMulligan(open);
+  }, []);
+
+  // Slice 4 (issue #2418): stable close handler handed to the memoized
+  // ZoneViewerDialog.
+  const handleCloseZoneViewer = useCallback(() => {
+    setViewingZone(null);
+  }, []);
+
+  // Slice 5 (issue #2418): stable close handler handed to the memoized
+  // AbilityChoiceDialog (activated ability choice, CR 602).
+  const handleAbilityChoiceClose = useCallback(() => {
+    setAbilityChoice(null);
+  }, []);
+
+  // Slice 5 (issue #2418): stable selection handler handed to the memoized
+  // AbilityChoiceDialog. It owns the "which activation was picked" branching
+  // (hand activations vs. board abilities) so that the dialog itself stays a
+  // dumb, narrow leaf.
+  const handleAbilityChoiceSelect = useCallback(
+    (option: AbilityChoiceOption) => {
+      const choice = abilityChoice;
+      setAbilityChoice(null);
+      if (!choice) return;
+      if (choice.handActivations) {
+        if (option.abilityIndex < 0) {
+          skipHandActivationsRef.current = true;
+          handleCardClick(choice.cardId, "hand");
+        } else {
+          applyHandActivation(choice.handActivations[option.abilityIndex]);
+        }
+        return;
+      }
+      activateFromBoard(choice.cardId, option.abilityIndex);
+    },
+    [abilityChoice, handleCardClick, applyHandActivation, activateFromBoard],
+  );
+
+  // Slice 6 (issue #2418): stable open-state toggle handed to the memoized
+  // ShocklandDialog.
+  const handleShocklandOpenChange = useCallback(() => {
+    setShocklandChoice(null);
+  }, []);
+
+  // Issue #2918: the engine → UI player derivation is extracted into the
+  // pure helper `buildUiPlayers`, which shares structure with the previous
+  // render. The memoized `PlayerArea` in `src/components/game-board.tsx`
+  // compares zone array references, so keeping them stable lets it bail out
+  // when nothing relevant changed.
+  const uiPlayersRef = useRef<readonly UiPlayer[] | undefined>(undefined);
+  const uiPlayers = useMemo<UiPlayer[]>(() => {
+    if (!gameState) return [];
+    return buildUiPlayers(gameState, uiPlayersRef.current, playerName);
+  }, [gameState, playerName]);
+  useEffect(() => {
+    uiPlayersRef.current = uiPlayers;
+  }, [uiPlayers]);
+
   if (isLoading) {
     return (
       <div className="flex-1 p-2 md:p-4 flex items-center justify-center">
@@ -3019,111 +3316,32 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
   const isPlayerTurn = currentPlayer?.name === playerName;
   const isGameEnded = gameState.status === "completed";
 
-  // Convert game state players to UI format
-  const uiPlayers = Array.from(gameState.players.values()).map((player) => {
-    // Get cards in each zone
-    const getCardsInZone = (zoneType: string) => {
-      const zone = gameState.zones.get(`${player.id}-${zoneType}`);
-      if (!zone) return [];
-
-      return zone.cardIds
-        .map((id) => gameState.cards.get(id))
-        .filter((card): card is CardInstance => card !== undefined)
-        .map((card) => ({
-          id: card.id,
-          card: card.cardData,
-          zone: zoneType as ZoneType,
-          playerId: player.id,
-          tapped: card.isTapped,
-          faceDown: card.isFaceDown,
-        }));
-    };
-
-    return {
-      id: player.id,
-      name: player.name,
-      lifeTotal: player.life,
-      poisonCounters: player.poisonCounters,
-      commanderDamage: {},
-      hand: getCardsInZone("hand"),
-      battlefield: getCardsInZone("battlefield"),
-      graveyard: getCardsInZone("graveyard"),
-      exile: getCardsInZone("exile"),
-      library: getCardsInZone("library"),
-      commandZone: [],
-      isCurrentTurn: player.id === gameState.turn.activePlayerId,
-      hasPriority: player.id === gameState.priorityPlayerId,
-      landsPlayedThisTurn: player.landsPlayedThisTurn,
-      manaPool: player.manaPool,
-    };
-  });
-
-  // Sort so player is at bottom (index 1)
-  const sortedPlayers = uiPlayers.sort((a, b) => {
-    if (a.name === playerName) return 1;
-    if (b.name === playerName) return -1;
-    return 0;
-  });
+  // The UI players are derived in the memo above (`buildUiPlayers`), which
+  // already sorts the local player to the bottom (index 1).
+  const sortedPlayers = uiPlayers;
 
   const currentTurnIndex = sortedPlayers.findIndex((p) => p.isCurrentTurn);
 
+  // Slice 2 (issue #2418): narrow values consumed by the memoized GameFooter.
+  const footerPlayer = uiPlayers.find((p) => p.name === playerName);
+  const footerOpponent = uiPlayers.find((p) => p.name !== playerName);
+
+  // Slice 4 (issue #2418): narrow values consumed by the memoized
+  // ZoneViewerDialog.
+  const localPlayerId = footerPlayer?.id;
+
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-      {/* Header */}
-      <header
-        className="shrink-0 bg-background/95 backdrop-blur border-b"
-        data-tutorial="phase-info"
-      >
-        <div className="flex items-center justify-between px-2 py-1.5 md:px-4 md:py-2">
-          <div className="flex items-center gap-2 md:gap-3">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-11 w-11 p-0 md:h-8 md:w-8"
-              onClick={() => router.push("/single-player")}
-              aria-label="Back to single player menu"
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </Button>
-            <div>
-              <h1 className="font-headline text-sm font-bold leading-tight">
-                Single Player
-              </h1>
-              <div className="flex items-center gap-2 text-[10px] text-muted-foreground leading-none">
-                <Badge
-                  variant="outline"
-                  className="text-[9px] h-3.5 px-1 py-0 font-normal"
-                >
-                  Game {gameId?.substring(0, 8)}
-                </Badge>
-                <span>Turn {gameState.turn.turnNumber}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <div className="text-right">
-              <div className="text-xs font-medium flex items-center gap-2">
-                {currentPlayer?.name}
-                {isAIThinking && (
-                  <Badge
-                    variant="secondary"
-                    className="animate-pulse text-[9px] h-3.5 px-1 py-0"
-                  >
-                    AI Thinking...
-                  </Badge>
-                )}
-              </div>
-            </div>
-            <Badge
-              variant={mode === "ai" ? "default" : "secondary"}
-              className="text-[10px] h-4 px-1.5 py-0 font-normal"
-            >
-              {mode === "ai" ? `vs AI (${difficulty})` : "Self Play"}
-            </Badge>
-          </div>
-        </div>
-      </header>
+      {/* Header — extracted to a memoized leaf (issue #2418, slice 1) */}
+      <GameHeader
+        gameId={gameId}
+        turnNumber={gameState.turn.turnNumber}
+        currentPlayerName={currentPlayer?.name}
+        isAIThinking={isAIThinking}
+        mode={mode}
+        difficulty={difficulty}
+        onBack={handleBackToMenu}
+      />
 
       {/* Phase Tracker */}
       <div className="shrink-0">
@@ -3157,769 +3375,143 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
         </div>
       </main>
 
-      {/* Game Controls Footer */}
-      <footer
-        className="shrink-0 bg-background/95 backdrop-blur border-t p-1.5 md:p-2"
-        data-tutorial="actions"
-      >
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div
-            className="flex items-center gap-4 text-xs text-muted-foreground"
-            data-tutorial="life-total"
-          >
-            <span className="flex items-center gap-1">
-              <Heart className="w-3 h-3" />
-              {playerName}:{" "}
-              {uiPlayers.find((p) => p.name === playerName)?.lifeTotal || 20}
-            </span>
-            {uiPlayers.find((p) => p.name !== playerName) && (
-              <span className="flex items-center gap-1">
-                <Heart className="w-3 h-3" />
-                {uiPlayers.find((p) => p.name !== playerName)?.name}:{" "}
-                {uiPlayers.find((p) => p.name !== playerName)?.lifeTotal || 20}
-              </span>
-            )}
-            {/* Mana Pool Display */}
-            {(() => {
-              const pool = uiPlayers.find(
-                (p) => p.name === playerName,
-              )?.manaPool;
-              if (!pool || getTotalMana(pool) === 0) return null;
-              return (
-                <span className="flex items-center gap-1 ml-2 border-l pl-2 border-border">
-                  {pool.white > 0 && (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] h-4 px-1 bg-yellow-500/20 text-yellow-700 border-yellow-500/30"
-                    >
-                      {pool.white}W
-                    </Badge>
-                  )}
-                  {pool.blue > 0 && (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] h-4 px-1 bg-blue-500/20 text-blue-700 border-blue-500/30"
-                    >
-                      {pool.blue}U
-                    </Badge>
-                  )}
-                  {pool.black > 0 && (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] h-4 px-1 bg-gray-800/40 text-gray-300 border-gray-500/30"
-                    >
-                      {pool.black}B
-                    </Badge>
-                  )}
-                  {pool.red > 0 && (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] h-4 px-1 bg-red-500/20 text-red-700 border-red-500/30"
-                    >
-                      {pool.red}R
-                    </Badge>
-                  )}
-                  {pool.green > 0 && (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] h-4 px-1 bg-green-500/20 text-green-700 border-green-500/30"
-                    >
-                      {pool.green}G
-                    </Badge>
-                  )}
-                  {pool.colorless > 0 && (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] h-4 px-1 bg-gray-500/20 text-gray-600 border-gray-500/30"
-                    >
-                      {pool.colorless}C
-                    </Badge>
-                  )}
-                  {pool.generic > 0 && (
-                    <Badge
-                      variant="outline"
-                      className="text-[10px] h-4 px-1 bg-muted"
-                    >
-                      {pool.generic}
-                    </Badge>
-                  )}
-                </span>
-              );
-            })()}
-          </div>
+      {/* Game Controls Footer — extracted to a memoized leaf (issue #2418, slice 2) */}
+      <GameFooter
+        playerName={playerName}
+        playerLifeTotal={footerPlayer?.lifeTotal}
+        opponentName={footerOpponent?.name}
+        opponentLifeTotal={footerOpponent?.lifeTotal}
+        manaPool={footerPlayer?.manaPool}
+        currentPhase={gameState.turn.currentPhase}
+        turnNumber={gameState.turn.turnNumber}
+        status={gameState.status}
+        mode={mode}
+        isPlayerTurn={isPlayerTurn}
+        isGameEnded={isGameEnded}
+        autoSaveEnabled={autoSaveEnabled}
+        isMobile={isMobile}
+        onPassPriority={handlePassPriority}
+        onEndTurn={handleEndTurn}
+        onAdvancePhase={handleAdvancePhase}
+        onConcede={handleConcede}
+        onToggleAutoSave={handleToggleAutoSave}
+      />
 
-          <div className="flex items-center gap-2 flex-wrap justify-end">
-            {/* Current phase badge */}
-            <Badge
-              variant={isPlayerTurn ? "default" : "outline"}
-              className="text-[10px] capitalize hidden sm:inline-flex"
-            >
-              {gameState.turn.currentPhase.replace("_", " ")}
-            </Badge>
+      {/* Mulligan Dialog — extracted to a memoized leaf (issue #2418, slice 3) */}
+      <MulliganDialog
+        isOpen={showMulligan}
+        onOpenChange={handleMulliganOpenChange}
+        mulliganCount={mulliganCount}
+        handCards={mulliganHandCards}
+        onMulligan={handleMulligan}
+        onKeepHand={handleKeepHand}
+      />
 
-            {/* Pass Priority — available in both modes */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handlePassPriority}
-              disabled={isGameEnded}
-              className="h-11 md:h-8"
-              title={
-                mode === "ai"
-                  ? "Advance to the next phase"
-                  : "Pass priority to opponent"
-              }
-            >
-              <SkipForward className="w-3 h-3 mr-1" />
-              {mode === "ai" ? "Next Phase" : "Pass Priority"}
-            </Button>
+      {/* Activated ability choice (CR 602) — extracted to a memoized leaf
+          (issue #2418, slice 5) */}
+      <AbilityChoiceDialog
+        isOpen={!!abilityChoice}
+        onClose={handleAbilityChoiceClose}
+        cardName={abilityChoice?.cardName ?? ""}
+        isHandActivation={!!abilityChoice?.handActivations}
+        options={abilityChoice?.options ?? EMPTY_ABILITY_CHOICE_OPTIONS}
+        onSelect={handleAbilityChoiceSelect}
+      />
 
-            {/* End Turn */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleEndTurn}
-              disabled={isGameEnded || !isPlayerTurn}
-              title="Pass through all remaining phases to end your turn"
-              className="h-11 md:h-8"
-            >
-              <Flag className="w-3 h-3 mr-1" />
-              End Turn
-            </Button>
+      {/* Shockland ETB Choice Dialog — extracted to a memoized leaf (issue #2418, slice 6) */}
+      <ShocklandDialog
+        isOpen={!!shocklandChoice}
+        cardName={shocklandChoice?.cardName}
+        onOpenChange={handleShocklandOpenChange}
+        onEnterTapped={handleShocklandEnterTapped}
+        onPayLife={handleShocklandPayLife}
+      />
 
-            {/* Self-play-only controls */}
-            {mode === "self-play" && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleAdvancePhase}
-                disabled={isGameEnded}
-                className="h-11 md:h-8"
-              >
-                <Play className="w-3 h-3 mr-1" />
-                Advance Phase
-              </Button>
-            )}
+      {/* Mana Ability Choice Dialog — extracted to a memoized leaf
+          (issue #2418, slice 7) */}
+      <ManaAbilityDialog
+        isOpen={!!manaAbilityChoice}
+        onClose={handleManaAbilityClose}
+        cardName={manaAbilityChoice?.cardName ?? ""}
+        options={manaAbilityOptionViews}
+        onSelect={handleManaAbilitySelect}
+      />
 
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleConcede}
-              disabled={isGameEnded}
-              className="h-11 md:h-8"
-            >
-              Concede
-            </Button>
+      {/* Basic Land Type Choice Dialog — extracted to a memoized leaf
+          (issue #2418, slice 8) */}
+      <BasicLandTypeDialog
+        isOpen={!!basicLandTypeChoice}
+        onClose={handleBasicLandTypeClose}
+        cardName={basicLandTypeChoice?.cardName ?? ""}
+        options={BASIC_LAND_TYPE_OPTIONS}
+        onSelect={handleBasicLandTypeSelect}
+      />
 
-            <Button
-              variant={autoSaveEnabled ? "default" : "outline"}
-              size="sm"
-              onClick={() => setAutoSaveEnabled(!autoSaveEnabled)}
-              title={
-                autoSaveEnabled ? "Auto-save enabled" : "Auto-save disabled"
-              }
-              className="h-11 w-11 p-0 md:h-8 md:w-auto md:p-0"
-            >
-              {autoSaveEnabled ? (
-                <RotateCcw className="w-3 h-3" />
-              ) : (
-                <Pause className="w-3 h-3" />
-              )}
-            </Button>
+      {/* Modal Spell Mode Choice Dialog — extracted to a memoized leaf
+          (issue #2418, slice 9) */}
+      <ModeChoiceDialog
+        isOpen={!!spellModeChoice}
+        onClose={handleSpellModeClose}
+        cardName={spellModeChoice?.cardName ?? ""}
+        modes={spellModeChoice?.modes}
+        selectionMode="single"
+        onSelectIndex={handleModeSelect}
+      />
 
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                toast({
-                  title: "Game State",
-                  description: `Turn ${gameState.turn.turnNumber}, Phase: ${gameState.turn.currentPhase}, Status: ${gameState.status}`,
-                });
-              }}
-              className="h-11 w-11 p-0 md:h-8 md:w-auto md:p-0"
-            >
-              <Info className="w-3 h-3" />
-            </Button>
-          </div>
+      {/* Modal Ability Mode Choice Dialog (#2525): a mode must be chosen —
+          extracted to a memoized leaf (issue #2418, slice 9) */}
+      <ModeChoiceDialog
+        isOpen={!!abilityModeChoice}
+        dismissable={false}
+        cardName={abilityModeChoice?.cardName ?? ""}
+        modes={abilityModeChoice?.modes}
+        selectionMode="multi"
+        choose={abilityModeChoice?.choose}
+        picked={abilityModeChoice?.picked}
+        onSelect={handleAbilityModeSelect}
+      />
 
-          {!isMobile && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Clock className="w-3 h-3" />
-              <span>
-                {gameState.status === "completed"
-                  ? "Game Ended"
-                  : "Game in Progress"}
-              </span>
-            </div>
-          )}
-        </div>
-      </footer>
+      {/* X-Cost Spell Dialog — extracted to a memoized leaf
+          (issue #2418, slice 9) */}
+      <XCostDialog
+        isOpen={!!xCostChoice}
+        onClose={handleXCostClose}
+        cardName={xCostChoice?.cardName ?? ""}
+        description={xCostChoice?.description ?? ""}
+        value={xCostChoice?.maxX ?? 0}
+        onValueChange={handleXValueChange}
+        onCast={handleXCostCast}
+      />
 
-      {/* Mulligan Dialog */}
-      <Dialog open={showMulligan} onOpenChange={setShowMulligan}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Hand className="h-5 w-5 text-primary" />
-              Opening Hand
-              {mulliganCount > 0 && (
-                <Badge variant="secondary">Mulligan {mulliganCount}</Badge>
-              )}
-            </DialogTitle>
-            <DialogDescription>
-              Review your opening hand. You can keep it or take a mulligan to
-              draw a new hand with one fewer card.
-            </DialogDescription>
-          </DialogHeader>
+      {/* Kicker Spell Dialog — extracted to a memoized leaf
+          (issue #2418, slice 9) */}
+      <KickerDialog
+        isOpen={!!kickerChoice}
+        onClose={handleKickerClose}
+        cardName={kickerChoice?.cardName ?? ""}
+        description={kickerChoice?.description ?? ""}
+        onSelect={handleKickerSelectWith}
+      />
 
-          <div className="py-4">
-            {playerHandCards.length === 0 ? (
-              <div className="text-center text-muted-foreground py-8">
-                <Sparkles className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                <p>Your hand is empty</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2 sm:gap-3">
-                {playerHandCards.map((card) => (
-                  <div
-                    key={card.id}
-                    className="relative aspect-[5/7] rounded-lg border border-border/50 bg-gradient-to-br from-primary/10 to-primary/5 overflow-hidden group cursor-pointer hover:border-primary/50 hover:shadow-xl hover:scale-110 hover:z-10 transition-all duration-200"
-                    title={`${card.cardData.name}${card.cardData.mana_cost ? ` — ${card.cardData.mana_cost}` : ""}`}
-                  >
-                    {card.cardData.image_uris?.normal ? (
-                      <Image
-                        src={card.cardData.image_uris.normal}
-                        alt={card.cardData.name}
-                        fill
-                        sizes="(max-width: 768px) 50vw, 140px"
-                        className="object-cover rounded-lg"
-                        loading="eager"
-                      />
-                    ) : (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center p-2 text-center">
-                        <p className="text-xs font-medium line-clamp-2">
-                          {card.cardData.name}
-                        </p>
-                        {card.cardData.mana_cost && (
-                          <p className="text-[10px] text-muted-foreground mt-1">
-                            {card.cardData.mana_cost}
-                          </p>
-                        )}
-                        <p className="text-[10px] text-muted-foreground mt-1 line-clamp-2">
-                          {card.cardData.type_line}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+      {/* Attraction Spell Dialog (Unfinity) — extracted to a memoized leaf
+          (issue #2418, slice 9) */}
+      <AttractionDialog
+        isOpen={!!attractionChoice}
+        onClose={handleAttractionClose}
+        cardName={attractionChoice?.cardName ?? ""}
+        spinResult={attractionChoice?.spinResult ?? 0}
+        revealedCards={attractionChoice?.revealedCards ?? EMPTY_REVEALED_CARDS}
+        onSpinAndCast={handleAttractionSpinAndCastClick}
+      />
 
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            <div className="text-xs text-muted-foreground flex items-center gap-1">
-              <Info className="h-3 w-3" />
-              {mulliganCount === 0
-                ? "First mulligan: draw 6 cards"
-                : `Next mulligan: draw ${Math.max(1, 7 - mulliganCount - 1)} cards`}
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={handleMulligan}
-                disabled={mulliganCount >= 6}
-                className="gap-1"
-              >
-                <Shuffle className="h-4 w-4" />
-                Mulligan
-              </Button>
-              <Button
-                onClick={handleKeepHand}
-                className="gap-1"
-                data-testid="keep-hand-button"
-              >
-                <CheckCircle2 className="h-4 w-4" />
-                Keep Hand
-              </Button>
-            </div>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Activated ability choice (CR 602) */}
-      <Dialog
-        open={!!abilityChoice}
-        onOpenChange={(open) => {
-          if (!open) setAbilityChoice(null);
-        }}
-      >
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>
-              {abilityChoice?.handActivations
-                ? "Use a card from your hand"
-                : "Activate an ability"}
-            </DialogTitle>
-            <DialogDescription>
-              {abilityChoice?.handActivations
-                ? `Choose what to do with ${abilityChoice?.cardName}.`
-                : `Choose an ability of ${abilityChoice?.cardName}.`}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-2">
-            {abilityChoice?.options.map((o) => (
-              <Button
-                key={o.abilityIndex}
-                variant="outline"
-                className="h-auto whitespace-normal text-left"
-                onClick={() => {
-                  const choice = abilityChoice;
-                  setAbilityChoice(null);
-                  if (!choice) return;
-                  if (choice.handActivations) {
-                    if (o.abilityIndex < 0) {
-                      skipHandActivationsRef.current = true;
-                      handleCardClick(choice.cardId, "hand");
-                    } else {
-                      applyHandActivation(
-                        choice.handActivations[o.abilityIndex],
-                      );
-                    }
-                    return;
-                  }
-                  activateFromBoard(choice.cardId, o.abilityIndex);
-                }}
-              >
-                {o.label}
-              </Button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Shockland ETB Choice Dialog */}
-      <Dialog
-        open={!!shocklandChoice}
-        onOpenChange={() => setShocklandChoice(null)}
-      >
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Enter the Battlefield</DialogTitle>
-            <DialogDescription>
-              {shocklandChoice?.cardName} can enter tapped or you can pay 2 life
-              to have it enter untapped.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-3 py-4">
-            <Button
-              variant="outline"
-              onClick={handleShocklandEnterTapped}
-              className="justify-start h-auto py-3 px-4"
-            >
-              <div className="text-left">
-                <div className="font-medium">Enter Tapped</div>
-                <div className="text-xs text-muted-foreground">
-                  No life loss
-                </div>
-              </div>
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleShocklandPayLife}
-              className="justify-start h-auto py-3 px-4"
-            >
-              <div className="text-left">
-                <div className="font-medium">Pay 2 Life</div>
-                <div className="text-xs text-muted-foreground">
-                  Enters untapped
-                </div>
-              </div>
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Mana Ability Choice Dialog */}
-      <Dialog
-        open={!!manaAbilityChoice}
-        onOpenChange={() => setManaAbilityChoice(null)}
-      >
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Choose Mana</DialogTitle>
-            <DialogDescription>
-              {manaAbilityChoice?.cardName} can produce different colors of
-              mana. Choose one.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-3 py-4">
-            {manaAbilityChoice?.options.map((option, idx) => (
-              <Button
-                key={idx}
-                variant="outline"
-                onClick={() => handleManaChoice(option)}
-                className="justify-start h-auto py-3 px-4"
-              >
-                <div className="text-left">
-                  <div className="font-medium">{option.description}</div>
-                  <div className="text-xs text-muted-foreground">
-                    Add{" "}
-                    {formatManaPool({
-                      colorless: 0,
-                      white: 0,
-                      blue: 0,
-                      black: 0,
-                      red: 0,
-                      green: 0,
-                      generic: 0,
-                      ...option.mana,
-                    })}{" "}
-                    to your mana pool
-                  </div>
-                </div>
-              </Button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Basic Land Type Choice Dialog */}
-      <Dialog
-        open={!!basicLandTypeChoice}
-        onOpenChange={() => setBasicLandTypeChoice(null)}
-      >
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Choose Basic Land Type</DialogTitle>
-            <DialogDescription>
-              {basicLandTypeChoice?.cardName} allows you to choose a basic land
-              type. Select one.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-1 gap-2 py-4">
-            {BASIC_LAND_NAMES.map((landType) => (
-              <Button
-                key={landType}
-                variant="outline"
-                onClick={() => handleBasicLandTypeChoice(landType)}
-                className="justify-start h-auto py-3 px-4"
-              >
-                <div className="text-left">
-                  <div className="font-medium">{landType}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {getBasicLandTypeDescription(landType)}
-                  </div>
-                </div>
-              </Button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Modal Spell Mode Choice Dialog */}
-      <Dialog
-        open={!!spellModeChoice}
-        onOpenChange={() => setSpellModeChoice(null)}
-      >
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Choose Mode</DialogTitle>
-            <DialogDescription>
-              {spellModeChoice?.cardName} has multiple modes. Choose one.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-3 py-4">
-            {spellModeChoice?.modes.map((mode, idx) => (
-              <Button
-                key={idx}
-                variant="outline"
-                onClick={() => handleModeSelect(idx)}
-                className="justify-start h-auto py-3 px-4 text-left"
-              >
-                <div className="text-left">
-                  <div className="font-medium">Mode {idx + 1}</div>
-                  <div className="text-xs text-muted-foreground line-clamp-3 mt-1">
-                    {mode}
-                  </div>
-                </div>
-              </Button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Modal Ability Mode Choice Dialog (#2525): a mode must be chosen */}
-      <Dialog open={!!abilityModeChoice} onOpenChange={() => undefined}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Choose Mode</DialogTitle>
-            <DialogDescription>
-              {abilityModeChoice?.cardName}: choose{" "}
-              {abilityModeChoice?.choose === 1
-                ? "one"
-                : abilityModeChoice?.choose}
-              .
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-3 py-4">
-            {abilityModeChoice?.modes.map((mode, idx) => (
-              <Button
-                key={idx}
-                variant={
-                  abilityModeChoice.picked.includes(mode)
-                    ? "default"
-                    : "outline"
-                }
-                onClick={() => handleAbilityModeSelect(mode)}
-                className="justify-start h-auto py-3 px-4 text-left"
-              >
-                <div className="text-left">
-                  <div className="font-medium">Mode {idx + 1}</div>
-                  <div className="text-xs text-muted-foreground line-clamp-3 mt-1">
-                    {mode}
-                  </div>
-                </div>
-              </Button>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* X-Cost Spell Dialog */}
-      <Dialog open={!!xCostChoice} onOpenChange={() => setXCostChoice(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Choose X Value</DialogTitle>
-            <DialogDescription>
-              {xCostChoice?.description ||
-                `Choose a value for ${xCostChoice?.cardName}`}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col items-center gap-4 py-6">
-            <div className="flex items-center gap-6">
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() =>
-                  setXCostChoice((prev) =>
-                    prev ? { ...prev, maxX: Math.max(0, prev.maxX - 1) } : null,
-                  )
-                }
-                disabled={xCostChoice ? xCostChoice.maxX <= 0 : true}
-              >
-                <span className="text-xl">−</span>
-              </Button>
-              <div className="text-5xl font-bold tabular-nums min-w-[80px] text-center">
-                {xCostChoice?.maxX || 0}
-              </div>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() =>
-                  setXCostChoice((prev) =>
-                    prev ? { ...prev, maxX: prev.maxX + 1 } : null,
-                  )
-                }
-              >
-                <span className="text-xl">+</span>
-              </Button>
-            </div>
-            <div className="text-sm text-muted-foreground">
-              Max: {xCostChoice?.maxX || 0}
-            </div>
-            <div className="flex gap-2 mt-2">
-              {[0, 1, 2, 3].map((n) => (
-                <Button
-                  key={n}
-                  variant={xCostChoice?.maxX === n ? "default" : "outline"}
-                  size="sm"
-                  onClick={() =>
-                    setXCostChoice((prev) =>
-                      prev ? { ...prev, maxX: n } : null,
-                    )
-                  }
-                  disabled={n > (xCostChoice?.maxX || 0)}
-                >
-                  {n}
-                </Button>
-              ))}
-              {(xCostChoice?.maxX || 0) > 3 && (
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={() => handleXValueSelect(xCostChoice?.maxX || 0)}
-                >
-                  Cast X={xCostChoice?.maxX || 0}
-                </Button>
-              )}
-            </div>
-          </div>
-          <DialogFooter className="flex-row gap-2 sm:flex-col">
-            <Button variant="outline" onClick={() => setXCostChoice(null)}>
-              Cancel
-            </Button>
-            <Button onClick={() => handleXValueSelect(xCostChoice?.maxX || 0)}>
-              Cast with X={xCostChoice?.maxX || 0}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Kicker Spell Dialog */}
-      <Dialog open={!!kickerChoice} onOpenChange={() => setKickerChoice(null)}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Kicker Option</DialogTitle>
-            <DialogDescription>
-              {kickerChoice?.cardName} has an optional kicker cost.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-3 py-4">
-            <Button
-              variant="outline"
-              onClick={() => handleKickerSelect(false)}
-              className="justify-start h-auto py-3 px-4"
-            >
-              <div className="text-left">
-                <div className="font-medium">Cast without kicker</div>
-                <div className="text-xs text-muted-foreground">
-                  Pay only the base mana cost
-                </div>
-              </div>
-            </Button>
-            <Button
-              variant="default"
-              onClick={() => handleKickerSelect(true)}
-              className="justify-start h-auto py-3 px-4"
-            >
-              <div className="text-left">
-                <div className="font-medium">Cast with kicker</div>
-                <div className="text-xs text-muted-foreground">
-                  {kickerChoice?.description ||
-                    "Pay extra cost for additional effect"}
-                </div>
-              </div>
-            </Button>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setKickerChoice(null)}>
-              Cancel
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Attraction Spell Dialog (Unfinity) */}
-      <Dialog
-        open={!!attractionChoice}
-        onOpenChange={() => setAttractionChoice(null)}
-      >
-        <DialogContent className="max-w-sm">
-          <DialogHeader>
-            <DialogTitle>Attraction!</DialogTitle>
-            <DialogDescription>
-              {attractionChoice?.cardName} - Spin the die to reveal cards
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col items-center gap-4 py-6">
-            {attractionChoice?.spinResult ? (
-              <>
-                <div className="text-6xl font-bold">
-                  {attractionChoice.spinResult}
-                </div>
-                <div className="text-sm text-muted-foreground">Rolled!</div>
-                {attractionChoice.revealedCards.length > 0 && (
-                  <div className="text-sm text-center">
-                    <div className="font-medium">Revealed cards:</div>
-                    <div className="text-xs text-muted-foreground">
-                      {attractionChoice.revealedCards.join(", ")}
-                    </div>
-                  </div>
-                )}
-              </>
-            ) : (
-              <>
-                <div className="text-4xl">🎲</div>
-                <div className="text-sm text-muted-foreground text-center">
-                  Spin the Attraction die to determine the result
-                </div>
-              </>
-            )}
-          </div>
-          <DialogFooter className="flex-col gap-2 sm:flex-col">
-            {!attractionChoice?.spinResult ? (
-              <Button onClick={handleAttractionSpinAndCast} className="w-full">
-                Spin & Cast
-              </Button>
-            ) : (
-              <Button
-                onClick={() => setAttractionChoice(null)}
-                className="w-full"
-              >
-                Done
-              </Button>
-            )}
-            <Button variant="outline" onClick={() => setAttractionChoice(null)}>
-              Cancel
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Zone Viewer Dialog */}
-      <Dialog open={!!viewingZone} onOpenChange={() => setViewingZone(null)}>
-        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="capitalize">
-              {viewingZone?.playerId ===
-              Array.from(gameState?.players.values() || []).find(
-                (p) => p.name === playerName,
-              )?.id
-                ? "Your"
-                : "Opponent's"}{" "}
-              {viewingZone?.zone}
-            </DialogTitle>
-            <DialogDescription>
-              {viewingZone?.cards.length || 0} cards
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-3 py-4">
-            {viewingZone?.cards.map((card) => (
-              <div
-                key={card.id}
-                className="relative aspect-[5/7] rounded-lg overflow-hidden shadow-md bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/30"
-              >
-                {card.cardData.image_uris?.normal ? (
-                  <Image
-                    src={card.cardData.image_uris.normal}
-                    alt={card.cardData.name}
-                    fill
-                    sizes="120px"
-                    className="object-cover"
-                    loading="lazy"
-                  />
-                ) : (
-                  <div className="flex h-full w-full flex-col items-center justify-center p-2">
-                    <p className="text-center text-xs font-medium line-clamp-3">
-                      {card.cardData.name}
-                    </p>
-                    {card.cardData.mana_cost && (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {card.cardData.mana_cost}
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-            {(viewingZone?.cards.length || 0) === 0 && (
-              <p className="col-span-full text-center text-muted-foreground text-sm py-8">
-                No cards in {viewingZone?.zone}
-              </p>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Zone Viewer Dialog — extracted to a memoized leaf (issue #2418, slice 4) */}
+      <ZoneViewerDialog
+        isOpen={!!viewingZone}
+        zone={viewingZone?.zone}
+        cards={viewingZone?.cards}
+        isLocalPlayerZone={viewingZone?.playerId === localPlayerId}
+        onClose={handleCloseZoneViewer}
+      />
 
       {/* Tutorial */}
       {isGameStarted && <GameTutorial />}
@@ -3931,10 +3523,7 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
           }
           prompt={humanDiscardChoice.prompt}
           count={humanDiscardChoice.minChoices}
-          cards={humanDiscardChoice.choices.map((c) => ({
-            id: String(c.value),
-            name: c.label,
-          }))}
+          cards={handSizeDiscardCards}
           onConfirm={handleHandSizeDiscard}
         />
       )}

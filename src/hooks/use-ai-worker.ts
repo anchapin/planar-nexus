@@ -1,9 +1,26 @@
 'use client';
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { aiWorkerClient } from '@/ai/worker/ai-worker-client';
 import type { AnalyzeStatePayload } from '@/ai/worker/worker-types';
 import type { DetailedEvaluation } from '@/ai/game-state-evaluator';
+
+/**
+ * The worker bridge is only needed once a caller actually asks the worker for
+ * an evaluation, so it is imported on demand (issue #2946). Importing it
+ * lazily keeps the worker client — and the Comlink RPC bridge it pulls in —
+ * out of the route's first-load payload. The module is a singleton, so the
+ * promise is cached and the worker is still created only once, on first use.
+ */
+type AIWorkerClientModule = typeof import('@/ai/worker/ai-worker-client');
+
+let aiWorkerClientModule: Promise<AIWorkerClientModule> | null = null;
+
+function loadAIWorkerClient(): Promise<AIWorkerClientModule> {
+  if (!aiWorkerClientModule) {
+    aiWorkerClientModule = import('@/ai/worker/ai-worker-client');
+  }
+  return aiWorkerClientModule;
+}
 
 /**
  * Hook to interact with the AI Worker reactively.
@@ -39,6 +56,9 @@ export function useAIWorker() {
     setError(null);
 
     try {
+      // Loaded on demand so the worker client stays out of the first-load
+      // payload; the worker itself is still created lazily on first use.
+      const { aiWorkerClient } = await loadAIWorkerClient();
       const api = aiWorkerClient.api;
       if (!api) {
         throw new Error('AI Worker API not initialized');

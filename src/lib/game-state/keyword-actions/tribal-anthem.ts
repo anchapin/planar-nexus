@@ -11,6 +11,7 @@
  */
 import type { CardInstance, GameState, PlayerId } from "../types";
 import { getCardScript } from "../card-scripts/registry";
+import { acquireCardMap } from "../sba-pass-cards";
 
 export interface TribalAnthem {
   subtype: string;
@@ -149,7 +150,7 @@ export function refreshTribalAnthems(state: GameState): GameState {
     ) {
       continue;
     }
-    cards ??= new Map(state.cards);
+    cards ??= acquireCardMap(state);
     const updated = { ...card };
     if (next) updated.tribalAnthemPT = next;
     else delete updated.tribalAnthemPT;

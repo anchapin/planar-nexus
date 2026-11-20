@@ -32,6 +32,7 @@ import {
   parseImprovise,
   grantsNoncreatureImprovise,
   parseDelve,
+  parseEmerge,
   parseEscape,
   parseMutate,
   parseSplitSecond,
@@ -55,7 +56,7 @@ import {
 import { copySpellOnStack } from "./resolve";
 import { getCardScript } from "../card-scripts/registry";
 import { affinityReduction } from "./affinity";
-import { isCreature, getPower } from "../card-instance";
+import { isCreature, getPower, getManaValue } from "../card-instance";
 import { scriptedModeChoiceError } from "../card-scripts/script-guards";
 import { fireCastTriggers } from "../keyword-actions/cast-triggers";
 import { fireTargetedTriggers } from "../keyword-actions/targeted";
@@ -109,11 +110,7 @@ export function canCastSpell(
   // the downstream stamp in `castSpell`.
   const cardScript = getCardScript(card.cardData.name);
   const castableFromZones = cardScript?.castable_from ?? [];
-  let castableFromZone:
-    | "exile"
-    | "graveyard"
-    | "command"
-    | undefined;
+  let castableFromZone: "exile" | "graveyard" | "command" | undefined;
   if (castableFromZones.length > 0) {
     const matchedZone = castableFromZones.find((z) => {
       const zoneKey = `${playerId}-${z}`;
@@ -251,6 +248,7 @@ export function castSpell(
       | "convoke"
       | "improvise"
       | "delve"
+      | "emerge"
       | "mutate";
     buybackReturnToHand?: boolean;
     bestowTarget?: CardInstanceId;
@@ -306,6 +304,15 @@ export function castSpell(
      * cards..." → N=5).
      */
     escapeExileCards?: CardInstanceId[];
+    /**
+     * CR 702.119 - Emerge: the creature the player sacrifices as part of
+     * casting this spell for its emerge cost. The emerge cost is the spell's
+     * mana cost reduced by the mana value of this creature (CR 702.119a) —
+     * the GENERIC portion only (coloured pips are unaffected), floored at
+     * zero generic. The creature is sacrificed to its owner's graveyard as
+     * part of paying the cost.
+     */
+    emergeSacrificeCreature?: CardInstanceId;
   },
   /**
    * CR 702.85 — number of times the kicker (or multikicker) cost was paid.
@@ -511,6 +518,10 @@ export function castSpell(
 
     // Add X value to the cost if applicable
     let totalGeneric = manaCost.generic + xValue;
+    // #2870: `{C}` pips are a real cost component — they must be paid from
+    // the pool's colorless bucket, not silently dropped (and not paid out of
+    // colored mana).
+    let totalColorless = manaCost.colorless;
     let totalWhite = manaCost.white;
     let totalBlue = manaCost.blue;
     let totalBlack = manaCost.black;
@@ -554,6 +565,14 @@ export function castSpell(
     }
     /** Harmonize: the creature tapped to reduce the cost, tapped on cast. */
     let harmonizeTapId: CardInstanceId | undefined;
+    /**
+     * CR 702.119 - Emerge: the creature sacrificed to pay the emerge cost.
+     * Validated inside the `case "emerge":` branch; the actual sacrifice
+     * (battlefield -> owner's graveyard) is applied AFTER mana is spent (see
+     * the emerge sacrifice block below) so the pre-cast state used for
+     * validation is not mutated.
+     */
+    let emergeSacrificeId: CardInstanceId | undefined;
 
     // Add kicker cost if spell is kicked (CR 702.85).
     // For multikicker (CR 702.85 multikicker variant) the cost is paid N times
@@ -581,6 +600,7 @@ export function castSpell(
       if (kickerCost) {
         const n = effectiveTimesKicked;
         totalGeneric += kickerCost.generic * n;
+        totalColorless += kickerCost.colorless * n;
         totalWhite += kickerCost.white * n;
         totalBlue += kickerCost.blue * n;
         totalBlack += kickerCost.black * n;
@@ -708,6 +728,7 @@ export function castSpell(
           const buybackInfo = parseBuyback(card.cardData.oracle_text || "");
           if (buybackInfo.hasBuyback && buybackInfo.buybackCost) {
             totalGeneric += buybackInfo.buybackCost.generic;
+            totalColorless += buybackInfo.buybackCost.colorless;
             totalWhite += buybackInfo.buybackCost.white;
             totalBlue += buybackInfo.buybackCost.blue;
             totalBlack += buybackInfo.buybackCost.black;
@@ -749,6 +770,7 @@ export function castSpell(
           }
           if (flashbackCost) {
             totalGeneric += flashbackCost.generic - manaCost.generic;
+            totalColorless += flashbackCost.colorless - manaCost.colorless;
             totalWhite += flashbackCost.white - manaCost.white;
             totalBlue += flashbackCost.blue - manaCost.blue;
             totalBlack += flashbackCost.black - manaCost.black;
@@ -775,6 +797,7 @@ export function castSpell(
             return { success: false, state, error: "Invalid warp cost." };
           }
           totalGeneric += wc.generic - manaCost.generic;
+          totalColorless += wc.colorless - manaCost.colorless;
           totalWhite += wc.white - manaCost.white;
           totalBlue += wc.blue - manaCost.blue;
           totalBlack += wc.black - manaCost.black;
@@ -806,6 +829,7 @@ export function castSpell(
             };
           }
           totalGeneric += hc.generic - manaCost.generic;
+          totalColorless += hc.colorless - manaCost.colorless;
           totalWhite += hc.white - manaCost.white;
           totalBlue += hc.blue - manaCost.blue;
           totalBlack += hc.black - manaCost.black;
@@ -843,6 +867,7 @@ export function castSpell(
           const bestowInfo = parseBestow(card.cardData.oracle_text || "");
           if (bestowInfo.hasBestow && bestowInfo.bestowCost) {
             totalGeneric += bestowInfo.bestowCost.generic;
+            totalColorless += bestowInfo.bestowCost.colorless;
             totalWhite += bestowInfo.bestowCost.white;
             totalBlue += bestowInfo.bestowCost.blue;
             totalBlack += bestowInfo.bestowCost.black;
@@ -917,6 +942,8 @@ export function castSpell(
           // Replace printed-cost pips with mutate-cost pips (same shape as
           // Blitz/Foretell/Spectacle/Escape).
           totalGeneric += mutateInfo.mutateCost.generic - manaCost.generic;
+          totalColorless +=
+            mutateInfo.mutateCost.colorless - manaCost.colorless;
           totalWhite += mutateInfo.mutateCost.white - manaCost.white;
           totalBlue += mutateInfo.mutateCost.blue - manaCost.blue;
           totalBlack += mutateInfo.mutateCost.black - manaCost.black;
@@ -935,6 +962,8 @@ export function castSpell(
           const blitzInfo = parseBlitz(card.cardData.oracle_text || "");
           if (blitzInfo.hasBlitz && blitzInfo.blitzCost) {
             totalGeneric += blitzInfo.blitzCost.generic - manaCost.generic;
+            totalColorless +=
+              blitzInfo.blitzCost.colorless - manaCost.colorless;
             totalWhite += blitzInfo.blitzCost.white - manaCost.white;
             totalBlue += blitzInfo.blitzCost.blue - manaCost.blue;
             totalBlack += blitzInfo.blitzCost.black - manaCost.black;
@@ -955,6 +984,8 @@ export function castSpell(
           if (foretellInfo.hasForetell && foretellInfo.foretellCost) {
             totalGeneric +=
               foretellInfo.foretellCost.generic - manaCost.generic;
+            totalColorless +=
+              foretellInfo.foretellCost.colorless - manaCost.colorless;
             totalWhite += foretellInfo.foretellCost.white - manaCost.white;
             totalBlue += foretellInfo.foretellCost.blue - manaCost.blue;
             totalBlack += foretellInfo.foretellCost.black - manaCost.black;
@@ -992,6 +1023,8 @@ export function castSpell(
             if (opponentLostLife) {
               totalGeneric +=
                 spectacleInfo.spectacleCost.generic - manaCost.generic;
+              totalColorless +=
+                spectacleInfo.spectacleCost.colorless - manaCost.colorless;
               totalWhite += spectacleInfo.spectacleCost.white - manaCost.white;
               totalBlue += spectacleInfo.spectacleCost.blue - manaCost.blue;
               totalBlack += spectacleInfo.spectacleCost.black - manaCost.black;
@@ -1212,6 +1245,92 @@ export function castSpell(
           }
           break;
         }
+        case "emerge": {
+          // CR 702.119 - Emerge: "You may cast this spell by paying its
+          // emerge cost rather than its mana cost. The emerge cost is equal
+          // to its mana cost reduced by the mana value of a creature you
+          // sacrifice."
+          //
+          // CR 702.119a — casting for the emerge cost:
+          // 1. The spell's mana value is unchanged.
+          // 2. You sacrifice a creature you control as an additional cost.
+          // 3. The GENERIC portion of the mana cost is reduced by the mana
+          //    value of the sacrificed creature (coloured pips are
+          //    unaffected, and the generic portion never drops below zero —
+          //    same generic-only reduction shape as harmonize / delve).
+          //
+          // The sacrifice is part of paying the cost, so it happens as part
+          // of casting (not on resolution). Validation happens here, before
+          // mana is spent, so a rejected cast mutates nothing.
+          const emergeInfo = parseEmerge(card.cardData.oracle_text || "");
+          if (!emergeInfo.hasEmerge) {
+            return {
+              success: false,
+              state,
+              error: "This card does not have emerge.",
+            };
+          }
+          const sacrificeId = alternativeCost.emergeSacrificeCreature;
+          if (sacrificeId === undefined) {
+            return {
+              success: false,
+              state,
+              error: "Emerge: you must sacrifice a creature you control.",
+            };
+          }
+          const sacrifice = state.cards.get(sacrificeId);
+          if (!sacrifice) {
+            return {
+              success: false,
+              state,
+              error: "Emerge: creature not found.",
+            };
+          }
+          // Must be controlled by the caster (CR 702.119a: "a creature you
+          // sacrifice" — you can only sacrifice permanents you control).
+          if (sacrifice.controllerId !== playerId) {
+            return {
+              success: false,
+              state,
+              error:
+                "Emerge: sacrificed creature must be controlled by the spell's controller.",
+            };
+          }
+          // Must be on the battlefield.
+          const sacrificeZoneKey = sacrifice.currentZoneKey;
+          const sacrificeZone = sacrificeZoneKey
+            ? state.zones.get(sacrificeZoneKey)
+            : undefined;
+          if (
+            !sacrificeZone ||
+            sacrificeZone.type !== ZoneType.BATTLEFIELD ||
+            !sacrificeZone.cardIds.includes(sacrificeId)
+          ) {
+            return {
+              success: false,
+              state,
+              error: "Emerge: sacrificed creature must be on the battlefield.",
+            };
+          }
+          // Must actually be a creature.
+          if (!isCreature(sacrifice)) {
+            return {
+              success: false,
+              state,
+              error: "Emerge: sacrificed permanent is not a creature.",
+            };
+          }
+          alternativeCostsUsed.push("emerge");
+          // CR 702.119a: reduce the GENERIC portion by the sacrificed
+          // creature's mana value. Coloured pips are unaffected and the
+          // generic portion never goes below zero.
+          totalGeneric = Math.max(
+            0,
+            totalGeneric - Math.max(0, getManaValue(sacrifice)),
+          );
+          emergeSacrificeId = sacrificeId;
+          break;
+        }
         case "escape": {
           // CR 702.138 - Escape: "Escape—[cost], Exile N other cards from
           // your graveyard." Escape is an alternative cost that REPLACES the
@@ -1246,6 +1365,8 @@ export function castSpell(
             // so additional costs (kicker, taxes) layered on top are
             // preserved (same shape as Blitz/Foretell/Spectacle).
             totalGeneric += escapeInfo.escapeCost.generic - manaCost.generic;
+            totalColorless +=
+              escapeInfo.escapeCost.colorless - manaCost.colorless;
             totalWhite += escapeInfo.escapeCost.white - manaCost.white;
             totalBlue += escapeInfo.escapeCost.blue - manaCost.blue;
             totalBlack += escapeInfo.escapeCost.black - manaCost.black;
@@ -1394,11 +1515,9 @@ export function castSpell(
     // Phyrexian mana costs are separate follow-up lanes
     // (the schema enforces `colors.length === 1` for v1).
     let manaRestrictionApplied:
-      | { colors: ("W" | "U" | "B" | "R" | "G")[]; generic: number }
-      | undefined;
-    const manaRestrictionScript = getCardScript(
-      card.cardData.name,
-    )?.additionalCosts?.mana_restriction;
+      { colors: ("W" | "U" | "B" | "R" | "G")[]; generic: number } | undefined;
+    const manaRestrictionScript = getCardScript(card.cardData.name)
+      ?.additionalCosts?.mana_restriction;
     if (manaRestrictionScript) {
       const mrGeneric = manaRestrictionScript.generic;
       const mrColor = manaRestrictionScript.colors[0];
@@ -1410,13 +1529,14 @@ export function castSpell(
         poolAtCan.black >= totalBlack &&
         poolAtCan.red >= totalRed &&
         poolAtCan.green >= totalGreen &&
+        poolAtCan.colorless >= totalColorless &&
         poolAtCan.generic +
           poolAtCan.white +
           poolAtCan.blue +
           poolAtCan.black +
           poolAtCan.red +
           poolAtCan.green +
-          poolAtCan.colorless >=
+          (poolAtCan.colorless - totalColorless) >=
           totalWhite +
             totalBlue +
             totalBlack +
@@ -1501,11 +1621,9 @@ export function castSpell(
     // pools, per-creature-type pools, and opponent-only
     // creature pools are separate follow-up lanes.
     let creaturePaymentApplied:
-      | { generic: number; tappedCreatures: CardInstanceId[] }
-      | undefined;
-    const creaturePaymentScript = getCardScript(
-      card.cardData.name,
-    )?.additionalCosts?.creature_payment;
+      { generic: number; tappedCreatures: CardInstanceId[] } | undefined;
+    const creaturePaymentScript = getCardScript(card.cardData.name)
+      ?.additionalCosts?.creature_payment;
     if (creaturePaymentScript) {
       const cpGeneric = creaturePaymentScript.generic;
       const poolAtCan = state.players.get(playerId)?.manaPool;
@@ -1516,13 +1634,14 @@ export function castSpell(
         poolAtCan.black >= totalBlack &&
         poolAtCan.red >= totalRed &&
         poolAtCan.green >= totalGreen &&
+        poolAtCan.colorless >= totalColorless &&
         poolAtCan.generic +
           poolAtCan.white +
           poolAtCan.blue +
           poolAtCan.black +
           poolAtCan.red +
           poolAtCan.green +
-          poolAtCan.colorless >=
+          (poolAtCan.colorless - totalColorless) >=
           totalWhite +
             totalBlue +
             totalBlack +
@@ -1579,7 +1698,11 @@ export function castSpell(
     // Calculate total colored mana available for generic payment
     const totalColored =
       pool.white + pool.blue + pool.black + pool.red + pool.green;
-    const availableForGeneric = pool.generic + totalColored + pool.colorless;
+    // #2870: the `{C}` pips of the cost are paid from the pool's
+    // colorless bucket, so the colorless pool is only available for the
+    // generic portion AFTER the colorless requirement is satisfied.
+    const availableForGeneric =
+      pool.generic + totalColored + (pool.colorless - totalColorless);
 
     if (
       pool.white < totalWhite ||
@@ -1587,6 +1710,7 @@ export function castSpell(
       pool.black < totalBlack ||
       pool.red < totalRed ||
       pool.green < totalGreen ||
+      pool.colorless < totalColorless ||
       availableForGeneric < totalGeneric
     ) {
       return {
@@ -1599,6 +1723,7 @@ export function castSpell(
     // Spend the mana
     const poolBeforeSpend = { ...pool };
     const spendResult = spendMana(state, playerId, {
+      colorless: totalColorless,
       white: totalWhite,
       blue: totalBlue,
       black: totalBlack,
@@ -1643,6 +1768,52 @@ export function castSpell(
         cards: updatedConvokeCards,
         lastModifiedAt: Date.now(),
       };
+    }
+
+    // CR 702.119 - Emerge: now that mana is spent and the cast is committed,
+    // sacrifice the chosen creature to its owner's graveyard. The sacrifice
+    // is an ADDITIONAL cost paid as part of casting (CR 702.119a), so it
+    // happens here — after the mana was spent, alongside the other
+    // "additional cost" applications (convoke taps, delve exiles, escape
+    // exiles). The generic-cost reduction was already applied in the
+    // `case "emerge":` branch.
+    if (emergeSacrificeId !== undefined) {
+      const sacrifice = currentState.cards.get(emergeSacrificeId);
+      // The source zone is the creature's own zone (validated above as a
+      // battlefield zone containing it).
+      const battlefieldKey = sacrifice?.currentZoneKey;
+      // A sacrificed card is put into its OWNER's graveyard (CR 400.3).
+      const graveyardKey = `${sacrifice?.ownerId ?? playerId}-graveyard`;
+      const updatedZonesEmerge = new Map(currentState.zones);
+      let updatedBattlefieldEmerge = battlefieldKey
+        ? updatedZonesEmerge.get(battlefieldKey)
+        : undefined;
+      let updatedGraveEmerge = updatedZonesEmerge.get(graveyardKey);
+      const updatedCardsEmerge = new Map(currentState.cards);
+      if (battlefieldKey && updatedBattlefieldEmerge && updatedGraveEmerge) {
+        const moved = moveCardBetweenZones(
+          updatedBattlefieldEmerge,
+          updatedGraveEmerge,
+          emergeSacrificeId,
+        );
+        updatedBattlefieldEmerge = moved.from;
+        updatedGraveEmerge = moved.to;
+        const sc = updatedCardsEmerge.get(emergeSacrificeId);
+        if (sc) {
+          updatedCardsEmerge.set(emergeSacrificeId, {
+            ...sc,
+            currentZoneKey: graveyardKey,
+          });
+        }
+        updatedZonesEmerge.set(battlefieldKey, updatedBattlefieldEmerge);
+        updatedZonesEmerge.set(graveyardKey, updatedGraveEmerge);
+        currentState = {
+          ...currentState,
+          zones: updatedZonesEmerge,
+          cards: updatedCardsEmerge,
+          lastModifiedAt: Date.now(),
+        };
+      }
     }
 
     // CR 702.61 - Delve: now that mana is spent and the cast is committed,

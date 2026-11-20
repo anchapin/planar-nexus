@@ -12,8 +12,14 @@
  * `auraRestrictAttack` / `auraRestrictBlock` come from both sources
  * simultaneously.
  */
-import type { CardInstance, CardInstanceId, GameState, PlayerId } from "../types";
+import type {
+  CardInstance,
+  CardInstanceId,
+  GameState,
+  PlayerId,
+} from "../types";
 import { getCardScript } from "../card-scripts/registry";
+import { acquireCardMap } from "../sba-pass-cards";
 import {
   buildAuraCopyChainSnapshot,
   clearPermanentCopyOf,
@@ -566,12 +572,10 @@ export function refreshAuraBonuses(state: GameState): GameState {
     // single enchanted card carries at most one in-
     // flight overlay (re-stamping the other arm after
     // a refresh re-route cycles the substrate cleanly).
-    const nextAuraCopyEntry =
-      auraCopyOfTargetByEnchantedCard.get(cardId);
+    const nextAuraCopyEntry = auraCopyOfTargetByEnchantedCard.get(cardId);
     const nextAuraCopyOfTargetId = nextAuraCopyEntry?.targetId;
     const nextAuraCopyUntil = nextAuraCopyEntry?.until;
-    const sameAuraCopyOfTarget =
-      nextAuraCopyOfTargetId === card.copyOfTargetId;
+    const sameAuraCopyOfTarget = nextAuraCopyOfTargetId === card.copyOfTargetId;
     // Wave 4.8 follow-up 24 lane 70 piece 2/N: the
     // permanent-arm copy-target ledger. The
     // `sameAuraCopyOfTargetPermanent` consult is
@@ -606,7 +610,7 @@ export function refreshAuraBonuses(state: GameState): GameState {
     ) {
       continue;
     }
-    cards ??= new Map(state.cards);
+    cards ??= acquireCardMap(state);
     const updated = { ...card };
     if (next && (next.power || next.toughness)) updated.auraPT = next;
     else delete updated.auraPT;
@@ -798,11 +802,9 @@ export function refreshAuraBonuses(state: GameState): GameState {
         // point in the refresh" — used by
         // `refreshScriptedStatics` AND the EOT Aura
         // overlay.
-        const printed =
-          overlayIsPermanent
-            ? printedCardDataOf(updated)
-            : updated.animatedUntilEndOfTurn?.cardData ??
-              updated.cardData;
+        const printed = overlayIsPermanent
+          ? printedCardDataOf(updated)
+          : (updated.animatedUntilEndOfTurn?.cardData ?? updated.cardData);
         if (overlayIsPermanent) {
           // Wave 4.8 follow-up 24 lane 70 piece 2/N:
           // the permanent-arm overlay on the ENCHANTED
@@ -822,9 +824,9 @@ export function refreshAuraBonuses(state: GameState): GameState {
             auraCopyChain.leafCardDataByEnchantedCard.get(cardId);
           const targetPrinted =
             leafFromSnapshot ??
-            (chosenTarget.animatedUntilEndOfTurn?.cardData ??
-              chosenTarget.permanentCopyPrintedCardData ??
-              chosenTarget.cardData);
+            chosenTarget.animatedUntilEndOfTurn?.cardData ??
+            chosenTarget.permanentCopyPrintedCardData ??
+            chosenTarget.cardData;
           const snapped = snapshotPermanentCopyPrintedCardData(
             updated,
             printed,
@@ -857,7 +859,7 @@ export function refreshAuraBonuses(state: GameState): GameState {
               nextAuraCopyOfTargetId,
             );
             if (stampedAura !== auraCard) {
-              cards ??= new Map(state.cards);
+              cards ??= acquireCardMap(state);
               cards.set(nextAuraCopyEntry!.fromAura, stampedAura);
             }
           }
@@ -870,9 +872,7 @@ export function refreshAuraBonuses(state: GameState): GameState {
             leafPerInstance?.protectionFrom &&
             leafPerInstance.protectionFrom.length > 0
           ) {
-            leafProtFromById.set(cardId, [
-              ...leafPerInstance.protectionFrom,
-            ]);
+            leafProtFromById.set(cardId, [...leafPerInstance.protectionFrom]);
           } else {
             leafProtFromById.delete(cardId);
           }
@@ -906,8 +906,8 @@ export function refreshAuraBonuses(state: GameState): GameState {
           auraCopyChain.leafCardDataByEnchantedCard.get(cardId);
         const targetPrinted =
           leafFromSnapshot ??
-          (chosenTarget.animatedUntilEndOfTurn?.cardData ??
-            chosenTarget.cardData);
+          chosenTarget.animatedUntilEndOfTurn?.cardData ??
+          chosenTarget.cardData;
         updated.cardData = {
           ...printed,
           name: targetPrinted.name,
@@ -934,9 +934,7 @@ export function refreshAuraBonuses(state: GameState): GameState {
           leafPerInstance?.protectionFrom &&
           leafPerInstance.protectionFrom.length > 0
         ) {
-          leafProtFromById.set(cardId, [
-            ...leafPerInstance.protectionFrom,
-          ]);
+          leafProtFromById.set(cardId, [...leafPerInstance.protectionFrom]);
         } else {
           leafProtFromById.delete(cardId);
         }
@@ -960,10 +958,7 @@ export function refreshAuraBonuses(state: GameState): GameState {
         // the enchanted card).
         if (overlayIsPermanent && updated.permanentCopyPrintedCardData) {
           updated.cardData = updated.permanentCopyPrintedCardData;
-        } else if (
-          !overlayIsPermanent &&
-          updated.animatedUntilEndOfTurn
-        ) {
+        } else if (!overlayIsPermanent && updated.animatedUntilEndOfTurn) {
           updated.cardData = updated.animatedUntilEndOfTurn.cardData;
         }
         delete updated.animatedUntilEndOfTurn;
@@ -980,13 +975,11 @@ export function refreshAuraBonuses(state: GameState): GameState {
         // ledger if the Aura was carrying the
         // permanent-arm overlay's source-side stamp.
         if (nextAuraCopyEntry?.fromAura) {
-          const auraCard = state.cards.get(
-            nextAuraCopyEntry.fromAura,
-          );
+          const auraCard = state.cards.get(nextAuraCopyEntry.fromAura);
           if (auraCard) {
             const cleared = clearPermanentCopyOf(auraCard);
             if (cleared !== auraCard) {
-              cards ??= new Map(state.cards);
+              cards ??= acquireCardMap(state);
               cards.set(nextAuraCopyEntry.fromAura, cleared);
             }
           }
@@ -1080,10 +1073,7 @@ export function refreshAuraBonuses(state: GameState): GameState {
     // protection (the field would be empty), the
     // field is cleared (multi-cast semantic reverts
     // to the union).
-    if (
-      nextProtFromBySource &&
-      Object.keys(nextProtFromBySource).length > 0
-    ) {
+    if (nextProtFromBySource && Object.keys(nextProtFromBySource).length > 0) {
       updated.protectionFromBySource = nextProtFromBySource;
     } else if ("protectionFromBySource" in updated) {
       delete updated.protectionFromBySource;
@@ -1137,8 +1127,7 @@ export function refreshAuraBonuses(state: GameState): GameState {
       // stale and must be cleared.
       const freshEntry = (() => {
         for (const v of auraCopyOfTargetByEnchantedCard.values()) {
-          if (v.fromAura === auraId && v.until === "permanent")
-            return v;
+          if (v.fromAura === auraId && v.until === "permanent") return v;
         }
         return null;
       })();

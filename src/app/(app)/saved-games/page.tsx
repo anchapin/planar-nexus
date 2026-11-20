@@ -65,7 +65,7 @@ import {
   copyShareableLink,
   exportReplayToFile,
   canShareViaURL,
-} from "@/lib/replay-sharing";
+} from "@/lib/replay-share-link";
 import { useToast } from "@/hooks/use-toast";
 
 const formatDisplayNames: Record<string, string> = {
@@ -236,6 +236,11 @@ export default function SavedGamesPage() {
     // Issue #1817 — the engine's public API is the full barrel, so a
     // static import would drag the whole rules-engine chunk into this
     // route. Load it lazily at the only call site instead.
+    //
+    // Issue #2947 — the share helpers themselves now live in
+    // "@/lib/replay-share-link", which reaches the engine only through
+    // type-only imports and the "@/lib/game-state/lite" leaf, so this
+    // route no longer pulls the engine into its module graph at all.
     setPreparingShareId(game.id);
     try {
       const payload = await savedGamesManager.getSavedGamePayload(game.id);
@@ -252,7 +257,12 @@ export default function SavedGamesPage() {
         // Issue #1573 — the payload row stores `replayJson` in the `gzn:`
         // gzip envelope. Inflate first; legacy uncompressed rows pass
         // through the marker check unchanged.
-        const { decompressReplayJson } = await import("@/lib/game-state");
+        //
+        // Issue #2947 — load the *leaf* entry point, not the engine
+        // barrel: `decompressReplayJson` is a leaf helper, and pulling the
+        // barrel in here would drag the whole rules engine into this
+        // route's async chunk.
+        const { decompressReplayJson } = await import("@/lib/game-state/lite");
         const replayJson = await decompressReplayJson(payload.replayJson);
         const replay = JSON.parse(replayJson as string);
 

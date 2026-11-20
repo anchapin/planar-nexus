@@ -6,7 +6,12 @@
  * result is kept on the card and refreshed with the state-based-action pass,
  * because `getEffectivePower` and `hasKeyword` only see the card.
  */
-import type { CardInstance, CardInstanceId, GameState, PlayerId } from "../types";
+import type {
+  CardInstance,
+  CardInstanceId,
+  GameState,
+  PlayerId,
+} from "../types";
 import { getCardScript, getCardDataByName } from "../card-scripts/registry";
 import type {
   RuleStatic,
@@ -20,6 +25,7 @@ import {
   restorePermanentCopyOffBattlefield,
 } from "../pt-until-end-of-turn";
 import { returnEarthbentLands } from "./earthbend";
+import { acquireCardMap } from "../sba-pass-cards";
 import { getCardColors } from "../evergreen-keywords";
 import {
   buildStaticCopyChainSnapshot,
@@ -89,13 +95,9 @@ function rebuildTypeLineWithAddedSubtypes(
     dashIdx >= 0 ? input.slice(0, dashIdx).trim() : input.trim();
   let subtypesPortion = "";
   if (dashIdx >= 0) {
-    subtypesPortion = input
-      .slice(dashIdx + 1)
-      .trim();
+    subtypesPortion = input.slice(dashIdx + 1).trim();
   }
-  const printedSubtypes = subtypesPortion
-    .split(/\s+/)
-    .filter(Boolean);
+  const printedSubtypes = subtypesPortion.split(/\s+/).filter(Boolean);
   // Dedupe added subtypes against printed
   // (case-sensitive exact). Order-preserving.
   const merged = [
@@ -212,7 +214,11 @@ export function exiledCardTypes(
  * (#2594 follow-up, lane 36, Smaug, Tempest Djinn, Blanchwood Armor).
  * Returns 0 when `X` is unset.
  */
-function computeX(state: GameState, source: CardInstance, kind: string): number {
+function computeX(
+  state: GameState,
+  source: CardInstance,
+  kind: string,
+): number {
   if (kind === "treasures") {
     let n = 0;
     for (const card of battlefieldCards(state)) {
@@ -311,9 +317,7 @@ function computeAnthemScalingCount(
         per: "creatures" | "treasures" | "lands" | "other_creatures";
         perSubtype?: string;
         perCounter?: { counter: string; ordinal?: number } | undefined;
-        perCounterSummed?:
-          | { counter: string; ordinal?: number }
-          | undefined;
+        perCounterSummed?: { counter: string; ordinal?: number } | undefined;
       }
     | undefined,
   perCounter?:
@@ -412,14 +416,9 @@ function computeAnthemScalingCount(
       for (const c of allCounters) {
         if (seenTypes.has(c.type)) continue;
         seenTypes.add(c.type);
-        const ofType = allCounters.filter(
-          (x) => x.type === c.type,
-        );
+        const ofType = allCounters.filter((x) => x.type === c.type);
         const firstN = ofType.slice(0, pairOrdinal);
-        pairSum += firstN.reduce(
-          (acc, x) => acc + x.count,
-          0,
-        );
+        pairSum += firstN.reduce((acc, x) => acc + x.count, 0);
       }
       return pairSum;
     }
@@ -456,16 +455,15 @@ function computeAnthemScalingCount(
   let resolvedPerSubtype: string | undefined = perSubtype;
   if (perSubtype === "chosen") {
     resolvedPerSubtype =
-      source.chosenCreatureType !== null && source.chosenCreatureType !== undefined
+      source.chosenCreatureType !== null &&
+      source.chosenCreatureType !== undefined
         ? source.chosenCreatureType
         : undefined;
   }
   const subtypeLc = resolvedPerSubtype?.toLowerCase();
   const matchesSubtype = (card: CardInstance): boolean => {
     if (!subtypeLc) return true;
-    return (card.cardData.type_line ?? "")
-      .toLowerCase()
-      .includes(subtypeLc);
+    return (card.cardData.type_line ?? "").toLowerCase().includes(subtypeLc);
   };
   // The lane 32 `per` enum is a superset of the lane 36
   // `X` enum (`creatures` / `treasures` / `lands`) with
@@ -563,9 +561,7 @@ function computeAnthemScalingCount(
       // and ordinal resolution are independent of
       // the REPLACE arm (parallel structure).
       // Compute the state-derived count first.
-      let resolvedAndPerSubtypeForSum:
-        | string
-        | undefined = andPer.perSubtype;
+      let resolvedAndPerSubtypeForSum: string | undefined = andPer.perSubtype;
       if (andPer.perSubtype === "chosen") {
         resolvedAndPerSubtypeForSum =
           source.chosenCreatureType !== null &&
@@ -573,8 +569,7 @@ function computeAnthemScalingCount(
             ? source.chosenCreatureType
             : undefined;
       }
-      const andSubtypeLcSum =
-        resolvedAndPerSubtypeForSum?.toLowerCase();
+      const andSubtypeLcSum = resolvedAndPerSubtypeForSum?.toLowerCase();
       const matchesAndSubtypeSum = (card: CardInstance): boolean => {
         if (!andSubtypeLcSum) return true;
         return (card.cardData.type_line ?? "")
@@ -1149,7 +1144,7 @@ export function refreshScriptedStatics(input: GameState): GameState {
     let toughness = 0;
     const granted = new Set<string>();
     const additions = new Set<string>();
-    const colorAdds = new Set<"W"|"U"|"B"|"R"|"G">();
+    const colorAdds = new Set<"W" | "U" | "B" | "R" | "G">();
     // Wave 4.8 follow-up 5 lane 71 (#2614 follow-up): the
     // per-instance `protectionFrom` ledger for statics that
     // grant protection ("Creatures you control have
@@ -1323,8 +1318,7 @@ export function refreshScriptedStatics(input: GameState): GameState {
             // array, the per-entry form is engaged
             // (each entry is resolved independently).
             (stat.protectionFrom as readonly (string | string[])[]).some(
-              (entry) =>
-                entry === "chosen" || Array.isArray(entry),
+              (entry) => entry === "chosen" || Array.isArray(entry),
             )
           ) {
             // Per-entry mixed form (follow-up 27 lane
@@ -1358,43 +1352,38 @@ export function refreshScriptedStatics(input: GameState): GameState {
             // index (the index of the
             // nested array in the outer
             // `protectionFrom` array).
-            stat.protectionFrom.forEach(
-              (entry, pairIdx) => {
-                // The per-pair map
-                // takes PRECEDENCE over
-                // the single-instance
-                // `chosenProtectionFrom`
-                // field when set, the
-                // index is present, and
-                // the value is non-null.
-                const perPairMap =
-                  card.chosenProtectionFromPerPair;
-                const perPairValue =
-                  perPairMap && pairIdx in perPairMap
-                    ? perPairMap[pairIdx]
-                    : null;
-                const hasPerPairValue =
-                  perPairValue !== null &&
-                  perPairValue !== undefined;
-                if (entry === "chosen") {
-                  if (hasPerPairValue) {
-                    // Per-pair map wins
-                    // for this entry.
-                    resolved.push(perPairValue);
-                  } else if (
-                    card.chosenProtectionFrom !== null &&
-                    card.chosenProtectionFrom !== undefined
-                  ) {
-                    // Fallback to the
-                    // single-instance
-                    // field (the follow-up
-                    // 30 priority 5
-                    // semantic).
-                    resolved.push(
-                      card.chosenProtectionFrom,
-                    );
-                  }
-                } else if (Array.isArray(entry)) {
+            stat.protectionFrom.forEach((entry, pairIdx) => {
+              // The per-pair map
+              // takes PRECEDENCE over
+              // the single-instance
+              // `chosenProtectionFrom`
+              // field when set, the
+              // index is present, and
+              // the value is non-null.
+              const perPairMap = card.chosenProtectionFromPerPair;
+              const perPairValue =
+                perPairMap && pairIdx in perPairMap
+                  ? perPairMap[pairIdx]
+                  : null;
+              const hasPerPairValue =
+                perPairValue !== null && perPairValue !== undefined;
+              if (entry === "chosen") {
+                if (hasPerPairValue) {
+                  // Per-pair map wins
+                  // for this entry.
+                  resolved.push(perPairValue);
+                } else if (
+                  card.chosenProtectionFrom !== null &&
+                  card.chosenProtectionFrom !== undefined
+                ) {
+                  // Fallback to the
+                  // single-instance
+                  // field (the follow-up
+                  // 30 priority 5
+                  // semantic).
+                  resolved.push(card.chosenProtectionFrom);
+                }
+              } else if (Array.isArray(entry)) {
                 // Wave 4.8 follow-up 28 priority 2
                 // (#2614 follow-up): the
                 // array-aware entry shape (nested-
@@ -1486,11 +1475,11 @@ export function refreshScriptedStatics(input: GameState): GameState {
               } else {
                 resolved.push(entry);
               }
-              },
-            );
+            });
             resolvedProtFromQualities = resolved;
           } else {
-            resolvedProtFromQualities = stat.protectionFrom as readonly string[];
+            resolvedProtFromQualities =
+              stat.protectionFrom as readonly string[];
           }
           if (resolvedProtFromQualities !== null) {
             for (const q of resolvedProtFromQualities) protFrom.add(q);
@@ -1629,12 +1618,10 @@ export function refreshScriptedStatics(input: GameState): GameState {
     }
     if (power || toughness) pt.set(target.id, { power, toughness });
     if (granted.size > 0) kws.set(target.id, [...granted].sort());
-    if (additions.size > 0)
-      typeAdditions.set(target.id, [...additions].sort());
+    if (additions.size > 0) typeAdditions.set(target.id, [...additions].sort());
     if (colorAdds.size > 0)
       colorAdditions.set(target.id, [...colorAdds].sort());
-    if (protFrom.size > 0)
-      protFromById.set(target.id, [...protFrom].sort());
+    if (protFrom.size > 0) protFromById.set(target.id, [...protFrom].sort());
     // Wave 4.8 follow-up 25 lane 71 piece 1/N: stamp the
     // per-source ledger (`Record<sourceId, string[]>`) on
     // `protFromBySourceById` when the target has any
@@ -1656,10 +1643,7 @@ export function refreshScriptedStatics(input: GameState): GameState {
   // the source's per-instance `deathReplacement` ledger,
   // which `moveCardToZone`'s consult reads alongside
   // the lane 61a schema arm.
-  const deathReplacements = new Map<
-    string,
-    ScriptedReplacementEffect[]
-  >();
+  const deathReplacements = new Map<string, ScriptedReplacementEffect[]>();
   for (const { card, statics } of sources) {
     if (!card.controllerId) continue;
     const cardDrs: ScriptedReplacementEffect[] = [];
@@ -1727,7 +1711,6 @@ export function refreshScriptedStatics(input: GameState): GameState {
       grantedTriggersBySourceId.set(card.id, grantedList);
     }
   }
-
 
   let cards: GameState["cards"] | null = null;
   for (const [cardId, card] of state.cards) {
@@ -1828,10 +1811,7 @@ export function refreshScriptedStatics(input: GameState): GameState {
           }
           const n = [...(nextProtFromBySource[k] ?? [])].sort();
           const p = [...(prevProtFromBySource[k] ?? [])].sort();
-          if (
-            n.length !== p.length ||
-            !n.every((q, i) => q === p[i])
-          ) {
+          if (n.length !== p.length || !n.every((q, i) => q === p[i])) {
             sameProtFromBySource = false;
             break;
           }
@@ -1892,8 +1872,7 @@ export function refreshScriptedStatics(input: GameState): GameState {
           rebuildTypeLineWithAddedSubtypes(
             (card.permanentTypeOverlay?.cardData ?? card.cardData).type_line,
             [card.chosenCreatureType as string],
-          ) &&
-        card.permanentTypeOverlay?.source === card.id
+          ) && card.permanentTypeOverlay?.source === card.id
       : card.permanentTypeOverlay === undefined;
     // When the card has a `setByAura` overlay AND no
     // static-driven `become_copy` arm, the diff is
@@ -1922,7 +1901,8 @@ export function refreshScriptedStatics(input: GameState): GameState {
       grantedTriggersBySourceId.get(cardId) ?? [];
     const wasSelfGrantedTriggers_DIFF = card.grantedTriggers ?? [];
     const sameSelfGrantedTriggers =
-      nextSelfGrantedTriggers_DIFF.length === wasSelfGrantedTriggers_DIFF.length &&
+      nextSelfGrantedTriggers_DIFF.length ===
+        wasSelfGrantedTriggers_DIFF.length &&
       nextSelfGrantedTriggers_DIFF.every(
         (g, i) =>
           wasSelfGrantedTriggers_DIFF[i] &&
@@ -1971,7 +1951,7 @@ export function refreshScriptedStatics(input: GameState): GameState {
     // diff (P/T, keywords) on the next pass, but the
     // Aura overlay is preserved.
     if (auraOverlayActive) continue;
-    cards ??= new Map(state.cards);
+    cards ??= acquireCardMap(state);
     const updated = { ...card };
     if (nextPT) updated.scriptStaticPT = nextPT;
     else delete updated.scriptStaticPT;
@@ -1984,8 +1964,7 @@ export function refreshScriptedStatics(input: GameState): GameState {
     // these with the printed type line; absent means the
     // addition drops, which matches the natural
     // "battlefield-zone-only" semantics.
-    if (nextAdds && nextAdds.length > 0)
-      updated.chosenTypeAdditions = nextAdds;
+    if (nextAdds && nextAdds.length > 0) updated.chosenTypeAdditions = nextAdds;
     else delete updated.chosenTypeAdditions;
     // Wave 4.8 lane 55: clear `chosenColorAdditions` when
     // the source has left the battlefield. Same
@@ -2048,10 +2027,9 @@ export function refreshScriptedStatics(input: GameState): GameState {
         const printed = card.permanentTypeOverlay?.cardData ?? card.cardData;
         updated.cardData = {
           ...printed,
-          type_line: rebuildTypeLineWithAddedSubtypes(
-            printed.type_line,
-            [chosen],
-          ),
+          type_line: rebuildTypeLineWithAddedSubtypes(printed.type_line, [
+            chosen,
+          ]),
         };
         updated.permanentTypeOverlay = {
           cardData: printed,
@@ -2229,7 +2207,8 @@ export function refreshScriptedStatics(input: GameState): GameState {
           // `become_copy` arm).
           targetPrintedCardData =
             leafCardDataFromSnapshot ??
-            (target.animatedUntilEndOfTurn?.cardData ?? target.cardData);
+            target.animatedUntilEndOfTurn?.cardData ??
+            target.cardData;
           // The ledger stays as the IMMEDIATE target's
           // id (the source's `become_copy` references
           // the immediate target, not the leaf — the
@@ -2270,7 +2249,10 @@ export function refreshScriptedStatics(input: GameState): GameState {
           nextTargetLedger = `name:${nextCopyTarget.name}`;
         }
       }
-      if (targetPrintedCardData !== undefined && nextTargetLedger !== undefined) {
+      if (
+        targetPrintedCardData !== undefined &&
+        nextTargetLedger !== undefined
+      ) {
         // trace removed
         // Wave 4.8 follow-up 23 lane 70 piece 2a (#2614
         // follow-up): the "becomes a copy of [X] forever"
@@ -2332,10 +2314,7 @@ export function refreshScriptedStatics(input: GameState): GameState {
               keywords: targetPrintedCardData.keywords,
             },
           };
-          const stamped = setPermanentCopyOf(
-            overlaid,
-            nextTargetLedger,
-          );
+          const stamped = setPermanentCopyOf(overlaid, nextTargetLedger);
           cards.set(cardId, stamped);
           continue;
         }
@@ -2348,8 +2327,7 @@ export function refreshScriptedStatics(input: GameState): GameState {
         // `clearUntilEndOfTurnPT` rollback paths
         // restore the printed characteristics without
         // any additional wiring.
-        const printed =
-          card.animatedUntilEndOfTurn?.cardData ?? card.cardData;
+        const printed = card.animatedUntilEndOfTurn?.cardData ?? card.cardData;
         updated.animatedUntilEndOfTurn = {
           cardData: printed,
         };
@@ -2415,15 +2393,12 @@ export function refreshScriptedStatics(input: GameState): GameState {
         // `become_copy` overlays stack their
         // protection (the union semantics preserve
         // every leaf's contribution across refreshes).
-        const leafPerInstance =
-          copyChain.leafPerInstanceBySourceId.get(cardId);
+        const leafPerInstance = copyChain.leafPerInstanceBySourceId.get(cardId);
         if (
           leafPerInstance?.protectionFrom &&
           leafPerInstance.protectionFrom.length > 0
         ) {
-          leafProtFromById.set(cardId, [
-            ...leafPerInstance.protectionFrom,
-          ]);
+          leafProtFromById.set(cardId, [...leafPerInstance.protectionFrom]);
         } else {
           leafProtFromById.delete(cardId);
         }
@@ -2463,8 +2438,7 @@ export function refreshScriptedStatics(input: GameState): GameState {
         // target).
         const restored: CardInstance = {
           ...updated,
-          cardData:
-            card.permanentCopyPrintedCardData ?? card.cardData,
+          cardData: card.permanentCopyPrintedCardData ?? card.cardData,
         };
         const cleared = clearPermanentCopyOf(
           clearPermanentCopyPrintedCardData(restored),
@@ -2512,8 +2486,7 @@ export function refreshScriptedStatics(input: GameState): GameState {
       ) {
         const restored: CardInstance = {
           ...updated,
-          cardData:
-            card.permanentCopyPrintedCardData ?? card.cardData,
+          cardData: card.permanentCopyPrintedCardData ?? card.cardData,
         };
         const cleared = clearPermanentCopyOf(
           clearPermanentCopyPrintedCardData(restored),
@@ -2664,10 +2637,7 @@ export function refreshScriptedStatics(input: GameState): GameState {
     const nextSelfGrantedTriggers = grantedTriggersBySourceId.get(cardId);
     if (nextSelfGrantedTriggers && nextSelfGrantedTriggers.length > 0) {
       const existing = updated.grantedTriggers ?? [];
-      updated.grantedTriggers = [
-        ...existing,
-        ...nextSelfGrantedTriggers,
-      ];
+      updated.grantedTriggers = [...existing, ...nextSelfGrantedTriggers];
     }
     cards.set(cardId, updated);
   }
@@ -2720,8 +2690,7 @@ export function parsePrintedDeathReplacement(
   const matchesExileRedirect =
     /(?:would die|would be put into a graveyard).*(?:instead|exile)\s*it\b/.test(
       haystack,
-    ) ||
-    /yee die.*instead\s*exile\b/.test(haystack);
+    ) || /yee die.*instead\s*exile\b/.test(haystack);
   if (!matchesExileRedirect) return null;
   // Detect the controller qualifier — v1 minimum is
   // "creature you control". A bare "creature would die,

@@ -34,6 +34,10 @@ import {
   type TrainingSession,
 } from "@/ai/simulation/training-session";
 import { viewCardFor } from "@/ai/simulation/player-view";
+import {
+  OpponentHistoryTracker,
+  type OpponentHistorySummary,
+} from "@/ai/simulation/player-history";
 import type { BridgeCard, ForgeDecision } from "./forge-pointer-features";
 import type {
   ForgePointerModel,
@@ -79,6 +83,13 @@ export interface ForgeSearchOptions {
   /** Seed for the hidden-card deals (and the Gumbel draws). */
   seed?: number;
   /**
+   * How the final action is picked (manamind#106 rerank probe): the
+   * Gumbel score ("gumbel", default) or the value head's favorite
+   * among the visited candidates ("qargmax"), ties broken by visits
+   * then candidate order. Default is the historical pick.
+   */
+  pickRule?: "gumbel" | "qargmax";
+  /**
    * Gumbel MuZero root sampling (manamind#96): add Gumbel(0, 1) noise to the
    * root logits for the top-k pick and sequential halving, so `action` is a
    * varied draw that still plays the search's own pick. With 0 simulations
@@ -92,6 +103,17 @@ export interface ForgeSearchOptions {
    * deciding seat.
    */
   deckNames?: readonly [string, string];
+  /**
+   * Per-seat opponent-history summaries (manamind #44, schema v3). When
+   * set, every decision the search evaluates carries the deciding seat's
+   * summary as `opp_history`; a v3 model reads it, a v2 graph ignores it.
+   * Seat 0's entry is what seat 0 knows about seat 1, and the other way
+   * round; a missing seat falls back to no history.
+   */
+  oppHistories?: readonly [
+    OpponentHistorySummary | undefined,
+    OpponentHistorySummary | undefined,
+  ];
   /**
    * Leaf decisions per net call (issue #2728), default 16. A halving phase
    * deals its worlds in the seeded order regardless; this only decides how
@@ -129,6 +151,13 @@ export interface ForgeSearchResult {
   rootValue: number;
   simulations: number;
   evaluations: number;
+  /**
+   * Per-candidate raw value-head reads (manamind#106 rerank probe):
+   * the candidate's visit count and its mean leaf value over the
+   * dealt worlds, null when the search never visited it. Recording
+   * only: it changes no search behavior.
+   */
+  stats?: { visits: number; q: number | null }[];
 }
 
 function mulberry32(seed: number): () => number {
@@ -153,12 +182,40 @@ function softmax(logits: number[]): number[] {
 
 const sigmoid = (x: number) => 1 / (1 + Math.exp(-x));
 
+/**
+ * Seat-order opponent-history summaries at the current prompt (manamind
+ * #44). The deciding seat's tracker observes, diffing its opponent's
+ * public zones since that seat's last decision; the other seat's summary
+ * is read without diffing, so a seat's observations only advance when it
+ * decides.
+ */
+export function historiesFor(
+  session: TrainingSession,
+  seat: number,
+  trackers: readonly OpponentHistoryTracker[],
+): readonly [
+  OpponentHistorySummary | undefined,
+  OpponentHistorySummary | undefined,
+] {
+  const deciding = trackers[seat]?.observe(session.state);
+  const idle = trackers[seat === 0 ? 1 : 0]?.summary(session.state);
+  return [seat === 0 ? deciding : idle, seat === 1 ? deciding : idle];
+}
+
 /** The bridge decision for `prompt`, from its seat's point of view. */
 export function forgeDecision(
   session: TrainingSession,
   prompt: Live,
   /** Seat-order deck names; sets deck identity on the decision (manamind #96). */
   deckNames?: readonly [string, string],
+  /**
+   * Seat-order opponent-history summaries (manamind #44); the deciding
+   * seat's entry becomes the decision's `opp_history` (schema v3).
+   */
+  oppHistories?: readonly [
+    OpponentHistorySummary | undefined,
+    OpponentHistorySummary | undefined,
+  ],
 ): ForgeDecision {
   const viewer = prompt.playerId;
   const view = session.playerView(viewer);
@@ -198,11 +255,13 @@ export function forgeDecision(
       // The net has no head for engine choices; it still gives a value.
       decision = { ...view, t: "priority", options: [] };
   }
+  const seat = Array.from(session.state.players.keys()).indexOf(viewer);
   if (deckNames) {
-    const seat = Array.from(session.state.players.keys()).indexOf(viewer);
     decision.deck = seat === 0 ? deckNames[0] : deckNames[1];
     decision.opp_deck = seat === 0 ? deckNames[1] : deckNames[0];
   }
+  const history = oppHistories?.[seat];
+  if (history) decision.opp_history = history;
   return decision;
 }
 
@@ -297,9 +356,13 @@ export async function forgeCandidates(
   prompt: Live,
   model: ForgePointerModel,
   deckNames?: readonly [string, string],
+  oppHistories?: readonly [
+    OpponentHistorySummary | undefined,
+    OpponentHistorySummary | undefined,
+  ],
 ): Promise<{ candidates: ForgeCandidate[]; value: number }> {
   const out = await model.evaluate(
-    forgeDecision(session, prompt, deckNames),
+    forgeDecision(session, prompt, deckNames, oppHistories),
   );
   let raw: RawCandidate[];
   switch (prompt.kind) {
@@ -370,7 +433,9 @@ export async function forgeSearch(
     seed = 0,
     gumbel = false,
     deckNames,
+    oppHistories,
     batchSize = DEFAULT_BATCH_SIZE,
+    pickRule,
   } = options;
   const prompt = session.legalChoices();
   if (prompt.kind === "game_over") throw new Error("the game is over");
@@ -381,6 +446,7 @@ export async function forgeSearch(
     prompt,
     model,
     deckNames,
+    oppHistories,
   );
   let evaluations = 1;
   const count = candidates.length;
@@ -449,7 +515,7 @@ export async function forgeSearch(
       evaluations++;
       return {
         candidate: i,
-        decision: forgeDecision(session, next, deckNames),
+        decision: forgeDecision(session, next, deckNames, oppHistories),
         sign: next.playerId === player ? 1 : -1,
       };
     } catch (err) {
@@ -557,6 +623,24 @@ export async function forgeSearch(
     const noisy = score(true);
     let best = remaining[0];
     for (const i of remaining) if (noisy[i] > noisy[best]) best = i;
+    if (pickRule === "qargmax") {
+      // manamind#106: play the value head's favorite among the visited
+      // candidates instead of the Gumbel pick.
+      let arg = -1;
+      let argQ = -Infinity;
+      let argV = -1;
+      for (let i = 0; i < count; i++) {
+        const v = visits[i];
+        if (v === 0 || illegal[i]) continue;
+        const q = totals[i] / v;
+        if (q > argQ || (q === argQ && v > argV)) {
+          arg = i;
+          argQ = q;
+          argV = v;
+        }
+      }
+      if (arg >= 0) best = arg;
+    }
     const final = score(false);
     const target = targetOf(completedQ());
     if (illegal[best]) {
@@ -573,6 +657,10 @@ export async function forgeSearch(
       rootValue,
       simulations: used,
       evaluations,
+      stats: visits.map((v, i) => ({
+        visits: v,
+        q: v > 0 ? totals[i] / v : null,
+      })),
     };
   } finally {
     session.restore(root);

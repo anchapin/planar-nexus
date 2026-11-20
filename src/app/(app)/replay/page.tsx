@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getReplayFromCurrentURL } from "@/lib/replay-sharing";
 import { type Replay } from "@/lib/game-state";
 import Link from "next/link";
 
@@ -28,28 +27,43 @@ export default function ReplayPage() {
   const [isPlaying, setIsPlaying] = useState(false);
 
   useEffect(() => {
-    // Try to get replay from URL
-    const urlReplay = getReplayFromCurrentURL();
+    let cancelled = false;
 
-    if (urlReplay) {
-      setReplay(urlReplay);
-      setCurrentPosition(urlReplay.currentPosition);
+    (async () => {
+      // Lazy-load replay-sharing: it pulls the game-state engine in at
+      // runtime, and keeping it out of this route's First Load JS is what
+      // holds /replay inside its bundle budget (#1814). The page shows its
+      // loading state until the module arrives.
+      const { getReplayFromCurrentURL } = await import("@/lib/replay-sharing");
+      if (cancelled) return;
+
+      // Try to get replay from URL
+      const urlReplay = getReplayFromCurrentURL();
+
+      if (urlReplay) {
+        setReplay(urlReplay);
+        setCurrentPosition(urlReplay.currentPosition);
+        setLoading(false);
+        return;
+      }
+
+      // If no replay in URL, check if there's a replay ID in the path
+      const pathParts = window.location.pathname.split("/");
+      const replayId = pathParts[pathParts.length - 1];
+
+      if (replayId && replayId !== "replay") {
+        // Would fetch from server in production
+        setError("Replay not found. The link may have expired.");
+      } else {
+        setError("No replay data found. Please check your link.");
+      }
+
       setLoading(false);
-      return;
-    }
+    })();
 
-    // If no replay in URL, check if there's a replay ID in the path
-    const pathParts = window.location.pathname.split("/");
-    const replayId = pathParts[pathParts.length - 1];
-
-    if (replayId && replayId !== "replay") {
-      // Would fetch from server in production
-      setError("Replay not found. The link may have expired.");
-    } else {
-      setError("No replay data found. Please check your link.");
-    }
-
-    setLoading(false);
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handlePrevious = () => {

@@ -11,6 +11,7 @@
  */
 import type { CardInstance, GameState } from "../types";
 import { getCardScript } from "../card-scripts/registry";
+import { acquireCardMap } from "../sba-pass-cards";
 
 function isEquipment(card: CardInstance): boolean {
   return (card.cardData.type_line ?? "").toLowerCase().includes("equipment");
@@ -75,7 +76,7 @@ export function refreshEquipmentBonuses(state: GameState): GameState {
     ) {
       continue;
     }
-    cards ??= new Map(state.cards);
+    cards ??= acquireCardMap(state);
     const updated = { ...card };
     if (next && (next.power || next.toughness)) updated.equipmentPT = next;
     else delete updated.equipmentPT;

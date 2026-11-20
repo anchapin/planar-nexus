@@ -16,7 +16,8 @@ import {
 } from "@/ai/simulation/training-session";
 import type { ForgePointerModel } from "./forge-pointer-model";
 import { deckName } from "./forge-selfplay";
-import { forgeSearch } from "./forge-search";
+import { forgeSearch, historiesFor } from "./forge-search";
+import { OpponentHistoryTracker } from "@/ai/simulation/player-history";
 
 type Live = Exclude<
   ReturnType<TrainingSession["legalChoices"]>,
@@ -96,6 +97,9 @@ export async function playGateGame(
   const pick = options.pick ?? (sample ? "sample" : "greedy");
   const session = new TrainingSession({ maxTurns });
   const seats = session.reset(seed, deckA, deckB);
+  // Per-seat opponent-history trackers (manamind #44), observed at every
+  // decision so both models see the same seat knowledge (schema v3).
+  const trackers = seats.map((seat) => new OpponentHistoryTracker(seat));
   const deckNames = [
     deckAName ?? deckName(deckA),
     deckBName ?? deckName(deckB),
@@ -107,11 +111,13 @@ export async function playGateGame(
     const seat = seats.indexOf(prompt.playerId);
     const mine = seat === candidateSeat;
     if (options.onDecision) await options.onDecision(session, prompt, mine);
+    const oppHistories = historiesFor(session, seat, trackers);
     const r = await forgeSearch(session, mine ? candidate : baseline, {
       simulations: mine ? simulations : baselineSimulations,
       gumbel: pick === "gumbel",
       seed: (seed * 7919 + move) >>> 0,
       deckNames,
+      oppHistories,
     });
     let action = r.action;
     if (pick === "sample" && r.candidates.length > 1) {

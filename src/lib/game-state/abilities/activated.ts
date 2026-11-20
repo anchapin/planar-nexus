@@ -3,6 +3,7 @@ import { fireTargetedTriggers } from "../keyword-actions/targeted";
 import type {
   CardInstance,
   GameState,
+  Player,
   PlayerId,
   CardInstanceId,
   StackObject,
@@ -11,10 +12,7 @@ import { Phase, ZoneType } from "../types";
 import { isPriorityPlayer } from "../priority-guard";
 import { hasSplitSecondOnStack } from "../auto-pass-priority";
 import { isManaAbility, spendMana, addMana } from "../mana";
-import {
-  parseManaFromEffect,
-  substituteChosenColorInEffect,
-} from "./mana";
+import { parseManaFromEffect, substituteChosenColorInEffect } from "./mana";
 import { destroyCard, discardCards, exileCard } from "../keyword-actions";
 import {
   findNamedCardInHand,
@@ -251,7 +249,8 @@ export function canActivateAbility(
   ) {
     return {
       canActivate: false,
-      reason: "Activated abilities of sources with the chosen name can't be activated",
+      reason:
+        "Activated abilities of sources with the chosen name can't be activated",
     };
   }
 
@@ -453,18 +452,61 @@ export function activateAbility(
     }
   }
 
-  let currentState = state;
+  // #2927: ONE working cards map and ONE working players map are owned by
+  // this activation call. The six per-cost-step `new Map(...)` copies this
+  // function used to make are gone: every cost step writes into the working
+  // maps in place.
+  //
+  // Ownership discipline (the same contract #2419 introduced for the SBA
+  // pass and #2923 for the combat-damage resolution):
+  //
+  //  - the caller's input maps are NEVER mutated: the working maps start as
+  //    copies and are only written into after that,
+  //  - the working maps are published into the threaded state before every
+  //    helper call, so a helper that copies a map copies the working copy
+  //    (never the caller's map),
+  //  - a helper that returns its own fresh map has that map adopted as the
+  //    working map (`adoptMaps`), so exactly one live map per collection
+  //    exists for the whole activation.
+  const inputCards = state.cards;
+  const inputPlayers = state.players;
+  let workingCards: Map<CardInstanceId, CardInstance> = new Map(state.cards);
+  let workingPlayers: Map<PlayerId, Player> = new Map(state.players);
+  let currentState: GameState = {
+    ...state,
+    cards: workingCards,
+    players: workingPlayers,
+  };
+
+  /**
+   * Adopt the maps of a helper-returned state as the working maps.
+   *
+   * Helpers (spendMana, destroyCard, exileCard, discardCards, addMana,
+   * fireTargetedTriggers, ...) copy the map they are given. That copy
+   * already carries every change made so far, so it is taken over instead
+   * of copying the map yet again. The caller's input maps are never
+   * adopted, so they can never be mutated by this call.
+   */
+  const adoptMaps = (next: GameState): GameState => {
+    if (next.cards !== inputCards) workingCards = next.cards;
+    if (next.players !== inputPlayers) workingPlayers = next.players;
+    currentState = {
+      ...next,
+      cards: workingCards,
+      players: workingPlayers,
+    };
+    return currentState;
+  };
 
   if (ability.costs.tap) {
     const updatedCard = {
       ...card,
       isTapped: true,
     };
-    const updatedCards = new Map(currentState.cards);
-    updatedCards.set(cardId, updatedCard);
+    workingCards.set(cardId, updatedCard);
     currentState = {
       ...currentState,
-      cards: updatedCards,
+      cards: workingCards,
     };
   }
 
@@ -496,7 +538,8 @@ export function activateAbility(
         error: "Not enough mana",
       };
     }
-    currentState = manaResult.state;
+    // #2927: adopt the helper's fresh maps instead of copying them again.
+    currentState = adoptMaps(manaResult.state);
   }
 
   if (ability.costs.payLife > 0) {
@@ -513,11 +556,10 @@ export function activateAbility(
       ...player,
       life: player.life - ability.costs.payLife,
     };
-    const updatedPlayers = new Map(currentState.players);
-    updatedPlayers.set(playerId, updatedPlayer);
+    workingPlayers.set(playerId, updatedPlayer);
     currentState = {
       ...currentState,
-      players: updatedPlayers,
+      players: workingPlayers,
     };
   }
 
@@ -538,14 +580,15 @@ export function activateAbility(
     }
     for (const id of ids.slice(0, count)) {
       const result = destroyCard(currentState, id, true);
-      if (result.success) currentState = result.state;
+      // #2927: adopt the helper's fresh maps instead of copying them again.
+      if (result.success) currentState = adoptMaps(result.state);
     }
   }
 
   if (ability.costs.sacrifice) {
     const result = destroyCard(currentState, cardId, true);
     if (result.success) {
-      currentState = result.state;
+      currentState = adoptMaps(result.state);
     }
   }
 
@@ -568,7 +611,8 @@ export function activateAbility(
         error: "Failed to exile the source as part of the activation cost.",
       };
     }
-    currentState = result.state;
+    // #2927: adopt the helper's fresh maps instead of copying them again.
+    currentState = adoptMaps(result.state);
   }
 
   const namedDiscardCost = getDiscardNamedCost(ability.costs.additionalCosts);
@@ -589,14 +633,16 @@ export function activateAbility(
     }
     const result = discardCards(currentState, playerId, 1, false, [discardId]);
     if (result.success) {
-      currentState = result.state;
+      // #2927: adopt the helper's fresh maps instead of copying them again.
+      currentState = adoptMaps(result.state);
     }
   }
 
   if (ability.costs.discard) {
     const result = discardCards(currentState, playerId, 1, false);
     if (result.success) {
-      currentState = result.state;
+      // #2927: adopt the helper's fresh maps instead of copying them again.
+      currentState = adoptMaps(result.state);
     }
   }
 
@@ -609,12 +655,11 @@ export function activateAbility(
         source.activatedThisTurn?.turn === turn
           ? source.activatedThisTurn.abilities
           : [];
-      const cards = new Map(currentState.cards);
-      cards.set(cardId, {
+      workingCards.set(cardId, {
         ...source,
         activatedThisTurn: { turn, abilities: [...prior, abilityIndex] },
       });
-      currentState = { ...currentState, cards };
+      currentState = { ...currentState, cards: workingCards };
     }
   }
 
@@ -625,15 +670,14 @@ export function activateAbility(
   ) {
     const source = currentState.cards.get(cardId);
     if (source) {
-      const cards = new Map(currentState.cards);
-      cards.set(cardId, {
+      workingCards.set(cardId, {
         ...source,
         activatedOnceAbilities: [
           ...(source.activatedOnceAbilities ?? []),
           abilityIndex,
         ],
       });
-      currentState = { ...currentState, cards };
+      currentState = { ...currentState, cards: workingCards };
     }
   }
 
@@ -645,13 +689,13 @@ export function activateAbility(
     // `chosenColor` yet — the activation then produces no mana.
     const parsedMana = parseManaFromEffect(substitutedEffect);
     if (Object.keys(parsedMana).length > 0) {
-      currentState = addMana(currentState, playerId, parsedMana);
+      // #2927: adopt the helper's fresh maps instead of copying them again.
+      currentState = adoptMaps(addMana(currentState, playerId, parsedMana));
     }
 
-    const updatedPlayers = new Map(currentState.players);
-    const player = updatedPlayers.get(playerId);
+    const player = workingPlayers.get(playerId);
     if (player) {
-      updatedPlayers.set(playerId, {
+      workingPlayers.set(playerId, {
         ...player,
         hasActivatedManaAbility: true,
       });
@@ -661,7 +705,7 @@ export function activateAbility(
       success: true,
       state: {
         ...currentState,
-        players: updatedPlayers,
+        players: workingPlayers,
         lastModifiedAt: Date.now(),
       },
       description: `Activated ${card.cardData.name}'s mana ability`,
@@ -735,7 +779,10 @@ export function activateAbility(
       lastModifiedAt: Date.now(),
     };
     // "Becomes the target" triggers (#2614 Surrak) for targets picked now.
-    cardMovedState = fireTargetedTriggers(cardMovedState, stackObject);
+    // #2927: adopt the helper's fresh maps instead of copying them again.
+    cardMovedState = adoptMaps(
+      fireTargetedTriggers(cardMovedState, stackObject),
+    );
   }
 
   const playerIds = Array.from(cardMovedState.players.keys());
@@ -743,10 +790,9 @@ export function activateAbility(
   const nextIndex = (currentIndex + 1) % playerIds.length;
   const nextPlayerId = playerIds[nextIndex];
 
-  const updatedPlayers = new Map(cardMovedState.players);
-  const player = updatedPlayers.get(playerId);
+  const player = workingPlayers.get(playerId);
   if (player) {
-    updatedPlayers.set(playerId, {
+    workingPlayers.set(playerId, {
       ...player,
       hasPassedPriority: false,
     });
@@ -756,7 +802,8 @@ export function activateAbility(
     success: true,
     state: {
       ...cardMovedState,
-      players: updatedPlayers,
+      cards: workingCards,
+      players: workingPlayers,
       priorityPlayerId: nextPlayerId,
       consecutivePasses: 0,
       lastModifiedAt: Date.now(),

@@ -6,7 +6,7 @@
  */
 
 import { scriptRuleActive } from "../keyword-actions/scripted-statics";
-import type { GameState, CardInstanceId, PlayerId } from "../types";
+import type { GameState, CardInstanceId, Player, PlayerId } from "../types";
 import { Phase, isOnBattlefield } from "../types";
 import { isCreature, getPower } from "../card-instance";
 import { dealDamageToCard } from "../keyword-actions";
@@ -54,7 +54,58 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
   const currentPhase = state.turn.currentPhase;
   const isFirstStrikeStep = currentPhase === Phase.COMBAT_DAMAGE_FIRST_STRIKE;
 
-  let updatedState = { ...state };
+  // Issue #2919: ONE working copy of the players map for this resolution.
+  //
+  // The engine copies the whole players map on every player-affecting event
+  // (a fresh copy of the threaded players map). This function used to do that
+  // seven
+  // times per resolution (infect/toxic defender update, normal-damage
+  // defender update, toxic follow-up, lifelink controller update, blocker
+  // lifelink controller update and the two trample-excess defender
+  // updates), which allocated a fresh map per event for a map that only ever
+  // holds a handful of players.
+  //
+  // Ownership discipline (the contract introduced by `sba-pass-cards.ts` for
+  // the card map in issue #2884):
+  //
+  //  - The caller's input map is NEVER mutated: we take a single working
+  //    copy up front and only ever write into that copy.
+  //  - The working map is published into the threaded state BEFORE any call
+  //    that reads `state.players` through another helper (`dealDamageToCard`,
+  //    `dealCommanderDamage`, `scriptRuleActive`, `checkStateBasedActions`,
+  //    trigger detection), so no helper ever observes a stale players map.
+  //  - A helper that returns a state carrying its own players copy (e.g.
+  //    `dealCommanderDamage`) has that copy absorbed into the working map,
+  //    so exactly one live players map exists for the whole resolution.
+  //  - The working map is never mutated after it has been published to the
+  //    caller, so the returned state stays an ordinary immutable snapshot.
+  const workingPlayers: Map<PlayerId, Player> = new Map(state.players);
+  let updatedState: GameState = { ...state, players: workingPlayers };
+
+  /**
+   * Publish the working players map into the threaded state so the next
+   * helper call sees the current player objects.
+   */
+  const publishPlayers = (): void => {
+    updatedState = { ...updatedState, players: workingPlayers };
+  };
+
+  /**
+   * Adopt the players map of a helper-returned state into the working map.
+   *
+   * Helpers that copy the players map (`dealCommanderDamage`) return a state
+   * whose players map is a *different* object. Absorbing its entries keeps a
+   * single live map for the resolution without copying the map again.
+   */
+  const absorbPlayers = (next: GameState): GameState => {
+    if (next.players !== workingPlayers) {
+      for (const [playerId, player] of next.players) {
+        workingPlayers.set(playerId, player);
+      }
+    }
+    return { ...next, players: workingPlayers };
+  };
+
   const damageEvents: string[] = [];
   // Attackers that dealt combat damage to a player this step, for
   // "whenever this creature deals combat damage to a player" (#2428).
@@ -178,13 +229,11 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
               };
             }
 
-            updatedState = {
-              ...updatedState,
-              players: new Map(updatedState.players).set(
-                attacker.defenderId as PlayerId,
-                updatedDefender,
-              ),
-            };
+            workingPlayers.set(
+              attacker.defenderId as PlayerId,
+              updatedDefender,
+            );
+            publishPlayers();
 
             if (attackerToxicLevel > 0) {
               damageEvents.push(
@@ -197,16 +246,11 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
             }
           } else {
             // Normal damage - applies as life loss
-            updatedState = {
-              ...updatedState,
-              players: new Map(updatedState.players).set(
-                attacker.defenderId as PlayerId,
-                {
-                  ...defender,
-                  life: Math.max(0, defender.life - damage),
-                },
-              ),
-            };
+            workingPlayers.set(attacker.defenderId as PlayerId, {
+              ...defender,
+              life: Math.max(0, defender.life - damage),
+            });
+            publishPlayers();
 
             // Toxic gives additional poison counters per CR 702.95
             if (attackerToxicLevel > 0) {
@@ -218,13 +262,11 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
                 poisonCounters:
                   currentDefender.poisonCounters + attackerToxicLevel,
               };
-              updatedState = {
-                ...updatedState,
-                players: new Map(updatedState.players).set(
-                  attacker.defenderId as PlayerId,
-                  updatedDefender,
-                ),
-              };
+              workingPlayers.set(
+                attacker.defenderId as PlayerId,
+                updatedDefender,
+              );
+              publishPlayers();
               damageEvents.push(
                 `${attackerCard.cardData.name} deals ${damage} to ${defender.name} and ${attackerToxicLevel} toxic poison`,
               );
@@ -237,6 +279,10 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
 
           // Track commander damage if applicable
           if (isAttackerCommander) {
+            // Publish the working players map first: `dealCommanderDamage`
+            // reads the defender from `state.players` and returns a state
+            // carrying its own players copy, which is absorbed below.
+            publishPlayers();
             const commanderDamageResult = dealCommanderDamage(
               updatedState,
               attacker.cardId,
@@ -244,7 +290,7 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
               damage,
             );
             if (commanderDamageResult.success) {
-              updatedState = commanderDamageResult.state;
+              updatedState = absorbPlayers(commanderDamageResult.state);
               if (commanderDamageResult.playerLost) {
                 damageEvents.push(
                   `${attackerCard.cardData.name} dealt lethal commander damage to ${defender.name}`,
@@ -262,16 +308,11 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
               attackerCard.controllerId,
             );
             if (attackerController) {
-              updatedState = {
-                ...updatedState,
-                players: new Map(updatedState.players).set(
-                  attackerCard.controllerId!,
-                  {
-                    ...attackerController,
-                    life: attackerController.life + damage,
-                  },
-                ),
-              };
+              workingPlayers.set(attackerCard.controllerId!, {
+                ...attackerController,
+                life: attackerController.life + damage,
+              });
+              publishPlayers();
             }
             damageEvents.push(
               `${attackerCard.cardData.name} deals ${damage} to ${defender.name} and controller gains ${damage} life`,
@@ -356,16 +397,11 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
             blockerCard.controllerId,
           );
           if (blockerController) {
-            updatedState = {
-              ...updatedState,
-              players: new Map(updatedState.players).set(
-                blockerCard.controllerId!,
-                {
-                  ...blockerController,
-                  life: blockerController.life + damage,
-                },
-              ),
-            };
+            workingPlayers.set(blockerCard.controllerId!, {
+              ...blockerController,
+              life: blockerController.life + damage,
+            });
+            publishPlayers();
           }
         }
         damageEvents.push(
@@ -415,13 +451,11 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
                 poisonCounters:
                   defender.poisonCounters + remainingDamage + infectToxicLevel,
               };
-              updatedState = {
-                ...updatedState,
-                players: new Map(updatedState.players).set(
-                  attacker.defenderId as PlayerId,
-                  updatedDefender,
-                ),
-              };
+              workingPlayers.set(
+                attacker.defenderId as PlayerId,
+                updatedDefender,
+              );
+              publishPlayers();
               damageEvents.push(
                 infectToxicLevel > 0
                   ? `${attackerCard.cardData.name} tramples ${remainingDamage} poison to ${defender.name} and ${infectToxicLevel} toxic poison`
@@ -441,13 +475,11 @@ export function resolveCombatDamage(state: GameState): CombatActionResult {
                   poisonCounters: updatedDefender.poisonCounters + toxicLevel,
                 };
               }
-              updatedState = {
-                ...updatedState,
-                players: new Map(updatedState.players).set(
-                  attacker.defenderId as PlayerId,
-                  updatedDefender,
-                ),
-              };
+              workingPlayers.set(
+                attacker.defenderId as PlayerId,
+                updatedDefender,
+              );
+              publishPlayers();
               damageEvents.push(
                 toxicLevel > 0
                   ? `${attackerCard.cardData.name} tramples ${remainingDamage} to ${defender.name} and ${toxicLevel} toxic poison`

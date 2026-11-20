@@ -8,6 +8,7 @@
  * the same way threshold bonuses are.
  */
 import type { CardInstance, GameState, PlayerId } from "../types";
+import { acquireCardMap } from "../sba-pass-cards";
 
 export const BASIC_LAND_TYPES = [
   "Plains",
@@ -93,7 +94,7 @@ export function refreshDomainPower(state: GameState): GameState {
       cache.set(controller, value);
     }
     if (card.domainPower === value) continue;
-    cards ??= new Map(state.cards);
+    cards ??= acquireCardMap(state);
     cards.set(cardId, { ...card, domainPower: value });
   }
   return cards ? { ...state, cards } : state;

@@ -153,6 +153,7 @@ export function createCardInstance(
     // (`enter_choice: { kind: "protection_quality" }`)
     // stamps this via `resolveEnterChoice`.
     chosenProtectionFrom: null,
+    chosenPlayer: null,
     isToken: options.isToken || false,
     tokenData: options.isToken ? (cardData as unknown as ScryfallCard) : null,
     attackedLastTurn: false,

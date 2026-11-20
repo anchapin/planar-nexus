@@ -420,6 +420,7 @@ The authoritative list is `ls .github/workflows/`:
 - `.github/workflows/coverage-ratchet.yml` - Auto-bumps Jest coverage floors on merge to main
 - `.github/workflows/mobile-build.yml` - Mobile application builds (iOS/Android)
 - `.github/workflows/mutation.yml` - Nightly full mutation-testing suite (all modules)
+- `.github/workflows/nightly.yml` - Nightly cross-browser E2E (firefox + webkit), moved out of `ci.yml` in #2365 so a red cross-browser run no longer reads as a red default-branch CI suite
 - `.github/workflows/release.yml` - Desktop application builds (Windows/macOS/Linux)
 - `.github/workflows/stubs-inventory.yml` - Stub inventory gate
 - `.github/workflows/video-derived-tests.yml` - Video-derived fixture tests (triggered by game-state changes)
@@ -449,8 +450,18 @@ Jobs (PR path):
   - build (Next.js production build — the aggregation gate)
 Nightly (schedule):
   - flake-detector (5-run Playwright flake detection)
-  - cross-browser-e2e (firefox + webkit)
+  - jest-flake-detector (5-run Jest flake detection)
+
+Pre-merge flake signal (path-filtered, non-blocking):
+  - .github/workflows/pr-flake-detector.yml - Jest + Playwright flake
+    detection on PRs that touch the paths each detector exercises (#2365)
 ```
+
+The cross-browser E2E job (`Cross-Browser E2E (firefox + webkit)`) moved to
+`.github/workflows/nightly.yml` (#2365). It keeps the same triggers (nightly
+schedule, `workflow_dispatch`, push to `main`) and the same steps; it is no
+longer part of the `ci.yml` workflow whose red state is read as the health of
+the default branch. Per-PR CI remains chromium-only (#1595).
 
 ### Release Workflow (desktop builds — release.yml)
 

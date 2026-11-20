@@ -1,0 +1,367 @@
+/**
+ * Card-script fine-tuning dataset export (#2551, step 1: dataset export).
+ *
+ * Every card script this repo has accepted (the hand-written and reviewed
+ * ones under `src/lib/game-state/card-scripts/cards/`) is an oracle-text ->
+ * script-JSON pair, which is exactly one SFT example. This module turns
+ * those scripts into ETF records (brewery-ai's "Empero Trace Format", v1)
+ * and keeps the #2514 bake-off gold set out of the training split.
+ *
+ * ETF shape (one JSON object per line, `.jsonl`):
+ *
+ *   {"etf": 1,
+ *    "id": "bilbos_deadly_slice",
+ *    "system": "<the drafting prompt's op-set description>",
+ *    "messages": [{"role": "user", "content": "<oracle text>"},
+ *                 {"role": "assistant", "content": "{\"script\": <script JSON>}"}],
+ *    "user": "<oracle text>",
+ *    "assistant": "{\"script\": <script JSON>}",
+ *    "meta": {"source": "local:card-scripts", "license": "MIT",
+ *             "tags": ["card-scripts", "sft", "train"]}}
+ *
+ * - `messages` is the ETF trace record (#2551 links brewery-ai's
+ *   `docs/etf.md`); `system` is ETF's shorthand for a leading system
+ *   message, and `user`/`assistant` repeat the two turns at the top level
+ *   so a plain `jq '.user, .assistant'` check works on the file. ETF ignores
+ *   unknown fields, so the extra copies are harmless.
+ * - `system` is the drafting prompt's op-set description, reused verbatim
+ *   from `draft-lib.ts` (`buildSystemPrompt`) — never a second copy of it.
+ * - `user` is the oracle text the script was written against.
+ * - `assistant` is the *drafting reply* — the same envelope the system
+ *   prompt asks for and the same one `judgeReply` accepts:
+ *   `{"script": {...}}` (or `{"needs_new_op": [...]}` for a card the op set
+ *   cannot express). The script inside it validates against
+ *   `CardScriptSchema` — the same validator the drafting pipeline uses.
+ *
+ * The assistant turn is the drafting reply envelope, not the bare script
+ * object (#2914): the export's own system prompt tells the model to reply
+ * with `{"script": ...}` or `{"needs_new_op": [...]}`, and `judgeReply`
+ * rejects any reply without that envelope ("reply has neither \"script\"
+ * nor \"needs_new_op\""). A model fine-tuned on bare scripts therefore
+ * scored zero against the stock bake-off judge, so the training format and
+ * the judge now agree: the assistant turn is exactly what the judge wants
+ * to read.
+ *
+ * No Forge scripts are ever used: the source of every example is this
+ * repo's own JSON.
+ */
+import {
+  CardScriptSchema,
+  type CardScript,
+} from "../../src/lib/game-state/card-scripts/schema";
+
+/** One ETF record: a system prompt plus a user/assistant turn. */
+export interface EtfRecord {
+  etf: 1;
+  id: string;
+  system: string;
+  messages: Array<{ role: "user" | "assistant"; content: string }>;
+  user: string;
+  assistant: string;
+  meta: {
+    source: string;
+    license: string;
+    tags: string[];
+  };
+}
+
+export type DatasetSplit = "train" | "eval";
+
+export interface Dataset {
+  train: EtfRecord[];
+  eval: EtfRecord[];
+}
+
+/** Stable, file-name-like id for a card name. */
+export function slugId(name: string): string {
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "") || "card"
+  );
+}
+
+/** Stable, file-name-like id for a card script. */
+export function recordId(script: CardScript): string {
+  return slugId(script.name);
+}
+
+/**
+ * The assistant turn of a record: the drafting reply envelope
+ * `{"script": {...}}` — the format the system prompt asks for and the one
+ * `judgeReply` accepts.
+ */
+export function toReplyText(script: CardScript): string {
+  return JSON.stringify({ script });
+}
+
+/**
+ * The ETF record for one card script. `system` is the shared op-set
+ * description; the user turn is the oracle text; the assistant turn is the
+ * drafting reply (`{"script": ...}`).
+ */
+export function toEtfRecord(
+  script: CardScript,
+  system: string,
+  split: DatasetSplit,
+): EtfRecord {
+  const user = script.oracle;
+  const assistant = toReplyText(script);
+  return {
+    etf: 1,
+    id: recordId(script),
+    system,
+    messages: [
+      { role: "user", content: user },
+      { role: "assistant", content: assistant },
+    ],
+    user,
+    assistant,
+    meta: {
+      source: "local:card-scripts",
+      license: "MIT",
+      tags: ["card-scripts", "sft", split],
+    },
+  };
+}
+
+/**
+ * The bake-off card list, split the way the export needs it: the `gold`
+ * cards are the eval split (cards this repo scripts by hand), the `new`
+ * cards are the bake-off cards this repo has no script for. Both sets are
+ * held out of the training split (#2915): a card the bake-off scores
+ * against must never be trained on, whether the repo scripts it by hand
+ * (gold) or not at all (new).
+ */
+export interface BakeoffNames {
+  /** The bake-off gold set: the eval split. */
+  gold: string[];
+  /** The bake-off 'new' set: held out of train, never in eval. */
+  new: string[];
+}
+
+/** Every bake-off card name (gold and new): none of them may reach train. */
+export function bakeoffHeldOutNames(list: BakeoffNames): string[] {
+  return [...list.gold, ...list.new];
+}
+
+/**
+ * Parses the bake-off card list (`scripts/data/bakeoff-cards.json`): the
+ * `gold` names and the `new` names. Throws when the list is malformed.
+ */
+export function parseBakeoffNames(raw: unknown): BakeoffNames {
+  const list = (raw ?? {}) as {
+    gold?: unknown;
+    new?: unknown;
+  };
+  if (!Array.isArray(list.gold)) {
+    throw new Error(`bake-off card list has no "gold" list`);
+  }
+  const gold = list.gold.map((n) => {
+    if (typeof n !== "string" || !n.trim()) {
+      throw new Error(`bake-off card list has a bad "gold" entry: ${n}`);
+    }
+    return n.trim();
+  });
+  const newNames: string[] = [];
+  if (list.new !== undefined) {
+    if (!Array.isArray(list.new)) {
+      throw new Error(`bake-off card list has no "new" list`);
+    }
+    for (const entry of list.new) {
+      const name = (entry as { name?: unknown })?.name;
+      if (typeof name !== "string" || !name.trim()) {
+        throw new Error(`bake-off card list has a bad "new" entry: ${entry}`);
+      }
+      newNames.push(name.trim());
+    }
+  }
+  return { gold, new: newNames };
+}
+
+/**
+ * Splits the scripts into the training split and the held-out eval split.
+ * The eval split is the #2514 bake-off gold set (cards this repo scripts by
+ * hand). Both bake-off sets are held out of train: a gold card goes to
+ * eval, a 'new' card (which this repo has no script for) is left out
+ * entirely, and everything else trains.
+ */
+export function splitByBakeoff(
+  scripts: readonly CardScript[],
+  list: BakeoffNames,
+): { train: CardScript[]; eval: CardScript[] } {
+  const gold = new Set(list.gold.map((n) => n.trim().toLowerCase()));
+  const heldOut = new Set(list.new.map((n) => n.trim().toLowerCase()));
+  const train: CardScript[] = [];
+  const evalScripts: CardScript[] = [];
+  for (const script of scripts) {
+    const name = script.name.trim().toLowerCase();
+    if (gold.has(name)) evalScripts.push(script);
+    else if (heldOut.has(name))
+      continue; // bake-off 'new' card: never train
+    else train.push(script);
+  }
+  return { train, eval: evalScripts };
+}
+
+/**
+ * Splits the scripts into the training split and the held-out eval split.
+ * Gold cards go to eval; every other card trains. Kept for callers that
+ * only know the gold set.
+ */
+export function splitByGold(
+  scripts: readonly CardScript[],
+  goldNames: readonly string[],
+): { train: CardScript[]; eval: CardScript[] } {
+  return splitByBakeoff(scripts, { gold: [...goldNames], new: [] });
+}
+
+/**
+ * Builds the whole dataset: training records plus the held-out gold split.
+ * `newNames` are the bake-off 'new' cards: they are held out of the
+ * training split as well (#2915) and never reach the eval split.
+ */
+export function buildDataset(
+  scripts: readonly CardScript[],
+  goldNames: readonly string[],
+  system: string,
+  newNames: readonly string[] = [],
+): Dataset {
+  const { train, eval: evalScripts } = splitByBakeoff(scripts, {
+    gold: [...goldNames],
+    new: [...newNames],
+  });
+  return {
+    train: train.map((s) => toEtfRecord(s, system, "train")),
+    eval: evalScripts.map((s) => toEtfRecord(s, system, "eval")),
+  };
+}
+
+/** One JSON object per line, the ETF file layout. */
+export function renderJsonl(records: readonly unknown[]): string {
+  return records.map((r) => JSON.stringify(r)).join("\n") + "\n";
+}
+
+/** Reads an ETF file back into records (used by the checks and the tests). */
+export function parseJsonl(text: string): unknown[] {
+  return text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+    .map((l) => JSON.parse(l) as unknown);
+}
+
+/**
+ * Parses an assistant turn: it must be the drafting reply envelope
+ * `{"script": {...}}`, and the script inside it must be a card script the
+ * schema accepts. Returns the script or the problems found.
+ */
+export function parseAssistantTarget(
+  text: string,
+): { script: CardScript } | { errors: string[] } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch (e) {
+    return {
+      errors: [`assistant turn is not JSON: ${(e as Error).message}`],
+    };
+  }
+  const obj = (parsed ?? {}) as Record<string, unknown>;
+  if (
+    !obj.script ||
+    typeof obj.script !== "object" ||
+    Array.isArray(obj.script)
+  ) {
+    return {
+      errors: [
+        'assistant turn is not a drafting reply: it has no "script" object ' +
+          '(the reply must be {"script": {...}} or {"needs_new_op": [...]})',
+      ],
+    };
+  }
+  const script = CardScriptSchema.safeParse(obj.script);
+  if (!script.success) {
+    return {
+      errors: [
+        `assistant script is not a valid card script: ${script.error.issues
+          .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
+          .join("; ")}`,
+      ],
+    };
+  }
+  return { script: script.data };
+}
+
+/**
+ * Checks one record: the system prompt is there, the user turn is not
+ * empty, and the assistant turn is a drafting reply holding a card script
+ * the schema accepts. Returns the problems found (empty when the record is
+ * fine).
+ */
+export function checkRecord(record: EtfRecord): string[] {
+  const errors: string[] = [];
+  if (!record.system.trim()) errors.push("empty system prompt");
+  if (!record.user.trim()) errors.push("empty user turn");
+  if (!record.assistant.trim()) errors.push("empty assistant turn");
+  const parsed = parseAssistantTarget(record.assistant);
+  if ("errors" in parsed) {
+    errors.push(...parsed.errors);
+  }
+  const roles = record.messages.map((m) => m.role);
+  if (roles.join(",") !== "user,assistant") {
+    errors.push(`messages must be one user turn then one assistant turn`);
+  } else if (
+    record.messages[0].content !== record.user ||
+    record.messages[1].content !== record.assistant
+  ) {
+    errors.push("messages and the top-level user/assistant fields disagree");
+  }
+  return errors;
+}
+
+/**
+ * Checks a whole split: every record is well formed, and no bake-off card
+ * (gold *or* new) leaked into the training split. Returns the problems
+ * found.
+ *
+ * `bakeoff` is the full bake-off card list: the gold set and the 'new'
+ * set. A plain list of names is accepted too and is read as the gold set.
+ */
+export function checkDataset(
+  dataset: Dataset,
+  bakeoff: BakeoffNames | readonly string[],
+): string[] {
+  const list: BakeoffNames = Array.isArray(bakeoff)
+    ? { gold: [...(bakeoff as readonly string[])], new: [] }
+    : {
+        gold: [...(bakeoff as BakeoffNames).gold],
+        new: [...(bakeoff as BakeoffNames).new],
+      };
+  const errors: string[] = [];
+  const gold = new Set(list.gold.map((n) => n.trim().toLowerCase()));
+  const newNames = new Set(list.new.map((n) => n.trim().toLowerCase()));
+  for (const record of dataset.train) {
+    for (const e of checkRecord(record))
+      errors.push(`train ${record.id}: ${e}`);
+  }
+  for (const record of dataset.eval) {
+    for (const e of checkRecord(record)) errors.push(`eval ${record.id}: ${e}`);
+  }
+  for (const record of dataset.train) {
+    const parsed = parseAssistantTarget(record.assistant);
+    if (!("script" in parsed)) continue; // checkRecord already reported it
+    const name = parsed.script.name;
+    const key = name.trim().toLowerCase();
+    if (gold.has(key)) {
+      errors.push(`gold card ${name} leaked into the training split`);
+    } else if (newNames.has(key)) {
+      errors.push(
+        `bake-off card ${name} leaked into the training split ` +
+          "(a bake-off 'new' card must never be trained on)",
+      );
+    }
+  }
+  return errors;
+}

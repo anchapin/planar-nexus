@@ -45,7 +45,7 @@ import type { Format } from "@/lib/game-rules";
 // misnamed src/app/actions.ts — was moved here (and actions.ts deleted)
 // by issue #1592, making this module the single canonical import site for
 // card and deck data shapes.
-import type { MinimalCard, ScryfallCard } from "@/lib/game-state";
+import type { MinimalCard, ScryfallCard } from "@/lib/game-state/lite";
 
 export type { MinimalCard, ScryfallCard };
 

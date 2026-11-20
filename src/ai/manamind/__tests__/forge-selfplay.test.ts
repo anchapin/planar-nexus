@@ -101,7 +101,15 @@ describe("playSelfPlayGame", () => {
     expect(game.returns).toHaveLength(game.decisions.length);
     for (const d of game.decisions) {
       expect(["net", "expert"]).toContain(d.source);
-      if (d.source !== "expert") continue;
+      if (d.source !== "expert") {
+        // Net decisions carry the search's root evaluation (manamind#96).
+        expect(typeof d.rootValue).toBe("number");
+        expect(d.rootValue as number).toBeGreaterThanOrEqual(-1);
+        expect(d.rootValue as number).toBeLessThanOrEqual(1);
+        continue;
+      }
+      // The Expert AI's move is not search-scored: no root value.
+      expect(d.rootValue).toBeUndefined();
       if (d.t === "priority") {
         const pi = d.pi as number[];
         expect(pi.reduce((s, v) => s + v, 0)).toBeCloseTo(1, 6);

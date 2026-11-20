@@ -402,7 +402,7 @@ wrong code path.
 | Category                | Where it runs                              | Browser                                                    | Tracking issue |
 | ----------------------- | ------------------------------------------ | ---------------------------------------------------------- | -------------- |
 | **chromium-flake**      | primary CI `e2e` job (every PR)            | chromium only                                              | #1881          |
-| **cross-browser-flake** | nightly cross-browser job                  | firefox + webkit (chromium is stable here)                 | #1780          |
+| **cross-browser-flake** | nightly cross-browser job (`.github/workflows/nightly.yml`) | firefox + webkit (chromium is stable here) | #1780          |
 | **cyan-flake**          | Tauri/desktop-fallback Playwright variants | the chrome-headless shell used by the cross-browser runner | #1780          |
 
 - **chromium-flake (#1881)** — fails on the primary Playwright `e2e` CI
@@ -1086,6 +1086,19 @@ Tests run automatically on:
   `.github/workflows/ci.yml` (#1719) runs the unit suite 5× with randomized
   seeds and fails if any test passes <4/5; see
   [Flakiness and the nightly Jest flake detector](#4-unit-tests-jest).
+- **Pre-merge flake signal** — `.github/workflows/pr-flake-detector.yml`
+  (the `PR Flake Detector` workflow, #2365) runs BOTH detectors on pull
+  requests that touch the paths they exercise: the Jest detector on unit-suite
+  paths (`src/`, `tests/`, `e2e/`, the Jest config and the detector script),
+  the Playwright detector on `e2e/`, `playwright.config.ts` and the app code
+  the specs drive (`src/`). It runs 3× with threshold 2 (cheaper than the
+  nightly 5×/4) and is **non-blocking** — findings arrive as a PR comment and
+  a `pr-*-flake-detector-report` artifact, never as a red required check.
+  The nightly 5×/4 runs above stay the authoritative gate.
+- **Nightly cross-browser E2E** — the `Cross-Browser E2E (firefox + webkit)`
+  job lives in `.github/workflows/nightly.yml` (#2365, moved out of `ci.yml`)
+  and runs on the nightly schedule, on manual dispatch and on pushes to
+  `main`. Per-PR CI stays chromium-only (#1595).
 - **Pre-commit** — `husky` + `lint-staged` (see `.husky/`).
 
 A coverage regression that drops a metric below the `coverageThreshold` floor

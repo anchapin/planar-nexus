@@ -1,17 +1,18 @@
 /**
  * anchapin/manamind#86: inputs for manamind's exported `ForgePointerNet`
- * (`forge_pointer.onnx`, schema v1), built from a Forge-bridge view such as
+ * (`forge_pointer.onnx`), built from a Forge-bridge view such as
  * Planar Nexus `playerView`.
  *
  * A line-for-line port of `card_features`, `global_features`, and
  * `name_bucket` in manamind `src/manamind/models/forge_pointer.py`, and of
  * `pack` in `src/manamind/models/forge_pointer_onnx.py`. The parity fixture
- * (`__tests__/fixtures/forge_pointer_v2_pack.json`) is that `pack` run on
- * manamind's own test decisions.
+ * (`__tests__/fixtures/forge_pointer_v3_pack.json`) is that `pack` run on
+ * manamind's own test decisions (manamind #44 adds the `hist` input).
  */
+import type { OpponentHistorySummary } from "@/ai/simulation/player-history";
 import type { PlayerView, ViewCard } from "@/ai/simulation/player-view";
 
-export const FORGE_POINTER_SCHEMA_VERSION = 2;
+export const FORGE_POINTER_SCHEMA_VERSION = 3;
 export const NAME_BUCKETS = 4096;
 export const DECK_BUCKETS = 256;
 export const TYPE_WORDS = [
@@ -45,6 +46,10 @@ export const PHASES = [
 export const DECISION_TYPES = ["priority", "attack", "block"] as const;
 export const CARD_FEATURES = TYPE_WORDS.length + 5 + PIPS.length + 1;
 export const GLOBAL_FEATURES = 10 + PHASES.length + 1 + DECISION_TYPES.length;
+/** Turn buckets in the history summary (manamind #44). */
+export const HISTORY_TURN_BUCKETS = 4;
+/** Width of the packed `hist` input (manamind #44 schema v3). */
+export const HISTORY_FEATURES = HISTORY_TURN_BUCKETS * 7 + 1 + 7 + 3;
 
 /** Graph input names, in manamind `INPUT_NAMES` order. */
 export const FORGE_POINTER_INPUTS = [
@@ -62,6 +67,7 @@ export const FORGE_POINTER_INPUTS = [
   "ogy_id",
   "ogy_m",
   "glob",
+  "hist",
   "pri_x",
   "pri_id",
   "pri_flags",
@@ -103,6 +109,12 @@ export type ForgeDecision = Partial<
   deck?: string;
   /** The other seat's deck name. */
   opp_deck?: string;
+  /**
+   * The deciding seat's fixed-shape opponent-history summary (manamind #44,
+   * schema v3). Absent on every decision recorded before v3; the packed
+   * `hist` input is all zeros then, so old data trains unchanged.
+   */
+  opp_history?: OpponentHistorySummary;
 };
 
 /** One graph input: float32 or int64 values with their shape. */
@@ -120,7 +132,7 @@ function crc32(bytes: Uint8Array): number {
     for (let n = 0; n < 256; n++) {
       let c = n;
       for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-      crcTable[n] = c >>> 0;
+      crcTable[n] = c;
     }
   }
   let crc = 0xffffffff;
@@ -171,6 +183,49 @@ export function cardFeatures(card: BridgeCard): number[] {
   }
   for (const p of PIPS) feats.push(pips[p] / 5);
   feats.push(generic / 10);
+  return feats;
+}
+
+/**
+ * Flatten a decision's optional opponent-history summary (manamind #44,
+ * schema v3), a line-for-line port of manamind `opp_history_features`.
+ *
+ * Reads the `OpponentHistorySummary` the tracker emits: `HISTORY_TURN_BUCKETS`
+ * turn buckets (oldest first), then the totals' observation count, the
+ * opponent mana pool and the live combat counts. Counts and mana scale by 10,
+ * hand size averages by 7 (the bucket's sum over its samples), samples by 16,
+ * observations by 200 and the graveyard by 20. A decision with no
+ * `opp_history` (every decision recorded before schema v3) flattens to all
+ * zeros, so old data trains unchanged.
+ */
+export function historyFeatures(d: ForgeDecision): number[] {
+  const hist = d.opp_history;
+  const feats: number[] = [];
+  const buckets = (hist?.buckets ?? []).slice(0, HISTORY_TURN_BUCKETS);
+  while (buckets.length < HISTORY_TURN_BUCKETS) buckets.push({} as never);
+  for (const bucket of buckets) {
+    const samples = Math.max(Number(bucket?.handSizeSamples ?? 0), 1);
+    feats.push(
+      Number(bucket?.landsPlayed ?? 0) / 10,
+      Number(bucket?.creaturesPlayed ?? 0) / 10,
+      Number(bucket?.otherPermanentsPlayed ?? 0) / 10,
+      Number(bucket?.creaturesToGraveyard ?? 0) / 10,
+      Number(bucket?.otherToGraveyard ?? 0) / 10,
+      Number(bucket?.handSizeSum ?? 0) / samples / 7,
+      Number(bucket?.handSizeSamples ?? 0) / 16,
+    );
+  }
+  feats.push(Number(hist?.totals?.observations ?? 0) / 200);
+  feats.push(
+    ...(["W", "U", "B", "R", "G", "C", "other"] as const).map(
+      (c) => Number(hist?.oppManaPool?.[c] ?? 0) / 10,
+    ),
+  );
+  feats.push(
+    Number(hist?.oppAttackersThisCombat ?? 0) / 10,
+    Number(hist?.oppBlockersThisCombat ?? 0) / 10,
+    Number(hist?.oppGraveyardSize ?? 0) / 20,
+  );
   return feats;
 }
 
@@ -255,6 +310,8 @@ export function packDecision(d: ForgeDecision): PackedInputs {
   [out.ogy_id, out.ogy_m] = names(d.opp_graveyard ?? []);
   const glob = globalFeatures(d);
   out.glob = f32(glob, [glob.length]);
+  const hist = historyFeatures(d);
+  out.hist = f32(hist, [HISTORY_FEATURES]);
 
   const options =
     d.t === "priority" ? ((d.options ?? []) as PriorityOption[]) : [];

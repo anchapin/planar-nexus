@@ -7,8 +7,10 @@
  * as multi-lane blockers because the engine had no general-purpose
  * "as this enters, choose a [thing]" mechanism. Lane 39 filled that
  * gap for `kind: "color"`; lane 44 (#2705a) extends it for
- * `kind: "creature_type"`. Lane 45 adds the chosen-type anthem; the
- * `player` arm remains documented but unsupported.
+ * `kind: "creature_type"`. Lane 45 adds the chosen-type anthem.
+ * Issue #2939 adds the `kind: "player"` arm (the True-Name Nemesis
+ * pattern): the option list is the live set of player ids whose
+ * player has not lost, and the resolver stamps `card.chosenPlayer`.
  *
  * The flow mirrors the existing shockland-specific path
  * (`hasShocklandChoice`, CR 305.2) but lifts the choice type out of
@@ -112,11 +114,21 @@ function isCuratedCreatureType(v: unknown): v is CuratedCreatureType {
 /**
  * Return the curated choices list for a given `enter_choice.kind`.
  * Mirrors the schema's enum (color | creature_type | player |
- * chosen_name) but v1 only models `color` and `creature_type`:
- * - "player" is documented (#2705) but not implemented.
- * - "chosen_name" is documented (#2708) but not implemented;
- *   the engine arm rides a multi-lane follow-up that uses
- *   `choose_cards` (not the value-list path here).
+ * chosen_name | color_and_creature_type | protection_quality).
+ *
+ * The `player` kind is the only LIVE kind (#2939): its option list
+ * depends on the current game state, so `state` must be supplied.
+ * The other kinds are static:
+ * - "chosen_name" uses the `choose_cards` waitingChoice path (no
+ *   value-list options).
+ * - "color_and_creature_type" returns the cross-product.
+ *
+ * @param kind The `enter_choice.kind` to build options for.
+ * @param state Optional live game state. Required for the
+ *   `"player"` kind (the option list is the live set of players
+ *   who have not lost); when omitted the `"player"` arm returns
+ *   an empty list because the live player set is unknowable
+ *   without the state.
  */
 export function enterChoiceOptionsForKind(
   kind:
@@ -126,6 +138,7 @@ export function enterChoiceOptionsForKind(
     | "chosen_name"
     | "color_and_creature_type"
     | "protection_quality",
+  state?: GameState,
 ): readonly string[] {
   switch (kind) {
     case "color":
@@ -133,10 +146,11 @@ export function enterChoiceOptionsForKind(
     case "creature_type":
       return CURATED_CREATURE_TYPES;
     case "player":
-      // "player" arm ships later (#2705 "Out of scope"). The
-      // engine surfaces no choice list today; consumers must
-      // check the kind separately.
-      return [];
+      // Issue #2939: the "player" arm lists the LIVE players who
+      // have not lost (controller included — "choose a player",
+      // the True-Name Nemesis pattern). Mirrors the chosen_name
+      // opponent scan below, minus the opponent-only filter.
+      return state ? enterChoicePlayerOptions(state) : [];
     case "chosen_name":
       // #2708 phase 2; surfaces a `choose_cards` waitingChoice
       // separately. No value-list options today.
@@ -170,6 +184,29 @@ export function enterChoiceOptionsForKind(
       // `color`/`creature_type`.
       return PROTECTION_QUALITIES;
   }
+}
+
+/**
+ * The live option list for the `enter_choice: { kind: "player" }`
+ * arm (#2939): the ids of every player in the game who has NOT
+ * lost the game. The entering card's controller is INCLUDED —
+ * "as this enters, choose a player" (the True-Name Nemesis
+ * pattern) does not restrict the pick to opponents.
+ *
+ * Mirrors the chosen_name opponent scan in
+ * {@link createChosenNameWaitingChoice}: iterate `state.players`
+ * and skip the players flagged `hasLost`. The list is rebuilt
+ * from the LIVE state on every call, so a player who lost after
+ * the choice was surfaced is dropped from the options (and
+ * rejected by the resolver's live `hasLost` re-validation).
+ */
+export function enterChoicePlayerOptions(state: GameState): readonly string[] {
+  const ids: string[] = [];
+  for (const [pid, player] of state.players) {
+    if (player.hasLost) continue;
+    ids.push(pid);
+  }
+  return ids;
 }
 
 /** Decoded shape of a `"<color>|<type>"` option for the dual kind. */
@@ -221,9 +258,16 @@ export function decodeDualColorCreatureTypeChoice(
  *    downstream unions (chosen-color anthem lane 40,
  *    chosen-type anthem lane 45, chosen-type addition lane
  *    52, chosen-color addition lane 55) pick up both halves.
+ *  - `"player"` (issue #2939): "as this enters, choose a
+ *    player" (the True-Name Nemesis pattern). Surfaces ONE
+ *    value-list waitingChoice whose options are the LIVE
+ *    player ids of the players who have not lost (the
+ *    controller included); the resolver stamps
+ *    `card.chosenPlayer`.
  *
- * The `"player"` arm is documented-only and would crash if a card's
- * script ever opted in.
+ * Every kind listed above is implemented by the engine — a card
+ * that opts in reaches choice creation (no "not yet supported"
+ * error).
  */
 export function hasEnterChoice(card: CardInstance): boolean {
   const script = getCardScript(card.cardData.name);
@@ -235,6 +279,12 @@ export function hasEnterChoice(card: CardInstance): boolean {
     ec.kind === "creature_type" ||
     ec.kind === "chosen_name" ||
     ec.kind === "color_and_creature_type" ||
+    // Issue #2939: the "player" arm ("as this enters, choose a
+    // player") is a supported `enter_choice` kind. The options
+    // are the live non-lost player ids (see
+    // `enterChoicePlayerOptions`); the resolver stamps
+    // `card.chosenPlayer` from the pick.
+    ec.kind === "player" ||
     // Wave 4.8 follow-up 26 lane 71 piece 3/N (#2614
     // follow-up): the chosen-quality sentinel is a
     // supported `enter_choice` kind. The card carries a
@@ -264,6 +314,11 @@ export function hasEnterChoice(card: CardInstance): boolean {
  *    type (each option value is `"<color>|<type>"`, label is
  *    `"<color> — <type>"`). The resolver writes BOTH
  *    `chosenColor` and `chosenCreatureType` from one call.
+ *  - `"player"` → `ENTER_CHOICE_TYPE` (issue #2939): ONE
+ *    value-list waitingChoice whose option values are the LIVE
+ *    player ids of the players who have not lost (the
+ *    controller included). The resolver stamps
+ *    `card.chosenPlayer`.
  *
  * `playerId` is always the entering card's controller — for
  * chosen_name, this is the controller who picks a card name from
@@ -288,29 +343,42 @@ export function createEnterChoiceWaitingChoice(
   if (kind === "chosen_name") {
     return createChosenNameWaitingChoice(state, cardId);
   }
-  const options = enterChoiceOptionsForKind(kind);
+  // Issue #2939: the "player" arm reads the LIVE player set from
+  // the state (the players who have not lost); every other kind
+  // returns a static curated list.
+  const options = enterChoiceOptionsForKind(kind, state);
   // Wave 4.8 follow-up lane 56: the dual
   // `color_and_creature_type` kind labels each option as
   // `"<color> — <type>"` (human-readable form) while keeping
   // the encoded `"<color>|<type>"` value so the resolver can
   // split it deterministically. Other kinds render their value
   // as-is.
-  const choices: ChoiceOption[] =
-    kind === "color_and_creature_type"
-      ? options.map((opt) => {
-          const decoded = decodeDualColorCreatureTypeChoice(opt);
-          // `enterChoiceOptionsForKind` always emits well-formed
-          // `"<color>|<type>"` strings so the decode is safe.
-          const label = decoded
-            ? `${decoded.color} — ${decoded.creatureType}`
-            : opt;
-          return { label, value: opt, isValid: true };
-        })
-      : options.map((opt) => ({
-          label: opt,
-          value: opt,
-          isValid: true,
-        }));
+  let choices: ChoiceOption[];
+  if (kind === "color_and_creature_type") {
+    choices = options.map((opt) => {
+      const decoded = decodeDualColorCreatureTypeChoice(opt);
+      // `enterChoiceOptionsForKind` always emits well-formed
+      // `"<color>|<type>"` strings so the decode is safe.
+      const label = decoded ? `${decoded.color} — ${decoded.creatureType}` : opt;
+      return { label, value: opt, isValid: true };
+    });
+  } else if (kind === "player") {
+    // Issue #2939: the player options carry the player id as the
+    // choice VALUE (that is what the resolver stamps on the
+    // card) and the player's display name as the human-readable
+    // label (falling back to the id when the name is empty).
+    choices = options.map((opt) => ({
+      label: state.players.get(opt)?.name || opt,
+      value: opt,
+      isValid: true,
+    }));
+  } else {
+    choices = options.map((opt) => ({
+      label: opt,
+      value: opt,
+      isValid: true,
+    }));
+  }
   const name = card.cardData.name || "this permanent";
   // Prompt phrasing follows the script text verbatim when present;
   // fall back to a kind-appropriate sentence for synthetic tests.
@@ -591,6 +659,11 @@ export interface EnterChoiceResolution {
  *   `card.chosenColor` AND `card.chosenCreatureType` from one
  *   resolver call so downstream unions (lane 40, 45, 52, 55)
  *   pick up both halves.
+ * - `"player"` (issue #2939) → stamps `card.chosenPlayer` with
+ *   the picked player id. The pick is re-validated against the
+ *   LIVE state: an unknown player id, or a player who has lost
+ *   since the choice was surfaced, is rejected with a failure
+ *   (same shape as the color / creature_type paths).
  */
 export function resolveEnterChoice(
   state: GameState,
@@ -683,6 +756,25 @@ export function resolveEnterChoice(
       chosenColor: decoded.color,
       chosenCreatureType: decoded.creatureType,
     });
+  } else if (kind === "player") {
+    // Issue #2939: the "player" arm ("as this enters, choose a
+    // player" — the True-Name Nemesis pattern). The pick is a
+    // player id; the resolver re-validates it against the LIVE
+    // state (the option list was built when the choice was
+    // surfaced, so a player who lost in the meantime is still
+    // listed there). An unknown player id or a player who has
+    // lost is rejected at the same resolver-returns-failure
+    // point as the color / creature_type paths.
+    const chosenPlayer = state.players.get(chosenValue);
+    if (!chosenPlayer || chosenPlayer.hasLost) {
+      return {
+        success: false,
+        state,
+        description:
+          "Invalid enter choice value (expected a player who has not lost)",
+      };
+    }
+    updatedCards.set(cardId, { ...card, chosenPlayer: chosenValue });
   } else if (kind === "protection_quality") {
     // Wave 4.8 follow-up 26 lane 71 piece 3/N (#2614
     // follow-up): the chosen-quality sentinel
@@ -711,10 +803,9 @@ export function resolveEnterChoice(
       chosenProtectionFrom: chosenValue,
     });
   } else {
-    // "player" is documented-only (#2705); "chosen_name"
-    // (Wave 4.7 phase 2 lane 49, #2708 phase 2a) uses a separate
-    // `choose_cards` waitingChoice that resolves via
-    // `resolveChosenName` — the engine routes dispatch in
+    // "chosen_name" (Wave 4.7 phase 2 lane 49, #2708 phase 2a)
+    // uses a separate `choose_cards` waitingChoice that resolves
+    // via `resolveChosenName` — the engine routes dispatch in
     // `spell-casting/choices.ts`. Reaching this branch means
     // someone constructed a malformed `enter_choice` waiting
     // choice; surface a friendly error rather than silently
@@ -870,7 +961,8 @@ function resolveCardIdForChoice(
   // matches an enter_choice script and still has its choice field
   // (chosenColor for "color", chosenCreatureType for
   // "creature_type", chosenCardName for "chosen_name",
-  // chosenProtectionFrom for "protection_quality") unset.
+  // chosenPlayer for "player", chosenProtectionFrom for
+  // "protection_quality") unset.
   const stacked = _choice.stackObjectId as CardInstanceId | null;
   if (stacked && state.cards.has(stacked) && hasEnterChoice(state.cards.get(stacked)!)) {
     return stacked;
@@ -885,6 +977,10 @@ function resolveCardIdForChoice(
       (kind === "color" && card.chosenColor === null) ||
       (kind === "creature_type" && card.chosenCreatureType === null) ||
       (kind === "chosen_name" && card.chosenCardName === null) ||
+      // Issue #2939: the "player" kind stamps `chosenPlayer`
+      // from one call. The card is "pending" until the field is
+      // set (the chosen player id is null on a fresh instance).
+      (kind === "player" && card.chosenPlayer === null) ||
       // Wave 4.8 follow-up lane 56 (#2614 follow-up): the dual
       // compound kind stamps both fields from one call. The
       // card is "pending" until either field is set (the

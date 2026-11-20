@@ -17,7 +17,7 @@
 
 import type { RefObject } from "react";
 import { toast } from "@/hooks/use-toast";
-import type { GameState } from "@/lib/game-state";
+import type { GameState } from "@/lib/game-state/lite";
 import type {
   P2PConnectionState,
   P2PGameConnection,

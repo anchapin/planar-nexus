@@ -42,6 +42,10 @@ import {
   newPeerContext,
   type MeshPeerOptions,
 } from "./fixtures/mesh-mock-bridge";
+import {
+  summarizeMeshNavigationDiagnostics,
+  type MeshNavigationDiagnostics,
+} from "./fixtures/mesh-navigation-diagnostics";
 import { isGameMessage } from "./fixtures/p2p-mock-bridge";
 
 const BASE_URL = process.env.BASE_URL || "http://localhost:9002";
@@ -73,6 +77,12 @@ const PEER_D_OPTS: MeshPeerOptions = {
  * linked to each other; the caller wires the mesh with {@link openMeshChannels}
  * (or {@link linkMeshPeers} for a partial link). Returns the four pages
  * plus a teardown function that closes every context.
+ *
+ * Issue #2604: every peer page also gets the per-peer navigation
+ * diagnostics (peer id + timestamp + URL for each `framenavigated` /
+ * `load` event). The teardown prints a per-peer summary so a WebKit run
+ * that loses the page state shows WHICH peer reloaded, WHEN, and WHAT URL
+ * it reloaded to — instead of the bare "Execution context was destroyed".
  */
 async function createFourPeers(browser: Browser): Promise<{
   pages: Page[];
@@ -80,6 +90,7 @@ async function createFourPeers(browser: Browser): Promise<{
   peerB: Page;
   peerC: Page;
   peerD: Page;
+  diagnostics: MeshNavigationDiagnostics[];
   close: () => Promise<void>;
 }> {
   const hostCtx = await newPeerContext(browser);
@@ -89,7 +100,11 @@ async function createFourPeers(browser: Browser): Promise<{
   const pages = [hostCtx.page, bCtx.page, cCtx.page, dCtx.page];
   const opts = [HOST_OPTS, PEER_B_OPTS, PEER_C_OPTS, PEER_D_OPTS];
 
-  await setupMeshPeerPages(pages, `${BASE_URL}/multiplayer`, opts);
+  const diagnostics = await setupMeshPeerPages(
+    pages,
+    `${BASE_URL}/multiplayer`,
+    opts,
+  );
 
   return {
     pages,
@@ -97,7 +112,12 @@ async function createFourPeers(browser: Browser): Promise<{
     peerB: bCtx.page,
     peerC: cCtx.page,
     peerD: dCtx.page,
+    diagnostics,
     close: async () => {
+      // Issue #2604: print the navigation diagnostics BEFORE closing the
+      // contexts — after close, the pages can no longer report navigation
+      // events.
+      summarizeMeshNavigationDiagnostics(diagnostics);
       await Promise.all([
         hostCtx.context.close(),
         bCtx.context.close(),
@@ -917,7 +937,11 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
     const pages = [hostCtx.page, peerCtx.page];
     const opts: MeshPeerOptions[] = [HOST_OPTS, PEER_B_OPTS];
 
-    await setupMeshPeerPages(pages, `${BASE_URL}/multiplayer`, opts);
+    const diagnostics = await setupMeshPeerPages(
+      pages,
+      `${BASE_URL}/multiplayer`,
+      opts,
+    );
     // Wire as a 2-peer full mesh.
     await openMeshChannels(pages, opts);
 
@@ -1168,6 +1192,9 @@ test.describe("Multiplayer Mesh (3+ players) — #1258", () => {
       );
       expect(peerAppliedStates.length).toBeGreaterThanOrEqual(2);
     } finally {
+      // Issue #2604: dump the per-peer navigation diagnostics before the
+      // contexts are closed (after close the pages stop reporting events).
+      summarizeMeshNavigationDiagnostics(diagnostics);
       await Promise.all([hostCtx.context.close(), peerCtx.context.close()]);
     }
   });

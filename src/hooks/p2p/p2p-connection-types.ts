@@ -6,7 +6,7 @@
  * for backward compatibility — import from either place.
  */
 
-import type { GameState } from "@/lib/game-state";
+import type { GameState } from "@/lib/game-state/lite";
 import type {
   P2PGameConnection,
   P2PConnectionState,

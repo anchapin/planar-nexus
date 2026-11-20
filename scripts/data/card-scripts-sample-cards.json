@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Ember Bolt",
+    "typeLine": "Instant",
+    "oracleText": "Ember Bolt deals 3 damage to any target."
+  },
+  {
+    "name": "Thornwood Sentry",
+    "typeLine": "Creature — Elf",
+    "oracleText": "When Thornwood Sentry enters the battlefield, gain 2 life."
+  },
+  {
+    "name": "Soul Snare",
+    "typeLine": "Enchantment — Aura",
+    "oracleText": "As an additional cost to cast Soul Snare, exile a card from your hand."
+  },
+  {
+    "name": "Broken Codex",
+    "typeLine": "Instant",
+    "oracleText": "Broken Codex deals 2 damage to any target."
+  }
+]

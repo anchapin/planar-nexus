@@ -184,16 +184,28 @@ export function normalizeDraft(
   return out;
 }
 
+/**
+ * The op-set description every drafting prompt starts with: the schema rules
+ * plus one line per op. Split out of `buildPrompt` so the fine-tuning
+ * dataset export (#2551) reuses the exact same text as the system prompt
+ * instead of a second, drifting copy of it.
+ */
+export function buildSystemPrompt(): string {
+  const ops = Object.values(OP_REFERENCE)
+    .map((o) => `- ${o}`)
+    .join("\n");
+  const prompt = `${SCHEMA_RULES}${ops}`;
+  assertNoForgeContent(prompt);
+  return prompt;
+}
+
 /** The full prompt for one card. Examples must be this repo's own scripts. */
 export function buildPrompt(
   card: DraftCard,
   examples: readonly CardScript[],
 ): string {
-  const ops = Object.values(OP_REFERENCE)
-    .map((o) => `- ${o}`)
-    .join("\n");
   const shots = examples.map((e) => JSON.stringify({ script: e })).join("\n");
-  const prompt = `${SCHEMA_RULES}${ops}
+  const prompt = `${buildSystemPrompt()}
 
 Examples:
 ${shots}
@@ -255,15 +267,19 @@ export function judgeReply(card: DraftCard, reply: string): DraftOutcome {
     };
   }
   const script = result.data;
+  // An empty type line means "unknown" (a card list without type lines):
+  // the spell/permanent cross-check needs the type line, so it is skipped
+  // and only the schema check runs.
+  const knownType = card.type_line.trim() !== "";
   const spell = isSpellType(card.type_line);
-  if (spell && !script.spell && !script.modes) {
+  if (knownType && spell && !script.spell && !script.modes) {
     return {
       kind: "invalid",
       name: card.name,
       errors: ["instant or sorcery scripted without spell effects"],
     };
   }
-  if (!spell && (script.spell || script.modes)) {
+  if (knownType && !spell && (script.spell || script.modes)) {
     return {
       kind: "invalid",
       name: card.name,

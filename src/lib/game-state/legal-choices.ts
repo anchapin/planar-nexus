@@ -116,6 +116,11 @@ function abilityManaCost(label: string): string {
     .join("");
 }
 
+/** True when the ability's activation cost includes a tap symbol ({T}). */
+function abilityTapsSource(label: string): boolean {
+  return (label.split(":")[0] ?? "").includes("{T}");
+}
+
 /** True when the pool plus untapped lands can pay `cost`. */
 function canPay(state: GameState, playerId: PlayerId, cost: string): boolean {
   return !cost || tapLandsForCost(state, playerId, cost) !== null;
@@ -196,8 +201,14 @@ function abilityChoices(
   cardId: CardInstanceId,
 ): PriorityChoice[] {
   const out: PriorityChoice[] = [];
+  const source = state.cards.get(cardId);
   for (const ability of getActivatableAbilities(state, playerId, cardId)) {
     if (!canPay(state, playerId, abilityManaCost(ability.label))) continue;
+    // CR 701.23b: paying a {T} cost taps the source, so a tapped permanent
+    // cannot pay it. Without this check a tap-only ability is free and
+    // infinitely repeatable, which livelocks games (track2 measure, #96).
+    if (abilityTapsSource(ability.label) && (!source || source.isTapped))
+      continue;
     const needsTarget = parseTriggerTargetSpec(ability.effect) !== null;
     const legal = needsTarget
       ? getLegalActivatedAbilityTargets(
@@ -333,18 +344,33 @@ export function applyPriorityChoice(
       ).find((a) => a.abilityIndex === choice.abilityIndex);
       if (!ability)
         return { success: false, state, error: "Ability not available" };
+      // CR 701.23b: paying a {T} cost taps the source. Reject the
+      // activation when the source is already tapped and tap it as part of
+      // the payment, or tap-cost abilities are free and infinitely
+      // repeatable (track2 measure livelock, #96).
+      const tapsSource = abilityTapsSource(ability.label);
+      const source = state.cards.get(choice.cardId);
+      if (tapsSource && (!source || source.isTapped)) {
+        return { success: false, state, error: "Source is tapped" };
+      }
       const paid = tapLandsForCost(
         state,
         playerId,
         abilityManaCost(ability.label),
       );
       if (!paid) return { success: false, state, error: "Can't pay cost" };
+      let costPaid: GameState = paid;
+      if (tapsSource && source) {
+        const updatedCards = new Map(paid.cards);
+        updatedCards.set(choice.cardId, { ...source, isTapped: true });
+        costPaid = { ...paid, cards: updatedCards };
+      }
       const r = activateAbility(
-        paid,
+        costPaid,
         playerId,
         choice.cardId,
         choice.abilityIndex,
-        toTargets(paid, choice.targets),
+        toTargets(costPaid, choice.targets),
       );
       return r.success
         ? { success: true, state: r.state }

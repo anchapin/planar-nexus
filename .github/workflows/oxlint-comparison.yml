@@ -1,0 +1,93 @@
+name: Oxlint Comparison
+
+# Issue #2890 follow-up to the merged Oxlint spike (docs/oxlint-spike-comparison.md).
+# The spike measured ESLint vs Oxlint on the same `src/` surface, but only
+# LOCALLY — every number in that report came from a local run, so the
+# comparison could not be reproduced or tracked over time in CI.
+#
+# This workflow publishes that comparison on every PR and on every push to
+# main, and on demand via workflow_dispatch.
+#
+# HARD RULE: this job is REPORT-ONLY and must NEVER fail a build or block a
+# merge. Two independent mechanisms guarantee that:
+#   1. `continue-on-error: true` on the job AND on the oxlint step, so a
+#      non-zero oxlint exit code is recorded as a soft failure.
+#   2. The step script itself always exits 0 (`exit 0` at the end) after
+#      printing the report, so even a crash in the reporting code cannot
+#      turn the job red.
+# ESLint remains the authoritative lint gate (ci.yml `lint` job); this job
+# changes nothing about it.
+#
+# Deliberately standalone (its own workflow file) so that ci.yml's required
+# `build` job `needs:` list is untouched — no new required status check is
+# introduced.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: read
+
+jobs:
+  oxlint-comparison:
+    name: Oxlint Comparison (report-only)
+    runs-on: ubuntu-latest
+    # Non-blocking, mechanism 1 of 2 (see header).
+    continue-on-error: true
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Setup repository
+        uses: ./.github/actions/setup-node-npm-ci
+
+      - name: Run Oxlint (report-only)
+        # Non-blocking, mechanism 1 of 2 (see header).
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+
+          start_ms=$(date +%s%3N)
+          set +e
+          output="$(npm run lint:oxlint 2>&1)"
+          status=$?
+          set -e
+          end_ms=$(date +%s%3N)
+
+          duration_ms=$(( end_ms - start_ms ))
+
+          echo "=== raw npm run lint:oxlint output ==="
+          echo "$output"
+          echo "=== end raw output ==="
+
+          printf '%s\n' "$output" > "${RUNNER_TEMP:-/tmp}/oxlint-output.txt"
+
+          echo "### Oxlint comparison summary (report-only, non-blocking)"
+          echo "- exit code: ${status}"
+          echo "- duration: ${duration_ms} ms"
+          counts=""
+          counts="$(grep -Eo 'Found [0-9]+ warnings? and [0-9]+ errors?' "${RUNNER_TEMP:-/tmp}/oxlint-output.txt" | tail -n 1)" || counts=""
+          if [ -n "$counts" ]; then
+            echo "- oxlint: ${counts}"
+          else
+            echo "- oxlint: no 'Found N warnings and N errors' summary line in the output"
+          fi
+          echo '- ESLint remains the authoritative lint gate (ci.yml lint job); this job is informational only.'
+
+          # Non-blocking, mechanism 2 of 2: always succeed.
+          exit 0

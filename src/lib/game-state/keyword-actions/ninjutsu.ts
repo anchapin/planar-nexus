@@ -23,6 +23,7 @@ import type {
 } from "../types";
 import { Phase } from "../types";
 import { spendMana } from "../mana";
+import { acquireCardMap } from "../sba-pass-cards";
 import { parseManaCost } from "../oracle-text-parser/mana-cost";
 import { isPriorityPlayer } from "../priority-guard";
 import {
@@ -110,7 +111,7 @@ export function refreshTurnCreatureForms(state: GameState): GameState {
     ) {
       continue;
     }
-    cards ??= new Map(state.cards);
+    cards ??= acquireCardMap(state);
     const updated = { ...card };
     if (next) updated.turnCreatureForm = next;
     else delete updated.turnCreatureForm;

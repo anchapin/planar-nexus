@@ -168,7 +168,9 @@ describe("check-npm-audit gate", () => {
     const real = JSON.parse(
       fs.readFileSync(REAL_EXCEPTIONS, "utf8"),
     ).exceptions;
-    expect(real.length).toBeGreaterThan(0);
+    // The allowlist may legitimately be empty (no unwaived high/critical
+    // advisories left), so only the shape of the entries is asserted here.
+    expect(Array.isArray(real)).toBe(true);
     for (const ex of real) {
       expect(ex.expires).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(ex.issue).toMatch(

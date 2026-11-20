@@ -44,7 +44,7 @@ export function detectRenownEtbTriggers(
     effect: `Renown ${count} — when this creature enters the battlefield, if it isn't renowned, put ${count} +1/+1 counters on it and it becomes renowned.`,
     timestamp: Date.now(),
     sourceCardTimestamp: card.enteredBattlefieldTimestamp,
-    context: context as any,
+    context,
   });
 
   return sortTriggersAPNAP(triggers, state, activePlayerId);
@@ -81,7 +81,7 @@ export function detectTributeEtbTriggers(
     effect: `Tribute ${count} — as this creature enters the battlefield, an opponent may pay ${count}. If they decline, the printed effect fires.`,
     timestamp: Date.now(),
     sourceCardTimestamp: card.enteredBattlefieldTimestamp,
-    context: context as any,
+    context,
   });
 
   return sortTriggersAPNAP(triggers, state, activePlayerId);

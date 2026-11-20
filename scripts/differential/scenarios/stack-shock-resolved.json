@@ -1,0 +1,39 @@
+{
+  "id": "stack-shock-resolved",
+  "refs": "#2920",
+  "description": "Shock cast at the opponent and resolved: the stack is empty, the opponent is at 18 life, and Shock is in the caster's graveyard.",
+  "players": [
+    {
+      "life": 20,
+      "hand": ["Shock"],
+      "library": 0,
+      "manaPool": { "R": 1 }
+    },
+    {
+      "life": 20,
+      "library": 0
+    }
+  ],
+  "phase": "precombat_main",
+  "actions": [
+    {
+      "do": "cast",
+      "player": 0,
+      "card": "Shock",
+      "targets": [{ "player": 1 }]
+    },
+    { "do": "resolveStack" }
+  ],
+  "observe": ["life", "battlefield", "hand", "graveyard", "library"],
+  "expectStack": [],
+  "expect": [
+    {
+      "life": 20,
+      "battlefield": [],
+      "hand": [],
+      "graveyard": ["Shock"],
+      "library": 0
+    },
+    { "life": 18, "library": 0 }
+  ]
+}

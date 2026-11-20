@@ -36,6 +36,7 @@ The `build` job `needs:` **all** of: `test, lint, typecheck, commitlint, mutatio
 
 - `mutation-smoke` runs a fast config guard only (`node scripts/check-mutation-config.mjs`, ~50ms). PRs touching `src/lib/game-state/` get a targeted layer-system mutation check via `.github/workflows/mutation-pr.yml` (non-blocking, informational). Full Stryker suite (layer-system, combat, etc.) runs **nightly** in `.github/workflows/mutation.yml` (#1762).
 - `workflow-lint` enforces that every job bootstraps via the shared `.github/actions/setup-node-npm-ci` composite (Node 22 + `npm ci`, ≥11 uses repo-wide). It **rejects** direct `npm ci` and `actions/setup-node@v1-5`. When adding/editing a workflow, reuse that action — do not hand-roll setup.
+- **Flake detectors**: `ci.yml` runs the nightly 5× Playwright (`flake-detector`) and Jest (`jest-flake-detector`) detectors on schedule / `workflow_dispatch` / push-to-`main` only. Pull requests get a path-filtered, non-blocking pre-merge route in `.github/workflows/pr-flake-detector.yml` (3× / threshold 2, findings as a PR comment + artifact) — #2365. The cross-browser job (`Cross-Browser E2E (firefox + webkit)`) lives in `.github/workflows/nightly.yml`, not in `ci.yml` — #2365.
 
 ## Architecture (not obvious from filenames)
 

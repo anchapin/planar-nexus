@@ -11,6 +11,7 @@ import type {
   CardInstance,
   CardInstanceId,
   PlayerId,
+  Zone,
 } from "./types";
 import { ZoneType, isOnBattlefield, parseZoneKey } from "./types";
 import {
@@ -36,6 +37,11 @@ import {
 } from "./legendary-rule";
 import { processCorpseOnDeath } from "./corpse-keyword";
 import { createEngineUncaughtException } from "./errors";
+import {
+  acquireCardMap,
+  createPassCardMap,
+  releasePassCardMap,
+} from "./sba-pass-cards";
 import { refreshThresholdBonuses } from "./keyword-actions/threshold";
 import { refreshDomainPower } from "./keyword-actions/domain";
 import { refreshTribalAnthems } from "./keyword-actions/tribal-anthem";
@@ -79,6 +85,14 @@ export function checkStateBasedActions(
   state: GameState,
 ): StateBasedActionResult {
   const originalState = state;
+  // #2419: copy the card map ONCE per pass. Every helper on the SBA path
+  // used to copy the whole map again (`new Map(state.cards)`), so one
+  // `checkStateBasedActions` call copied a 100+ entry `Map` up to a dozen
+  // times. The pass now owns one working copy: the helpers mutate it in
+  // place through `acquireCardMap`, and the frozen result is published at
+  // the end. The ownership marker is dropped in the `finally` below, so the
+  // map handed back to the caller is an ordinary immutable map again.
+  const workingCards = createPassCardMap(state);
   try {
     // Threshold static bonuses depend on graveyard size (issue #2300).
     // Domain CDA power depends on the lands each player controls.
@@ -96,7 +110,7 @@ export function checkStateBasedActions(
               refreshThresholdBonuses(
                 refreshTurnCreatureForms({
                   ...state,
-                  cards: new Map(state.cards),
+                  cards: workingCards,
                 }),
               ),
             ),
@@ -239,6 +253,98 @@ export function checkStateBasedActions(
         }
       }
       if (!progressed) break;
+    }
+
+    // SBA 704.5d: A token that is in any zone other than the battlefield
+    // ceases to exist (CR 111.8, CR 704.5d).
+    //
+    // Without this rule the engine keeps phantom tokens forever: a destroyed
+    // or exiled token stays in the graveyard / exile zone and in
+    // `state.cards` even though it no longer exists.
+    //
+    // Ordering is CR-critical, so this pass runs BEFORE the destruction /
+    // exile applications below and only looks at the zone membership as it
+    // was at the start of this check:
+    //  - a token that dies during THIS pass (lethal damage, 0 toughness,
+    //    sacrifice, exile) transits its zone first so its "dies" triggers
+    //    fire (CR 603.10a); it ceases to exist on the NEXT SBA check;
+    //  - a token that is already in a graveyard / exile / hand / library at
+    //    the start of this check ceases to exist now.
+    //
+    // The stack zone is deliberately out of scope (tokens are never stack
+    // objects in this engine — a token copy of a spell is not a card), and
+    // the command zone is left alone for the same reason.
+    const tokensToCease = Array.from(updatedState.cards.values()).filter(
+      (card) => card.isToken === true,
+    );
+    if (tokensToCease.length > 0) {
+      // #2936: copy the zones map ONLY when a zone actually changes, and
+      // delete the ceased tokens from the PASS-OWNED card map instead of
+      // from a private copy.
+      //
+      // The old code copied the whole cards map and the whole zones map as
+      // soon as ANY token existed and published those copies. The published
+      // copy was not in the pass-owned set, so every later `acquireCardMap`
+      // call in the same pass copied the map AGAIN, and the `finally` at the
+      // end of the pass released a map that was no longer the published one.
+      // Now: the zones copy is made lazily (only when a token leaves a
+      // zone) and the card deletions go through `acquireCardMap`, so a later
+      // same-pass effect observes the ceased state.
+      let ceasingZones: Map<string, Zone> | null = null;
+      let ceasingCards: Map<CardInstanceId, CardInstance> | null = null;
+      for (const token of tokensToCease) {
+        // Read from the working zones copy once it exists, from the state
+        // before that.
+        const zones = ceasingZones ?? updatedState.zones;
+        // Locate the token's zone (cached key first, then a scan for legacy
+        // cards whose zone cache was never populated).
+        let tokenZoneKey = token.currentZoneKey;
+        let tokenZone = tokenZoneKey ? (zones.get(tokenZoneKey) ?? null) : null;
+        if (tokenZone && !tokenZone.cardIds.includes(token.id)) {
+          // Stale zone cache — fall back to the scan below.
+          tokenZone = null;
+          tokenZoneKey = null;
+        }
+        if (!tokenZone || !tokenZoneKey) {
+          for (const [zoneKey, zone] of zones) {
+            if (zone.cardIds.includes(token.id)) {
+              tokenZone = zone;
+              tokenZoneKey = zoneKey;
+              break;
+            }
+          }
+        }
+        if (tokenZone && tokenZoneKey) {
+          // Still on the battlefield — it exists.
+          if (tokenZone.type === ZoneType.BATTLEFIELD) continue;
+          // The stack is out of scope for this rule (hard stop).
+          if (tokenZone.type === ZoneType.STACK) continue;
+
+          // The zone really changes — copy the zones map once.
+          ceasingZones ??= new Map(updatedState.zones);
+          ceasingZones.set(tokenZoneKey, {
+            ...tokenZone,
+            cardIds: tokenZone.cardIds.filter((id) => id !== token.id),
+          });
+        }
+        // A token that is in no zone at all is not on the battlefield either:
+        // only the phantom `state.cards` entry is left, so it goes too.
+        //
+        // The deletion goes into the pass-owned card map, so any later
+        // `acquireCardMap` effect in this pass sees the ceased state.
+        if (!ceasingCards) {
+          ceasingCards = acquireCardMap(updatedState);
+          updatedState = { ...updatedState, cards: ceasingCards };
+        }
+        ceasingCards.delete(token.id);
+        descriptions.push(
+          `${token.cardData.name} ceases to exist (token, CR 704.5d)`,
+        );
+        actionsPerformed = true;
+      }
+      if (ceasingZones) {
+        updatedState = { ...updatedState, zones: ceasingZones };
+      }
     }
 
     // Check cards for SBAs
@@ -410,7 +516,7 @@ export function checkStateBasedActions(
           );
           updatedState = {
             ...updatedState,
-            cards: new Map(updatedState.cards).set(card.id, {
+            cards: acquireCardMap(updatedState).set(card.id, {
               ...card,
               counters: card.counters
                 .map((c) => {
@@ -660,6 +766,10 @@ export function checkStateBasedActions(
         `SBA check failed: ${err instanceof Error ? err.message : String(err)}`,
       ],
     };
+  } finally {
+    // #2419: the pass is over — the working copy is no longer owned by the
+    // pass, so later callers treat the published map as immutable again.
+    releasePassCardMap(workingCards);
   }
 }
 

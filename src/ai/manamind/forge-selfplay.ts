@@ -21,6 +21,11 @@
  * recorded; with `expertRecord: "both"` (manamind#96) the Expert AI's are
  * too, as one-hot targets with `source: "expert"`. Mixing these games into
  * the buffer keeps self-play training tied to an outside opponent.
+ *
+ * `opponent: "model"` (manamind#27) searches the other seat with a second
+ * ForgePointerModel (`opponentModel`, a frozen past snapshot), same search
+ * recipe as the net; only the net's decisions are recorded. The pool games
+ * diversify the training opponents beyond the current lineage.
  */
 
 import {
@@ -31,6 +36,8 @@ import {
 } from "@/ai/simulation/training-session";
 import { expertAction } from "@/ai/simulation/expert-agent";
 import type { ForgeDecision } from "./forge-pointer-features";
+import { historiesFor } from "./forge-search";
+import { OpponentHistoryTracker } from "@/ai/simulation/player-history";
 import type { ForgePointerModel } from "./forge-pointer-model";
 import {
   blockAttackers,
@@ -51,6 +58,22 @@ export interface SelfPlayDecision extends ForgeDecision {
   /** Which seat's brain produced the action: the net or the Expert AI. */
   source: "net" | "expert";
   pi: SearchTarget;
+  /**
+   * The search's root evaluation for the deciding seat, in [-1, 1]
+   * (manamind#96): the search-derived value target, the same seat
+   * convention and scale as `returns`. Expert-source decisions have
+   * none (the Expert AI's move is not search-scored).
+   */
+  rootValue?: number;
+  /**
+   * manamind#106 rerank probe (`selfplay-forge --probe collect`): the
+   * search's per-candidate value-head reads at this decision, in the
+   * search's candidate order (`visits` counts, mean leaf `q` over the
+   * dealt worlds, null when never visited) plus the search's own pick
+   * index. Analysis derives the value-head favorite from these;
+   * recording changes no play.
+   */
+  probe?: { visits: number[]; q: (number | null)[]; pick: number };
 }
 
 export interface SelfPlayGame {
@@ -99,15 +122,26 @@ export interface SelfPlayOptions {
    */
   cScale?: number;
   maxTurns?: number;
-  /** Who plays the other seat: the net itself (default) or the Expert AI. */
-  opponent?: "self" | "expert";
-  /** The net's seat when `opponent` is `"expert"` (default 0). */
+  /**
+   * Who plays the other seat: the net itself (default), the Expert AI, or
+   * a second model (`opponentModel`, manamind#27).
+   */
+  opponent?: "self" | "expert" | "model";
+  /** The frozen past snapshot when `opponent` is `"model"` (manamind#27). */
+  opponentModel?: ForgePointerModel;
+  /** The net's seat when the other seat is not the net (default 0). */
   netSeat?: 0 | 1;
   /**
    * When `opponent` is `"expert"`: record only the net's decisions
    * (`"net"`, default) or the Expert AI's too (`"both"`, manamind#96).
    */
   expertRecord?: "net" | "both";
+  /**
+   * Record the manamind#106 rerank probe on each net decision (the
+   * search's per-candidate value-head reads and its own pick).
+   * Default off; recording only.
+   */
+  probe?: boolean;
 }
 
 /**
@@ -268,13 +302,19 @@ export async function playSelfPlayGame(
     exploreMoves = Number.POSITIVE_INFINITY,
     maxTurns,
     opponent = "self",
+    opponentModel,
     netSeat = 0,
     expertRecord = "net",
     pick = "sample",
+    probe = false,
     cScale,
   } = options;
   const session = new TrainingSession({ maxTurns });
   const seats = session.reset(seed, deckA, deckB);
+  // Per-seat opponent-history trackers (manamind #44): each diffs its
+  // viewer's opponent's public zones, observed at every decision that
+  // seat makes, so the summary a decision carries is what its seat knew.
+  const trackers = seats.map((seat) => new OpponentHistoryTracker(seat));
   const deckNames = [
     deckAName ?? deckName(deckA),
     deckBName ?? deckName(deckB),
@@ -286,16 +326,45 @@ export async function playSelfPlayGame(
   // Exploration counts real choices only; forced passes would use it up
   // in the first turn.
   let choices = 0;
+  // The model opponent tracks its own exploration budget (manamind#27).
+  let oppChoices = 0;
   const attack = { prompts: 0, offered: 0, declared: 0 };
   while (prompt.kind !== "game_over") {
-    if (opponent === "expert" && seats.indexOf(prompt.playerId) !== netSeat) {
+    const oppSeat = seats.indexOf(prompt.playerId) !== netSeat;
+    if (oppSeat && opponent !== "self") {
       move++;
+      if (opponent === "model") {
+        if (!opponentModel)
+          throw new Error("opponent 'model' needs opponentModel");
+        const oppExploring = oppChoices < exploreMoves;
+        const oppHistories = historiesFor(
+          session,
+          seats.indexOf(prompt.playerId),
+          trackers,
+        );
+        const oppResult = await forgeSearch(session, opponentModel, {
+          simulations,
+          seed: (seed * 7919 + move) >>> 0,
+          gumbel: pick === "gumbel" && oppExploring,
+          ...(cScale === undefined ? {} : { cScale }),
+          deckNames,
+          oppHistories,
+        });
+        if (oppResult.candidates.length > 1) oppChoices++;
+        prompt = session.step(oppResult.action);
+        continue;
+      }
       const action = expertAction(session, prompt);
+      const expertHistories = historiesFor(
+        session,
+        seats.indexOf(prompt.playerId),
+        trackers,
+      );
       if (expertRecord === "both") {
         const pi = expertTarget(prompt, action);
         if (pi)
           decisions.push({
-            ...forgeDecision(session, prompt, deckNames),
+            ...forgeDecision(session, prompt, deckNames, expertHistories),
             seat: seats.indexOf(prompt.playerId),
             source: "expert",
             pi,
@@ -305,20 +374,33 @@ export async function playSelfPlayGame(
       continue;
     }
     const exploring = choices < exploreMoves;
+    const seat = seats.indexOf(prompt.playerId);
+    const oppHistories = historiesFor(session, seat, trackers);
     const result = await forgeSearch(session, model, {
       simulations,
       seed: (seed * 7919 + move) >>> 0,
       gumbel: pick === "gumbel" && exploring,
       ...(cScale === undefined ? {} : { cScale }),
       deckNames,
+      oppHistories,
     });
     const pi = searchTarget(prompt, result);
     if (pi && result.candidates.length > 1) {
       decisions.push({
-        ...forgeDecision(session, prompt, deckNames),
+        ...forgeDecision(session, prompt, deckNames, oppHistories),
         seat: seats.indexOf(prompt.playerId),
         source: "net",
         pi,
+        rootValue: result.rootValue,
+        ...(probe && result.stats
+          ? {
+              probe: {
+                visits: result.stats.map((c) => c.visits),
+                q: result.stats.map((c) => c.q),
+                pick: result.index,
+              },
+            }
+          : {}),
       });
     }
     let action: TrainingAction = result.action;

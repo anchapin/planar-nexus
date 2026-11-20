@@ -136,9 +136,49 @@ describe("serialization", () => {
       expect(aiPlayer.battlefield[0].toughness).toBe(2);
     });
 
-    it.skip("should convert hand cards", () => {
-      // Test skipped - requires complex zone setup
-      // Conversion function is tested indirectly through integration tests
+    it("should convert hand cards", () => {
+      let engineState = createInitialGameState(["Player 1", "Player 2"]);
+      const player1Id = Array.from(engineState.players.keys())[0];
+
+      // Add a creature to the player's deck
+      const mockCreature = createMockCard(
+        "Grizzly Bears",
+        "Creature — Bear",
+        2,
+      );
+      mockCreature.colors = ["G"];
+      mockCreature.color_identity = ["G"];
+      mockCreature.keywords = ["Trample"];
+      mockCreature.oracle_text = "Trample.";
+      engineState = loadDeckForPlayer(engineState, player1Id, [mockCreature]);
+
+      // Move card to hand manually for testing
+      const cardId = Array.from(engineState.cards.keys())[0];
+      const card = engineState.cards.get(cardId);
+      if (card) {
+        card.controllerId = player1Id;
+        card.ownerId = player1Id;
+      }
+
+      const handZone = engineState.zones.get(`${player1Id}-hand`);
+      const battlefieldZone = engineState.zones.get(`${player1Id}-battlefield`);
+
+      if (handZone && battlefieldZone && cardId) {
+        handZone.cardIds = [cardId];
+        battlefieldZone.cardIds = [];
+      }
+
+      const aiState = engineToAIState(engineState);
+      const aiPlayer = aiState.players[player1Id];
+
+      expect(aiPlayer.hand.length).toBe(1);
+      expect(aiPlayer.hand[0].cardInstanceId).toBe(cardId);
+      expect(aiPlayer.hand[0].name).toBe("Grizzly Bears");
+      expect(aiPlayer.hand[0].type).toBe("Creature — Bear");
+      expect(aiPlayer.hand[0].manaValue).toBe(2);
+      expect(aiPlayer.hand[0].colors).toEqual(["green"]);
+      expect(aiPlayer.hand[0].oracleText).toBe("Trample.");
+      expect(aiPlayer.hand[0].keywords).toEqual(["Trample"]);
     });
 
     it("should convert mana pool", () => {

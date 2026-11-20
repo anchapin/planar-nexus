@@ -1,0 +1,38 @@
+{
+  "id": "worked-burn-spell",
+  "refs": "#2411",
+  "description": "Worked example: Shock (2 damage) cast at the opponent changes that player's life total from 20 to 18.",
+  "players": [
+    {
+      "life": 20,
+      "hand": ["Shock"],
+      "library": 0,
+      "manaPool": { "R": 1 }
+    },
+    {
+      "life": 20,
+      "library": 0
+    }
+  ],
+  "phase": "precombat_main",
+  "actions": [
+    {
+      "do": "cast",
+      "player": 0,
+      "card": "Shock",
+      "targets": [{ "player": 1 }]
+    },
+    { "do": "resolveStack" }
+  ],
+  "observe": ["life", "battlefield", "hand", "graveyard", "library"],
+  "expect": [
+    {
+      "life": 20,
+      "battlefield": [],
+      "hand": [],
+      "graveyard": ["Shock"],
+      "library": 0
+    },
+    { "life": 18, "library": 0 }
+  ]
+}

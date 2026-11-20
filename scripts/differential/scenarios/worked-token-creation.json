@@ -1,0 +1,39 @@
+{
+  "id": "worked-token-creation",
+  "refs": "#2411",
+  "description": "Worked example: a token is created directly on the battlefield; the token is a 1/1 Elf named 'Elf'.",
+  "players": [
+    {
+      "life": 20,
+      "battlefield": [],
+      "library": 0
+    },
+    {
+      "life": 20,
+      "library": 0
+    }
+  ],
+  "phase": "precombat_main",
+  "actions": [
+    {
+      "do": "createToken",
+      "player": 0,
+      "card": "Llanowar Elves",
+      "tokenName": "Elf",
+      "count": 1
+    }
+  ],
+  "observe": ["life", "battlefield", "hand", "graveyard", "library"],
+  "expect": [
+    {
+      "life": 20,
+      "battlefield": [
+        { "name": "Elf", "power": 1, "toughness": 1, "token": true }
+      ],
+      "hand": [],
+      "graveyard": [],
+      "library": 0
+    },
+    { "life": 20, "library": 0 }
+  ]
+}

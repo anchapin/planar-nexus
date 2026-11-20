@@ -71,6 +71,12 @@ export function createCardInstance(
     // to the existing `chosenCreatureType` /
     // `chosenColor` init.
     chosenProtectionFrom: null,
+    // Issue #2939: `enter_choice: { kind: "player" }` sets this
+    // via `resolveEnterChoice` (the "as this enters, choose a
+    // player" arm). Ships default-null so the engine arm can
+    // stamp it without a CardInstance-shape bump; parallel to
+    // the existing `chosenCreatureType` / `chosenColor` init.
+    chosenPlayer: null,
     isToken: options.isToken || false,
     tokenData: options.tokenData || null,
     // Boast keyword tracking (CR 702.131) - default to false, set when creature attacks
