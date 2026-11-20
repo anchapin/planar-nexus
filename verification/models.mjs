@@ -6,43 +6,107 @@
 //   combinedRule  <- the CR 500.4 coupling inside advanceToNextPhase
 // scripts/check-law-suite-drift.ts drift-checks these transcriptions
 // against the real functions.
+//
+// The mana model covers the pool's seven buckets: the five colors
+// (white, blue, black, red, green), colorless, and generic. The order in
+// which a generic cost is paid is the engine's own order (generic bucket
+// first, then colorless, then white, blue, black, red, green) — see
+// MANA_SPEND_ORDER below and spendMana in
+// src/lib/game-state/mana/mana-payment.ts.
 import {bool, min, nat, oneOf, rule, when} from 'gdp-wired'
 
 export const MANA_OPS = oneOf('add', 'spend', 'empty')
-export const MANA_INPUTS = {op: MANA_OPS, aw: nat, ac: nat, ap: nat, sw: nat, sc: nat, sg: nat}
 
-function manaStep(bug) {
-  return ({op, aw, ac, ap, sw, sc, sg, w, c, p, affordable}) => {
-    const paying = op.is('spend').and(affordable)
-    const adding = op.is('add')
-    const emptying = op.is('empty')
-    const wSpec = w.minus(sw), cSpec = c.minus(sc)
-    const owed1 = sg.minus(min(p, sg))
-    const cAfter = cSpec.minus(min(cSpec, owed1))
-    const owed2 = owed1.minus(min(cSpec, owed1))
-    const wAfter = wSpec.minus(min(wSpec, owed2))
-    const pAfter = p.minus(min(p, sg))
-    const out = {
-      w: when(paying, wAfter, when(adding, w.plus(aw), when(emptying, 0, w))),
-      c: when(paying, cAfter, when(adding, c.plus(ac), when(emptying, 0, c))),
-      p: when(paying, pAfter, when(adding, p.plus(ap), when(emptying, 0, p))),
-    }
-    if (bug) return out // bug rule has no ghost fields in state; see manaRuleBug
-    return out
+// The five colored buckets, in the engine's generic-spillover order (WUBRG).
+export const COLOR_BUCKETS = ['w', 'u', 'b', 'r', 'g']
+// Every bucket of the real pool: the five colors, colorless ('c') and the
+// generic bucket ('p').
+export const MANA_BUCKETS = [...COLOR_BUCKETS, 'c', 'p']
+// The order in which spendMana pays a generic cost: the generic bucket
+// first, then colorless, then white, blue, black, red, green.
+export const MANA_SPEND_ORDER = ['p', 'c', ...COLOR_BUCKETS]
+
+// One input per bucket and operation: 'a<bucket>' adds, 's<bucket>' spends.
+// aw/au/ab/ar/ag = add white/blue/black/red/green, ac = add colorless,
+// ap = add generic; sw/su/sb/sr/sg = spend those colors, sc = spend
+// colorless, sp = spend generic.
+export const manaAmountInputs = () => {
+  const inputs = {}
+  for (const k of MANA_BUCKETS) inputs['a' + k] = nat
+  for (const k of MANA_BUCKETS) inputs['s' + k] = nat
+  return inputs
+}
+
+export const MANA_INPUTS = {op: MANA_OPS, ...manaAmountInputs()}
+
+export function manaState(extra = {}) {
+  const state = {}
+  for (const k of MANA_BUCKETS) state[k] = 0
+  return {...state, ...extra}
+}
+
+// canAffordMana / spendMana's refusal checks: every colored bucket must
+// cover its own cost, colorless must cover its own cost, and what is left
+// of the generic bucket, of the colored buckets and of colorless must cover
+// the generic cost.
+function affordFlags(env, dropColorlessCheck) {
+  const afford = {}
+  for (const k of COLOR_BUCKETS) afford['afford' + k] = env[k].atLeast(env['s' + k])
+  if (!dropColorlessCheck) afford.affordC = env.c.atLeast(env.sc)
+  let available = env.p
+  for (const k of COLOR_BUCKETS) available = available.plus(env[k].minus(env['s' + k]))
+  available = available.plus(env.c.minus(env.sc))
+  afford.affordG = available.atLeast(env.sp)
+  return afford
+}
+
+function affordableFlag(env) {
+  let acc = env.affordC
+  for (const k of COLOR_BUCKETS) acc = acc.and(env['afford' + k])
+  return {affordable: acc.and(env.affordG)}
+}
+
+// The spend itself, transcribed from spendMana: the generic bucket pays the
+// generic cost first, then colorless, then the colors in WUBRG order; each
+// colored bucket first pays its own cost, and only its leftover pays generic.
+function spendOutcome(env) {
+  let owed = env.sp
+  const fromGeneric = min(env.p, owed)
+  owed = owed.minus(fromGeneric)
+  const out = {p: env.p.minus(fromGeneric)}
+  const colorlessSpec = env.c.minus(env.sc)
+  const fromColorless = min(colorlessSpec, owed)
+  owed = owed.minus(fromColorless)
+  out.c = colorlessSpec.minus(fromColorless)
+  for (const k of COLOR_BUCKETS) {
+    const spec = env[k].minus(env['s' + k])
+    const used = min(spec, owed)
+    owed = owed.minus(used)
+    out[k] = spec.minus(used)
   }
+  return out
+}
+
+function manaStep(env) {
+  const paying = env.op.is('spend').and(env.affordable)
+  const adding = env.op.is('add')
+  const emptying = env.op.is('empty')
+  const paid = spendOutcome(env)
+  const out = {}
+  for (const k of MANA_BUCKETS) {
+    out[k] = when(paying, paid[k],
+      when(adding, env[k].plus(env['a' + k]), when(emptying, 0, env[k])))
+  }
+  return out
 }
 
 export function manaRule(name) {
   return rule(name)
     .inputs(MANA_INPUTS)
-    .state({w: 0, c: 0, p: 0})
-    .flags(({w, c, p, sw, sc, sg}) => ({
-      affordW: w.atLeast(sw),
-      affordC: c.atLeast(sc),
-      affordG: p.plus(w.minus(sw)).plus(c.minus(sc)).atLeast(sg),
-    }))
-    .flags(({affordW, affordC, affordG}) => ({affordable: affordW.and(affordC, affordG)}))
-    .step(manaStep(false))
+    .state(manaState())
+    .flags((env) => affordFlags(env, false))
+    .flags(affordableFlag)
+    .step(manaStep)
 }
 
 // Watched variant: ghost counters addedC/spentC (proof instrumentation only).
@@ -50,30 +114,29 @@ export function manaRule(name) {
 export function manaRuleWatched(name, bug) {
   return rule(name)
     .inputs(MANA_INPUTS)
-    .state({w: 0, c: 0, p: 0, addedC: 0, spentC: 0})
-    .flags(({w, c, p, sw, sc, sg}) => bug
-      ? {affordW: w.atLeast(sw), affordG: p.plus(w.minus(sw)).plus(c.minus(sc)).atLeast(sg)}
-      : {affordW: w.atLeast(sw), affordC: c.atLeast(sc), affordG: p.plus(w.minus(sw)).plus(c.minus(sc)).atLeast(sg)})
-    .flags(bug
-      ? ({affordW, affordG}) => ({affordable: affordW.and(affordG)})
-      : ({affordW, affordC, affordG}) => ({affordable: affordW.and(affordC, affordG)}))
-    .step(({op, aw, ac, ap, sw, sc, sg, w, c, p, addedC, spentC, affordable}) => {
-      const paying = op.is('spend').and(affordable)
-      const adding = op.is('add')
-      const emptying = op.is('empty')
-      const wSpec = w.minus(sw), cSpec = c.minus(sc)
-      const owed1 = sg.minus(min(p, sg))
-      const cAfter = cSpec.minus(min(cSpec, owed1))
-      const owed2 = owed1.minus(min(cSpec, owed1))
-      const wAfter = wSpec.minus(min(wSpec, owed2))
-      const pAfter = p.minus(min(p, sg))
-      return {
-        w: when(paying, wAfter, when(adding, w.plus(aw), when(emptying, 0, w))),
-        c: when(paying, cAfter, when(adding, c.plus(ac), when(emptying, 0, c))),
-        p: when(paying, pAfter, when(adding, p.plus(ap), when(emptying, 0, p))),
-        addedC: when(adding, addedC.plus(ac), addedC),
-        spentC: when(paying, spentC.plus(sc), spentC),
+    .state(manaState({addedC: 0, spentC: 0}))
+    .flags((env) => affordFlags(env, bug === true))
+    .flags((env) => {
+      if (bug === true) {
+        let acc = env.affordG
+        for (const k of COLOR_BUCKETS) acc = acc.and(env['afford' + k])
+        return {affordable: acc}
       }
+      return affordableFlag(env)
+    })
+    .step((env) => {
+      const paying = env.op.is('spend').and(env.affordable)
+      const adding = env.op.is('add')
+      const emptying = env.op.is('empty')
+      const paid = spendOutcome(env)
+      const out = {}
+      for (const k of MANA_BUCKETS) {
+        out[k] = when(paying, paid[k],
+          when(adding, env[k].plus(env['a' + k]), when(emptying, 0, env[k])))
+      }
+      out.addedC = when(adding, env.addedC.plus(env.ac), env.addedC)
+      out.spentC = when(paying, env.spentC.plus(env.sc), env.spentC)
+      return out
     })
 }
 
@@ -114,27 +177,21 @@ export function turnRule(name, bug) {
 
 export function combinedRule(name) {
   return rule(name)
-    .inputs({op: oneOf('advance', 'add', 'spend'), aw: nat, ac: nat, ap: nat, sw: nat, sc: nat, sg: nat})
-    .state({w: 0, c: 0, p: 0, phase: PhaseKind.from('untap')})
-    .flags(({w, c, p, sw, sc, sg}) => ({
-      affordable: w.atLeast(sw).and(c.atLeast(sc),
-        p.plus(w.minus(sw)).plus(c.minus(sc)).atLeast(sg)),
-    }))
-    .step(({op, aw, ac, ap, sw, sc, sg, w, c, p, phase, affordable}) => {
-      const advancing = op.is('advance')
-      const adding = op.is('add')
-      const paying = op.is('spend').and(affordable)
-      const wSpec = w.minus(sw), cSpec = c.minus(sc)
-      const owed1 = sg.minus(min(p, sg))
-      const cAfter = cSpec.minus(min(cSpec, owed1))
-      const owed2 = owed1.minus(min(cSpec, owed1))
-      const wAfter = wSpec.minus(min(wSpec, owed2))
-      const pAfter = p.minus(min(p, sg))
-      return {
-        w: when(advancing, 0, when(paying, wAfter, when(adding, w.plus(aw), w))),
-        c: when(advancing, 0, when(paying, cAfter, when(adding, c.plus(ac), c))),
-        p: when(advancing, 0, when(paying, pAfter, when(adding, p.plus(ap), p))),
-        phase: when(advancing, nextOf(phase), phase),
+    .inputs({op: oneOf('advance', 'add', 'spend'), ...manaAmountInputs()})
+    .state({...manaState(), phase: PhaseKind.from('untap')})
+    .flags((env) => affordFlags(env, false))
+    .flags(affordableFlag)
+    .step((env) => {
+      const advancing = env.op.is('advance')
+      const adding = env.op.is('add')
+      const paying = env.op.is('spend').and(env.affordable)
+      const paid = spendOutcome(env)
+      const out = {}
+      for (const k of MANA_BUCKETS) {
+        out[k] = when(advancing, 0,
+          when(paying, paid[k], when(adding, env[k].plus(env['a' + k]), env[k])))
       }
+      out.phase = when(advancing, nextOf(env.phase), env.phase)
+      return out
     })
 }

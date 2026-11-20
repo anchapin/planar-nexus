@@ -6,6 +6,11 @@
 // the models match the code; if a future edit to spendMana / advancePhase &
 // friends changes the projected behaviour, this check fails first.
 //
+// The mana traces are random five-color (WUBRG) + colorless + generic adds
+// and spends, so the generic-spillover order the model transcribes — generic
+// bucket, then colorless, then white, blue, black, red, green — is compared
+// bucket by bucket against the real spendMana.
+//
 // The 'advanceSkip' op (the advanceToNextPhase wrapper's first-strike skip)
 // is not exercised here — the real wrapper needs a full GameState with combat
 // state. Its two-step logic is transcribed in the model and law-checked in
@@ -30,32 +35,60 @@ const rand = mulberry32(20261026)
 const ri = (n: number) => Math.floor(rand() * n)
 
 // ---------- mana ----------
+// The real pool's seven buckets, with the model's key for each and the real
+// engine's key for it (src/lib/game-state/mana/mana-pool.ts).
+const BUCKETS = [
+  {key: 'w', real: 'white'},
+  {key: 'u', real: 'blue'},
+  {key: 'b', real: 'black'},
+  {key: 'r', real: 'red'},
+  {key: 'g', real: 'green'},
+  {key: 'c', real: 'colorless'},
+  {key: 'p', real: 'generic'},
+] as const
+
 const mana = manaRule('mana-pool')
 const shipped = mana.compiled()
 const params = mana.encodeParams({})
 let failures = 0
 let steps = 0
-let spendsOk = 0, spendsRefused = 0
+let spendsOk = 0, spendsRefused = 0, genericSpends = 0, genericSpillovers = 0
 
-for (let trace = 0; trace < 300; trace++) {
+for (let trace = 0; trace < 600; trace++) {
   const pid = 'p1'
   let real: any = {
     players: new Map([[pid, {id: pid, manaPool: {colorless: 0, white: 0, blue: 0, black: 0, red: 0, green: 0, generic: 0}}]]),
     lastModifiedAt: 0,
   }
   let model = shipped.init(params)
-  const len = 1 + ri(12)
+  const len = 1 + ri(16)
   for (let i = 0; i < len; i++) {
     const op = ['add', 'spend', 'empty'][ri(3)] as string
-    const input = {op, aw: ri(4), ac: ri(4), ap: ri(3), sw: ri(4), sc: ri(4), sg: ri(5)}
+    const input: any = {op}
+    for (const b of BUCKETS) {
+      input['a' + b.key] = ri(6)
+      input['s' + b.key] = ri(2)
+    }
+    input.ac = ri(5)
+    input.ap = ri(5)
+    input.sp = ri(4)
     if (op === 'add') {
-      real = addMana(real, pid, {white: input.aw, colorless: input.ac, generic: input.ap})
+      const add: any = {}
+      for (const b of BUCKETS) add[b.real] = input['a' + b.key]
+      real = addMana(real, pid, add)
     } else if (op === 'empty') {
       real = emptyManaPool(real, pid)
     } else {
+      const spend: any = {}
+      for (const b of BUCKETS) spend[b.real] = input['s' + b.key]
+      if (input.sp > 0) genericSpends++
       const before = real.players.get(pid).manaPool
-      const res = spendMana(real, pid, {white: input.sw, colorless: input.sc, generic: input.sg})
-      if (res.success) { spendsOk++; real = res.state } else {
+      const res = spendMana(real, pid, spend)
+      if (res.success) {
+        spendsOk++
+        if (before.generic < spend.generic) genericSpillovers++
+        real = res.state
+      } else {
         spendsRefused++
         const after = res.state.players.get(pid).manaPool
         if (JSON.stringify(before) !== JSON.stringify(after)) {
@@ -67,15 +100,16 @@ for (let trace = 0; trace < 300; trace++) {
     const m = mana.decode(model)
     const rp = real.players.get(pid).manaPool
     steps++
-    if (m.w !== rp.white || m.c !== rp.colorless || m.p !== rp.generic) {
+    const bad = BUCKETS.filter(b => m[b.key] !== rp[b.real])
+    if (bad.length > 0) {
       failures++
-      console.log('MISMATCH', {trace, i, input, model: m, real: rp})
+      console.log('MISMATCH', {trace, i, input, buckets: bad.map(b => [b.key, m[b.key], rp[b.real]]), model: m, real: rp})
       if (failures > 5) break
     }
   }
   if (failures > 5) break
 }
-console.log(`mana: ${steps} steps compared, spends ok=${spendsOk} refused=${spendsRefused}, failures=${failures}`)
+console.log(`mana: ${steps} steps compared, spends ok=${spendsOk} refused=${spendsRefused} (generic-cost spends=${genericSpends}, generic spills into colorless/colors=${genericSpillovers}), failures=${failures}`)
 
 // ---------- turn ----------
 const turn = turnRule('turn')

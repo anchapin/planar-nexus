@@ -17,8 +17,8 @@ Both run in CI as the `law-suite` job, which gates the build.
 | File | What it is |
 |---|---|
 | `models.mjs` | The rules, transcribed from the engine code (sources named at the top) |
-| `run-laws.mjs` | The law suites: mana (5 step laws + 1 invariant), turn (6 step laws + 7 decision laws), combined (3 step laws), plus negative controls |
-| `../scripts/check-law-suite-drift.ts` | Drift guard: compiled models vs the real `addMana`/`spendMana`/`advancePhase`/… on 3,522 seeded random steps |
+| `run-laws.mjs` | The law suites: mana (five-color step laws incl. spillover-order laws + 1 invariant), turn (6 step laws + 7 decision laws), combined (3 step laws), plus negative controls |
+| `../scripts/check-law-suite-drift.ts` | Drift guard: compiled models vs the real `addMana`/`spendMana`/`advancePhase`/… on 6,695 seeded random steps (5,076 mana + 1,619 turn) |
 
 ## What is proven
 
@@ -43,12 +43,11 @@ refused, because the skip lives only in the wrapper.
 
 ## Simplifications, stated plainly
 
-- The mana model keeps **one colored bucket (white) + colorless + generic** of
-  the real seven. Colored buckets are symmetric in `addMana` and in
-  `spendMana`'s per-color refusal checks; the generic spillover order among
-  colors changes *which* color pays, never totals, refusals, or a single
-  color's own-cost law — which is all the laws state. Mana production,
-  restrictions, and other colors' interactions are not modelled.
+- The mana model covers **all seven buckets (WUBRG + colorless + generic)**,
+  including the real generic-spillover order (generic bucket, then colorless,
+  then WUBRG) as proven step laws, and the drift guard samples randomized
+  five-color spends against the real engine. Mana production, restrictions,
+  and other colors' interactions are not modelled.
 - The first-strike skip is modelled with a `hasFirstStriker` input standing in
   for `shouldHaveFirstStrikeStep(state)`; the wrapper's other side effects
   (priority reset, untap processing, triggers) are not modelled.
