@@ -11,11 +11,17 @@
  *
  * Supported "Enchant" qualities: permanent type words joined by "or" or
  * commas ("creature", "land", "artifact or creature", "creature or Vehicle"),
- * "non-" prefixes ("nonland permanent"), and "you control" /
- * "an opponent controls". Auras that enchant a player or a card in a
+ * "non-" prefixes ("nonland permanent"), "you control" /
+ * "an opponent controls", and "player". Auras that enchant a card in a
  * graveyard are recognised but not attached yet; they are left alone.
  *
- * Issue #2300 (Standard remainder slice).
+ * An "Enchant player" Aura is attached to a player, not to a permanent:
+ * its host id lives in the same `attachedToId` field the other Auras use
+ * (the field holds a `PlayerId` in that case) and the Aura goes to its
+ * owner's graveyard as soon as the enchanted player leaves the game
+ * (CR 704.5m).
+ *
+ * Issue #2300 (Standard remainder slice), issue #2949 ("Enchant player").
  */
 import type {
   GameState,
@@ -28,6 +34,13 @@ import { canBeEnchantedBy } from "../evergreen-keywords";
 import { KeywordActionResult } from "./shared";
 
 const ENCHANT_LINE = /^enchant ([a-z ,'-]+?)\s*(?:\(|$)/im;
+/**
+ * "Enchant player" — the only non-permanent Enchant quality the engine
+ * attaches (#2949). "an opponent" / "another player" style lines stay
+ * unsupported: the engine has no way to express "another", and guessing
+ * would let an Aura enchant the wrong player.
+ */
+const PLAYER_QUALITY = /^(?:a|an)?\s*player$/;
 
 export interface EnchantRestriction {
   /** The quality text after "Enchant", lowercased. */
@@ -35,7 +48,16 @@ export interface EnchantRestriction {
   /** Alternatives; each is a list of words that must all match. */
   alternatives: string[][];
   controller: "any" | "you" | "opponent";
-  /** True when the Aura enchants something other than a permanent. */
+  /**
+   * What the Aura may enchant (CR 303.4a): a permanent for the usual
+   * "Enchant creature"-style lines, a player for "Enchant player" lines
+   * (#2949).
+   */
+  targetKind: "permanent" | "player";
+  /**
+   * True when the Aura enchants something the engine cannot attach to
+   * (a card in a graveyard, and every non-player quality it cannot read).
+   */
   unsupported: boolean;
 }
 
@@ -58,13 +80,19 @@ export function parseEnchantRestriction(
     controller = "opponent";
     raw = raw.replace(/\s+(?:an )?opponents? controls?$/, "");
   }
+  const targetKind: EnchantRestriction["targetKind"] = PLAYER_QUALITY.test(
+    raw,
+  )
+    ? "player"
+    : "permanent";
   const unsupported =
-    /\b(player|opponent|graveyard)\b/.test(raw) || /\bcard\b/.test(raw);
+    targetKind === "permanent" &&
+    (/\b(player|opponent|graveyard)\b/.test(raw) || /\bcard\b/.test(raw));
   const alternatives = raw
     .split(/\s*,\s*(?:or\s+)?|\s+or\s+/)
     .map((alt) => alt.split(/\s+/).filter((w) => w.length > 0 && w !== "a"))
     .filter((words) => words.length > 0);
-  return { raw: full, alternatives, controller, unsupported };
+  return { raw: full, alternatives, controller, targetKind, unsupported };
 }
 
 function wordMatches(typeLine: string, word: string): boolean {
@@ -93,13 +121,45 @@ function isOnBattlefield(state: GameState, card: CardInstance): boolean {
 }
 
 /**
+ * Whether `aura` may enchant the player `targetId` (an "Enchant player"
+ * Aura, #2949). A player who has left the game is not a legal target
+ * (CR 608.2b / 704.5m).
+ */
+function canEnchantPlayer(
+  state: GameState,
+  aura: CardInstance,
+  targetId: CardInstanceId | PlayerId,
+): { canEnchant: boolean; reason?: string } {
+  const player = state.players.get(targetId);
+  if (!player) {
+    return {
+      canEnchant: false,
+      reason: `${aura.cardData.name} can only enchant a player`,
+    };
+  }
+  if (player.hasLost) {
+    return {
+      canEnchant: false,
+      reason: `${player.name} has left the game`,
+    };
+  }
+  return { canEnchant: true };
+}
+
+/**
  * Whether `aura` (controlled by `auraControllerId`) can legally enchant
  * `targetId` right now. Used at cast, at resolution and by the SBA check.
+ *
+ * `targetId` is the id of the object the Aura would attach to: a card id
+ * for a permanent-hosting Aura, a player id for an "Enchant player" Aura
+ * (#2949). The kind expected follows the Aura's own Enchant line, so a
+ * permanent is never a legal target for a player Aura and the other way
+ * around.
  */
 export function canEnchantTarget(
   state: GameState,
   aura: CardInstance,
-  targetId: CardInstanceId,
+  targetId: CardInstanceId | PlayerId,
   auraControllerId: PlayerId = aura.controllerId,
 ): { canEnchant: boolean; reason?: string } {
   if (!isAuraCard(aura)) {
@@ -123,6 +183,9 @@ export function canEnchantTarget(
   }
   if (targetId === aura.id) {
     return { canEnchant: false, reason: "An Aura can't enchant itself" };
+  }
+  if (restriction.targetKind === "player") {
+    return canEnchantPlayer(state, aura, targetId);
   }
   const target = state.cards.get(targetId);
   if (!target || !isOnBattlefield(state, target)) {
@@ -172,17 +235,20 @@ export function canEnchantTarget(
 }
 
 /**
- * Attach an Aura to a permanent, keeping both hosts' `attachedCardIds` in
- * sync. Does not re-check legality; callers do that first.
+ * Attach an Aura to a permanent or to a player, keeping both hosts'
+ * `attachedCardIds` in sync. Does not re-check legality; callers do that
+ * first.
+ *
+ * A player host has no `attachedCardIds` list (a player is not a card),
+ * so only the Aura's own `attachedToId` is written for that host (#2949).
  */
 export function attachAura(
   state: GameState,
   auraId: CardInstanceId,
-  targetId: CardInstanceId,
+  targetId: CardInstanceId | PlayerId,
 ): GameState {
   const aura = state.cards.get(auraId);
-  const target = state.cards.get(targetId);
-  if (!aura || !target) return state;
+  if (!aura) return state;
   const cards = new Map(state.cards);
   const previousHostId = aura.attachedToId;
   if (previousHostId && previousHostId !== targetId) {
@@ -201,15 +267,33 @@ export function attachAura(
     attachedToId: targetId,
     attachedTimestamp: Date.now(),
   });
-  const host = cards.get(targetId)!;
-  cards.set(targetId, {
-    ...host,
-    attachedCardIds: [
-      ...host.attachedCardIds.filter((id) => id !== auraId),
-      auraId,
-    ],
-  });
+  const host = cards.get(targetId);
+  if (host) {
+    cards.set(targetId, {
+      ...host,
+      attachedCardIds: [
+        ...host.attachedCardIds.filter((id) => id !== auraId),
+        auraId,
+      ],
+    });
+  }
   return { ...state, cards, lastModifiedAt: Date.now() };
+}
+
+/**
+ * The player an Aura is attached to, if any (#2949). An "Enchant player"
+ * Aura keeps the player's id in the same `attachedToId` field the other
+ * Auras use, so effects read the host player straight off the Aura's
+ * instance state.
+ */
+export function getAuraHostPlayerId(
+  state: GameState,
+  aura: CardInstance,
+): PlayerId | undefined {
+  if (!aura.attachedToId) return undefined;
+  const restriction = parseEnchantRestriction(aura.cardData.oracle_text);
+  if (restriction?.targetKind !== "player") return undefined;
+  return state.players.has(aura.attachedToId) ? aura.attachedToId : undefined;
 }
 
 /** First card target on an Aura spell, if any. */
@@ -220,22 +304,54 @@ export function getAuraSpellTarget(
     CardInstanceId | undefined;
 }
 
+/** First player target on an Aura spell, if any. */
+export function getAuraPlayerTarget(
+  targets: { type: string; targetId: string }[] | undefined,
+): PlayerId | undefined {
+  return targets?.find((t) => t.type === "player")?.targetId as
+    PlayerId | undefined;
+}
+
+/**
+ * The object an Aura spell will attach to. An "Enchant player" Aura takes
+ * a player target, every other Aura takes a card target (CR 303.4a,
+ * #2949).
+ */
+export function getAuraSpellHostId(
+  aura: CardInstance,
+  targets: { type: string; targetId: string }[] | undefined,
+): CardInstanceId | PlayerId | undefined {
+  const restriction = parseEnchantRestriction(aura.cardData.oracle_text);
+  if (restriction?.targetKind === "player") {
+    return getAuraPlayerTarget(targets);
+  }
+  return getAuraSpellTarget(targets);
+}
+
 /**
  * Cast-time check (CR 303.4a): an Aura spell needs a legal target. Bestow
  * is handled by its own path and skips this.
+ *
+ * `targetId` is the id of the chosen target: a card id for a
+ * permanent-hosting Aura, a player id for an "Enchant player" Aura
+ * (#2949). The kind expected comes from the Aura's own Enchant line, so a
+ * player target is rejected for a permanent Aura and the other way round.
  */
 export function validateAuraSpellTarget(
   state: GameState,
   aura: CardInstance,
   casterId: PlayerId,
-  targetId: CardInstanceId | undefined,
+  targetId: CardInstanceId | PlayerId | undefined,
 ): { valid: boolean; reason?: string } {
   const restriction = parseEnchantRestriction(aura.cardData.oracle_text);
   if (!restriction || restriction.unsupported) return { valid: true };
   if (!targetId) {
     return {
       valid: false,
-      reason: `${aura.cardData.name} needs a target to enchant`,
+      reason:
+        restriction.targetKind === "player"
+          ? `${aura.cardData.name} needs a player target to enchant`
+          : `${aura.cardData.name} needs a target to enchant`,
     };
   }
   const check = canEnchantTarget(state, aura, targetId, casterId);
@@ -247,8 +363,12 @@ export function validateAuraSpellTarget(
 /**
  * Whether an Aura on the battlefield should be put into the graveyard by
  * SBA 704.5m: attached to nothing, or to something it can't legally enchant.
- * Auras with unsupported Enchant qualities (players, graveyard cards) are
- * never flagged, since the engine can't attach them yet.
+ *
+ * An "Enchant player" Aura (#2949) stays attached while the enchanted
+ * player is in the game and goes to its owner's graveyard as soon as that
+ * player leaves the game (704.5m). Auras with unsupported Enchant
+ * qualities (graveyard cards) are never flagged, since the engine can't
+ * attach them yet.
  */
 export function isAuraIllegallyAttached(
   state: GameState,
@@ -256,6 +376,21 @@ export function isAuraIllegallyAttached(
 ): { illegal: boolean; reason?: string } {
   if (!isAuraCard(aura)) return { illegal: false };
   const restriction = parseEnchantRestriction(aura.cardData.oracle_text);
+  if (restriction?.targetKind === "player") {
+    // CR 704.5m: an Aura attached to a player who is no longer in the
+    // game is put into its owner's graveyard.
+    if (!aura.attachedToId)
+      return { illegal: true, reason: "enchanting nothing" };
+    const host = state.players.get(aura.attachedToId);
+    if (!host) return { illegal: true, reason: "enchanting nothing" };
+    if (host.hasLost) {
+      return {
+        illegal: true,
+        reason: "the enchanted player has left the game",
+      };
+    }
+    return { illegal: false };
+  }
   if (!restriction || restriction.unsupported) {
     // Keep the old rule for these: only a host that has left matters.
     if (!aura.attachedToId) return { illegal: false };

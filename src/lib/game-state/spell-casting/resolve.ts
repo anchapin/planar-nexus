@@ -4,7 +4,13 @@
  * Mechanically extracted from spell-casting.ts (issue #1725);
  * behavior pinned by the existing engine suites.
  */
-import type { GameState, CardInstanceId, StackObject, Target } from "../types";
+import type {
+  GameState,
+  CardInstanceId,
+  PlayerId,
+  StackObject,
+  Target,
+} from "../types";
 import { ZoneType } from "../types";
 import { moveCardBetweenZones } from "../zones";
 import { initializePlaneswalkerLoyalty } from "../card-instance";
@@ -36,7 +42,7 @@ import { applyMutate } from "../mutate";
 import {
   attachAura,
   canEnchantTarget,
-  getAuraSpellTarget,
+  getAuraSpellHostId,
   isAuraCard,
   parseEnchantRestriction,
 } from "../keyword-actions/enchant";
@@ -585,7 +591,9 @@ function resolveSpellCompletion(
       // CR 303.4f / 608.3b - an Aura spell (not cast with bestow) enters
       // attached to its target; if that target is now illegal the spell
       // doesn't resolve and goes to its owner's graveyard instead.
-      let auraTargetToAttach: CardInstanceId | undefined;
+      // The target is a permanent for most Auras and a player for an
+      // "Enchant player" Aura (#2949).
+      let auraTargetToAttach: CardInstanceId | PlayerId | undefined;
       if (
         isAuraCard(card) &&
         !(stackObject.alternativeCostsUsed?.includes("bestow") ?? false) &&
@@ -594,7 +602,7 @@ function resolveSpellCompletion(
       ) {
         const restriction = parseEnchantRestriction(card.cardData.oracle_text);
         if (restriction && !restriction.unsupported) {
-          const auraTarget = getAuraSpellTarget(stackObject.targets);
+          const auraTarget = getAuraSpellHostId(card, stackObject.targets);
           if (
             auraTarget &&
             canEnchantTarget(state, card, auraTarget, card.controllerId)
