@@ -81,6 +81,24 @@ describe("parseManaCost — symbol branches", () => {
     );
   });
 
+  it("parses phyrexian symbols {W/P} as a phyrexian pip (CR 202.3c)", () => {
+    // Issue #2966: phyrexian symbols used to fall through every branch, so a
+    // cost of only {W/P} parsed to null. CR 202.3c: a phyrexian symbol has a
+    // mana value of 1 and is its own pip kind.
+    const cost = parseManaCost("{W/P}");
+    expect(cost).not.toBeNull();
+    expect(cost!.pips!.phyrexian).toBe(1);
+    expect(cost!.pips!.symbols).toEqual(["W/P"]);
+  });
+
+  it("parses each phyrexian color variant", () => {
+    for (const symbol of ["W/P", "U/P", "B/P", "R/P", "G/P"]) {
+      const cost = parseManaCost(`{${symbol}}`);
+      expect(cost).not.toBeNull();
+      expect(cost!.pips!.phyrexian).toBe(1);
+    }
+  });
+
   it("parses hybrid symbols adding 0.5 to each color", () => {
     // Covers all five color half-branches (W/U/B/R/G) in the split loop.
     const cost = parseManaCost("{W/U}{B/R}{G/W}");
@@ -584,6 +602,19 @@ describe("formatManaCost", () => {
       }),
     ).toBe("{C}{S}");
   });
+
+  it("renders a hybrid pip as one symbol (issue #2966)", () => {
+    const formatted = formatManaCost(parseManaCost("{W/U}"));
+    expect(formatted).not.toBe("");
+    expect(formatted).toBe("{W/U}");
+    expect(manaCostsEqual(parseManaCost(formatted), parseManaCost("{W/U}"))).toBe(
+      true,
+    );
+  });
+
+  it("renders a phyrexian pip (issue #2966)", () => {
+    expect(formatManaCost(parseManaCost("{W/P}"))).toBe("{W/P}");
+  });
 });
 
 describe("manaCostsEqual", () => {
@@ -612,7 +643,8 @@ describe("getManaValue", () => {
   });
 
   it("sums generic, colored (rounded up), and snow", () => {
-    // generic 2 + white 1 (ceil) + snow 1 = 4; X adds nothing.
+    // generic 2 + white 1 (ceil) + snow 1 = 4; X adds nothing. Costs built
+    // by hand carry no pip bookkeeping, so the fallback path is used.
     expect(
       getManaValue({
         generic: 2,
@@ -628,10 +660,28 @@ describe("getManaValue", () => {
     ).toBe(4);
   });
 
-  it("rounds up half-color contributions from hybrid mana", () => {
-    // Current implementation sums ceil() of each half-color, so a single
-    // hybrid pip {W/U} (white 0.5 + blue 0.5) counts as mana value 2.
-    expect(getManaValue(parseManaCost("{W/U}"))).toBe(2);
+  it("counts a hybrid pip as 1 (CR 202.3b)", () => {
+    // Issue #2966: the old implementation summed ceil() of each half-color,
+    // so the single hybrid pip {W/U} (white 0.5 + blue 0.5) counted as 2.
+    // CR 202.3b: a hybrid symbol has a mana value of 1.
+    expect(getManaValue(parseManaCost("{W/U}"))).toBe(1);
+  });
+
+  it("counts a colorless pip as 1 (CR 202.3a)", () => {
+    expect(getManaValue(parseManaCost("{C}"))).toBe(1);
+  });
+
+  it("counts a monocolored hybrid pip as 2 (CR 202.3b)", () => {
+    expect(getManaValue(parseManaCost("{2/W}"))).toBe(2);
+  });
+
+  it("counts a phyrexian pip as 1 (CR 202.3c)", () => {
+    expect(getManaValue(parseManaCost("{W/P}"))).toBe(1);
+  });
+
+  it("sums every pip of a mixed cost", () => {
+    // {X} adds nothing; {R}{R} = 2, {2/G} = 2, {C} = 1 -> 5.
+    expect(getManaValue(parseManaCost("{X}{R}{R}{2/G}{C}"))).toBe(5);
   });
 });
 

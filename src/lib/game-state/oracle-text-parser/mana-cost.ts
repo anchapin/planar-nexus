@@ -7,6 +7,35 @@
 import type { ScryfallCard } from '../types';
 
 /**
+ * Per-pip bookkeeping for a parsed mana cost (issue #2966).
+ *
+ * The flat color counters on {@link ParsedManaCost} cannot express hybrid or
+ * phyrexian symbols unambiguously: a hybrid pip is split across two color
+ * counters (0.5 each) and a phyrexian pip has no color counter at all. This
+ * structure keeps one entry per pip so that mana value (CR 202.3) can be
+ * counted per pip and so that a parsed cost can be formatted/compared
+ * losslessly.
+ */
+export interface ManaCostPips {
+  /** Monocolored colored pips, e.g. `{W}` — one mana value each (CR 202.3a). */
+  colored: number;
+  /** Two-color hybrid pips, e.g. `{W/U}` — one mana value each (CR 202.3b). */
+  hybrid: number;
+  /** Monocolored hybrid pips, e.g. `{2/W}` — two mana value each (CR 202.3b). */
+  monocoloredHybrid: number;
+  /** Phyrexian pips, e.g. `{W/P}` — one mana value each (CR 202.3c). */
+  phyrexian: number;
+  /** Generic mana contributed by `{N}` symbols and by `{2/COLOR}` symbols. */
+  generic: number;
+  /** Colorless pips, e.g. `{C}` — one mana value each (CR 202.3a). */
+  colorless: number;
+  /** Snow pips, e.g. `{S}` — one mana value each (CR 202.3a). */
+  snow: number;
+  /** The recognized symbols, in source order, without the surrounding braces. */
+  symbols: string[];
+}
+
+/**
  * Mana cost parsed from text
  */
 export interface ParsedManaCost {
@@ -19,7 +48,25 @@ export interface ParsedManaCost {
   green: number;
   X: number | null;
   snow: number;
+  /**
+   * Optional per-pip bookkeeping (issue #2966). Absent on hand-built cost
+   * objects, which keeps every existing literal construction valid.
+   */
+  pips?: ManaCostPips;
 }
+
+/** Color letters that may appear in a mana symbol (CR 202). */
+const COLOR_LETTERS = ["W", "U", "B", "R", "G"];
+
+/**
+ * Phyrexian mana symbols, e.g. `{W/P}`.
+ *
+ * The set mirrors the symbol regex used by the card preview
+ * (`src/components/custom-card-preview.tsx`: `/\{[WUBRG]\/P\}/gi`) — one
+ * symbol per color letter. `{C/P}` is not part of that set and does not occur
+ * anywhere in the repository, so it is not parsed as a phyrexian symbol.
+ */
+const PHYREXIAN_SYMBOLS = COLOR_LETTERS.map((color) => `${color}/P`);
 
 /**
  * Parse mana cost string into structured format
@@ -41,6 +88,17 @@ export function parseManaCost(costString: string): ParsedManaCost | null {
     snow: 0,
   };
 
+  const pips: ManaCostPips = {
+    colored: 0,
+    hybrid: 0,
+    monocoloredHybrid: 0,
+    phyrexian: 0,
+    generic: 0,
+    colorless: 0,
+    snow: 0,
+    symbols: [],
+  };
+
   // Match mana symbols
   const manaMatches = costString.match(/{[^}]+}/g) || [];
 
@@ -49,19 +107,34 @@ export function parseManaCost(costString: string): ParsedManaCost | null {
 
     // Handle generic mana
     if (/^\d+$/.test(symbol)) {
-      cost.generic += parseInt(symbol, 10);
+      const amount = parseInt(symbol, 10);
+      cost.generic += amount;
+      pips.generic += amount;
+      pips.symbols.push(symbol);
       continue;
     }
 
     // Handle X
     if (symbol === "X" || symbol === "x") {
       cost.X = 0;
+      pips.symbols.push("X");
       continue;
     }
 
     // Handle colorless
     if (symbol === "C") {
       cost.colorless += 1;
+      pips.colorless += 1;
+      pips.symbols.push(symbol);
+      continue;
+    }
+
+    // Handle phyrexian mana (CR 202.3c): e.g. {W/P}. A phyrexian pip is one
+    // pip worth one mana value; it is not a colored pip, so it gets its own
+    // counter instead of being folded into the color counters.
+    if (PHYREXIAN_SYMBOLS.includes(symbol)) {
+      pips.phyrexian += 1;
+      pips.symbols.push(symbol);
       continue;
     }
 
@@ -69,18 +142,28 @@ export function parseManaCost(costString: string): ParsedManaCost | null {
     switch (symbol) {
       case "W":
         cost.white += 1;
+        pips.colored += 1;
+        pips.symbols.push(symbol);
         break;
       case "U":
         cost.blue += 1;
+        pips.colored += 1;
+        pips.symbols.push(symbol);
         break;
       case "B":
         cost.black += 1;
+        pips.colored += 1;
+        pips.symbols.push(symbol);
         break;
       case "R":
         cost.red += 1;
+        pips.colored += 1;
+        pips.symbols.push(symbol);
         break;
       case "G":
         cost.green += 1;
+        pips.colored += 1;
+        pips.symbols.push(symbol);
         break;
       case "W/U":
       case "U/B":
@@ -92,7 +175,9 @@ export function parseManaCost(costString: string): ParsedManaCost | null {
       case "R/B":
       case "G/R":
       case "W/G":
-        // Hybrid mana - add to both colors
+        // Hybrid mana - add to both colors. The pip itself is a single pip
+        // for mana-value purposes (CR 202.3b), which the pip counters keep
+        // track of independently of the split color counters.
         if (symbol.includes("/")) {
           const colorParts = symbol.split("/");
           for (const c of colorParts) {
@@ -102,6 +187,8 @@ export function parseManaCost(costString: string): ParsedManaCost | null {
             else if (c === "R") cost.red += 0.5;
             else if (c === "G") cost.green += 0.5;
           }
+          pips.hybrid += 1;
+          pips.symbols.push(symbol);
         }
         break;
       case "2/W":
@@ -109,14 +196,22 @@ export function parseManaCost(costString: string): ParsedManaCost | null {
       case "2/B":
       case "2/R":
       case "2/G":
+        // Monocolored hybrid: two generic plus a colored option (CR 202.3b).
         cost.generic += 2;
+        pips.generic += 2;
+        pips.monocoloredHybrid += 1;
+        pips.symbols.push(symbol);
         break;
       case "S":
         cost.snow += 1;
+        pips.snow += 1;
+        pips.symbols.push(symbol);
         break;
       case "P":
         // Phyrexian mana - add generic cost
         cost.generic += 1;
+        pips.generic += 1;
+        pips.symbols.push(symbol);
         break;
     }
   }
@@ -131,10 +226,16 @@ export function parseManaCost(costString: string): ParsedManaCost | null {
     cost.red === 0 &&
     cost.green === 0 &&
     cost.X === null &&
-    cost.snow === 0
+    cost.snow === 0 &&
+    pips.colored === 0 &&
+    pips.hybrid === 0 &&
+    pips.monocoloredHybrid === 0 &&
+    pips.phyrexian === 0
   ) {
     return null;
   }
+
+  cost.pips = pips;
 
   return cost;
 }
@@ -144,6 +245,13 @@ export function parseManaCost(costString: string): ParsedManaCost | null {
  */
 export function formatManaCost(cost: ParsedManaCost | null): string {
   if (!cost) return "";
+
+  // A parsed cost keeps its symbols, so hybrid/phyrexian pips survive the
+  // round-trip instead of being flattened into single-color pips (issue #2966).
+  const symbols = cost.pips?.symbols;
+  if (symbols && symbols.length > 0) {
+    return symbols.map((symbol) => `{${symbol}}`).join("");
+  }
 
   let result = "";
 
@@ -167,6 +275,16 @@ export function formatManaCost(cost: ParsedManaCost | null): string {
 }
 
 /**
+ * Canonical form of a single mana symbol, used for cost comparison.
+ * The order of the halves of a hybrid/phyrexian symbol does not matter
+ * (`{W/U}` and `{U/W}` are the same symbol), but the colors themselves do
+ * (`{W/P}` and `{U/P}` are not).
+ */
+function canonicalSymbol(symbol: string): string {
+  return symbol.includes("/") ? symbol.split("/").sort().join("/") : symbol;
+}
+
+/**
  * Compare two mana costs for equality
  */
 export function manaCostsEqual(
@@ -176,26 +294,64 @@ export function manaCostsEqual(
   if (!a && !b) return true;
   if (!a || !b) return false;
 
-  return (
-    a.generic === b.generic &&
-    a.colorless === b.colorless &&
-    a.white === b.white &&
-    a.blue === b.blue &&
-    a.black === b.black &&
-    a.red === b.red &&
-    a.green === b.green &&
-    a.X === b.X &&
-    a.snow === b.snow
-  );
+  if (
+    !(
+      a.generic === b.generic &&
+      a.colorless === b.colorless &&
+      a.white === b.white &&
+      a.blue === b.blue &&
+      a.black === b.black &&
+      a.red === b.red &&
+      a.green === b.green &&
+      a.X === b.X &&
+      a.snow === b.snow
+    )
+  ) {
+    return false;
+  }
+
+  // When both costs carry their symbols, compare those too: the flat
+  // counters cannot tell `{W/P}` and `{U/P}` apart (issue #2966).
+  const aSymbols = a.pips?.symbols;
+  const bSymbols = b.pips?.symbols;
+  if (aSymbols && bSymbols) {
+    const aCanonical = aSymbols.map(canonicalSymbol).sort();
+    const bCanonical = bSymbols.map(canonicalSymbol).sort();
+    if (aCanonical.length !== bCanonical.length) return false;
+    for (let i = 0; i < aCanonical.length; i++) {
+      if (aCanonical[i] !== bCanonical[i]) return false;
+    }
+  }
+
+  return true;
 }
 
 /**
  * Get the total mana value of a cost
+ *
+ * Per CR 202.3 the mana value of a mana cost is the sum of the mana values
+ * of its symbols: generic mana is worth its number, and a colored, hybrid,
+ * monocolored-hybrid, phyrexian or colorless symbol is worth 1 (a
+ * monocolored hybrid `{2/COLOR}` is worth 2, and is already accounted for in
+ * the generic counter). `{X}` adds nothing until it is resolved.
  */
 export function getManaValue(cost: ParsedManaCost | null): number {
   if (!cost) return 0;
 
-  let total = cost.generic;
+  const pips = cost.pips;
+  if (pips) {
+    return (
+      pips.generic +
+      pips.colorless +
+      pips.snow +
+      pips.colored +
+      pips.hybrid +
+      pips.phyrexian
+    );
+  }
+
+  // Fallback for hand-built costs that carry no pip bookkeeping.
+  let total = cost.generic + cost.colorless;
 
   // Colored mana counts as 1 each
   total += Math.ceil(cost.white);
