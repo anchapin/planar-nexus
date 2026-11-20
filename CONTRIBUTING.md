@@ -643,9 +643,9 @@ toward 70% as coverage improves (tracked in issue #922).
 
 | Metric     | Target | CI floor |
 | ---------- | ------ | -------- |
-| Lines      | 70%    | 68%      |
-| Functions  | 70%    | 60%      |
-| Statements | 70%    | 67%      |
+| Lines      | 70%    | 69%      |
+| Functions  | 70%    | 61%      |
+| Statements | 70%    | 68%      |
 | Branches   | 60%    | 60%      |
 
 <!-- coverage-floor:end -->
