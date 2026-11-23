@@ -85,7 +85,7 @@
     "@ai-sdk/google": "^4.0.121",
     "@ai-sdk/openai": "^4.0.118",
     "@ai-sdk/react": "^4.0.177",
-    "@hookform/resolvers": "^6.0.0",
+    "@hookform/resolvers": "^7.0.7",
     "@huggingface/transformers": "^4.3.2",
     "@orama/orama": "^3.1.18",
     "@orama/plugin-data-persistence": "^3.1.18",
