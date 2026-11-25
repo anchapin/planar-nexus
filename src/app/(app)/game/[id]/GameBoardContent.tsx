@@ -22,11 +22,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ArrowLeft, ChevronRight } from "lucide-react";
-import { GameBoard } from "@/components/game-board";
-import { TargetHighlightContext } from "@/components/target-highlight-context";
 import { buildUiPlayers, type UiPlayer } from "./_components/ui-players";
+import { GameBoardRegion } from "./_components/GameBoardRegion";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { GameBoardErrorBoundary } from "@/components/error-boundaries";
 import type { PlayerCount, ZoneType } from "@/types/game";
 import { useToast } from "@/hooks/use-toast";
 import { useConfirmDialog } from "@/hooks/use-confirm-dialog";
@@ -3351,29 +3349,19 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
         />
       </div>
 
-      {/* Game Board */}
-      <main
-        className="flex-1 min-h-0 overflow-hidden"
-        data-tutorial="battlefield"
-      >
-        <div className="h-full w-full">
-          <GameBoardErrorBoundary>
-            <TargetHighlightContext.Provider value={legalTargetIds}>
-              <GameBoard
-                players={sortedPlayers}
-                playerCount={gameState.players.size as PlayerCount}
-                currentTurnIndex={currentTurnIndex}
-                onCardClick={handleCardClick}
-                onZoneClick={handleZoneClick}
-                onConcede={handleConcede}
-                onOfferDraw={handleOfferDraw}
-                onAcceptDraw={handleAcceptDraw}
-                onDeclineDraw={handleDeclineDraw}
-              />
-            </TargetHighlightContext.Provider>
-          </GameBoardErrorBoundary>
-        </div>
-      </main>
+      {/* Game Board — extracted to a memoized leaf (issue #2418, slice 10) */}
+      <GameBoardRegion
+        players={sortedPlayers}
+        playerCount={gameState.players.size as PlayerCount}
+        currentTurnIndex={currentTurnIndex}
+        onCardClick={handleCardClick}
+        onZoneClick={handleZoneClick}
+        onConcede={handleConcede}
+        onOfferDraw={handleOfferDraw}
+        onAcceptDraw={handleAcceptDraw}
+        onDeclineDraw={handleDeclineDraw}
+        legalTargetIds={legalTargetIds}
+      />
 
       {/* Game Controls Footer — extracted to a memoized leaf (issue #2418, slice 2) */}
       <GameFooter
