@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, memo } from "react";
 import type { Phase } from "@/lib/game-state";
 
 interface PhaseTrackerProps {
@@ -8,26 +8,42 @@ interface PhaseTrackerProps {
   isPlayerTurn: boolean;
 }
 
-export function PhaseTracker({
+/**
+ * Issue #2418 (SLICE 11) — the phase tracker of the single-player board.
+ *
+ * It is the last non-memoized leaf in the `GameBoardContent` render tree:
+ * header, board region, footer and every dialog were already extracted as
+ * memoized leaves in slices 1-10. It is extracted into a `React.memo`-wrapped
+ * leaf so a delta that only touches the board (or the header) no longer
+ * re-renders the phase strip, and so the static phase list is allocated once
+ * at module scope instead of on every render.
+ *
+ * The rendered output is byte-for-byte the same JSX that used to live inline
+ * in `GameBoardContent` — only the allocation site of the static `phases`
+ * table moved out of the component body.
+ */
+
+/** The static phase strip, allocated once at module scope (never rebuilt). */
+const phases: { key: Phase; label: string }[] = [
+  { key: "untap" as Phase, label: "Untap" },
+  { key: "upkeep" as Phase, label: "Upkeep" },
+  { key: "draw" as Phase, label: "Draw" },
+  { key: "precombat_main" as Phase, label: "Main 1" },
+  { key: "begin_combat" as Phase, label: "Combat" },
+  { key: "declare_attackers" as Phase, label: "Attack" },
+  { key: "declare_blockers" as Phase, label: "Block" },
+  { key: "combat_damage_first_strike" as Phase, label: "First Strike" },
+  { key: "combat_damage" as Phase, label: "Damage" },
+  { key: "end_combat" as Phase, label: "End Combat" },
+  { key: "postcombat_main" as Phase, label: "Main 2" },
+  { key: "end" as Phase, label: "End" },
+  { key: "cleanup" as Phase, label: "Cleanup" },
+];
+
+export const PhaseTracker = memo(function PhaseTracker({
   currentPhase,
   isPlayerTurn: _isPlayerTurn,
 }: PhaseTrackerProps) {
-  const phases: { key: Phase; label: string }[] = [
-    { key: "untap" as Phase, label: "Untap" },
-    { key: "upkeep" as Phase, label: "Upkeep" },
-    { key: "draw" as Phase, label: "Draw" },
-    { key: "precombat_main" as Phase, label: "Main 1" },
-    { key: "begin_combat" as Phase, label: "Combat" },
-    { key: "declare_attackers" as Phase, label: "Attack" },
-    { key: "declare_blockers" as Phase, label: "Block" },
-    { key: "combat_damage_first_strike" as Phase, label: "First Strike" },
-    { key: "combat_damage" as Phase, label: "Damage" },
-    { key: "end_combat" as Phase, label: "End Combat" },
-    { key: "postcombat_main" as Phase, label: "Main 2" },
-    { key: "end" as Phase, label: "End" },
-    { key: "cleanup" as Phase, label: "Cleanup" },
-  ];
-
   const currentIndex = phases.findIndex((p) => p.key === currentPhase);
 
   return (
@@ -59,4 +75,4 @@ export function PhaseTracker({
       })}
     </div>
   );
-}
+});
