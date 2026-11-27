@@ -6,6 +6,7 @@
  *         [--games 200] [--seed 1] [--out result.json]
  *         [--decks-file 2614-decks.json] [--deck-a mono-red-aggro]
  *         [--deck-b mono-green-landfall]
+ *         [--schema N]
  *
  * Plays a deck pair through the training session. Defaults to the #2614
  * pair (Mono-Red Aggro vs Mono-Green Landfall). `--decks-file` names a file
@@ -16,7 +17,9 @@
  * draws, score (a draw counts half) with a 95% Wilson interval, and a split
  * by the candidate's deck. `--agent model` plays a ForgePointerNet ONNX
  * checkpoint through `forgeSearch` (manamind#86): the search's greedy pick by
- * default, or a draw from its policy with `--sample`.
+ * default, or a draw from its policy with `--sample`. `--schema` picks the
+ * packing layout the checkpoint was trained with (default 3, the deployed
+ * champion).
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import * as ortNode from "onnxruntime-node";
@@ -162,11 +165,13 @@ async function playGame(
 
 async function main(): Promise<void> {
   await loadCardScripts();
+  const schema = Number(arg("schema", "3"));
   if (agentName === "model") {
     if (!modelPath) throw new Error("--agent model needs --model");
     model = await createForgePointerModel(
       ortNode as unknown as ForgeOrtLike,
       readFileSync(modelPath),
+      { schemaVersion: schema },
     );
   }
   const start = Date.now();

@@ -5,6 +5,7 @@
  *     [--games 40] [--seed 1] [--sims 16] [--baseline-sims N]
  *     [--threshold 0.55]
  *     [--greedy | --pick greedy|sample|gumbel] [--deck-a aggro] [--deck-b midrange] [--max-turns 80]
+ *     [--candidate-schema N] [--baseline-schema N]  (packing layout, default 3)
  *     [--out gate.json]
  *
  * The candidate's seat alternates every game and the decks swap every two,
@@ -51,6 +52,8 @@ async function main() {
     throw new Error("--baseline-sims must be a whole number >= 0");
   const threshold = Number(arg("threshold", "0.55"));
   const maxTurns = Number(arg("max-turns", "80"));
+  const candidateSchema = Number(arg("candidate-schema", "3"));
+  const baselineSchema = Number(arg("baseline-schema", "3"));
   const pick = arg(
     "pick",
     process.argv.includes("--greedy") ? "greedy" : "sample",
@@ -66,10 +69,12 @@ async function main() {
   const candidate = await createForgePointerModel(
     ort,
     readFileSync(candidatePath),
+    { schemaVersion: candidateSchema },
   );
   const baseline = await createForgePointerModel(
     ort,
     readFileSync(baselinePath),
+    { schemaVersion: baselineSchema },
   );
   const t0 = performance.now();
   const results: GateGame[] = [];

@@ -5,14 +5,17 @@
  *
  * A line-for-line port of `card_features`, `global_features`, and
  * `name_bucket` in manamind `src/manamind/models/forge_pointer.py`, and of
- * `pack` in `src/manamind/models/forge_pointer_onnx.py`. The parity fixture
- * (`__tests__/fixtures/forge_pointer_v3_pack.json`) is that `pack` run on
- * manamind's own test decisions (manamind #44 adds the `hist` input).
+ * `pack` in `src/manamind/models/forge_pointer_onnx.py`. The parity fixtures
+ * (`__tests__/fixtures/forge_pointer_v3_pack.json` and `..._v4_pack.json`)
+ * are that `pack` run on manamind's own test decisions (manamind #44 adds
+ * the `hist` input; feat1 schema v4 adds keywords, damage and counters per
+ * card and the deciding seat's unspent mana pool).
  */
 import type { OpponentHistorySummary } from "@/ai/simulation/player-history";
 import type { PlayerView, ViewCard } from "@/ai/simulation/player-view";
 
-export const FORGE_POINTER_SCHEMA_VERSION = 3;
+/** Current encoder schema (feat1: keywords, damage/counters, mana pool). */
+export const FORGE_POINTER_SCHEMA_VERSION = 4;
 export const NAME_BUCKETS = 4096;
 export const DECK_BUCKETS = 256;
 export const TYPE_WORDS = [
@@ -44,8 +47,36 @@ export const PHASES = [
   "CLEANUP",
 ] as const;
 export const DECISION_TYPES = ["priority", "attack", "block"] as const;
-export const CARD_FEATURES = TYPE_WORDS.length + 5 + PIPS.length + 1;
-export const GLOBAL_FEATURES = 10 + PHASES.length + 1 + DECISION_TYPES.length;
+/** Combat-relevant keyword flags (feat1 schema v4), read off the bridge's
+ * "kw" string. A card keyword matches by whole word, so "Flying" hits
+ * `flying`; parameterized entries only hit their exact base word. */
+export const KEYWORDS = [
+  "flying",
+  "deathtouch",
+  "defender",
+  "haste",
+  "hexproof",
+  "indestructible",
+  "lifelink",
+  "menace",
+  "reach",
+  "trample",
+  "vigilance",
+  "first strike",
+  "double strike",
+  "ward",
+  "protection",
+] as const;
+/** Per-card width at schema v3 (before feat1's keyword and counter slots). */
+export const CARD_FEATURES_V3 = TYPE_WORDS.length + 5 + PIPS.length + 1;
+/** Per-card width at the current schema: v3 plus 15 keyword flags and the
+ * damage, +1/+1 and -1/-1 counter slots. */
+export const CARD_FEATURES = CARD_FEATURES_V3 + KEYWORDS.length + 3;
+/** Global width at schema v3. */
+export const GLOBAL_FEATURES_V3 =
+  10 + PHASES.length + 1 + DECISION_TYPES.length;
+/** Global width at the current schema: v3 plus the 6-slot unspent mana pool. */
+export const GLOBAL_FEATURES = GLOBAL_FEATURES_V3 + 6;
 /** Turn buckets in the history summary (manamind #44). */
 export const HISTORY_TURN_BUCKETS = 4;
 /** Width of the packed `hist` input (manamind #44 schema v3). */
@@ -83,7 +114,16 @@ export const FORGE_POINTER_INPUTS = [
 export type ForgePointerInputName = (typeof FORGE_POINTER_INPUTS)[number];
 
 /** A card dict as the bridge sends it; every field may be missing. */
-export type BridgeCard = Partial<ViewCard>;
+export type BridgeCard = Partial<ViewCard> & {
+  /** First few keywords as the bridge emits them ("kw"), schema v4. */
+  kw?: string | string[];
+  /** Marked damage, schema v4. */
+  dmg?: number;
+  /** +1/+1 counter count, schema v4. */
+  p1p1?: number;
+  /** -1/-1 counter count, schema v4. */
+  m1m1?: number;
+};
 
 /** A priority option: the card plus whether it is a land play or a spell. */
 export interface PriorityOption {
@@ -109,6 +149,8 @@ export type ForgeDecision = Partial<
   deck?: string;
   /** The other seat's deck name. */
   opp_deck?: string;
+  /** The deciding seat's unspent mana pool, [W, U, B, R, G, C] (feat1 v4). */
+  mana?: number[];
   /**
    * The deciding seat's fixed-shape opponent-history summary (manamind #44,
    * schema v3). Absent on every decision recorded before v3; the packed
@@ -159,8 +201,16 @@ export function deckBucket(name: string): number {
 
 const COST_SYMBOL = /\{([^}]*)\}/g;
 
-/** Numeric features for one card dict (manamind `card_features`). */
-export function cardFeatures(card: BridgeCard): number[] {
+/** Numeric features for one card dict (manamind `card_features`).
+ *
+ * Schema v3 is the pre-feat1 layout; v4 appends the 15 keyword flags and
+ * the damage / +1/+1 / -1/-1 counter slots. Cards recorded before v4 lack
+ * the keys, so they encode as zeros and train unchanged.
+ */
+export function cardFeatures(
+  card: BridgeCard,
+  schemaVersion: number,
+): number[] {
   const typeLine = String(card.type ?? "").toLowerCase();
   const feats: number[] = TYPE_WORDS.map((w) => (typeLine.includes(w) ? 1 : 0));
   feats.push(
@@ -183,6 +233,24 @@ export function cardFeatures(card: BridgeCard): number[] {
   }
   for (const p of PIPS) feats.push(pips[p] / 5);
   feats.push(generic / 10);
+  if (schemaVersion < 4) return feats;
+  const kws = card.kw ?? "";
+  const kwset = (Array.isArray(kws) ? kws.map(String) : String(kws).split(","))
+    .map((k) => k.trim().toLowerCase())
+    .filter((k) => k.length > 0);
+  for (const w of KEYWORDS)
+    feats.push(
+      kwset.some(
+        (k) => k === w || w.startsWith(`${k} `) || w.startsWith(`${k}:`),
+      )
+        ? 1
+        : 0,
+    );
+  feats.push(
+    Math.min(Number(card.dmg ?? 0), 10) / 10,
+    Math.min(Number(card.p1p1 ?? 0), 5) / 5,
+    Math.min(Number(card.m1m1 ?? 0), 5) / 5,
+  );
   return feats;
 }
 
@@ -229,8 +297,14 @@ export function historyFeatures(d: ForgeDecision): number[] {
   return feats;
 }
 
-/** Scalar game features (manamind `global_features`). */
-export function globalFeatures(d: ForgeDecision): number[] {
+/** Scalar game features (manamind `global_features`). Schema v4 inserts the
+ * deciding seat's unspent mana pool (six ints, capped at 20, scaled by 10)
+ * after the ten base scalars; decisions recorded before v4 lack the key, so
+ * they encode as zeros. */
+export function globalFeatures(
+  d: ForgeDecision,
+  schemaVersion: number,
+): number[] {
   const life = d.life ?? [20, 20];
   const lib = d.library ?? [0, 0];
   const feats = [
@@ -245,6 +319,11 @@ export function globalFeatures(d: ForgeDecision): number[] {
     (d.graveyard ?? []).length / 20,
     (d.opp_graveyard ?? []).length / 20,
   ];
+  if (schemaVersion >= 4) {
+    const mana = [...(d.mana ?? [])].slice(0, 6);
+    while (mana.length < 6) mana.push(0);
+    for (const v of mana) feats.push(Math.min(Number(v), 20) / 10);
+  }
   const phase = String(d.phase ?? "");
   const known = (PHASES as readonly string[]).includes(phase);
   for (const p of PHASES) feats.push(phase === p ? 1 : 0);
@@ -266,16 +345,23 @@ function i64(values: number[], dims: number[]): PackedInput {
 }
 
 /** Features, name buckets, and mask; one zero row when empty. */
-function cards(list: BridgeCard[]): [PackedInput, PackedInput, PackedInput] {
+function cards(
+  list: BridgeCard[],
+  schemaVersion: number,
+): [PackedInput, PackedInput, PackedInput] {
+  const width = schemaVersion >= 4 ? CARD_FEATURES : CARD_FEATURES_V3;
   if (list.length === 0) {
     return [
-      f32(new Array(CARD_FEATURES).fill(0), [1, CARD_FEATURES]),
+      f32(new Array(width).fill(0), [1, width]),
       i64([0], [1]),
       f32([0], [1]),
     ];
   }
   return [
-    f32(list.flatMap(cardFeatures), [list.length, CARD_FEATURES]),
+    f32(
+      list.flatMap((c) => cardFeatures(c, schemaVersion)),
+      [list.length, width],
+    ),
     i64(
       list.map((c) => nameBucket(String(c.name ?? ""))),
       [list.length],
@@ -295,8 +381,15 @@ function names(list: string[]): [PackedInput, PackedInput] {
   ];
 }
 
-/** Graph inputs for one decision (manamind `forge_pointer_onnx.pack`). */
-export function packDecision(d: ForgeDecision): PackedInputs {
+/** Graph inputs for one decision (manamind `forge_pointer_onnx.pack`).
+ *
+ * The schema version defaults to 3 so every existing caller keeps packing
+ * the deployed champion's layout; pass 4 for feat1 checkpoints.
+ */
+export function packDecision(
+  d: ForgeDecision,
+  schemaVersion = 3,
+): PackedInputs {
   const out = {} as PackedInputs;
   const zones: Array<["hand" | "bf" | "obf", BridgeCard[] | undefined]> = [
     ["hand", d.hand],
@@ -304,28 +397,40 @@ export function packDecision(d: ForgeDecision): PackedInputs {
     ["obf", d.opp_battlefield],
   ];
   for (const [zone, list] of zones) {
-    [out[`${zone}_x`], out[`${zone}_id`], out[`${zone}_m`]] = cards(list ?? []);
+    [out[`${zone}_x`], out[`${zone}_id`], out[`${zone}_m`]] = cards(
+      list ?? [],
+      schemaVersion,
+    );
   }
   [out.gy_id, out.gy_m] = names(d.graveyard ?? []);
   [out.ogy_id, out.ogy_m] = names(d.opp_graveyard ?? []);
-  const glob = globalFeatures(d);
+  const glob = globalFeatures(d, schemaVersion);
   out.glob = f32(glob, [glob.length]);
   const hist = historyFeatures(d);
   out.hist = f32(hist, [HISTORY_FEATURES]);
 
   const options =
     d.t === "priority" ? ((d.options ?? []) as PriorityOption[]) : [];
-  [out.pri_x, out.pri_id] = cards(options.map((o) => o.card ?? {}));
+  [out.pri_x, out.pri_id] = cards(
+    options.map((o) => o.card ?? {}),
+    schemaVersion,
+  );
   const flags = options.flatMap((o) => [o.land ? 1 : 0, o.spell ? 1 : 0]);
   out.pri_flags = f32(flags.length ? flags : [0, 0], [
     Math.max(options.length, 1),
     2,
   ]);
   const attackers = d.t === "attack" ? ((d.options ?? []) as BridgeCard[]) : [];
-  [out.att_x, out.att_id] = cards(attackers);
+  [out.att_x, out.att_id] = cards(attackers, schemaVersion);
   const block = d.t === "block";
-  [out.blk_x, out.blk_id] = cards(block ? (d.blockers ?? []) : []);
-  [out.batt_x, out.batt_id] = cards(block ? (d.attackers ?? []) : []);
+  [out.blk_x, out.blk_id] = cards(
+    block ? (d.blockers ?? []) : [],
+    schemaVersion,
+  );
+  [out.batt_x, out.batt_id] = cards(
+    block ? (d.attackers ?? []) : [],
+    schemaVersion,
+  );
   out.own_deck = i64([deckBucket(String(d.deck ?? ""))], [1]);
   out.opp_deck = i64([deckBucket(String(d.opp_deck ?? ""))], [1]);
   return out;
