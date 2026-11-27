@@ -6,16 +6,21 @@
  * priority case carries deck identity (deck "red" / opp_deck "green",
  * manamind #96). The v3 fixture (manamind #44) is the schema v3 pack on a
  * priority decision carrying an `OpponentHistorySummary`; decisions without
- * history pack unchanged, so the v2 cases still match input for input.
+ * history pack unchanged, so the v2 cases still match input for input. The
+ * v4 fixture is the schema v4 pack on the same history decision (feat1:
+ * keywords, damage/counters per card, and the deciding seat's mana pool).
  */
 import v2fixture from "./fixtures/forge_pointer_v2_pack.json";
 import v3fixture from "./fixtures/forge_pointer_v3_pack.json";
+import v4fixture from "./fixtures/forge_pointer_v4_pack.json";
 import {
   CARD_FEATURES,
+  CARD_FEATURES_V3,
   deckBucket,
   FORGE_POINTER_INPUTS,
   FORGE_POINTER_SCHEMA_VERSION,
   GLOBAL_FEATURES,
+  GLOBAL_FEATURES_V3,
   nameBucket,
   HISTORY_FEATURES,
   historyFeatures,
@@ -53,7 +58,9 @@ function expectParity(
 
 describe("forge pointer features", () => {
   it("uses manamind's schema version and input order", () => {
-    expect(v3fixture.schema_version).toBe(FORGE_POINTER_SCHEMA_VERSION);
+    expect(v4fixture.schema_version).toBe(FORGE_POINTER_SCHEMA_VERSION);
+    expect(v4fixture.input_names).toEqual([...FORGE_POINTER_INPUTS]);
+    expect(v3fixture.schema_version).toBe(3);
     expect(v3fixture.input_names).toEqual([...FORGE_POINTER_INPUTS]);
   });
 
@@ -72,7 +79,7 @@ describe("forge pointer features", () => {
   it.each(v2fixture.cases.map((c) => [c.name, c] as const))(
     "packs the %s decision exactly like manamind",
     (_name, c) => {
-      const packed = packDecision(c.decision as ForgeDecision);
+      const packed = packDecision(c.decision as ForgeDecision, 3);
       // The v2 fixture predates the hist input (manamind #44): compare
       // every input it carries, all of which pack unchanged at schema v3.
       expectParity(packed, c.inputs, Object.keys(c.inputs));
@@ -81,7 +88,13 @@ describe("forge pointer features", () => {
 
   it("packs the history decision exactly like manamind", () => {
     const c = v3fixture.cases[0];
-    const packed = packDecision(c.decision as unknown as ForgeDecision);
+    const packed = packDecision(c.decision as unknown as ForgeDecision, 3);
+    expectParity(packed, c.inputs, FORGE_POINTER_INPUTS);
+  });
+
+  it("packs the history decision at v4 exactly like manamind", () => {
+    const c = v4fixture.cases[0];
+    const packed = packDecision(c.decision as unknown as ForgeDecision, 4);
     expectParity(packed, c.inputs, FORGE_POINTER_INPUTS);
   });
 
@@ -115,13 +128,17 @@ describe("forge pointer features", () => {
       trainingDeck("aggro"),
       trainingDeck("control"),
     );
-    const packed = packDecision({
+    const view = {
       ...playerView(session.state, me),
       t: "priority",
       options: [],
-    });
+    } as ForgeDecision;
+    const packed = packDecision(view, 4);
     expect(packed.hand_x.dims).toEqual([7, CARD_FEATURES]);
     expect(packed.glob.dims).toEqual([GLOBAL_FEATURES]);
+    const packedV3 = packDecision(view, 3);
+    expect(packedV3.hand_x.dims).toEqual([7, CARD_FEATURES_V3]);
+    expect(packedV3.glob.dims).toEqual([GLOBAL_FEATURES_V3]);
     expect(packed.hist.dims).toEqual([HISTORY_FEATURES]);
     expect(packed.pri_flags.dims).toEqual([1, 2]);
   });
