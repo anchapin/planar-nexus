@@ -18,10 +18,7 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ArrowLeft, ChevronRight } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { buildUiPlayers, type UiPlayer } from "./_components/ui-players";
 import { GameBoardRegion } from "./_components/GameBoardRegion";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -143,6 +140,7 @@ import {
 } from "./_components/MulliganDialog";
 import { PhaseTracker } from "./_components/PhaseTracker";
 import { GameLoading } from "./_components/GameLoading";
+import { GameErrorScreen } from "./_components/GameErrorScreen";
 import type { AbilityChoiceOption } from "./_components/AbilityChoiceDialog";
 import type { ManaAbilityOptionView } from "./_components/ManaAbilityDialog";
 import { BASIC_LAND_TYPE_OPTIONS } from "./_components/basic-land-type-options";
@@ -3265,49 +3263,13 @@ export function GameBoardContent({ initialGameId }: GameBoardContentProps) {
     uiPlayersRef.current = uiPlayers;
   }, [uiPlayers]);
 
+  // Slice 12 (issue #2418): the two early returns below are memoized leaves.
   if (isLoading) {
-    return (
-      <div className="flex-1 p-2 md:p-4 flex items-center justify-center">
-        <Card className="max-w-md w-full">
-          <CardContent className="p-6 text-center space-y-4">
-            <div className="animate-pulse space-y-2">
-              <div className="h-4 bg-muted rounded"></div>
-              <div className="h-4 bg-muted rounded w-3/4"></div>
-              <div className="h-4 bg-muted rounded w-1/2"></div>
-            </div>
-            <p className="text-muted-foreground">Initializing game...</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
+    return <GameLoading message="Initializing game..." />;
   }
 
   if (error || !gameState) {
-    return (
-      <div className="flex-1 p-2 md:p-4">
-        <Button
-          variant="ghost"
-          onClick={() => router.push("/single-player")}
-          className="mb-4"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back
-        </Button>
-        <Card className="max-w-md mx-auto">
-          <CardContent className="p-6">
-            <Alert variant="destructive">
-              <AlertDescription>{error || "Game not found"}</AlertDescription>
-            </Alert>
-            <Button
-              onClick={() => router.push("/single-player")}
-              className="mt-4 w-full"
-            >
-              Return to Menu
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
+    return <GameErrorScreen message={error} onBack={handleBackToMenu} />;
   }
 
   const currentPlayer = gameState.players.get(gameState.turn.activePlayerId);
