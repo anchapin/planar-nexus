@@ -1,0 +1,40 @@
+name: tmp fix fixture v4
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/schema-v4-mirror
+
+      - name: Decode fixture from base64 and verify sha256
+        run: |
+          python3 - <<'PY'
+          import base64, json, hashlib, sys
+          p = "src/ai/manamind/__tests__/fixtures/forge_pointer_v4_pack.json"
+          data = base64.b64decode(open(p).read().strip())
+          json.loads(data)
+          digest = hashlib.sha256(data).hexdigest()
+          print("decoded sha256:", digest)
+          expected = "bf8af7d989fa6f9f82619b376e9e9730e2fbd3b868bbf5981563174699e0e428"
+          if digest != expected:
+              print("SHA MISMATCH, aborting")
+              sys.exit(1)
+          open(p, "wb").write(data)
+          print("fixture restored")
+          PY
+
+      - name: Commit restored fixture
+        run: |
+          git config user.name "Fo (Wajo)"
+          git config user.email "fo@wajo.ai"
+          git add src/ai/manamind/__tests__/fixtures/forge_pointer_v4_pack.json
+          git commit -m "fix: restore v4 fixture from its base64 copy"
+          git push origin feat/schema-v4-mirror
