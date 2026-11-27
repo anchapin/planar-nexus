@@ -5,7 +5,7 @@
  *     [--games 20] [--seed 1] [--sims 16] [--explore all|N]
  *     [--pick sample|gumbel] [--c-scale 1]
  *     [--deck-a aggro] [--deck-b midrange] [--max-turns 80]
- *     [--opponent self|expert] --out selfplay.jsonl.gz
+ *     [--opponent self|expert] [--schema N] --out selfplay.jsonl.gz
  *
  * One JSON game per line (gzip when --out ends in .gz), the same
  * `decisions` / `returns` shape as manamind's imitation data; each decision
@@ -30,6 +30,9 @@
  * alternates like the Expert games; only the net's decisions are recorded
  * and rows carry `opponent: "model"` plus `netSeat`. Mutually exclusive
  * with `--opponent expert`.
+ *
+ * `--schema` picks the packing layout the checkpoint(s) were trained with
+ * (default 3, the deployed champion); pass 4 for feat1 checkpoints.
  *
  * `--probe collect` (manamind#106): each net decision also carries
  * the search's per-candidate value-head reads (`probe.visits`, the
@@ -89,14 +92,17 @@ async function main() {
   if (expertRecord !== "net" && expertRecord !== "both")
     throw new Error(`--expert-record must be net or both, not ${expertRecord}`);
   await loadCardScripts();
+  const schema = Number(arg("schema", "3"));
   const model = await createForgePointerModel(
     ortNode as unknown as ForgeOrtLike,
     readFileSync(modelPath),
+    { schemaVersion: schema },
   );
   const opponentModel = opponentModelPath
     ? await createForgePointerModel(
         ortNode as unknown as ForgeOrtLike,
         readFileSync(opponentModelPath),
+        { schemaVersion: schema },
       )
     : undefined;
   const file = createWriteStream(out);
