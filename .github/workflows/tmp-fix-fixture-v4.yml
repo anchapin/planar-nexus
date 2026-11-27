@@ -2,6 +2,9 @@ name: tmp fix fixture v4
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - feat/schema-v4-mirror
 
 permissions:
   contents: write
@@ -19,8 +22,13 @@ jobs:
           python3 - <<'PY'
           import base64, json, hashlib, sys
           p = "src/ai/manamind/__tests__/fixtures/forge_pointer_v4_pack.json"
-          data = base64.b64decode(open(p).read().strip())
-          json.loads(data)
+          raw = open(p, "rb").read()
+          try:
+              data = base64.b64decode(raw.strip(), validate=True)
+              json.loads(data)
+          except Exception:
+              print("fixture already plain JSON, nothing to do")
+              sys.exit(0)
           digest = hashlib.sha256(data).hexdigest()
           print("decoded sha256:", digest)
           expected = "bf8af7d989fa6f9f82619b376e9e9730e2fbd3b868bbf5981563174699e0e428"
@@ -33,6 +41,10 @@ jobs:
 
       - name: Commit restored fixture
         run: |
+          if git diff --quiet -- src/ai/manamind/__tests__/fixtures/forge_pointer_v4_pack.json; then
+            echo "no change"
+            exit 0
+          fi
           git config user.name "Fo (Wajo)"
           git config user.email "fo@wajo.ai"
           git add src/ai/manamind/__tests__/fixtures/forge_pointer_v4_pack.json
