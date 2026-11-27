@@ -1,1 +1,937 @@
-ewogICJmaXh0dXJlX3ZlcnNpb24iOiAyLAogICJzb3VyY2UiOiAibWFuYW1pbmQgZmVhdDEgc2NoZW1hIHY0IHBhY2sgKGNvbW1pdHMgMmUwMmNjMSs5MzZlZjdhKSBvbiB0aGUgdjMgaGlzdG9yeSBkZWNpc2lvbiIsCiAgInNjaGVtYV92ZXJzaW9uIjogNCwKICAiaW5wdXRfbmFtZXMiOiBbCiAgICAiaGFuZF94IiwKICAgICJoYW5kX2lkIiwKICAgICJoYW5kX20iLAogICAgImJmX3giLAogICAgImJmX2lkIiwKICAgICJiZl9tIiwKICAgICJvYmZfeCIsCiAgICAib2JmX2lkIiwKICAgICJvYmZfbSIsCiAgICAiZ3lfaWQiLAogICAgImd5X20iLAogICAgIm9neV9pZCIsCiAgICAib2d5X20iLAogICAgImdsb2IiLAogICAgImhpc3QiLAogICAgInByaV94IiwKICAgICJwcmlfaWQiLAogICAgInByaV9mbGFncyIsCiAgICAiYXR0X3giLAogICAgImF0dF9pZCIsCiAgICAiYmxrX3giLAogICAgImJsa19pZCIsCiAgICAiYmF0dF94IiwKICAgICJiYXR0X2lkIiwKICAgICJvd25fZGVjayIsCiAgICAib3BwX2RlY2siCiAgXSwKICAibmFtZV9idWNrZXRzIjogewogICAgIkdyaXp6bHkgQmVhcnMiOiAzNDY3LAogICAgIkZvcmVzdCI6IDk0OCwKICAgICJLaXRjaGVuIEZpbmtzIjogMjczMywKICAgICJcdTAwYzZ0aGVyaXplIjogMjA1NywKICAgICIiOiAwLAogICAgImxpZ2h0bmluZyBib2x0IjogMTE2NgogIH0sCiAgImRlY2tfYnVja2V0cyI6IHsKICAgICJyZWQiOiA3NiwKICAgICJncmVlbiI6IDEyNAogIH0sCiAgImRlY2tfZmllbGRzIjogWwogICAgImRlY2siLAogICAgIm9wcF9kZWNrIgogIF0sCiAgImNhc2VzIjogWwogICAgewogICAgICAibmFtZSI6ICJoaXN0b3J5IiwKICAgICAgImRlY2lzaW9uIjogewogICAgICAgICJ0dXJuIjogNSwKICAgICAgICAicGhhc2UiOiAiTUFJTjEiLAogICAgICAgICJhY3RpdmUiOiB0cnVlLAogICAgICAgICJsaWZlIjogWwogICAgICAgICAgMTgsCiAgICAgICAgICAyMAogICAgICAgIF0sCiAgICAgICAgImhhbmQiOiBbCiAgICAgICAgICB7CiAgICAgICAgICAgICJuYW1lIjogIkdyaXp6bHkgQmVhcnMiLAogICAgICAgICAgICAidHlwZSI6ICJDcmVhdHVyZSAtIEJlYXIiLAogICAgICAgICAgICAiY29zdCI6ICJ7MX17R30iLAogICAgICAgICAgICAiY21jIjogMiwKICAgICAgICAgICAgImNyZWF0dXJlIjogdHJ1ZSwKICAgICAgICAgICAgImxhbmQiOiBmYWxzZSwKICAgICAgICAgICAgInBvd2VyIjogMiwKICAgICAgICAgICAgInRvdWdobmVzcyI6IDIsCiAgICAgICAgICAgICJ0YXBwZWQiOiBmYWxzZSwKICAgICAgICAgICAgInNpY2siOiBmYWxzZQogICAgICAgICAgfSwKICAgICAgICAgIHsKICAgICAgICAgICAgIm5hbWUiOiAiRm9yZXN0IiwKICAgICAgICAgICAgInR5cGUiOiAiQmFzaWMgTGFuZCAtIEZvcmVzdCIsCiAgICAgICAgICAgICJjb3N0IjogIm5vIGNvc3QiLAogICAgICAgICAgICAiY21jIjogMCwKICAgICAgICAgICAgImNyZWF0dXJlIjogZmFsc2UsCiAgICAgICAgICAgICJsYW5kIjogdHJ1ZSwKICAgICAgICAgICAgInBvd2VyIjogMCwKICAgICAgICAgICAgInRvdWdobmVzcyI6IDAsCiAgICAgICAgICAgICJ0YXBwZWQiOiBmYWxzZSwKICAgICAgICAgICAgInNpY2siOiBmYWxzZQogICAgICAgICAgfQogICAgICAgIF0sCiAgICAgICAgIm9wcF9oYW5kX3NpemUiOiA1LAogICAgICAgICJiYXR0bGVmaWVsZCI6IFsKICAgICAgICAgIHsKICAgICAgICAgICAgIm5hbWUiOiAiRm9yZXN0IiwKICAgICAgICAgICAgInR5cGUiOiAiQmFzaWMgTGFuZCAtIEZvcmVzdCIsCiAgICAgICAgICAgICJjb3N0IjogIm5vIGNvc3QiLAogICAgICAgICAgICAiY21jIjogMCwKICAgICAgICAgICAgImNyZWF0dXJlIjogZmFsc2UsCiAgICAgICAgICAgICJsYW5kIjogdHJ1ZSwKICAgICAgICAgICAgInBvd2VyIjogMCwKICAgICAgICAgICAgInRvdWdobmVzcyI6IDAsCiAgICAgICAgICAgICJ0YXBwZWQiOiBmYWxzZSwKICAgICAgICAgICAgInNpY2siOiBmYWxzZQogICAgICAgICAgfSwKICAgICAgICAgIHsKICAgICAgICAgICAgIm5hbWUiOiAiR3JpenpseSBCZWFycyIsCiAgICAgICAgICAgICJ0eXBlIjogIkNyZWF0dXJlIC0gQmVhciIsCiAgICAgICAgICAgICJjb3N0IjogInsxfXtHfSIsCiAgICAgICAgICAgICJjbWMiOiAyLAogICAgICAgICAgICAiY3JlYXR1cmUiOiB0cnVlLAogICAgICAgICAgICAibGFuZCI6IGZhbHNlLAogICAgICAgICAgICAicG93ZXIiOiAyLAogICAgICAgICAgICAidG91Z2huZXNzIjogMiwKICAgICAgICAgICAgInRhcHBlZCI6IGZhbHNlLAogICAgICAgICAgICAic2ljayI6IGZhbHNlCiAgICAgICAgICB9CiAgICAgICAgXSwKICAgICAgICAib3BwX2JhdHRsZWZpZWxkIjogWwogICAgICAgICAgewogICAgICAgICAgICAibmFtZSI6ICJHcml6emx5IEJlYXJzIiwKICAgICAgICAgICAgInR5cGUiOiAiQ3JlYXR1cmUgLSBCZWFyIiwKICAgICAgICAgICAgImNvc3QiOiAiezF9e0d9IiwKICAgICAgICAgICAgImNtYyI6IDIsCiAgICAgICAgICAgICJjcmVhdHVyZSI6IHRydWUsCiAgICAgICAgICAgICJsYW5kIjogZmFsc2UsCiAgICAgICAgICAgICJwb3dlciI6IDIsCiAgICAgICAgICAgICJ0b3VnaG5lc3MiOiAyLAogICAgICAgICAgICAidGFwcGVkIjogZmFsc2UsCiAgICAgICAgICAgICJzaWNrIjogZmFsc2UKICAgICAgICAgIH0KICAgICAgICBdLAogICAgICAgICJncmF2ZXlhcmQiOiBbCiAgICAgICAgICAiU2hvY2siCiAgICAgICAgXSwKICAgICAgICAib3BwX2dyYXZleWFyZCI6IFtdLAogICAgICAgICJsaWJyYXJ5IjogWwogICAgICAgICAgNTAsCiAgICAgICAgICA1MQogICAgICAgIF0sCiAgICAgICAgInQiOiAicHJpb3JpdHkiLAogICAgICAgICJvcHRpb25zIjogWwogICAgICAgICAgewogICAgICAgICAgICAidGV4dCI6ICJGb3Jlc3QgfCBwbGF5IiwKICAgICAgICAgICAgImxhbmQiOiB0cnVlLAogICAgICAgICAgICAic3BlbGwiOiBmYWxzZSwKICAgICAgICAgICAgImNhcmQiOiB7CiAgICAgICAgICAgICAgIm5hbWUiOiAiRm9yZXN0IiwKICAgICAgICAgICAgICAidHlwZSI6ICJCYXNpYyBMYW5kIC0gRm9yZXN0IiwKICAgICAgICAgICAgICAiY29zdCI6ICJubyBjb3N0IiwKICAgICAgICAgICAgICAiY21jIjogMCwKICAgICAgICAgICAgICAiY3JlYXR1cmUiOiBmYWxzZSwKICAgICAgICAgICAgICAibGFuZCI6IHRydWUsCiAgICAgICAgICAgICAgInBvd2VyIjogMCwKICAgICAgICAgICAgICAidG91Z2huZXNzIjogMCwKICAgICAgICAgICAgICAidGFwcGVkIjogZmFsc2UsCiAgICAgICAgICAgICAgInNpY2siOiBmYWxzZQogICAgICAgICAgICB9CiAgICAgICAgICB9LAogICAgICAgICAgewogICAgICAgICAgICAidGV4dCI6ICJCZWFycyB8IGNhc3QiLAogICAgICAgICAgICAibGFuZCI6IGZhbHNlLAogICAgICAgICAgICAic3BlbGwiOiB0cnVlLAogICAgICAgICAgICAiY2FyZCI6IHsKICAgICAgICAgICAgICAibmFtZSI6ICJHcml6emx5IEJlYXJzIiwKICAgICAgICAgICAgICAidHlwZSI6ICJDcmVhdHVyZSAtIEJlYXIiLAogICAgICAgICAgICAgICJjb3N0IjogInsxfXtHfSIsCiAgICAgICAgICAgICAgImNtYyI6IDIsCiAgICAgICAgICAgICAgImNyZWF0dXJlIjogdHJ1ZSwKICAgICAgICAgICAgICAibGFuZCI6IGZhbHNlLAogICAgICAgICAgICAgICJwb3dlciI6IDIsCiAgICAgICAgICAgICAgInRvdWdobmVzcyI6IDIsCiAgICAgICAgICAgICAgInRhcHBlZCI6IGZhbHNlLAogICAgICAgICAgICAgICJzaWNrIjogZmFsc2UKICAgICAgICAgICAgfQogICAgICAgICAgfQogICAgICAgIF0sCiAgICAgICAgImRlY2siOiAicmVkIiwKICAgICAgICAib3BwX2RlY2siOiAiZ3JlZW4iLAogICAgICAgICJvcHBfaGlzdG9yeSI6IHsKICAgICAgICAgICJ0dXJuIjogNSwKICAgICAgICAgICJidWNrZXRzIjogWwogICAgICAgICAgICB7CiAgICAgICAgICAgICAgImxhbmRzUGxheWVkIjogMiwKICAgICAgICAgICAgICAiY3JlYXR1cmVzUGxheWVkIjogMSwKICAgICAgICAgICAgICAib3RoZXJQZXJtYW5lbnRzUGxheWVkIjogMCwKICAgICAgICAgICAgICAiY3JlYXR1cmVzVG9HcmF2ZXlhcmQiOiAwLAogICAgICAgICAgICAgICJvdGhlclRvR3JhdmV5YXJkIjogMSwKICAgICAgICAgICAgICAiaGFuZFNpemVTdW0iOiA5LAogICAgICAgICAgICAgICJoYW5kU2l6ZVNhbXBsZXMiOiAyCiAgICAgICAgICAgIH0sCiAgICAgICAgICAgIHsKICAgICAgICAgICAgICAibGFuZHNQbGF5ZWQiOiAxLAogICAgICAgICAgICAgICJjcmVhdHVyZXNQbGF5ZWQiOiAyLAogICAgICAgICAgICAgICJvdGhlclBlcm1hbmVudHNQbGF5ZWQiOiAxLAogICAgICAgICAgICAgICJjcmVhdHVyZXNUb0dyYXZleWFyZCI6IDEsCiAgICAgICAgICAgICAgIm90aGVyVG9HcmF2ZXlhcmQiOiAwLAogICAgICAgICAgICAgICJoYW5kU2l6ZVN1bSI6IDEyLAogICAgICAgICAgICAgICJoYW5kU2l6ZVNhbXBsZXMiOiAyCiAgICAgICAgICAgIH0sCiAgICAgICAgICAgIHsKICAgICAgICAgICAgICAibGFuZHNQbGF5ZWQiOiAwLAogICAgICAgICAgICAgICJjcmVhdHVyZXNQbGF5ZWQiOiAwLAogICAgICAgICAgICAgICJvdGhlclBlcm1hbmVudHNQbGF5ZWQiOiAwLAogICAgICAgICAgICAgICJjcmVhdHVyZXNUb0dyYXZleWFyZCI6IDAsCiAgICAgICAgICAgICAgIm90aGVyVG9HcmF2ZXlhcmQiOiAwLAogICAgICAgICAgICAgICJoYW5kU2l6ZVN1bSI6IDAsCiAgICAgICAgICAgICAgImhhbmRTaXplU2FtcGxlcyI6IDAKICAgICAgICAgICAgfSwKICAgICAgICAgICAgewogICAgICAgICAgICAgICJsYW5kc1BsYXllZCI6IDAsCiAgICAgICAgICAgICAgImNyZWF0dXJlc1BsYXllZCI6IDAsCiAgICAgICAgICAgICAgIm90aGVyUGVybWFuZW50c1BsYXllZCI6IDAsCiAgICAgICAgICAgICAgImNyZWF0dXJlc1RvR3JhdmV5YXJkIjogMCwKICAgICAgICAgICAgICAib3RoZXJUb0dyYXZleWFyZCI6IDAsCiAgICAgICAgICAgICAgImhhbmRTaXplU3VtIjogMCwKICAgICAgICAgICAgICAiaGFuZFNpemVTYW1wbGVzIjogMAogICAgICAgICAgICB9CiAgICAgICAgICBdLAogICAgICAgICAgInRvdGFscyI6IHsKICAgICAgICAgICAgImxhbmRzUGxheWVkIjogMywKICAgICAgICAgICAgImNyZWF0dXJlc1BsYXllZCI6IDMsCiAgICAgICAgICAgICJvdGhlclBlcm1hbmVudHNQbGF5ZWQiOiAxLAogICAgICAgICAgICAiY3JlYXR1cmVzVG9HcmF2ZXlhcmQiOiAxLAogICAgICAgICAgICAib3RoZXJUb0dyYXZleWFyZCI6IDEsCiAgICAgICAgICAgICJvYnNlcnZhdGlvbnMiOiA0NwogICAgICAgICAgfSwKICAgICAgICAgICJvcHBNYW5hUG9vbCI6IHsKICAgICAgICAgICAgIlciOiAwLAogICAgICAgICAgICAiVSI6IDIsCiAgICAgICAgICAgICJCIjogMSwKICAgICAgICAgICAgIlIiOiAwLAogICAgICAgICAgICAiRyI6IDMsCiAgICAgICAgICAgICJDIjogMCwKICAgICAgICAgICAgIm90aGVyIjogMQogICAgICAgICAgfSwKICAgICAgICAgICJvcHBBdHRhY2tlcnNUaGlzQ29tYmF0IjogMiwKICAgICAgICAgICJvcHBCbG9ja2Vyc1RoaXNDb21iYXQiOiAxLAogICAgICAgICAgIm9wcEdyYXZleWFyZFNpemUiOiA5CiAgICAgICAgfQogICAgICB9LAogICAgICAiaW5wdXRzIjogewogICAgICAgICJoYW5kX3giOiB7CiAgICAgICAgICAiZGltcyI6IFsKICAgICAgICAgICAgMiwKICAgICAgICAgICAgNDEKICAgICAgICAgIF0sCiAgICAgICAgICAiZGF0YSI6IFsKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAxLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjIsCiAgICAgICAgICAgIDAuMiwKICAgICAgICAgICAgMC4yLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjIsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjEsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDEuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMS4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wCiAgICAgICAgICBdCiAgICAgICAgfSwKICAgICAgICAiaGFuZF9pZCI6IHsKICAgICAgICAgICJkaW1zIjogWwogICAgICAgICAgICAyCiAgICAgICAgICBdLAogICAgICAgICAgImRhdGEiOiBbCiAgICAgICAgICAgIDM0NjcsCiAgICAgICAgICAgIDk0OAogICAgICAgICAgXQogICAgICAgIH0sCiAgICAgICAgImhhbmRfbSI6IHsKICAgICAgICAgICJkaW1zIjogWwogICAgICAgICAgICAyCiAgICAgICAgICBdLAogICAgICAgICAgImRhdGEiOiBbCiAgICAgICAgICAgIDEuMCwKICAgICAgICAgICAgMS4wCiAgICAgICAgICBdCiAgICAgICAgfSwKICAgICAgICAiYmZfeCI6IHsKICAgICAgICAgICJkaW1zIjogWwogICAgICAgICAgICAyLAogICAgICAgICAgICA0MQogICAgICAgICAgXSwKICAgICAgICAgICJkYXRhIjogWwogICAgICAgICAgICAxLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDEuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAxLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjIsCiAgICAgICAgICAgIDAuMiwKICAgICAgICAgICAgMC4yLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjIsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjEsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAKICAgICAgICAgIF0KICAgICAgICB9LAogICAgICAgICJiZl9pZCI6IHsKICAgICAgICAgICJkaW1zIjogWwogICAgICAgICAgICAyCiAgICAgICAgICBdLAogICAgICAgICAgImRhdGEiOiBbCiAgICAgICAgICAgIDk0OCwKICAgICAgICAgICAgMzQ2NwogICAgICAgICAgXQogICAgICAgIH0sCiAgICAgICAgImJmX20iOiB7CiAgICAgICAgICAiZGltcyI6IFsKICAgICAgICAgICAgMgogICAgICAgICAgXSwKICAgICAgICAgICJkYXRhIjogWwogICAgICAgICAgICAxLjAsCiAgICAgICAgICAgIDEuMAogICAgICAgICAgXQogICAgICAgIH0sCiAgICAgICAgIm9iZl94IjogewogICAgICAgICAgImRpbXMiOiBbCiAgICAgICAgICAgIDEsCiAgICAgICAgICAgIDQxCiAgICAgICAgICBdLAogICAgICAgICAgImRhdGEiOiBbCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMS4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4yLAogICAgICAgICAgICAwLjIsCiAgICAgICAgICAgIDAuMiwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4yLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4xLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wCiAgICAgICAgICBdCiAgICAgICAgfSwKICAgICAgICAib2JmX2lkIjogewogICAgICAgICAgImRpbXMiOiBbCiAgICAgICAgICAgIDEKICAgICAgICAgIF0sCiAgICAgICAgICAiZGF0YSI6IFsKICAgICAgICAgICAgMzQ2NwogICAgICAgICAgXQogICAgICAgIH0sCiAgICAgICAgIm9iZl9tIjogewogICAgICAgICAgImRpbXMiOiBbCiAgICAgICAgICAgIDEKICAgICAgICAgIF0sCiAgICAgICAgICAiZGF0YSI6IFsKICAgICAgICAgICAgMS4wCiAgICAgICAgICBdCiAgICAgICAgfSwKICAgICAgICAiZ3lfaWQiOiB7CiAgICAgICAgICAiZGltcyI6IFsKICAgICAgICAgICAgMQogICAgICAgICAgXSwKICAgICAgICAgICJkYXRhIjogWwogICAgICAgICAgICAzNjU1CiAgICAgICAgICBdCiAgICAgICAgfSwKICAgICAgICAiZ3lfbSI6IHsKICAgICAgICAgICJkaW1zIjogWwogICAgICAgICAgICAxCiAgICAgICAgICBdLAogICAgICAgICAgImRhdGEiOiBbCiAgICAgICAgICAgIDEuMAogICAgICAgICAgXQogICAgICAgIH0sCiAgICAgICAgIm9neV9pZCI6IHsKICAgICAgICAgICJkaW1zIjogWwogICAgICAgICAgICAxCiAgICAgICAgICBdLAogICAgICAgICAgImRhdGEiOiBbCiAgICAgICAgICAgIDAKICAgICAgICAgIF0KICAgICAgICB9LAogICAgICAgICJvZ3lfbSI6IHsKICAgICAgICAgICJkaW1zIjogWwogICAgICAgICAgICAxCiAgICAgICAgICBdLAogICAgICAgICAgImRhdGEiOiBbCiAgICAgICAgICAgIDAuMAogICAgICAgICAgXQogICAgICAgIH0sCiAgICAgICAgImdsb2IiOiB7CiAgICAgICAgICAiZGltcyI6IFsKICAgICAgICAgICAgMzMKICAgICAgICAgIF0sCiAgICAgICAgICAiZGF0YSI6IFsKICAgICAgICAgICAgMC44OTk5OTk5OCwKICAgICAgICAgICAgMS4wLAogICAgICAgICAgICAwLjI1LAogICAgICAgICAgICAxLjAsCiAgICAgICAgICAgIDAuMjg1NzE0MywKICAgICAgICAgICAgMC43MTQyODU3MywKICAgICAgICAgICAgMC44MzMzMzMzMSwKICAgICAgICAgICAgMC44NTAwMDAwMiwKICAgICAgICAgICAgMC4wNSwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAxLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMS4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMAogICAgICAgICAgXQogICAgICAgIH0sCiAgICAgICAgImhpc3QiOiB7CiAgICAgICAgICAiZGltcyI6IFsKICAgICAgICAgICAgMzkKICAgICAgICAgIF0sCiAgICAgICAgICAiZGF0YSI6IFsKICAgICAgICAgICAgMC4yLAogICAgICAgICAgICAwLjEsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjEsCiAgICAgICAgICAgIDAuNjQyODU3MTMsCiAgICAgICAgICAgIDAuMTI1LAogICAgICAgICAgICAwLjEsCiAgICAgICAgICAgIDAuMiwKICAgICAgICAgICAgMC4xLAogICAgICAgICAgICAwLjEsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC44NTcxNDI4NywKICAgICAgICAgICAgMC4xMjUsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjIzNSwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjIsCiAgICAgICAgICAgIDAuMSwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjMwMDAwMDAxLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMSwKICAgICAgICAgICAgMC4yLAogICAgICAgICAgICAwLjEsCiAgICAgICAgICAgIDAuNDQ5OTk5OTkKICAgICAgICAgIF0KICAgICAgICB9LAogICAgICAgICJvd25fZGVjayI6IHsKICAgICAgICAgICJkaW1zIjogWwogICAgICAgICAgICAxCiAgICAgICAgICBdLAogICAgICAgICAgImRhdGEiOiBbCiAgICAgICAgICAgIDc2CiAgICAgICAgICBdCiAgICAgICAgfSwKICAgICAgICAib3BwX2RlY2siOiB7CiAgICAgICAgICAiZGltcyI6IFsKICAgICAgICAgICAgMQogICAgICAgICAgXSwKICAgICAgICAgICJkYXRhIjogWwogICAgICAgICAgICAxMjQKICAgICAgICAgIF0KICAgICAgICB9LAogICAgICAgICJwcmlfeCI6IHsKICAgICAgICAgICJkaW1zIjogWwogICAgICAgICAgICAyLAogICAgICAgICAgICA0MQogICAgICAgICAgXSwKICAgICAgICAgICJkYXRhIjogWwogICAgICAgICAgICAxLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDEuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAxLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjIsCiAgICAgICAgICAgIDAuMiwKICAgICAgICAgICAgMC4yLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjIsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjEsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAKICAgICAgICAgIF0KICAgICAgICB9LAogICAgICAgICJwcmlfaWQiOiB7CiAgICAgICAgICAiZGltcyI6IFsKICAgICAgICAgICAgMgogICAgICAgICAgXSwKICAgICAgICAgICJkYXRhIjogWwogICAgICAgICAgICA5NDgsCiAgICAgICAgICAgIDM0NjcKICAgICAgICAgIF0KICAgICAgICB9LAogICAgICAgICJwcmlfZmxhZ3MiOiB7CiAgICAgICAgICAiZGltcyI6IFsKICAgICAgICAgICAgMiwKICAgICAgICAgICAgMgogICAgICAgICAgXSwKICAgICAgICAgICJkYXRhIjogWwogICAgICAgICAgICAxLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAxLjAKICAgICAgICAgIF0KICAgICAgICB9LAogICAgICAgICJhdHRfeCI6IHsKICAgICAgICAgICJkaW1zIjogWwogICAgICAgICAgICAxLAogICAgICAgICAgICA0MQogICAgICAgICAgXSwKICAgICAgICAgICJkYXRhIjogWwogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMAogICAgICAgICAgXQogICAgICAgIH0sCiAgICAgICAgImF0dF9pZCI6IHsKICAgICAgICAgICJkaW1zIjogWwogICAgICAgICAgICAxCiAgICAgICAgICBdLAogICAgICAgICAgImRhdGEiOiBbCiAgICAgICAgICAgIDAKICAgICAgICAgIF0KICAgICAgICB9LAogICAgICAgICJibGtfeCI6IHsKICAgICAgICAgICJkaW1zIjogWwogICAgICAgICAgICAxLAogICAgICAgICAgICA0MQogICAgICAgICAgXSwKICAgICAgICAgICJkYXRhIjogWwogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMAogICAgICAgICAgXQogICAgICAgIH0sCiAgICAgICAgImJsa19pZCI6IHsKICAgICAgICAgICJkaW1zIjogWwogICAgICAgICAgICAxCiAgICAgICAgICBdLAogICAgICAgICAgImRhdGEiOiBbCiAgICAgICAgICAgIDAKICAgICAgICAgIF0KICAgICAgICB9LAogICAgICAgICJiYXR0X3giOiB7CiAgICAgICAgICAiZGltcyI6IFsKICAgICAgICAgICAgMSwKICAgICAgICAgICAgNDEKICAgICAgICAgIF0sCiAgICAgICAgICAiZGF0YSI6IFsKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAsCiAgICAgICAgICAgIDAuMCwKICAgICAgICAgICAgMC4wLAogICAgICAgICAgICAwLjAKICAgICAgICAgIF0KICAgICAgICB9LAogICAgICAgICJiYXR0X2lkIjogewogICAgICAgICAgImRpbXMiOiBbCiAgICAgICAgICAgIDEKICAgICAgICAgIF0sCiAgICAgICAgICAiZGF0YSI6IFsKICAgICAgICAgICAgMAogICAgICAgICAgXQogICAgICAgIH0KICAgICAgfQogICAgfQogIF0KfQ==
+{
+  "fixture_version": 2,
+  "source": "manamind feat1 schema v4 pack (commits 2e02cc1+936ef7a) on the v3 history decision",
+  "schema_version": 4,
+  "input_names": [
+    "hand_x",
+    "hand_id",
+    "hand_m",
+    "bf_x",
+    "bf_id",
+    "bf_m",
+    "obf_x",
+    "obf_id",
+    "obf_m",
+    "gy_id",
+    "gy_m",
+    "ogy_id",
+    "ogy_m",
+    "glob",
+    "hist",
+    "pri_x",
+    "pri_id",
+    "pri_flags",
+    "att_x",
+    "att_id",
+    "blk_x",
+    "blk_id",
+    "batt_x",
+    "batt_id",
+    "own_deck",
+    "opp_deck"
+  ],
+  "name_buckets": {
+    "Grizzly Bears": 3467,
+    "Forest": 948,
+    "Kitchen Finks": 2733,
+    "\u00c6therize": 2057,
+    "": 0,
+    "lightning bolt": 1166
+  },
+  "deck_buckets": {
+    "red": 76,
+    "green": 124
+  },
+  "deck_fields": [
+    "deck",
+    "opp_deck"
+  ],
+  "cases": [
+    {
+      "name": "history",
+      "decision": {
+        "turn": 5,
+        "phase": "MAIN1",
+        "active": true,
+        "life": [
+          18,
+          20
+        ],
+        "hand": [
+          {
+            "name": "Grizzly Bears",
+            "type": "Creature - Bear",
+            "cost": "{1}{G}",
+            "cmc": 2,
+            "creature": true,
+            "land": false,
+            "power": 2,
+            "toughness": 2,
+            "tapped": false,
+            "sick": false
+          },
+          {
+            "name": "Forest",
+            "type": "Basic Land - Forest",
+            "cost": "no cost",
+            "cmc": 0,
+            "creature": false,
+            "land": true,
+            "power": 0,
+            "toughness": 0,
+            "tapped": false,
+            "sick": false
+          }
+        ],
+        "opp_hand_size": 5,
+        "battlefield": [
+          {
+            "name": "Forest",
+            "type": "Basic Land - Forest",
+            "cost": "no cost",
+            "cmc": 0,
+            "creature": false,
+            "land": true,
+            "power": 0,
+            "toughness": 0,
+            "tapped": false,
+            "sick": false
+          },
+          {
+            "name": "Grizzly Bears",
+            "type": "Creature - Bear",
+            "cost": "{1}{G}",
+            "cmc": 2,
+            "creature": true,
+            "land": false,
+            "power": 2,
+            "toughness": 2,
+            "tapped": false,
+            "sick": false
+          }
+        ],
+        "opp_battlefield": [
+          {
+            "name": "Grizzly Bears",
+            "type": "Creature - Bear",
+            "cost": "{1}{G}",
+            "cmc": 2,
+            "creature": true,
+            "land": false,
+            "power": 2,
+            "toughness": 2,
+            "tapped": false,
+            "sick": false
+          }
+        ],
+        "graveyard": [
+          "Shock"
+        ],
+        "opp_graveyard": [],
+        "library": [
+          50,
+          51
+        ],
+        "t": "priority",
+        "options": [
+          {
+            "text": "Forest | play",
+            "land": true,
+            "spell": false,
+            "card": {
+              "name": "Forest",
+              "type": "Basic Land - Forest",
+              "cost": "no cost",
+              "cmc": 0,
+              "creature": false,
+              "land": true,
+              "power": 0,
+              "toughness": 0,
+              "tapped": false,
+              "sick": false
+            }
+          },
+          {
+            "text": "Bears | cast",
+            "land": false,
+            "spell": true,
+            "card": {
+              "name": "Grizzly Bears",
+              "type": "Creature - Bear",
+              "cost": "{1}{G}",
+              "cmc": 2,
+              "creature": true,
+              "land": false,
+              "power": 2,
+              "toughness": 2,
+              "tapped": false,
+              "sick": false
+            }
+          }
+        ],
+        "deck": "red",
+        "opp_deck": "green",
+        "opp_history": {
+          "turn": 5,
+          "buckets": [
+            {
+              "landsPlayed": 2,
+              "creaturesPlayed": 1,
+              "otherPermanentsPlayed": 0,
+              "creaturesToGraveyard": 0,
+              "otherToGraveyard": 1,
+              "handSizeSum": 9,
+              "handSizeSamples": 2
+            },
+            {
+              "landsPlayed": 1,
+              "creaturesPlayed": 2,
+              "otherPermanentsPlayed": 1,
+              "creaturesToGraveyard": 1,
+              "otherToGraveyard": 0,
+              "handSizeSum": 12,
+              "handSizeSamples": 2
+            },
+            {
+              "landsPlayed": 0,
+              "creaturesPlayed": 0,
+              "otherPermanentsPlayed": 0,
+              "creaturesToGraveyard": 0,
+              "otherToGraveyard": 0,
+              "handSizeSum": 0,
+              "handSizeSamples": 0
+            },
+            {
+              "landsPlayed": 0,
+              "creaturesPlayed": 0,
+              "otherPermanentsPlayed": 0,
+              "creaturesToGraveyard": 0,
+              "otherToGraveyard": 0,
+              "handSizeSum": 0,
+              "handSizeSamples": 0
+            }
+          ],
+          "totals": {
+            "landsPlayed": 3,
+            "creaturesPlayed": 3,
+            "otherPermanentsPlayed": 1,
+            "creaturesToGraveyard": 1,
+            "otherToGraveyard": 1,
+            "observations": 47
+          },
+          "oppManaPool": {
+            "W": 0,
+            "U": 2,
+            "B": 1,
+            "R": 0,
+            "G": 3,
+            "C": 0,
+            "other": 1
+          },
+          "oppAttackersThisCombat": 2,
+          "oppBlockersThisCombat": 1,
+          "oppGraveyardSize": 9
+        }
+      },
+      "inputs": {
+        "hand_x": {
+          "dims": [
+            2,
+            41
+          ],
+          "data": [
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.2,
+            0.2,
+            0.2,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.2,
+            0.0,
+            0.0,
+            0.1,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "hand_id": {
+          "dims": [
+            2
+          ],
+          "data": [
+            3467,
+            948
+          ]
+        },
+        "hand_m": {
+          "dims": [
+            2
+          ],
+          "data": [
+            1.0,
+            1.0
+          ]
+        },
+        "bf_x": {
+          "dims": [
+            2,
+            41
+          ],
+          "data": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.2,
+            0.2,
+            0.2,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.2,
+            0.0,
+            0.0,
+            0.1,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "bf_id": {
+          "dims": [
+            2
+          ],
+          "data": [
+            948,
+            3467
+          ]
+        },
+        "bf_m": {
+          "dims": [
+            2
+          ],
+          "data": [
+            1.0,
+            1.0
+          ]
+        },
+        "obf_x": {
+          "dims": [
+            1,
+            41
+          ],
+          "data": [
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.2,
+            0.2,
+            0.2,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.2,
+            0.0,
+            0.0,
+            0.1,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "obf_id": {
+          "dims": [
+            1
+          ],
+          "data": [
+            3467
+          ]
+        },
+        "obf_m": {
+          "dims": [
+            1
+          ],
+          "data": [
+            1.0
+          ]
+        },
+        "gy_id": {
+          "dims": [
+            1
+          ],
+          "data": [
+            3655
+          ]
+        },
+        "gy_m": {
+          "dims": [
+            1
+          ],
+          "data": [
+            1.0
+          ]
+        },
+        "ogy_id": {
+          "dims": [
+            1
+          ],
+          "data": [
+            0
+          ]
+        },
+        "ogy_m": {
+          "dims": [
+            1
+          ],
+          "data": [
+            0.0
+          ]
+        },
+        "glob": {
+          "dims": [
+            33
+          ],
+          "data": [
+            0.89999998,
+            1.0,
+            0.25,
+            1.0,
+            0.2857143,
+            0.71428573,
+            0.83333331,
+            0.85000002,
+            0.05,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0
+          ]
+        },
+        "hist": {
+          "dims": [
+            39
+          ],
+          "data": [
+            0.2,
+            0.1,
+            0.0,
+            0.0,
+            0.1,
+            0.64285713,
+            0.125,
+            0.1,
+            0.2,
+            0.1,
+            0.1,
+            0.0,
+            0.85714287,
+            0.125,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.235,
+            0.0,
+            0.2,
+            0.1,
+            0.0,
+            0.30000001,
+            0.0,
+            0.1,
+            0.2,
+            0.1,
+            0.44999999
+          ]
+        },
+        "own_deck": {
+          "dims": [
+            1
+          ],
+          "data": [
+            76
+          ]
+        },
+        "opp_deck": {
+          "dims": [
+            1
+          ],
+          "data": [
+            124
+          ]
+        },
+        "pri_x": {
+          "dims": [
+            2,
+            41
+          ],
+          "data": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.2,
+            0.2,
+            0.2,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.2,
+            0.0,
+            0.0,
+            0.1,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "pri_id": {
+          "dims": [
+            2
+          ],
+          "data": [
+            948,
+            3467
+          ]
+        },
+        "pri_flags": {
+          "dims": [
+            2,
+            2
+          ],
+          "data": [
+            1.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        "att_x": {
+          "dims": [
+            1,
+            41
+          ],
+          "data": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "att_id": {
+          "dims": [
+            1
+          ],
+          "data": [
+            0
+          ]
+        },
+        "blk_x": {
+          "dims": [
+            1,
+            41
+          ],
+          "data": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "blk_id": {
+          "dims": [
+            1
+          ],
+          "data": [
+            0
+          ]
+        },
+        "batt_x": {
+          "dims": [
+            1,
+            41
+          ],
+          "data": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        "batt_id": {
+          "dims": [
+            1
+          ],
+          "data": [
+            0
+          ]
+        }
+      }
+    }
+  ]
+}
