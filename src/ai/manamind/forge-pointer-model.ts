@@ -113,15 +113,21 @@ export function unpackOutputs(
   };
 }
 
-/** Wrap a loaded ORT session around `forge_pointer.onnx` bytes. */
+/** Wrap a loaded ORT session around `forge_pointer.onnx` bytes.
+ *
+ * `opts.schemaVersion` picks the packing layout the checkpoint was trained
+ * with: 3 (the deployed champion, the default) or 4 (feat1).
+ */
 export async function createForgePointerModel(
   ort: ForgeOrtLike,
   modelBytes: Uint8Array,
+  opts: { schemaVersion?: number } = {},
 ): Promise<ForgePointerModel> {
+  const schemaVersion = opts.schemaVersion ?? 3;
   const session = await ort.InferenceSession.create(modelBytes);
   /** One forward pass for one decision (manamind `ForgePointerNet.act`). */
   const run = async (decision: ForgeDecision): Promise<ForgePointerOutput> => {
-    const packed = packDecision(decision);
+    const packed = packDecision(decision, schemaVersion);
     // A schema-v1 graph has no `own_deck` / `opp_deck` inputs; skip any
     // input the loaded model does not declare so older checkpoints keep
     // running (manamind #96 deck identity, warm-started from v1).
